@@ -565,7 +565,11 @@ export default function App() {
     }
 
     const summaryLines = rows
-      .map((row) => `${row.species}: ${Number(row.kilos || 0)} kg${Number(row.count || 0) > 0 ? ` (${Number(row.count || 0)} kpl)` : ""}`)
+      .map((row) => {
+        const kilos = Number(row.kilos || 0);
+        const count = Number(row.count || 0);
+        return `${row.species}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
+      })
       .join("
 ");
 
