@@ -537,6 +537,68 @@ export default function App() {
   });
   const [userMessage, setUserMessage] = useState("");
 
+  const buildOfferRecipients = (offerFormState) => {
+    const recipients = [];
+
+    if (offerFormState.offerToShops) {
+      recipients.push({ email: "joonas.hakkinen@ekkalatalouskeskus.fi", channel: "shops" });
+    }
+
+    if (offerFormState.offerToRestaurants) {
+      recipients.push({ email: "joonas.hakkinen@ekkalatalouskeskus.fi", channel: "restaurants" });
+    }
+
+    if (offerFormState.offerToWholesalers) {
+      recipients.push({ email: "joonas.hakkinen@ekkalatalouskeskus.fi", channel: "wholesalers" });
+    }
+
+    return recipients.filter(
+      (recipient, index, array) => index === array.findIndex((item) => item.email === recipient.email)
+    );
+  };
+
+  const sendCatchOfferEmail = async ({ formState, rows, profileState }) => {
+    const recipients = buildOfferRecipients(formState);
+
+    if (recipients.length === 0) {
+      return { skipped: true };
+    }
+
+    const summaryLines = rows
+      .map((row) => `${row.species}: ${Number(row.kilos || 0)} kg${Number(row.count || 0) > 0 ? ` (${Number(row.count || 0)} kpl)` : ""}`)
+      .join("
+");
+
+    const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
+
+    const entry = {
+      species: rows.map((row) => row.species).join(", "),
+      kilos: totalKilos,
+      date: formState.date,
+      area: formState.area,
+      spot: formState.spot || "",
+      gear: formState.gear || "",
+      gearCount: Number(formState.gearCount || 0),
+      pricePerKg: Number(formState.pricePerKg || 0),
+      ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
+      notes: [formState.notes || "", "", "Erän lajit:", summaryLines].join("
+").trim(),
+    };
+
+    const { data, error } = await supabase.functions.invoke("send-catch-offer-email", {
+      body: {
+        entry,
+        recipients,
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  };
+
   const invalidateSession = async (message = "Istunto on vanhentunut. Kirjaudu uudelleen sisään.") => {
     await clearBrokenSession();
     setSession(null);
@@ -944,9 +1006,11 @@ export default function App() {
       owner_user_id: profile.id,
       owner_name: profile.display_name,
     }));
+
     const { error } = await supabase.from("catch_entries").insert(payload);
-    setSaving(false);
+
     if (error) {
+      setSaving(false);
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
         return;
@@ -954,7 +1018,35 @@ export default function App() {
       setAuthError(error.message);
       return;
     }
-    setForm((prev) => ({ ...prev, buyer: "", pricePerKg: "", notes: "", date: today() }));
+
+    try {
+      await sendCatchOfferEmail({
+        formState: form,
+        rows: validRows,
+        profileState: profile,
+      });
+
+      if (form.offerToShops || form.offerToRestaurants || form.offerToWholesalers) {
+        setAuthInfo("Saalis tallennettu ja tarjousviesti lähetetty ostajille.");
+      } else {
+        setAuthInfo("Saalis tallennettu.");
+      }
+    } catch (emailError) {
+      console.error("Sähköpostin lähetys epäonnistui:", emailError);
+      setAuthInfo("Saalis tallennettu, mutta tarjoussähköpostin lähetys epäonnistui.");
+    }
+
+    setSaving(false);
+    setForm((prev) => ({
+      ...prev,
+      buyer: "",
+      pricePerKg: "",
+      notes: "",
+      date: today(),
+      offerToShops: false,
+      offerToRestaurants: false,
+      offerToWholesalers: false,
+    }));
     setSpeciesRows([createSpeciesRow()]);
     setRefreshTick((prev) => prev + 1);
     setActiveTab("entries");
