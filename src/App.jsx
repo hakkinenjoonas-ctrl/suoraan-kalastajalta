@@ -584,8 +584,7 @@ export default function App() {
       gearCount: Number(formState.gearCount || 0),
       pricePerKg: Number(formState.pricePerKg || 0),
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
-      notes: [formState.notes || "", "", "Erän lajit:", summaryLines].join("
-").trim(),
+      notes: [formState.notes || "", "", "Erän lajit:", summaryLines].join("\n").trim(),
     };
 
     const { data, error } = await supabase.functions.invoke("send-catch-offer-email", {
