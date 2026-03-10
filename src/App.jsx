@@ -538,6 +538,7 @@ export default function App() {
   });
   const [userMessage, setUserMessage] = useState("");
   const [buyerForm, setBuyerForm] = useState({
+    id: "",
     company_name: "",
     buyer_type: "ravintola",
     contact_name: "",
@@ -1021,6 +1022,7 @@ export default function App() {
     }
 
     setBuyerForm({
+      id: "",
       company_name: "",
       buyer_type: "ravintola",
       contact_name: "",
@@ -1046,6 +1048,81 @@ export default function App() {
       setUserMessage(error.message);
       return;
     }
+    setRefreshTick((prev) => prev + 1);
+  };
+
+  const startEditBuyer = (buyer) => {
+    setBuyerForm({
+      id: buyer.id,
+      company_name: buyer.company_name || "",
+      buyer_type: buyer.buyer_type || "ravintola",
+      contact_name: buyer.contact_name || "",
+      email: buyer.email || "",
+      phone: buyer.phone || "",
+      city: buyer.city || "",
+      min_kg: buyer.min_kg === "" || buyer.min_kg == null ? "" : String(buyer.min_kg),
+      max_kg: buyer.max_kg === "" || buyer.max_kg == null ? "" : String(buyer.max_kg),
+      is_active: Boolean(buyer.is_active),
+      notes: buyer.notes || "",
+    });
+    setUserMessage(`Muokataan ostajaa: ${buyer.company_name}`);
+  };
+
+  const resetBuyerForm = () => {
+    setBuyerForm({
+      company_name: "",
+      buyer_type: "ravintola",
+      contact_name: "",
+      email: "",
+      phone: "",
+      city: "",
+      min_kg: "",
+      max_kg: "",
+      is_active: true,
+      notes: "",
+    });
+  };
+
+  const handleSaveBuyer = async () => {
+    if (!profile || profile.role !== "owner") return;
+    const payload = {
+      company_name: buyerForm.company_name.trim(),
+      buyer_type: buyerForm.buyer_type,
+      contact_name: buyerForm.contact_name.trim(),
+      email: buyerForm.email.trim().toLowerCase(),
+      phone: buyerForm.phone.trim(),
+      city: buyerForm.city.trim(),
+      min_kg: buyerForm.min_kg === "" ? null : Number(buyerForm.min_kg),
+      max_kg: buyerForm.max_kg === "" ? null : Number(buyerForm.max_kg),
+      is_active: buyerForm.is_active,
+      notes: buyerForm.notes.trim(),
+    };
+
+    if (!payload.company_name || !payload.email) {
+      setUserMessage("Täytä ostajalle vähintään yritys ja sähköposti.");
+      return;
+    }
+
+    let error;
+    if (buyerForm.id) {
+      const result = await supabase.from("buyers").update(payload).eq("id", buyerForm.id);
+      error = result.error;
+    } else {
+      const result = await supabase.from("buyers").insert(payload);
+      error = result.error;
+    }
+
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(error.message);
+      return;
+    }
+
+    resetBuyerForm();
+    setUserMessage(buyerForm.id ? "Ostajan tiedot päivitetty." : "Ostaja lisätty.");
     setRefreshTick((prev) => prev + 1);
   };
 
@@ -1340,10 +1417,10 @@ export default function App() {
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <div style={styles.noticeInfo}>Owner näkee ostajarekisterin. Tavalliset käyttäjät eivät näe ostajien tietoja.
 
-Tarjouslogiikka: 
-• Tukut: tarjous lähetetään vain jos erän koko on vähintään tukun määrittämä minimimäärä (min kg). 
-• Ravintolat: tarjous lähetetään vain jos erän koko on enintään ravintolan määrittämä maksimimäärä (max kg). 
-• Kaupat: tarjous lähetetään vain jos erän koko on kaupan min- ja max-rajan välissä. 
+Tarjouslogiikka:
+• Tukut: tarjous lähetetään vain jos erän koko on vähintään tukun määrittämä minimimäärä (min kg).
+• Ravintolat: tarjous lähetetään vain jos erän koko on enintään ravintolan määrittämä maksimimäärä (max kg).
+• Kaupat: tarjous lähetetään vain jos erän koko on kaupan min- ja max-rajan välissä.
 
 Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe toistensa yhteystietoja.</div>
               <div style={styles.field}><label>Yritys</label><input style={styles.input} value={buyerForm.company_name} onChange={(e) => setBuyerForm((prev) => ({ ...prev, company_name: e.target.value }))} placeholder="Esim. Ravintola Saimaa" /></div>
@@ -1357,7 +1434,10 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               <div style={styles.field}><label><input type="checkbox" checked={buyerForm.is_active} onChange={(e) => setBuyerForm((prev) => ({ ...prev, is_active: e.target.checked }))} /> Aktiivinen</label></div>
               <div style={styles.field}><label>Lisätiedot</label><textarea style={styles.textarea} value={buyerForm.notes} onChange={(e) => setBuyerForm((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Erätoiveet, toimitus, huomioita" /></div>
               {userMessage ? <div style={styles.noticeSuccess}>{userMessage}</div> : null}
-              <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleCreateBuyer}>Lisää ostaja</button>
+              <div style={styles.row}>
+                <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveBuyer}>{buyerForm.id ? "Tallenna muutokset" : "Lisää ostaja"}</button>
+                {buyerForm.id ? <button style={styles.button} onClick={resetBuyerForm}>Peruuta muokkaus</button> : null}
+              </div>
             </div>
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <strong>Ostajarekisteri</strong>
@@ -1376,7 +1456,10 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                       <div style={styles.muted}>{buyer.contact_name || "-"}{buyer.phone ? ` · ${buyer.phone}` : ""}{buyer.city ? ` · ${buyer.city}` : ""}</div>
                       {buyer.notes ? <div style={styles.muted}>{buyer.notes}</div> : null}
                     </div>
-                    <button style={styles.button} onClick={() => toggleBuyerActive(buyer)}>{buyer.is_active ? "Poista käytöstä" : "Aktivoi"}</button>
+                    <div style={styles.row}>
+                      <button style={styles.button} onClick={() => startEditBuyer(buyer)}>Muokkaa</button>
+                      <button style={styles.button} onClick={() => toggleBuyerActive(buyer)}>{buyer.is_active ? "Poista käytöstä" : "Aktivoi"}</button>
+                    </div>
                   </div>
                 </div>
               ))}
