@@ -570,7 +570,8 @@ export default function App() {
         const count = Number(row.count || 0);
         return `${row.species}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
       })
-      .join("\n");
+      .join("
+");
 
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
 
@@ -584,18 +585,30 @@ export default function App() {
       gearCount: Number(formState.gearCount || 0),
       pricePerKg: Number(formState.pricePerKg || 0),
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
-      notes: [formState.notes || "", "", "Erän lajit:", summaryLines].join("\n").trim(),
+      notes: [formState.notes || "", "", "Erän lajit:", summaryLines].join("
+").trim(),
     };
 
-    const { data, error } = await supabase.functions.invoke("send-catch-offer-email", {
-      body: {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/send-catch-offer-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({
         entry,
         recipients,
-      },
+      }),
     });
 
-    if (error) {
-      throw error;
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data?.error || `Tarjoussähköpostin lähetys epäonnistui (${response.status})`);
     }
 
     return data;
