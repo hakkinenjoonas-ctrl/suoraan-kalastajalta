@@ -570,8 +570,7 @@ export default function App() {
         const count = Number(row.count || 0);
         return `${row.species}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
       })
-      .join("
-");
+      .join(String.fromCharCode(10));
 
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
 
@@ -585,8 +584,7 @@ export default function App() {
       gearCount: Number(formState.gearCount || 0),
       pricePerKg: Number(formState.pricePerKg || 0),
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
-      notes: [formState.notes || "", "", "Erän lajit:", summaryLines].join("
-").trim(),
+      notes: [formState.notes || "", "", "Erän lajit:", summaryLines].join(String.fromCharCode(10)).trim(),
     };
 
     const { data: sessionData } = await supabase.auth.getSession();
