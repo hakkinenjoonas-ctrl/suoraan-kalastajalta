@@ -856,7 +856,30 @@ export default function App() {
         setAuthError(profileError.message);
         return;
       }
+      
       if (existingProfile) {
+        if (existingProfile.role !== allowed.role || existingProfile.is_active !== allowed.is_active || existingProfile.display_name !== (allowed.display_name || existingProfile.display_name)) {
+          const { data: updatedProfile, error: updateProfileError } = await supabase
+            .from("profiles")
+            .update({
+              role: allowed.role || existingProfile.role,
+              is_active: allowed.is_active,
+              display_name: allowed.display_name || existingProfile.display_name,
+            })
+            .eq("id", session.user.id)
+            .select("*")
+            .single();
+          if (updateProfileError) {
+            if (isMissingRefreshTokenError(updateProfileError)) {
+              await invalidateSession();
+              return;
+            }
+            setAuthError(updateProfileError.message);
+            return;
+          }
+          setProfile(updatedProfile);
+          return;
+        }
         setProfile(existingProfile);
         return;
       }
@@ -1353,8 +1376,92 @@ export default function App() {
       return;
     }
 
+    // Ensure buyer can log in: create or update allowed_users with buyer role
+    const { data: existingAllowed, error: allowedFetchError } = await supabase
+      .from("allowed_users")
+      .select("id, role, is_active")
+      .eq("email", payload.email)
+      .maybeSingle();
+
+    if (allowedFetchError && allowedFetchError.code !== "PGRST116") {
+      if (isMissingRefreshTokenError(allowedFetchError)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(allowedFetchError.message);
+      return;
+    }
+
+    if (existingAllowed?.id) {
+      const { error: allowedUpdateError } = await supabase
+        .from("allowed_users")
+        .update({
+          display_name: payload.contact_name || payload.company_name,
+          role: "buyer",
+          is_active: true,
+        })
+        .eq("id", existingAllowed.id);
+
+      if (allowedUpdateError) {
+        if (isMissingRefreshTokenError(allowedUpdateError)) {
+          await invalidateSession();
+          return;
+        }
+        setUserMessage(allowedUpdateError.message);
+        return;
+      }
+    } else {
+      const { error: allowedInsertError } = await supabase.from("allowed_users").insert({
+        email: payload.email,
+        display_name: payload.contact_name || payload.company_name,
+        role: "buyer",
+        is_active: true,
+      });
+
+      if (allowedInsertError) {
+        if (isMissingRefreshTokenError(allowedInsertError)) {
+          await invalidateSession();
+          return;
+        }
+        setUserMessage(allowedInsertError.message);
+        return;
+      }
+    }
+
+    // If profile already exists for this email, make sure its role is buyer
+    const { data: existingProfile, error: profileFetchError } = await supabase
+      .from("profiles")
+      .select("id, role, email")
+      .eq("email", payload.email)
+      .maybeSingle();
+
+    if (profileFetchError && profileFetchError.code !== "PGRST116") {
+      if (isMissingRefreshTokenError(profileFetchError)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(profileFetchError.message);
+      return;
+    }
+
+    if (existingProfile?.id && existingProfile.role !== "buyer") {
+      const { error: profileUpdateError } = await supabase
+        .from("profiles")
+        .update({ role: "buyer", is_active: true, display_name: payload.contact_name || payload.company_name })
+        .eq("id", existingProfile.id);
+
+      if (profileUpdateError) {
+        if (isMissingRefreshTokenError(profileUpdateError)) {
+          await invalidateSession();
+          return;
+        }
+        setUserMessage(profileUpdateError.message);
+        return;
+      }
+    }
+
     resetBuyerForm();
-    setUserMessage(buyerForm.id ? "Ostajan tiedot päivitetty." : "Ostaja lisätty.");
+    setUserMessage(buyerForm.id ? "Ostajan tiedot päivitetty. Ostajatunnus on myös valmis kirjautumiseen." : "Ostaja lisätty. Ostajatunnus on nyt valmis rekisteröitymiseen / kirjautumiseen samalla sähköpostilla.");
     setRefreshTick((prev) => prev + 1);
   };
 
@@ -1756,7 +1863,7 @@ Tarjouslogiikka:
 • Ravintolat: tarjous lähetetään vain jos erän koko on enintään ravintolan määrittämä maksimimäärä (max kg).
 • Kaupat: tarjous lähetetään vain jos erän koko on kaupan min- ja max-rajan välissä.
 
-Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe toistensa yhteystietoja.</div>
+Kun lisäät ostajan tähän, ohjelma tekee samalla ostajatunnuksen valmiiksi sallittuihin käyttäjiin buyer-roolilla. Ostaja voi sen jälkeen rekisteröityä tai kirjautua samalla sähköpostilla.</div>
               <div style={styles.field}><label>Yritys</label><input style={styles.input} value={buyerForm.company_name} onChange={(e) => setBuyerForm((prev) => ({ ...prev, company_name: e.target.value }))} placeholder="Esim. Ravintola Saimaa" /></div>
               <div style={styles.field}><label>Ryhmä</label><select style={styles.input} value={buyerForm.buyer_type} onChange={(e) => setBuyerForm((prev) => ({ ...prev, buyer_type: e.target.value }))}><option value="ravintola">Ravintola</option><option value="tukku">Tukku</option><option value="kauppa">Kauppa</option></select></div>
               <div style={styles.field}><label>Yhteyshenkilö</label><input style={styles.input} value={buyerForm.contact_name} onChange={(e) => setBuyerForm((prev) => ({ ...prev, contact_name: e.target.value }))} placeholder="Nimi" /></div>
