@@ -570,8 +570,7 @@ export default function App() {
         const count = Number(row.count || 0);
         return `${row.species}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
       })
-      .join("
-");
+      .join("\n");
 
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
 
