@@ -143,7 +143,7 @@ const styles = {
   toolbar: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
   tabs: {
     display: "grid",
-    gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(8, minmax(0, 1fr))",
     gap: 8,
     background: "#fff",
     border: "1px solid #e2e8f0",
@@ -501,6 +501,7 @@ export default function App() {
   const [entries, setEntries] = useState([]);
   const [offers, setOffers] = useState([]);
   const [allowedUsers, setAllowedUsers] = useState([]);
+  const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -536,29 +537,61 @@ export default function App() {
     message: "",
   });
   const [userMessage, setUserMessage] = useState("");
+  const [buyerForm, setBuyerForm] = useState({
+    company_name: "",
+    buyer_type: "ravintola",
+    contact_name: "",
+    email: "",
+    phone: "",
+    city: "",
+    min_kg: "",
+    max_kg: "",
+    is_active: true,
+    notes: "",
+  });
 
-  const buildOfferRecipients = (offerFormState) => {
-    const recipients = [];
+  const buildOfferRecipients = (offerFormState, rows) => {
+    const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
 
-    if (offerFormState.offerToShops) {
-      recipients.push({ email: "joonas.hakkinen@ekkalatalouskeskus.fi", channel: "shops" });
-    }
+    const selectedTypes = [];
+    if (offerFormState.offerToShops) selectedTypes.push("kauppa");
+    if (offerFormState.offerToRestaurants) selectedTypes.push("ravintola");
+    if (offerFormState.offerToWholesalers) selectedTypes.push("tukku");
 
-    if (offerFormState.offerToRestaurants) {
-      recipients.push({ email: "joonas.hakkinen@ekkalatalouskeskus.fi", channel: "restaurants" });
-    }
+    return buyers
+      .filter((buyer) => buyer.is_active)
+      .filter((buyer) => selectedTypes.includes(buyer.buyer_type))
+      .filter((buyer) => {
+        const minKg = buyer.min_kg == null || buyer.min_kg === "" ? null : Number(buyer.min_kg);
+        const maxKg = buyer.max_kg == null || buyer.max_kg === "" ? null : Number(buyer.max_kg);
 
-    if (offerFormState.offerToWholesalers) {
-      recipients.push({ email: "joonas.hakkinen@ekkalatalouskeskus.fi", channel: "wholesalers" });
-    }
+        if (buyer.buyer_type === "tukku") {
+          return minKg == null || totalKilos >= minKg;
+        }
 
-    return recipients.filter(
-      (recipient, index, array) => index === array.findIndex((item) => item.email === recipient.email)
-    );
+        if (buyer.buyer_type === "ravintola") {
+          return maxKg == null || totalKilos <= maxKg;
+        }
+
+        if (buyer.buyer_type === "kauppa") {
+          const minOk = minKg == null || totalKilos >= minKg;
+          const maxOk = maxKg == null || totalKilos <= maxKg;
+          return minOk && maxOk;
+        }
+
+        return false;
+      })
+      .map((buyer) => ({
+        email: buyer.email,
+        channel: buyer.buyer_type,
+        company_name: buyer.company_name,
+        contact_name: buyer.contact_name,
+      }))
+      .filter((recipient, index, array) => index === array.findIndex((item) => item.email === recipient.email));
   };
 
   const sendCatchOfferEmail = async ({ formState, rows, profileState }) => {
-    const recipients = buildOfferRecipients(formState);
+    const recipients = buildOfferRecipients(formState, rows);
 
     if (recipients.length === 0) {
       return { skipped: true };
@@ -740,12 +773,19 @@ export default function App() {
         return !error;
       };
 
+      const buyersTableExists = async () => {
+        const { error } = await supabase.from("buyers").select("id", { count: "exact", head: true });
+        return !error;
+      };
+
       try {
         const hasOffersTable = await offerTableExists();
-        const [{ data: entryData, error: entryError }, { data: allowedData, error: allowedError }, offerResult] = await Promise.all([
+        const hasBuyersTable = await buyersTableExists();
+        const [{ data: entryData, error: entryError }, { data: allowedData, error: allowedError }, offerResult, buyersResult] = await Promise.all([
           finalEntriesQuery,
           profile.role === "owner" ? supabase.from("allowed_users").select("*").order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
           hasOffersTable ? supabase.from("wholesale_offers").select("*").order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+          hasBuyersTable ? supabase.from("buyers").select("*").order("company_name", { ascending: true }) : Promise.resolve({ data: [], error: null }),
         ]);
 
         if (entryError) {
@@ -797,6 +837,20 @@ export default function App() {
           setOffers((offerResult?.data || []).map((offer) => ({
             ...offer,
             offer_price_per_kg: Number(offer.offer_price_per_kg || 0),
+          })));
+        }
+
+        if (buyersResult?.error && buyersResult.error.code !== "PGRST116") {
+          if (isMissingRefreshTokenError(buyersResult.error)) {
+            await invalidateSession();
+            return;
+          }
+          setAuthInfo("Ostajat-välilehti tarvitsee buyers-taulun.");
+        } else {
+          setBuyers((buyersResult?.data || []).map((buyer) => ({
+            ...buyer,
+            min_kg: buyer.min_kg == null ? "" : Number(buyer.min_kg),
+            max_kg: buyer.max_kg == null ? "" : Number(buyer.max_kg),
           })));
         }
       } catch (error) {
@@ -933,6 +987,65 @@ export default function App() {
     }
     setNewAllowedForm({ email: "", displayName: "", role: "member" });
     setUserMessage(`Sallittu käyttäjä ${displayName} lisätty.`);
+    setRefreshTick((prev) => prev + 1);
+  };
+
+  const handleCreateBuyer = async () => {
+    if (!profile || profile.role !== "owner") return;
+    const payload = {
+      company_name: buyerForm.company_name.trim(),
+      buyer_type: buyerForm.buyer_type,
+      contact_name: buyerForm.contact_name.trim(),
+      email: buyerForm.email.trim().toLowerCase(),
+      phone: buyerForm.phone.trim(),
+      city: buyerForm.city.trim(),
+      min_kg: buyerForm.min_kg === "" ? null : Number(buyerForm.min_kg),
+      max_kg: buyerForm.max_kg === "" ? null : Number(buyerForm.max_kg),
+      is_active: buyerForm.is_active,
+      notes: buyerForm.notes.trim(),
+    };
+
+    if (!payload.company_name || !payload.email) {
+      setUserMessage("Täytä ostajalle vähintään yritys ja sähköposti.");
+      return;
+    }
+
+    const { error } = await supabase.from("buyers").insert(payload);
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(error.message);
+      return;
+    }
+
+    setBuyerForm({
+      company_name: "",
+      buyer_type: "ravintola",
+      contact_name: "",
+      email: "",
+      phone: "",
+      city: "",
+      min_kg: "",
+      max_kg: "",
+      is_active: true,
+      notes: "",
+    });
+    setUserMessage("Ostaja lisätty.");
+    setRefreshTick((prev) => prev + 1);
+  };
+
+  const toggleBuyerActive = async (buyer) => {
+    const { error } = await supabase.from("buyers").update({ is_active: !buyer.is_active }).eq("id", buyer.id);
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(error.message);
+      return;
+    }
     setRefreshTick((prev) => prev + 1);
   };
 
@@ -1132,6 +1245,7 @@ export default function App() {
           <button style={{ ...styles.tab, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
           
           <button style={{ ...styles.tab, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
+          {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
           {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
         </div>
 
@@ -1220,6 +1334,55 @@ export default function App() {
         {activeTab === "offers" && <WholesaleOffersView profile={profile} saleEntries={saleEntries} offers={offers} offerForm={offerForm} setOfferForm={setOfferForm} onCreateOffer={handleCreateOffer} onUpdateOfferStatus={onUpdateOfferStatus} />}
         
         {activeTab === "reports" && <ReportsView entries={entries} offers={offers} />}
+
+        {activeTab === "buyers" && profile.role === "owner" && (
+          <div style={grid2}>
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div style={styles.noticeInfo}>Owner näkee ostajarekisterin. Tavalliset käyttäjät eivät näe ostajien tietoja.
+
+Tarjouslogiikka: 
+• Tukut: tarjous lähetetään vain jos erän koko on vähintään tukun määrittämä minimimäärä (min kg). 
+• Ravintolat: tarjous lähetetään vain jos erän koko on enintään ravintolan määrittämä maksimimäärä (max kg). 
+• Kaupat: tarjous lähetetään vain jos erän koko on kaupan min- ja max-rajan välissä. 
+
+Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe toistensa yhteystietoja.</div>
+              <div style={styles.field}><label>Yritys</label><input style={styles.input} value={buyerForm.company_name} onChange={(e) => setBuyerForm((prev) => ({ ...prev, company_name: e.target.value }))} placeholder="Esim. Ravintola Saimaa" /></div>
+              <div style={styles.field}><label>Ryhmä</label><select style={styles.input} value={buyerForm.buyer_type} onChange={(e) => setBuyerForm((prev) => ({ ...prev, buyer_type: e.target.value }))}><option value="ravintola">Ravintola</option><option value="tukku">Tukku</option><option value="kauppa">Kauppa</option></select></div>
+              <div style={styles.field}><label>Yhteyshenkilö</label><input style={styles.input} value={buyerForm.contact_name} onChange={(e) => setBuyerForm((prev) => ({ ...prev, contact_name: e.target.value }))} placeholder="Nimi" /></div>
+              <div style={styles.field}><label>Sähköposti</label><input style={styles.input} type="email" value={buyerForm.email} onChange={(e) => setBuyerForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="email@yritys.fi" /></div>
+              <div style={styles.field}><label>Puhelin</label><input style={styles.input} value={buyerForm.phone} onChange={(e) => setBuyerForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Puhelin" /></div>
+              <div style={styles.field}><label>Paikkakunta</label><input style={styles.input} value={buyerForm.city} onChange={(e) => setBuyerForm((prev) => ({ ...prev, city: e.target.value }))} placeholder="Paikkakunta" /></div>
+              <div style={styles.field}><label>Min kg</label><input style={styles.input} type="number" value={buyerForm.min_kg} onChange={(e) => setBuyerForm((prev) => ({ ...prev, min_kg: e.target.value }))} placeholder="Esim. tukkuille" /></div>
+              <div style={styles.field}><label>Max kg</label><input style={styles.input} type="number" value={buyerForm.max_kg} onChange={(e) => setBuyerForm((prev) => ({ ...prev, max_kg: e.target.value }))} placeholder="Esim. ravintoloille" /></div>
+              <div style={styles.field}><label><input type="checkbox" checked={buyerForm.is_active} onChange={(e) => setBuyerForm((prev) => ({ ...prev, is_active: e.target.checked }))} /> Aktiivinen</label></div>
+              <div style={styles.field}><label>Lisätiedot</label><textarea style={styles.textarea} value={buyerForm.notes} onChange={(e) => setBuyerForm((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Erätoiveet, toimitus, huomioita" /></div>
+              {userMessage ? <div style={styles.noticeSuccess}>{userMessage}</div> : null}
+              <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleCreateBuyer}>Lisää ostaja</button>
+            </div>
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <strong>Ostajarekisteri</strong>
+              {buyers.length === 0 ? <div style={styles.muted}>Ei vielä ostajia.</div> : buyers.map((buyer) => (
+                <div key={buyer.id} style={styles.entry}>
+                  <div style={styles.entryHeader}>
+                    <div>
+                      <div style={styles.entryBadges}>
+                        <span style={styles.badge}>{buyer.company_name}</span>
+                        <span style={styles.badge}>{buyer.buyer_type}</span>
+                        <span style={styles.badge}>{buyer.email}</span>
+                        <span style={styles.badge}>{buyer.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
+                        {buyer.min_kg !== "" ? <span style={styles.badge}>Min {buyer.min_kg} kg</span> : null}
+                        {buyer.max_kg !== "" ? <span style={styles.badge}>Max {buyer.max_kg} kg</span> : null}
+                      </div>
+                      <div style={styles.muted}>{buyer.contact_name || "-"}{buyer.phone ? ` · ${buyer.phone}` : ""}{buyer.city ? ` · ${buyer.city}` : ""}</div>
+                      {buyer.notes ? <div style={styles.muted}>{buyer.notes}</div> : null}
+                    </div>
+                    <button style={styles.button} onClick={() => toggleBuyerActive(buyer)}>{buyer.is_active ? "Poista käytöstä" : "Aktivoi"}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {activeTab === "users" && profile.role === "owner" && (
           <div style={grid2}>
