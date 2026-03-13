@@ -23,9 +23,8 @@ const defaultFishPrices = {
   Muikku: 2,
 };
 const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Onki", "Muu"];
-const destinations = ["Myyntiin", "Oma käyttö", "Jalostukseen", "Tukkuun", "Muu"]; 
+const destinations = ["Myyntiin", "Oma käyttö", "Jalostukseen", "Tukkuun", "Muu"];
 
-// Buyer side: offers shown as aggregated batches (one save = one batch_id).
 const defaultAreas = ["Suur-Saimaa", "Pien-Saimaa", "Saimaa", "Muu vesialue"];
 const fishingSpots = [
   { name: "Kyläniemen pohjoispuoli", lat: 61.33, lng: 28.18 },
@@ -58,7 +57,7 @@ function exportCsv(filename, rows) {
   const csv = rows
     .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(";"))
     .join("\n");
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -111,13 +110,16 @@ const styles = {
     color: "#0f172a",
     fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     padding: 16,
+    boxSizing: "border-box",
   },
-  container: { maxWidth: 1280, margin: "0 auto" },
+  container: { maxWidth: 1280, margin: "0 auto", width: "100%", boxSizing: "border-box" },
   card: {
     background: "#fff",
     border: "1px solid #e2e8f0",
     borderRadius: 20,
     boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+    boxSizing: "border-box",
+    overflow: "hidden",
   },
   headerCard: { padding: 20, marginBottom: 18 },
   sectionCard: { padding: 18 },
@@ -129,8 +131,8 @@ const styles = {
     alignItems: "center",
     flexWrap: "wrap",
   },
-  title: { margin: 0, fontSize: 32, lineHeight: 1.1 },
-  subtitle: { margin: "6px 0 0", color: "#475569", fontSize: 14 },
+  title: { margin: 0, fontSize: 32, lineHeight: 1.1, wordBreak: "break-word" },
+  subtitle: { margin: "6px 0 0", color: "#475569", fontSize: 14, wordBreak: "break-word" },
   badge: {
     display: "inline-flex",
     alignItems: "center",
@@ -141,6 +143,10 @@ const styles = {
     color: "#1e293b",
     fontSize: 14,
     border: "1px solid #cbd5e1",
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    whiteSpace: "normal",
+    wordBreak: "break-word",
   },
   toolbar: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
   tabs: {
@@ -152,6 +158,8 @@ const styles = {
     padding: 8,
     borderRadius: 18,
     marginBottom: 16,
+    width: "100%",
+    boxSizing: "border-box",
   },
   tabs6: {
     display: "grid",
@@ -162,6 +170,8 @@ const styles = {
     padding: 8,
     borderRadius: 18,
     marginBottom: 16,
+    width: "100%",
+    boxSizing: "border-box",
   },
   tab: {
     border: 0,
@@ -174,28 +184,47 @@ const styles = {
     justifyContent: "center",
     gap: 8,
     color: "#0f172a",
+    minWidth: 0,
+    minHeight: 54,
+    textAlign: "center",
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+  },
+  tabLabel: {
+    display: "block",
+    lineHeight: 1.15,
+    textAlign: "center",
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   },
   activeTab: { background: "#0f172a", color: "#fff" },
   grid3: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 },
   grid2: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 },
   stack: { display: "flex", flexDirection: "column", gap: 12 },
   metric: { fontSize: 34, fontWeight: 700, margin: "8px 0 0" },
-  muted: { color: "#64748b", fontSize: 14 },
+  muted: { color: "#64748b", fontSize: 14, wordBreak: "break-word" },
   progress: { height: 12, background: "#e2e8f0", borderRadius: 999, overflow: "hidden" },
   progressFill: { display: "block", height: "100%", background: "#0f172a", borderRadius: 999 },
-  formGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 },
-  field: { display: "flex", flexDirection: "column", gap: 8 },
+  formGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, width: "100%" },
+  field: { display: "flex", flexDirection: "column", gap: 8, minWidth: 0 },
   fieldFull: { gridColumn: "1 / -1" },
   input: {
     width: "100%",
+    maxWidth: "100%",
+    boxSizing: "border-box",
     padding: "12px 14px",
     border: "1px solid #cbd5e1",
     borderRadius: 14,
     background: "#fff",
     font: "inherit",
+    minWidth: 0,
   },
   textarea: {
     width: "100%",
+    maxWidth: "100%",
+    boxSizing: "border-box",
     padding: "12px 14px",
     border: "1px solid #cbd5e1",
     borderRadius: 14,
@@ -203,6 +232,7 @@ const styles = {
     font: "inherit",
     minHeight: 96,
     resize: "vertical",
+    minWidth: 0,
   },
   button: {
     border: "1px solid #cbd5e1",
@@ -215,6 +245,11 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    textAlign: "center",
+    whiteSpace: "normal",
+    wordBreak: "break-word",
   },
   primaryButton: { background: "#0f172a", color: "#fff", borderColor: "#0f172a" },
   speciesBox: {
@@ -222,6 +257,7 @@ const styles = {
     borderRadius: 18,
     background: "#f8fafc",
     padding: 16,
+    boxSizing: "border-box",
   },
   speciesRow: {
     display: "grid",
@@ -232,12 +268,17 @@ const styles = {
     border: "1px solid #e2e8f0",
     borderRadius: 16,
     padding: 12,
+    width: "100%",
+    boxSizing: "border-box",
   },
   entry: {
     border: "1px solid #e2e8f0",
     borderRadius: 18,
     padding: 14,
     background: "#fff",
+    width: "100%",
+    boxSizing: "border-box",
+    overflow: "hidden",
   },
   entryHeader: {
     display: "flex",
@@ -262,6 +303,7 @@ const styles = {
     background: "#eff6ff",
     color: "#1d4ed8",
     border: "1px solid #bfdbfe",
+    whiteSpace: "pre-wrap",
   },
   noticeSuccess: {
     padding: "12px 14px",
@@ -289,6 +331,24 @@ function responsiveGridStyle(base) {
   return base;
 }
 
+function responsiveTabsStyle(isOwner) {
+  if (typeof window !== "undefined" && window.innerWidth < 960) {
+    return {
+      ...(isOwner ? styles.tabs : styles.tabs6),
+      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    };
+  }
+  return isOwner ? styles.tabs : styles.tabs6;
+}
+
+function TabButton({ active, onClick, children }) {
+  return (
+    <button style={{ ...styles.tab, ...(active ? styles.activeTab : {}) }} onClick={onClick}>
+      <span style={styles.tabLabel}>{children}</span>
+    </button>
+  );
+}
+
 function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, authError, authInfo }) {
   return (
     <div style={styles.app}>
@@ -296,8 +356,8 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
           <h1 style={styles.title}>Suoraan Kalastajalta</h1>
           <div style={{ ...styles.tabs6, gridTemplateColumns: "1fr 1fr", marginBottom: 0 }}>
-            <button style={{ ...styles.tab, ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
-            <button style={{ ...styles.tab, ...(authMode === "signup" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signup")}>Rekisteröidy</button>
+            <TabButton active={authMode === "signin"} onClick={() => setAuthMode("signin")}>Kirjaudu</TabButton>
+            <TabButton active={authMode === "signup"} onClick={() => setAuthMode("signup")}>Rekisteröidy</TabButton>
           </div>
 
           <div style={styles.field}>
@@ -423,7 +483,23 @@ function WholesaleOffersView({ profile, saleEntries, offers, offerForm, setOffer
         <textarea
           readOnly
           style={{ ...styles.textarea, minHeight: 360, fontFamily: "monospace" }}
-          value={`create table if not exists public.wholesale_offers (\n  id uuid primary key default gen_random_uuid(),\n  entry_id uuid not null references public.catch_entries(id) on delete cascade,\n  company_name text not null,\n  contact_name text not null,\n  contact_email text not null,\n  contact_phone text,\n  offer_price_per_kg numeric not null default 0,\n  message text,\n  status text not null default 'pending' check (status in ('pending','accepted','rejected')),\n  created_by_user_id uuid references public.profiles(id) on delete set null,\n  created_at timestamptz not null default now()\n);\n\nalter table public.wholesale_offers enable row level security;\n\ncreate policy if not exists "offers_select_signed_in" on public.wholesale_offers
+          value={`create table if not exists public.wholesale_offers (
+  id uuid primary key default gen_random_uuid(),
+  entry_id uuid not null references public.catch_entries(id) on delete cascade,
+  company_name text not null,
+  contact_name text not null,
+  contact_email text not null,
+  contact_phone text,
+  offer_price_per_kg numeric not null default 0,
+  message text,
+  status text not null default 'pending' check (status in ('pending','accepted','rejected')),
+  created_by_user_id uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.wholesale_offers enable row level security;
+
+create policy if not exists "offers_select_signed_in" on public.wholesale_offers
 for select to authenticated using (true);
 
 create policy if not exists "offers_insert_signed_in" on public.wholesale_offers
@@ -440,7 +516,6 @@ with check (
   or exists (select 1 from public.catch_entries e where e.id = entry_id and e.owner_user_id = auth.uid())
 );
 
--- Buyer offers table (needed for buyer app):
 create table if not exists public.buyer_offers (
   id uuid primary key default gen_random_uuid(),
   batch_id text not null,
@@ -494,7 +569,6 @@ with check (
   or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' and p.is_active = true)
 );
 
--- Optional: keep updated_at fresh
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -511,8 +585,6 @@ for each row execute function public.set_updated_at();`}
     </div>
   );
 }
-
-
 
 function ReportsView({ entries, offers }) {
   const reportRows = entries.map((entry) => [
@@ -641,6 +713,9 @@ export default function App() {
     notes: "",
   });
 
+  const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
+  const saveButtonLabel = shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis";
+
   const buildOfferRecipients = (offerFormState, rows) => {
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
 
@@ -743,7 +818,6 @@ export default function App() {
           data,
         });
 
-        // Create buyer offer record so buyer can respond inside the app
         try {
           await supabase.from("buyer_offers").insert({
             batch_id: batchId,
@@ -1039,9 +1113,9 @@ export default function App() {
   const saleEntries = useMemo(
     () =>
       entries.filter(
-        (entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers
+        (entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers,
       ),
-    [entries]
+    [entries],
   );
 
   const totals = useMemo(() => {
@@ -1151,53 +1225,6 @@ export default function App() {
     }
     setNewAllowedForm({ email: "", displayName: "", role: "member" });
     setUserMessage(`Sallittu käyttäjä ${displayName} lisätty.`);
-    setRefreshTick((prev) => prev + 1);
-  };
-
-  const handleCreateBuyer = async () => {
-    if (!profile || profile.role !== "owner") return;
-    const payload = {
-      company_name: buyerForm.company_name.trim(),
-      buyer_type: buyerForm.buyer_type,
-      contact_name: buyerForm.contact_name.trim(),
-      email: buyerForm.email.trim().toLowerCase(),
-      phone: buyerForm.phone.trim(),
-      city: buyerForm.city.trim(),
-      min_kg: buyerForm.min_kg === "" ? null : Number(buyerForm.min_kg),
-      max_kg: buyerForm.max_kg === "" ? null : Number(buyerForm.max_kg),
-      is_active: buyerForm.is_active,
-      notes: buyerForm.notes.trim(),
-    };
-
-    if (!payload.company_name || !payload.email) {
-      setUserMessage("Täytä ostajalle vähintään yritys ja sähköposti.");
-      return;
-    }
-
-    const { error } = await supabase.from("buyers").insert(payload);
-    if (error) {
-      if (isMissingRefreshTokenError(error)) {
-        await invalidateSession();
-        return;
-      }
-      setUserMessage(error.message);
-      return;
-    }
-
-    setBuyerForm({
-      id: "",
-      company_name: "",
-      buyer_type: "ravintola",
-      contact_name: "",
-      email: "",
-      phone: "",
-      city: "",
-      min_kg: "",
-      max_kg: "",
-      is_active: true,
-      notes: "",
-    });
-    setUserMessage("Ostaja lisätty.");
     setRefreshTick((prev) => prev + 1);
   };
 
@@ -1462,7 +1489,7 @@ export default function App() {
         batchId: timestamp,
       });
 
-      if (form.offerToShops || form.offerToRestaurants || form.offerToWholesalers) {
+      if (shouldSendOffer) {
         if (emailResult.skipped) {
           setAuthInfo("Saalis tallennettu, mutta yhtään ostajaa ei täyttänyt tarjousehtoja.");
         } else {
@@ -1567,7 +1594,7 @@ export default function App() {
                   <option value="rejected">Hylätyt</option>
                   <option value="all">Kaikki</option>
                 </select>
-                <input style={{ ...styles.input, width: 320 }} placeholder="Hae myyjällä, alueella, lajilla..." value={buyerOffersSearch} onChange={(e) => setBuyerOffersSearch(e.target.value)} />
+                <input style={{ ...styles.input, width: 320, maxWidth: "100%" }} placeholder="Hae myyjällä, alueella, lajilla..." value={buyerOffersSearch} onChange={(e) => setBuyerOffersSearch(e.target.value)} />
               </div>
             </div>
 
@@ -1615,7 +1642,7 @@ export default function App() {
     );
   }
 
-  const tabStyle = profile.role === "owner" ? styles.tabs : styles.tabs6;
+  const tabStyle = responsiveTabsStyle(profile.role === "owner");
   const grid3 = responsiveGridStyle(styles.grid3);
   const grid2 = responsiveGridStyle(styles.grid2);
   const formGrid = responsiveGridStyle(styles.formGrid);
@@ -1650,14 +1677,13 @@ export default function App() {
         {authInfo ? <div style={{ ...styles.noticeSuccess, marginBottom: 16 }}>{authInfo}</div> : null}
 
         <div style={tabStyle}>
-          <button style={{ ...styles.tab, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
-          <button style={{ ...styles.tab, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>Lisää saalis</button>
-          <button style={{ ...styles.tab, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>Saaliit</button>
-          <button style={{ ...styles.tab, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
-          
-          <button style={{ ...styles.tab, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
-          {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
-          {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
+          <TabButton active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")}>Yhteenveto</TabButton>
+          <TabButton active={activeTab === "add"} onClick={() => setActiveTab("add")}>Lisää saalis</TabButton>
+          <TabButton active={activeTab === "entries"} onClick={() => setActiveTab("entries")}>Saaliit</TabButton>
+          <TabButton active={activeTab === "offers"} onClick={() => setActiveTab("offers")}>Tarjoukset</TabButton>
+          <TabButton active={activeTab === "reports"} onClick={() => setActiveTab("reports")}>Raportit</TabButton>
+          {profile.role === "owner" ? <TabButton active={activeTab === "buyers"} onClick={() => setActiveTab("buyers")}>Ostajat</TabButton> : null}
+          {profile.role === "owner" ? <TabButton active={activeTab === "users"} onClick={() => setActiveTab("users")}>Käyttäjät</TabButton> : null}
         </div>
 
         {activeTab === "dashboard" && (
@@ -1705,14 +1731,14 @@ export default function App() {
               <div style={{ ...styles.field, ...styles.fieldFull }}>
                 <label>Tarjoa erää myyntiin</label>
                 <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-                  <label><input type="checkbox" checked={form.offerToShops} onChange={(e)=>setForm({...form,offerToShops:e.target.checked})}/> Kauppoihin</label>
-                  <label><input type="checkbox" checked={form.offerToRestaurants} onChange={(e)=>setForm({...form,offerToRestaurants:e.target.checked})}/> Ravintoloihin</label>
-                  <label><input type="checkbox" checked={form.offerToWholesalers} onChange={(e)=>setForm({...form,offerToWholesalers:e.target.checked})}/> Tukkuihin</label>
+                  <label><input type="checkbox" checked={form.offerToShops} onChange={(e) => setForm({ ...form, offerToShops: e.target.checked })} /> Kauppoihin</label>
+                  <label><input type="checkbox" checked={form.offerToRestaurants} onChange={(e) => setForm({ ...form, offerToRestaurants: e.target.checked })} /> Ravintoloihin</label>
+                  <label><input type="checkbox" checked={form.offerToWholesalers} onChange={(e) => setForm({ ...form, offerToWholesalers: e.target.checked })} /> Tukkuihin</label>
                 </div>
               </div>
               <div style={{ ...styles.field, ...styles.fieldFull }}><label>Lisätiedot</label><textarea style={styles.textarea} placeholder="Esim. laatu, jäähdytys, toimitus, huomioita" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
             </div>
-            <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : "Tallenna saalis"}</button></div>
+            <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : saveButtonLabel}</button></div>
           </div>
         )}
 
@@ -1743,7 +1769,7 @@ export default function App() {
         )}
 
         {activeTab === "offers" && <WholesaleOffersView profile={profile} saleEntries={saleEntries} offers={offers} offerForm={offerForm} setOfferForm={setOfferForm} onCreateOffer={handleCreateOffer} onUpdateOfferStatus={onUpdateOfferStatus} />}
-        
+
         {activeTab === "reports" && <ReportsView entries={entries} offers={offers} />}
 
         {activeTab === "buyers" && profile.role === "owner" && (
@@ -1820,7 +1846,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                       <div style={styles.entryBadges}>
                         <span style={styles.badge}>{user.display_name}</span>
                         <span style={styles.badge}>{user.email}</span>
-                        <span style={styles.badge}>{user.role === "owner" ? "Omistaja" : "Käyttäjä"}</span>
+                        <span style={styles.badge}>{user.role === "owner" ? "Omistaja" : user.role === "buyer" ? "Ostaja" : "Käyttäjä"}</span>
                         <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
                       </div>
                     </div>
