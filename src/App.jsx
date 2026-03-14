@@ -394,7 +394,19 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
   );
 }
 
-function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerForm, setOfferForm, onCreateOffer, onUpdateOfferStatus, buyerTypeLabel, buyerStatusLabel, shouldRevealBuyerIdentity }) {
+function WholesaleOffersView({
+  profile,
+  saleEntries,
+  offers,
+  buyerOffers,
+  offerForm,
+  setOfferForm,
+  onCreateOffer,
+  onUpdateOfferStatus,
+  buyerTypeLabel,
+  buyerStatusLabel,
+  shouldRevealBuyerIdentity,
+}) {
   const formatOfferDate = (value) => {
     if (!value) return "-";
     try {
@@ -411,7 +423,10 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
   };
 
   const groupedBuyerOffers = saleEntries.map((entry) => {
-    const batchMatches = (buyerOffers || []).filter((offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId);
+    const batchMatches = (buyerOffers || []).filter(
+      (offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId,
+    );
+
     const entryMatches = (buyerOffers || []).filter((offer) => {
       if (offer.batch_id && entry.batchId) return false;
       return (
@@ -435,6 +450,7 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
     <div style={styles.grid2}>
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Myyntiin merkityt erät</strong>
+
         {groupedBuyerOffers.length === 0 ? (
           <div style={styles.muted}>Ei vielä myyntiin merkittyjä eriä.</div>
         ) : (
@@ -451,9 +467,14 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
                     {entry.offerToRestaurants ? <span style={styles.badge}>Ravintoloihin</span> : null}
                     {entry.offerToWholesalers ? <span style={styles.badge}>Tukkuihin</span> : null}
                   </div>
-                  <div style={styles.muted}>{entry.date} · {entry.area}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                  <div style={styles.muted}>
+                    {entry.date} · {entry.area}
+                    {entry.spot ? ` / ${entry.spot}` : ""}
+                  </div>
                   <div style={styles.muted}>Oletushinta: {euro(entry.pricePerKg)} / kg</div>
-                  <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                  <div style={styles.muted}>
+                    Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}
+                  </div>
                 </div>
               </div>
 
@@ -469,7 +490,10 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
                           <span style={styles.badge}>{offer.contact_name}</span>
                           <span style={styles.badge}>{offer.status}</span>
                         </div>
-                        <div style={styles.muted}>{offer.contact_email}{offer.contact_phone ? ` · ${offer.contact_phone}` : ""}</div>
+                        <div style={styles.muted}>
+                          {offer.contact_email}
+                          {offer.contact_phone ? ` · ${offer.contact_phone}` : ""}
+                        </div>
                         {offer.message ? <div style={styles.muted}>{offer.message}</div> : null}
                       </div>
                       {profile?.role === "owner" || profile?.id === entry.ownerUserId ? (
