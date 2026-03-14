@@ -415,30 +415,19 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
     const entryMatches = (buyerOffers || []).filter((offer) => {
       if (offer.batch_id && entry.batchId) return false;
       return (
-        offer.seller_user_id === entry.ownerUserId
-        && offer.area === entry.area
-        && offer.spot === (entry.spot || "")
-        && Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
+        offer.seller_user_id === entry.ownerUserId &&
+        offer.area === entry.area &&
+        offer.spot === (entry.spot || "") &&
+        Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
       );
     });
-    return {
-      entry,
-      entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
-      buyerMatches: [...batchMatches, ...entryMatches].sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime()),
-    };
-  });
 
-  return (
-        offer.seller_user_id === entry.ownerUserId
-        && offer.area === entry.area
-        && offer.spot === (entry.spot || "")
-        && Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
-      );
-    });
     return {
       entry,
       entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
-      buyerMatches: [...batchMatches, ...entryMatches],
+      buyerMatches: [...batchMatches, ...entryMatches].sort(
+        (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
+      ),
     };
   });
 
@@ -446,8 +435,10 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
     <div style={styles.grid2}>
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Myyntiin merkityt erät</strong>
-        {groupedBuyerOffers.length === 0 ? <div style={styles.muted}>Ei vielä myyntiin merkittyjä eriä.</div> : groupedBuyerOffers.map(({ entry, entryOffers, buyerMatches }) => {
-          return (
+        {groupedBuyerOffers.length === 0 ? (
+          <div style={styles.muted}>Ei vielä myyntiin merkittyjä eriä.</div>
+        ) : (
+          groupedBuyerOffers.map(({ entry, entryOffers, buyerMatches }) => (
             <div key={entry.id} style={styles.entry}>
               <div style={styles.entryHeader}>
                 <div>
@@ -492,68 +483,73 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
                 ))}
 
                 <div style={styles.small}>Ostajien vastaukset: {buyerMatches.length}</div>
-                {buyerMatches.length === 0 ? <div style={styles.muted}>Ei vielä ostajien vastauksia.</div> : buyerMatches.map((offer) => {
-                  const revealIdentity = shouldRevealBuyerIdentity(offer.status);
-                  const buyerIdentity = revealIdentity
-                    ? (offer.buyer_company_name || offer.buyer_email || "Ostaja")
-                    : buyerTypeLabel(offer.buyer_type);
-                  return (
-                    <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc", borderLeft: "4px solid #0f172a" }}>
-                      <div style={{ ...styles.rowBetween, marginBottom: 10 }}>
-                        <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
-                        <div style={styles.entryBadges}>
-                          <span style={styles.badge}>{buyerStatusLabel(offer.status)}</span>
-                          <span style={styles.badge}>{buyerIdentity}</span>
-                        </div>
-                      </div>
+                {buyerMatches.length === 0 ? (
+                  <div style={styles.muted}>Ei vielä ostajien vastauksia.</div>
+                ) : (
+                  buyerMatches.map((offer) => {
+                    const revealIdentity = shouldRevealBuyerIdentity(offer.status);
+                    const buyerIdentity = revealIdentity
+                      ? (offer.buyer_company_name || offer.buyer_email || "Ostaja")
+                      : buyerTypeLabel(offer.buyer_type);
 
-                      <div style={{ ...styles.grid2, marginBottom: 10 }}>
-                        <div>
-                          <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
-                          <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
-                          <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{offer.spot ? ` / ${offer.spot}` : ""}</div>
+                    return (
+                      <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc", borderLeft: "4px solid #0f172a" }}>
+                        <div style={{ ...styles.rowBetween, marginBottom: 10 }}>
+                          <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
+                          <div style={styles.entryBadges}>
+                            <span style={styles.badge}>{buyerStatusLabel(offer.status)}</span>
+                            <span style={styles.badge}>{buyerIdentity}</span>
+                          </div>
                         </div>
-                        <div>
-                          <div style={styles.muted}><strong>Pyyntihinta:</strong> {offer.price_per_kg !== "" && offer.price_per_kg != null ? `${euro(offer.price_per_kg)} / kg` : "-"}</div>
-                          <div style={styles.muted}><strong>Vastatarjous:</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? `${euro(offer.counter_price_per_kg)} / kg` : "-"}</div>
-                          <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? `${offer.reserved_kilos} kg` : "-"}</div>
+
+                        <div style={{ ...styles.grid2, marginBottom: 10 }}>
+                          <div>
+                            <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                            <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
+                            <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{offer.spot ? ` / ${offer.spot}` : ""}</div>
+                          </div>
+                          <div>
+                            <div style={styles.muted}><strong>Pyyntihinta:</strong> {offer.price_per_kg !== "" && offer.price_per_kg != null ? `${euro(offer.price_per_kg)} / kg` : "-"}</div>
+                            <div style={styles.muted}><strong>Vastatarjous:</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? `${euro(offer.counter_price_per_kg)} / kg` : "-"}</div>
+                            <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? `${offer.reserved_kilos} kg` : "-"}</div>
+                          </div>
                         </div>
-                      </div>
 
-                      <div style={{ ...styles.entry, background: "#fff", padding: 12, marginBottom: 10 }}>
-                        <div style={styles.muted}><strong>Toimitus</strong></div>
-                        <div style={styles.muted}>Tapa: {entry.deliveryMethod || "-"}</div>
-                        <div style={styles.muted}>Alue: {entry.deliveryArea || "-"}</div>
-                        <div style={styles.muted}>Kulu: {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"}</div>
-                        <div style={styles.muted}>Aikaisin toimitus: {entry.earliestDeliveryDate || "-"}</div>
-                        <div style={styles.muted}>Kylmäkuljetus: {entry.coldTransport ? "kyllä" : "ei"}</div>
-                      </div>
-
-                      {offer.buyer_message ? (
                         <div style={{ ...styles.entry, background: "#fff", padding: 12, marginBottom: 10 }}>
-                          <div style={styles.muted}><strong>Ostajan viesti</strong></div>
-                          <div>{offer.buyer_message}</div>
+                          <div style={styles.muted}><strong>Toimitus</strong></div>
+                          <div style={styles.muted}>Tapa: {entry.deliveryMethod || "-"}</div>
+                          <div style={styles.muted}>Alue: {entry.deliveryArea || "-"}</div>
+                          <div style={styles.muted}>Kulu: {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"}</div>
+                          <div style={styles.muted}>Aikaisin toimitus: {entry.earliestDeliveryDate || "-"}</div>
+                          <div style={styles.muted}>Kylmäkuljetus: {entry.coldTransport ? "kyllä" : "ei"}</div>
                         </div>
-                      ) : null}
 
-                      {revealIdentity ? (
-                        <div style={{ ...styles.entry, background: "#fff", padding: 12, marginBottom: 10 }}>
-                          <div style={styles.muted}><strong>Yhteystiedot</strong></div>
-                          <div>{offer.buyer_company_name || "-"}</div>
-                          <div>{offer.buyer_contact_name || "-"}</div>
-                          <div>{offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div>
-                        </div>
-                      ) : null}
+                        {offer.buyer_message ? (
+                          <div style={{ ...styles.entry, background: "#fff", padding: 12, marginBottom: 10 }}>
+                            <div style={styles.muted}><strong>Ostajan viesti</strong></div>
+                            <div>{offer.buyer_message}</div>
+                          </div>
+                        ) : null}
 
-                      {!revealIdentity && (profile?.role === "owner" || profile?.id === entry.ownerUserId) ? (
-                        <div style={styles.row}>
-                          {offer.status !== "accepted" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateOfferStatus(offer, "accepted")}>Hyväksy kauppa</button> : null}
-                          {offer.status !== "rejected" ? <button style={styles.button} onClick={() => onUpdateOfferStatus(offer, "rejected")}>Hylkää</button> : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
+                        {revealIdentity ? (
+                          <div style={{ ...styles.entry, background: "#fff", padding: 12, marginBottom: 10 }}>
+                            <div style={styles.muted}><strong>Yhteystiedot</strong></div>
+                            <div>{offer.buyer_company_name || "-"}</div>
+                            <div>{offer.buyer_contact_name || "-"}</div>
+                            <div>{offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div>
+                          </div>
+                        ) : null}
+
+                        {!revealIdentity && (profile?.role === "owner" || profile?.id === entry.ownerUserId) ? (
+                          <div style={styles.row}>
+                            {offer.status !== "accepted" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateOfferStatus(offer, "accepted")}>Hyväksy kauppa</button> : null}
+                            {offer.status !== "rejected" ? <button style={styles.button} onClick={() => onUpdateOfferStatus(offer, "rejected")}>Hylkää</button> : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
 
                 <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginTop: 8 }}>
                   <strong>Tee tarjous tästä erästä</strong>
@@ -585,34 +581,38 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
                 </div>
               </div>
             </div>
-          );
-        })}
+          ))
+        )}
       </div>
 
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Ostajien viimeisimmät vastaukset</strong>
-        {!buyerOffers || buyerOffers.length === 0 ? <div style={styles.muted}>Ei vielä ostajille lähetettyjä tarjousrivejä.</div> : buyerOffers.slice(0, 20).map((offer) => {
-          const revealIdentity = shouldRevealBuyerIdentity(offer.status);
-          return (
-            <div key={offer.id} style={{ ...styles.entry, borderLeft: "4px solid #0f172a" }}>
-              <div style={{ ...styles.rowBetween, marginBottom: 8 }}>
-                <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
-                <div style={styles.entryBadges}>
-                  <span style={styles.badge}>{buyerStatusLabel(offer.status)}</span>
-                  <span style={styles.badge}>{revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type)}</span>
+        {!buyerOffers || buyerOffers.length === 0 ? (
+          <div style={styles.muted}>Ei vielä ostajille lähetettyjä tarjousrivejä.</div>
+        ) : (
+          buyerOffers.slice(0, 20).map((offer) => {
+            const revealIdentity = shouldRevealBuyerIdentity(offer.status);
+            return (
+              <div key={offer.id} style={{ ...styles.entry, borderLeft: "4px solid #0f172a" }}>
+                <div style={{ ...styles.rowBetween, marginBottom: 8 }}>
+                  <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
+                  <div style={styles.entryBadges}>
+                    <span style={styles.badge}>{buyerStatusLabel(offer.status)}</span>
+                    <span style={styles.badge}>{revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type)}</span>
+                  </div>
+                </div>
+                <div>
+                  <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                  <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
+                  {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous:</strong> {euro(offer.counter_price_per_kg)} / kg</div> : null}
+                  {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
+                  {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
+                  {revealIdentity ? <div style={styles.muted}><strong>Yhteystiedot:</strong> {offer.buyer_contact_name || "-"} · {offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div> : null}
                 </div>
               </div>
-              <div className="offer-summary">
-                <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
-                <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
-                {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous:</strong> {euro(offer.counter_price_per_kg)} / kg</div> : null}
-                {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
-                {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
-                {revealIdentity ? <div style={styles.muted}><strong>Yhteystiedot:</strong> {offer.buyer_contact_name || "-"} · {offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div> : null}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     </div>
   );
