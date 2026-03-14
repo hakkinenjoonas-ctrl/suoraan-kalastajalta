@@ -394,12 +394,41 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
   );
 }
 
-function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerForm, setOfferForm, onCreateOffer, onUpdateOfferStatus }) {
+function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerForm, setOfferForm, onCreateOffer, onUpdateOfferStatus, buyerTypeLabel, buyerStatusLabel, shouldRevealBuyerIdentity }) {
+  const formatOfferDate = (value) => {
+    if (!value) return "-";
+    try {
+      return new Date(value).toLocaleString("fi-FI", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return value;
+    }
+  };
+
   const groupedBuyerOffers = saleEntries.map((entry) => {
     const batchMatches = (buyerOffers || []).filter((offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId);
     const entryMatches = (buyerOffers || []).filter((offer) => {
       if (offer.batch_id && entry.batchId) return false;
       return (
+        offer.seller_user_id === entry.ownerUserId
+        && offer.area === entry.area
+        && offer.spot === (entry.spot || "")
+        && Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
+      );
+    });
+    return {
+      entry,
+      entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
+      buyerMatches: [...batchMatches, ...entryMatches].sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime()),
+    };
+  });
+
+  return (
         offer.seller_user_id === entry.ownerUserId
         && offer.area === entry.area
         && offer.spot === (entry.spot || "")
@@ -433,6 +462,7 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
                   </div>
                   <div style={styles.muted}>{entry.date} · {entry.area}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                   <div style={styles.muted}>Oletushinta: {euro(entry.pricePerKg)} / kg</div>
+                  <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                 </div>
               </div>
 
@@ -461,26 +491,69 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
                   </div>
                 ))}
 
-                <div style={styles.small}>Ostajille lähetetyt tarjoukset: {buyerMatches.length}</div>
-                {buyerMatches.length === 0 ? <div style={styles.muted}>Ei vielä ostajien vastauksia.</div> : buyerMatches.map((offer) => (
-                  <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc" }}>
-                    <div style={styles.entryHeader}>
-                      <div>
+                <div style={styles.small}>Ostajien vastaukset: {buyerMatches.length}</div>
+                {buyerMatches.length === 0 ? <div style={styles.muted}>Ei vielä ostajien vastauksia.</div> : buyerMatches.map((offer) => {
+                  const revealIdentity = shouldRevealBuyerIdentity(offer.status);
+                  const buyerIdentity = revealIdentity
+                    ? (offer.buyer_company_name || offer.buyer_email || "Ostaja")
+                    : buyerTypeLabel(offer.buyer_type);
+                  return (
+                    <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc", borderLeft: "4px solid #0f172a" }}>
+                      <div style={{ ...styles.rowBetween, marginBottom: 10 }}>
+                        <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
                         <div style={styles.entryBadges}>
-                          <span style={styles.badge}>{offer.buyer_email}</span>
-                          <span style={styles.badge}>{offer.status}</span>
-                          <span style={styles.badge}>{offer.total_kilos} kg</span>
-                          {offer.price_per_kg !== "" && offer.price_per_kg != null ? <span style={styles.badge}>Pyynti {euro(offer.price_per_kg)} / kg</span> : null}
-                          {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <span style={styles.badge}>Vastatarjous {euro(offer.counter_price_per_kg)} / kg</span> : null}
-                          {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <span style={styles.badge}>Varattu {offer.reserved_kilos} kg</span> : null}
+                          <span style={styles.badge}>{buyerStatusLabel(offer.status)}</span>
+                          <span style={styles.badge}>{buyerIdentity}</span>
                         </div>
-                        <div style={styles.muted}>{offer.species_summary || "-"}</div>
-                        {offer.buyer_message ? <div style={styles.muted}>Ostajan viesti: {offer.buyer_message}</div> : null}
-                        {offer.seller_message ? <div style={styles.muted}>Myyjän viesti: {offer.seller_message}</div> : null}
                       </div>
+
+                      <div style={{ ...styles.grid2, marginBottom: 10 }}>
+                        <div>
+                          <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                          <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
+                          <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{offer.spot ? ` / ${offer.spot}` : ""}</div>
+                        </div>
+                        <div>
+                          <div style={styles.muted}><strong>Pyyntihinta:</strong> {offer.price_per_kg !== "" && offer.price_per_kg != null ? `${euro(offer.price_per_kg)} / kg` : "-"}</div>
+                          <div style={styles.muted}><strong>Vastatarjous:</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? `${euro(offer.counter_price_per_kg)} / kg` : "-"}</div>
+                          <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? `${offer.reserved_kilos} kg` : "-"}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ ...styles.entry, background: "#fff", padding: 12, marginBottom: 10 }}>
+                        <div style={styles.muted}><strong>Toimitus</strong></div>
+                        <div style={styles.muted}>Tapa: {entry.deliveryMethod || "-"}</div>
+                        <div style={styles.muted}>Alue: {entry.deliveryArea || "-"}</div>
+                        <div style={styles.muted}>Kulu: {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"}</div>
+                        <div style={styles.muted}>Aikaisin toimitus: {entry.earliestDeliveryDate || "-"}</div>
+                        <div style={styles.muted}>Kylmäkuljetus: {entry.coldTransport ? "kyllä" : "ei"}</div>
+                      </div>
+
+                      {offer.buyer_message ? (
+                        <div style={{ ...styles.entry, background: "#fff", padding: 12, marginBottom: 10 }}>
+                          <div style={styles.muted}><strong>Ostajan viesti</strong></div>
+                          <div>{offer.buyer_message}</div>
+                        </div>
+                      ) : null}
+
+                      {revealIdentity ? (
+                        <div style={{ ...styles.entry, background: "#fff", padding: 12, marginBottom: 10 }}>
+                          <div style={styles.muted}><strong>Yhteystiedot</strong></div>
+                          <div>{offer.buyer_company_name || "-"}</div>
+                          <div>{offer.buyer_contact_name || "-"}</div>
+                          <div>{offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div>
+                        </div>
+                      ) : null}
+
+                      {!revealIdentity && (profile?.role === "owner" || profile?.id === entry.ownerUserId) ? (
+                        <div style={styles.row}>
+                          {offer.status !== "accepted" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateOfferStatus(offer, "accepted")}>Hyväksy kauppa</button> : null}
+                          {offer.status !== "rejected" ? <button style={styles.button} onClick={() => onUpdateOfferStatus(offer, "rejected")}>Hylkää</button> : null}
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginTop: 8 }}>
                   <strong>Tee tarjous tästä erästä</strong>
@@ -518,19 +591,28 @@ function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerF
 
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Ostajien viimeisimmät vastaukset</strong>
-        {!buyerOffers || buyerOffers.length === 0 ? <div style={styles.muted}>Ei vielä ostajille lähetettyjä tarjousrivejä.</div> : buyerOffers.slice(0, 20).map((offer) => (
-          <div key={offer.id} style={styles.entry}>
-            <div style={styles.entryBadges}>
-              <span style={styles.badge}>{offer.buyer_email}</span>
-              <span style={styles.badge}>{offer.status}</span>
-              <span style={styles.badge}>{offer.total_kilos} kg</span>
+        {!buyerOffers || buyerOffers.length === 0 ? <div style={styles.muted}>Ei vielä ostajille lähetettyjä tarjousrivejä.</div> : buyerOffers.slice(0, 20).map((offer) => {
+          const revealIdentity = shouldRevealBuyerIdentity(offer.status);
+          return (
+            <div key={offer.id} style={{ ...styles.entry, borderLeft: "4px solid #0f172a" }}>
+              <div style={{ ...styles.rowBetween, marginBottom: 8 }}>
+                <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
+                <div style={styles.entryBadges}>
+                  <span style={styles.badge}>{buyerStatusLabel(offer.status)}</span>
+                  <span style={styles.badge}>{revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type)}</span>
+                </div>
+              </div>
+              <div className="offer-summary">
+                <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
+                {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous:</strong> {euro(offer.counter_price_per_kg)} / kg</div> : null}
+                {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
+                {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
+                {revealIdentity ? <div style={styles.muted}><strong>Yhteystiedot:</strong> {offer.buyer_contact_name || "-"} · {offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div> : null}
+              </div>
             </div>
-            <div style={styles.muted}>{offer.species_summary || "-"}</div>
-            {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}>Vastatarjous: {euro(offer.counter_price_per_kg)} / kg</div> : null}
-            {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}>Varattu: {offer.reserved_kilos} kg</div> : null}
-            {offer.buyer_message ? <div style={styles.muted}>Viesti: {offer.buyer_message}</div> : null}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -674,6 +756,26 @@ export default function App() {
     notes: "",
   });
 
+  const buyerTypeLabel = (type) => {
+    if (type === "ravintola") return "Anonyymi ravintola";
+    if (type === "tukku") return "Anonyymi tukku";
+    if (type === "kauppa") return "Anonyymi kauppa";
+    return "Anonyymi ostaja";
+  };
+
+  const buyerStatusLabel = (status) => {
+    if (status === "sent") return "Tarjous lähetetty";
+    if (status === "viewed") return "Avattu";
+    if (status === "countered") return "Vastatarjous";
+    if (status === "reserved") return "Varattu";
+    if (status === "accepted") return "Hyväksytty";
+    if (status === "rejected") return "Hylätty";
+    if (status === "cancelled") return "Peruttu";
+    return status || "-";
+  };
+
+  const shouldRevealBuyerIdentity = (status) => status === "accepted";
+
   const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
 
   useEffect(() => {
@@ -781,6 +883,29 @@ export default function App() {
     const failed = [];
 
     for (const recipient of recipients) {
+      const insertedOffer = await supabase
+        .from("buyer_offers")
+        .insert({
+          batch_id: batchId,
+          buyer_id: recipient.buyer_id || null,
+          buyer_email: recipient.email,
+          seller_user_id: profileState?.id || null,
+          seller_name: profileState?.display_name || profileState?.email || null,
+          total_kilos: entry.kilos,
+          species_summary: summaryLines,
+          area: entry.area,
+          spot: entry.spot,
+          gear: entry.gear,
+          gear_count: entry.gearCount,
+          price_per_kg: entry.pricePerKg || null,
+          notes: entry.notes || null,
+          status: "sent",
+        })
+        .select("id")
+        .single();
+
+      const offerId = insertedOffer?.data?.id || null;
+
       const response = await fetch(`${SUPABASE_URL}/functions/v1/send-catch-offer-email`, {
         method: "POST",
         headers: {
@@ -790,36 +915,18 @@ export default function App() {
         },
         body: JSON.stringify({
           entry,
-          recipients: [{ email: recipient.email }],
+          recipients: [{
+            email: recipient.email,
+            company_name: recipient.company_name,
+            offer_id: offerId,
+            offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+          }],
         }),
       });
 
       const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
-        const insertedOffer = await supabase
-          .from("buyer_offers")
-          .insert({
-            batch_id: batchId,
-            buyer_id: recipient.buyer_id || null,
-            buyer_email: recipient.email,
-            seller_user_id: profileState?.id || null,
-            seller_name: profileState?.display_name || profileState?.email || null,
-            total_kilos: entry.kilos,
-            species_summary: summaryLines,
-            area: entry.area,
-            spot: entry.spot,
-            gear: entry.gear,
-            gear_count: entry.gearCount,
-            price_per_kg: entry.pricePerKg || null,
-            notes: entry.notes || null,
-            status: "sent",
-          })
-          .select("id")
-          .single();
-
-        const offerId = insertedOffer?.data?.id || null;
-
         sent.push({
           buyer_id: recipient.buyer_id,
           company_name: recipient.company_name,
@@ -850,6 +957,46 @@ export default function App() {
       sent,
       failed,
     };
+  };
+
+  const sendBuyerResponseEmail = async (offer, actionLabel) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    const sellerEmail = profile?.email || offer?.seller_email || null;
+    if (!sellerEmail) return;
+
+    const revealIdentity = offer?.status === "accepted";
+    const buyerLabel = revealIdentity
+      ? (offer?.buyer_company_name || offer?.buyer_email || "Ostaja")
+      : (offer?.buyer_type === "ravintola" ? "Anonyymi ravintola" : offer?.buyer_type === "tukku" ? "Anonyymi tukku" : offer?.buyer_type === "kauppa" ? "Anonyymi kauppa" : "Anonyymi ostaja");
+
+    await fetch(`${SUPABASE_URL}/functions/v1/send-buyer-response-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({
+        sellerEmail,
+        offerLink: typeof window !== "undefined" ? `${window.location.origin}?offer=${offer.id}` : null,
+        offer: {
+          buyerLabel,
+          buyerEmail: revealIdentity ? offer?.buyer_email : null,
+          buyerPhone: revealIdentity ? offer?.buyer_phone : null,
+          species_summary: offer?.species_summary,
+          total_kilos: offer?.total_kilos,
+          area: offer?.area,
+          spot: offer?.spot,
+          price_per_kg: offer?.price_per_kg,
+          counter_price_per_kg: offer?.counter_price_per_kg,
+          reserved_kilos: offer?.reserved_kilos,
+          buyer_message: offer?.buyer_message,
+          status: offer?.status,
+          actionLabel,
+        },
+      }),
+    }).catch(() => null);
   };
 
   const invalidateSession = async (message = "Istunto on vanhentunut. Kirjaudu uudelleen sisään.") => {
@@ -1085,7 +1232,12 @@ export default function App() {
             price_per_kg: offer.price_per_kg == null ? "" : Number(offer.price_per_kg),
             counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
             reserved_kilos: offer.reserved_kilos == null ? "" : Number(offer.reserved_kilos),
+            buyer_type: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.buyer_type || "") : "",
+            buyer_company_name: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.company_name || "") : "",
+            buyer_contact_name: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.contact_name || "") : "",
+            buyer_phone: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.phone || "") : "",
           })));
+
         }
       } catch (error) {
         if (isMissingRefreshTokenError(error)) {
@@ -1287,6 +1439,10 @@ export default function App() {
       price_per_kg: offer.price_per_kg == null ? "" : Number(offer.price_per_kg),
       counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
       reserved_kilos: offer.reserved_kilos == null ? "" : Number(offer.reserved_kilos),
+      buyer_type: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.buyer_type || "") : "",
+      buyer_company_name: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.company_name || "") : "",
+      buyer_contact_name: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.contact_name || "") : "",
+      buyer_phone: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.phone || "") : "",
     })));
   };
 
@@ -1301,6 +1457,7 @@ export default function App() {
       return false;
     }
     await refreshBuyerOffers();
+    setRefreshTick((prev) => prev + 1);
     return true;
   };
 
@@ -1313,6 +1470,13 @@ export default function App() {
       buyer_message: msg,
     });
     if (ok) {
+      const updatedOffer = {
+        ...offer,
+        status: "countered",
+        counter_price_per_kg: price,
+        buyer_message: msg,
+      };
+      await sendBuyerResponseEmail(updatedOffer, "Ostaja teki vastatarjouksen");
       setAuthInfo("Vastatarjous lähetetty myyjälle.");
       setBuyerAction({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
       setBuyerActiveOfferId(null);
@@ -1328,6 +1492,13 @@ export default function App() {
       buyer_message: msg,
     });
     if (ok) {
+      const updatedOffer = {
+        ...offer,
+        status: "reserved",
+        reserved_kilos: reserved,
+        buyer_message: msg,
+      };
+      await sendBuyerResponseEmail(updatedOffer, "Ostaja varasi erän");
       setAuthInfo("Erä varattu. Myyjälle näkyy varaus.");
       setBuyerAction({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
       setBuyerActiveOfferId(null);
@@ -1336,7 +1507,10 @@ export default function App() {
 
   const onRejectBuyerOffer = async (offer) => {
     const ok = await buyerUpdateOffer(offer.id, { status: "rejected" });
-    if (ok) setAuthInfo("Tarjous hylätty.");
+    if (ok) {
+      await sendBuyerResponseEmail({ ...offer, status: "rejected" }, "Ostaja hylkäsi tarjouksen");
+      setAuthInfo("Tarjous hylätty.");
+    }
   };
 
   const handleSaveBuyer = async () => {
@@ -1427,7 +1601,11 @@ export default function App() {
   };
 
   const onUpdateOfferStatus = async (offer, status) => {
-    const { error } = await supabase.from("wholesale_offers").update({ status }).eq("id", offer.id);
+    const payload = { status };
+    if (status === "accepted") {
+      payload.seller_message = "Kauppa hyväksytty appissa. Yhteystiedot on nyt avattu osapuolille.";
+    }
+    const { error } = await supabase.from("wholesale_offers").update(payload).eq("id", offer.id);
     if (error) {
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
@@ -1781,7 +1959,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === "offers" && <WholesaleOffersView profile={profile} saleEntries={saleEntries} offers={offers} buyerOffers={buyerOffers} offerForm={offerForm} setOfferForm={setOfferForm} onCreateOffer={handleCreateOffer} onUpdateOfferStatus={onUpdateOfferStatus} />}
+        {activeTab === "offers" && <WholesaleOffersView profile={profile} saleEntries={saleEntries} offers={offers} buyerOffers={buyerOffers} offerForm={offerForm} setOfferForm={setOfferForm} onCreateOffer={handleCreateOffer} onUpdateOfferStatus={onUpdateOfferStatus} buyerTypeLabel={buyerTypeLabel} buyerStatusLabel={buyerStatusLabel} shouldRevealBuyerIdentity={shouldRevealBuyerIdentity} />}
 
         {activeTab === "reports" && <ReportsView entries={entries} offers={offers} />}
 
