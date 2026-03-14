@@ -24,6 +24,7 @@ const defaultFishPrices = {
 };
 const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Onki", "Muu"];
 const destinations = ["Myyntiin", "Oma käyttö", "Jalostukseen", "Tukkuun", "Muu"];
+const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
 
 const defaultAreas = ["Suur-Saimaa", "Pien-Saimaa", "Saimaa", "Muu vesialue"];
 const fishingSpots = [
@@ -550,6 +551,11 @@ function ReportsView({ entries, offers }) {
     entry.buyer,
     entry.pricePerKg,
     entry.kilos * entry.pricePerKg,
+    entry.deliveryMethod,
+    entry.deliveryArea,
+    entry.deliveryCost,
+    entry.earliestDeliveryDate,
+    entry.coldTransport ? "Kyllä" : "Ei",
     entry.notes,
   ]);
 
@@ -575,7 +581,7 @@ function ReportsView({ entries, offers }) {
         <div style={styles.noticeInfo}>Raportit ladataan CSV-muodossa, joka aukeaa suoraan Excelissä.</div>
         <button
           style={{ ...styles.button, ...styles.primaryButton }}
-          onClick={() => exportCsv(`saaliit-${today()}.csv`, [["Päivä", "Kirjaaja", "Vesialue", "Pyyntipaikka", "Laji", "Kg", "Kpl", "Pyydys", "Pyydysten määrä", "Käyttötarkoitus", "Ostaja", "Hinta €/kg", "Arvo €", "Lisätiedot"], ...reportRows])}
+          onClick={() => exportCsv(`saaliit-${today()}.csv`, [["Päivä", "Kirjaaja", "Vesialue", "Pyyntipaikka", "Laji", "Kg", "Kpl", "Pyydys", "Pyydysten määrä", "Käyttötarkoitus", "Ostaja", "Hinta €/kg", "Arvo €", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...reportRows])}
         >
           Lataa saalisraportti Exceliin
         </button>
@@ -636,6 +642,11 @@ export default function App() {
     offerToShops: false,
     offerToRestaurants: false,
     offerToWholesalers: false,
+    deliveryMethod: "Nouto",
+    deliveryArea: "",
+    deliveryCost: "",
+    earliestDeliveryDate: today(),
+    coldTransport: false,
   });
   const [speciesRows, setSpeciesRows] = useState([createSpeciesRow()]);
   const [newAllowedForm, setNewAllowedForm] = useState({ email: "", displayName: "", role: "member" });
@@ -737,6 +748,14 @@ export default function App() {
 
     const offerUrlBase = typeof window !== "undefined" ? window.location.origin : "https://suoraan-kalastajalta.vercel.app";
 
+    const logisticsLines = [
+      `Toimitustapa: ${formState.deliveryMethod || "-"}`,
+      `Toimitusalue: ${formState.deliveryArea || "-"}`,
+      `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
+      `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
+      `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
+    ];
+
     const entry = {
       species: rows.map((row) => row.species).join(", "),
       kilos: totalKilos,
@@ -747,7 +766,12 @@ export default function App() {
       gearCount: Number(formState.gearCount || 0),
       pricePerKg: Number(formState.pricePerKg || 0),
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
-      notes: [formState.notes || "", "", "Erän lajit:", summaryLines].join(String.fromCharCode(10)).trim(),
+      deliveryMethod: formState.deliveryMethod || "Nouto",
+      deliveryArea: formState.deliveryArea || "",
+      deliveryCost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
+      earliestDeliveryDate: formState.earliestDeliveryDate || "",
+      coldTransport: Boolean(formState.coldTransport),
+      notes: [formState.notes || "", "", "Erän lajit:", summaryLines, "", "Toimitus:", ...logisticsLines].join(String.fromCharCode(10)).trim(),
       offerUrlBase,
     };
 
@@ -999,6 +1023,11 @@ export default function App() {
             buyer: entry.buyer || "",
             pricePerKg: Number(entry.price_per_kg || 0),
             notes: entry.notes || "",
+            deliveryMethod: entry.delivery_method || "Nouto",
+            deliveryArea: entry.delivery_area || "",
+            deliveryCost: entry.delivery_cost == null ? "" : Number(entry.delivery_cost),
+            earliestDeliveryDate: entry.earliest_delivery_date || "",
+            coldTransport: Boolean(entry.cold_transport),
             ownerName: entry.owner_name,
             ownerUserId: entry.owner_user_id,
             offerToShops: Boolean(entry.offer_to_shops),
@@ -1431,6 +1460,11 @@ export default function App() {
       destination: form.destination,
       buyer: form.buyer,
       price_per_kg: Number(form.pricePerKg || defaultFishPrices[row.species] || 0),
+      delivery_method: form.deliveryMethod,
+      delivery_area: form.deliveryArea,
+      delivery_cost: form.deliveryCost === "" ? null : Number(form.deliveryCost),
+      earliest_delivery_date: form.earliestDeliveryDate || null,
+      cold_transport: form.coldTransport,
       notes: form.notes,
       batch_id: timestamp,
       owner_user_id: profile.id,
@@ -1492,6 +1526,11 @@ export default function App() {
       offerToShops: false,
       offerToRestaurants: false,
       offerToWholesalers: false,
+      deliveryMethod: "Nouto",
+      deliveryArea: "",
+      deliveryCost: "",
+      earliestDeliveryDate: today(),
+      coldTransport: false,
     }));
     setSpeciesRows([createSpeciesRow()]);
     setRefreshTick((prev) => prev + 1);
@@ -1696,6 +1735,11 @@ export default function App() {
               <div style={styles.field}><label>Käyttötarkoitus</label><select style={styles.input} value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })}>{destinations.map((d) => <option key={d} value={d}>{d}</option>)}</select></div>
               <div style={styles.field}><label>Ostaja</label><input style={styles.input} placeholder="Esim. Forelli / tukku" value={form.buyer} onChange={(e) => setForm({ ...form, buyer: e.target.value })} /></div>
               <div style={styles.field}><label>Hinta €/kg</label><input style={styles.input} type="number" placeholder="Tyhjä = oletushinta" value={form.pricePerKg} onChange={(e) => setForm({ ...form, pricePerKg: e.target.value })} /></div>
+              <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={form.deliveryMethod} onChange={(e) => setForm({ ...form, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
+              <div style={styles.field}><label>Toimitusalue</label><input style={styles.input} placeholder="Esim. Etelä-Suomi / Helsinki / koko Suomi" value={form.deliveryArea} onChange={(e) => setForm({ ...form, deliveryArea: e.target.value })} /></div>
+              <div style={styles.field}><label>Toimituskustannus €</label><input style={styles.input} type="number" placeholder="Esim. 90" value={form.deliveryCost} onChange={(e) => setForm({ ...form, deliveryCost: e.target.value })} /></div>
+              <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
+              <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
               <div style={{ ...styles.field, ...styles.fieldFull }}>
                 <label>Tarjoa erää myyntiin</label>
                 <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
@@ -1728,6 +1772,7 @@ export default function App() {
                     </div>
                     <div style={styles.muted}>{entry.date} · {entry.area}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                     <div style={styles.muted}>Ostaja: {entry.buyer || "-"} · Arvo: {euro(Number(entry.kilos || 0) * Number(entry.pricePerKg || 0))}</div>
+                    <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                   </div>
                   <button style={styles.button} onClick={() => handleDeleteEntry(entry)}>Poista saalistieto</button>
                 </div>
@@ -1736,7 +1781,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === "offers" && <WholesaleOffersView profile={profile} saleEntries={saleEntries} offers={offers} offerForm={offerForm} setOfferForm={setOfferForm} onCreateOffer={handleCreateOffer} onUpdateOfferStatus={onUpdateOfferStatus} />}
+        {activeTab === "offers" && <WholesaleOffersView profile={profile} saleEntries={saleEntries} offers={offers} buyerOffers={buyerOffers} offerForm={offerForm} setOfferForm={setOfferForm} onCreateOffer={handleCreateOffer} onUpdateOfferStatus={onUpdateOfferStatus} />}
 
         {activeTab === "reports" && <ReportsView entries={entries} offers={offers} />}
 
