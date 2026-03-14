@@ -393,13 +393,30 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
   );
 }
 
-function WholesaleOffersView({ profile, saleEntries, offers, offerForm, setOfferForm, onCreateOffer, onUpdateOfferStatus }) {
+function WholesaleOffersView({ profile, saleEntries, offers, buyerOffers, offerForm, setOfferForm, onCreateOffer, onUpdateOfferStatus }) {
+  const groupedBuyerOffers = saleEntries.map((entry) => {
+    const batchMatches = (buyerOffers || []).filter((offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId);
+    const entryMatches = (buyerOffers || []).filter((offer) => {
+      if (offer.batch_id && entry.batchId) return false;
+      return (
+        offer.seller_user_id === entry.ownerUserId
+        && offer.area === entry.area
+        && offer.spot === (entry.spot || "")
+        && Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
+      );
+    });
+    return {
+      entry,
+      entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
+      buyerMatches: [...batchMatches, ...entryMatches],
+    };
+  });
+
   return (
     <div style={styles.grid2}>
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Myyntiin merkityt erät</strong>
-        {saleEntries.length === 0 ? <div style={styles.muted}>Ei vielä myyntiin merkittyjä eriä.</div> : saleEntries.map((entry) => {
-          const entryOffers = offers.filter((offer) => offer.entry_id === entry.id);
+        {groupedBuyerOffers.length === 0 ? <div style={styles.muted}>Ei vielä myyntiin merkittyjä eriä.</div> : groupedBuyerOffers.map(({ entry, entryOffers, buyerMatches }) => {
           return (
             <div key={entry.id} style={styles.entry}>
               <div style={styles.entryHeader}>
@@ -419,7 +436,7 @@ function WholesaleOffersView({ profile, saleEntries, offers, offerForm, setOffer
               </div>
 
               <div style={{ ...styles.stack, marginTop: 12 }}>
-                <div style={styles.small}>Tarjoukset tälle erälle: {entryOffers.length}</div>
+                <div style={styles.small}>Suorat tarjoukset tälle erälle: {entryOffers.length}</div>
                 {entryOffers.map((offer) => (
                   <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc" }}>
                     <div style={styles.entryHeader}>
@@ -439,6 +456,27 @@ function WholesaleOffersView({ profile, saleEntries, offers, offerForm, setOffer
                           <button style={styles.button} onClick={() => onUpdateOfferStatus(offer, "rejected")}>Hylkää</button>
                         </div>
                       ) : null}
+                    </div>
+                  </div>
+                ))}
+
+                <div style={styles.small}>Ostajille lähetetyt tarjoukset: {buyerMatches.length}</div>
+                {buyerMatches.length === 0 ? <div style={styles.muted}>Ei vielä ostajien vastauksia.</div> : buyerMatches.map((offer) => (
+                  <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc" }}>
+                    <div style={styles.entryHeader}>
+                      <div>
+                        <div style={styles.entryBadges}>
+                          <span style={styles.badge}>{offer.buyer_email}</span>
+                          <span style={styles.badge}>{offer.status}</span>
+                          <span style={styles.badge}>{offer.total_kilos} kg</span>
+                          {offer.price_per_kg !== "" && offer.price_per_kg != null ? <span style={styles.badge}>Pyynti {euro(offer.price_per_kg)} / kg</span> : null}
+                          {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <span style={styles.badge}>Vastatarjous {euro(offer.counter_price_per_kg)} / kg</span> : null}
+                          {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <span style={styles.badge}>Varattu {offer.reserved_kilos} kg</span> : null}
+                        </div>
+                        <div style={styles.muted}>{offer.species_summary || "-"}</div>
+                        {offer.buyer_message ? <div style={styles.muted}>Ostajan viesti: {offer.buyer_message}</div> : null}
+                        {offer.seller_message ? <div style={styles.muted}>Myyjän viesti: {offer.seller_message}</div> : null}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -478,109 +516,20 @@ function WholesaleOffersView({ profile, saleEntries, offers, offerForm, setOffer
       </div>
 
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-        <strong>Tarjousjärjestelmän SQL</strong>
-        <div style={styles.noticeInfo}>Aja tämä Supabase SQL Editorissa, jotta tarjoukset tallentuvat pilveen.</div>
-        <textarea
-          readOnly
-          style={{ ...styles.textarea, minHeight: 360, fontFamily: "monospace" }}
-          value={`create table if not exists public.wholesale_offers (
-  id uuid primary key default gen_random_uuid(),
-  entry_id uuid not null references public.catch_entries(id) on delete cascade,
-  company_name text not null,
-  contact_name text not null,
-  contact_email text not null,
-  contact_phone text,
-  offer_price_per_kg numeric not null default 0,
-  message text,
-  status text not null default 'pending' check (status in ('pending','accepted','rejected')),
-  created_by_user_id uuid references public.profiles(id) on delete set null,
-  created_at timestamptz not null default now()
-);
-
-alter table public.wholesale_offers enable row level security;
-
-create policy if not exists "offers_select_signed_in" on public.wholesale_offers
-for select to authenticated using (true);
-
-create policy if not exists "offers_insert_signed_in" on public.wholesale_offers
-for insert to authenticated with check (true);
-
-create policy if not exists "offers_update_owner_or_entry_owner" on public.wholesale_offers
-for update to authenticated
-using (
-  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' and p.is_active = true)
-  or exists (select 1 from public.catch_entries e where e.id = entry_id and e.owner_user_id = auth.uid())
-)
-with check (
-  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' and p.is_active = true)
-  or exists (select 1 from public.catch_entries e where e.id = entry_id and e.owner_user_id = auth.uid())
-);
-
-create table if not exists public.buyer_offers (
-  id uuid primary key default gen_random_uuid(),
-  batch_id text not null,
-  buyer_id uuid references public.buyers(id) on delete cascade,
-  buyer_email text not null,
-  seller_user_id uuid references public.profiles(id) on delete set null,
-  seller_name text,
-  total_kilos numeric not null default 0,
-  species_summary text,
-  area text,
-  spot text,
-  gear text,
-  gear_count numeric,
-  price_per_kg numeric,
-  notes text,
-  status text not null default 'sent' check (status in ('sent','viewed','countered','reserved','accepted','rejected','cancelled')),
-  counter_price_per_kg numeric,
-  reserved_kilos numeric,
-  buyer_message text,
-  seller_message text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-alter table public.buyer_offers enable row level security;
-
-drop policy if exists "buyer_offers_select_own" on public.buyer_offers;
-create policy "buyer_offers_select_own" on public.buyer_offers
-for select to authenticated
-using (
-  buyer_email = auth.email()
-  or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' and p.is_active = true)
-);
-
-drop policy if exists "buyer_offers_insert_seller" on public.buyer_offers;
-create policy "buyer_offers_insert_seller" on public.buyer_offers
-for insert to authenticated
-with check (
-  seller_user_id = auth.uid()
-);
-
-drop policy if exists "buyer_offers_update_buyer_or_owner" on public.buyer_offers;
-create policy "buyer_offers_update_buyer_or_owner" on public.buyer_offers
-for update to authenticated
-using (
-  buyer_email = auth.email()
-  or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' and p.is_active = true)
-)
-with check (
-  buyer_email = auth.email()
-  or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'owner' and p.is_active = true)
-);
-
-create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$
-begin
-  new.updated_at = now();
-  return new;
-end; $$;
-
-drop trigger if exists buyer_offers_set_updated_at on public.buyer_offers;
-create trigger buyer_offers_set_updated_at
-before update on public.buyer_offers
-for each row execute function public.set_updated_at();`}
-        />
+        <strong>Ostajien viimeisimmät vastaukset</strong>
+        {!buyerOffers || buyerOffers.length === 0 ? <div style={styles.muted}>Ei vielä ostajille lähetettyjä tarjousrivejä.</div> : buyerOffers.slice(0, 20).map((offer) => (
+          <div key={offer.id} style={styles.entry}>
+            <div style={styles.entryBadges}>
+              <span style={styles.badge}>{offer.buyer_email}</span>
+              <span style={styles.badge}>{offer.status}</span>
+              <span style={styles.badge}>{offer.total_kilos} kg</span>
+            </div>
+            <div style={styles.muted}>{offer.species_summary || "-"}</div>
+            {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}>Vastatarjous: {euro(offer.counter_price_per_kg)} / kg</div> : null}
+            {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}>Varattu: {offer.reserved_kilos} kg</div> : null}
+            {offer.buyer_message ? <div style={styles.muted}>Viesti: {offer.buyer_message}</div> : null}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -661,6 +610,7 @@ export default function App() {
   const [buyerOffersFilter, setBuyerOffersFilter] = useState("open");
   const [buyerOffersSearch, setBuyerOffersSearch] = useState("");
   const [buyerActiveOfferId, setBuyerActiveOfferId] = useState(null);
+  const [offerLinkId, setOfferLinkId] = useState("");
   const [allowedUsers, setAllowedUsers] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -714,6 +664,17 @@ export default function App() {
   });
 
   const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const linkedOffer = params.get("offer");
+    if (linkedOffer) {
+      setOfferLinkId(linkedOffer);
+      setActiveTab("offers");
+      setBuyerActiveOfferId(linkedOffer);
+    }
+  }, []);
   const saveButtonLabel = shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis";
 
   const buildOfferRecipients = (offerFormState, rows) => {
@@ -774,6 +735,8 @@ export default function App() {
 
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
 
+    const offerUrlBase = typeof window !== "undefined" ? window.location.origin : "https://suoraan-kalastajalta.vercel.app";
+
     const entry = {
       species: rows.map((row) => row.species).join(", "),
       kilos: totalKilos,
@@ -785,6 +748,7 @@ export default function App() {
       pricePerKg: Number(formState.pricePerKg || 0),
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
       notes: [formState.notes || "", "", "Erän lajit:", summaryLines].join(String.fromCharCode(10)).trim(),
+      offerUrlBase,
     };
 
     const { data: sessionData } = await supabase.auth.getSession();
@@ -809,17 +773,9 @@ export default function App() {
       const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
-        sent.push({
-          buyer_id: recipient.buyer_id,
-          company_name: recipient.company_name,
-          contact_name: recipient.contact_name,
-          email: recipient.email,
-          channel: recipient.channel,
-          data,
-        });
-
-        try {
-          await supabase.from("buyer_offers").insert({
+        const insertedOffer = await supabase
+          .from("buyer_offers")
+          .insert({
             batch_id: batchId,
             buyer_id: recipient.buyer_id || null,
             buyer_email: recipient.email,
@@ -834,10 +790,22 @@ export default function App() {
             price_per_kg: entry.pricePerKg || null,
             notes: entry.notes || null,
             status: "sent",
-          });
-        } catch (dbError) {
-          console.warn("buyer_offers insert failed", dbError);
-        }
+          })
+          .select("id")
+          .single();
+
+        const offerId = insertedOffer?.data?.id || null;
+
+        sent.push({
+          buyer_id: recipient.buyer_id,
+          company_name: recipient.company_name,
+          contact_name: recipient.contact_name,
+          email: recipient.email,
+          channel: recipient.channel,
+          offer_id: offerId,
+          offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+          data,
+        });
       } else {
         failed.push({
           company_name: recipient.company_name,
