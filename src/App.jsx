@@ -404,6 +404,7 @@ function WholesaleOffersView({
                   <div style={styles.muted}>{entry.date} · {entry.area}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                   <div style={styles.muted}>Oletushinta: {euro(entry.pricePerKg)} / kg</div>
                   <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                    {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                 </div>
               </div>
 
@@ -702,6 +703,7 @@ export default function App() {
     is_active: true,
     notes: "",
   });
+  const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "" });
 
   const buyerTypeLabel = (type) => {
     if (type === "ravintola") return "Anonyymi ravintola";
@@ -844,6 +846,7 @@ export default function App() {
       }
       if (existingProfile) {
         setProfile(existingProfile);
+        setFisherInfoForm({ commercialFishingId: existingProfile.commercial_fishing_id || "" });
         return;
       }
       const { data: allowed, error: allowedError } = await supabase.from("allowed_users").select("*").eq("email", email).maybeSingle();
@@ -881,6 +884,7 @@ export default function App() {
         return;
       }
       setProfile(insertedProfile);
+      setFisherInfoForm({ commercialFishingId: insertedProfile.commercial_fishing_id || "" });
     };
 
     ensureProfile();
@@ -955,6 +959,7 @@ export default function App() {
             earliestDeliveryDate: entry.earliest_delivery_date || "",
             coldTransport: Boolean(entry.cold_transport),
             ownerName: entry.owner_name,
+            commercialFishingId: entry.commercial_fishing_id || "",
             ownerUserId: entry.owner_user_id,
             offerToShops: Boolean(entry.offer_to_shops),
             offerToRestaurants: Boolean(entry.offer_to_restaurants),
@@ -1279,6 +1284,7 @@ export default function App() {
       `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
       `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
       `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
+      `Kaupallisen kalastajan tunnus: ${profileState?.commercial_fishing_id || "-"}`,
     ];
 
     const entry = {
@@ -1291,6 +1297,7 @@ export default function App() {
       gearCount: Number(formState.gearCount || 0),
       pricePerKg: Number(formState.pricePerKg || 0),
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
+      commercialFishingId: profileState?.commercial_fishing_id || "",
       deliveryMethod: formState.deliveryMethod || "Nouto",
       deliveryArea: formState.deliveryArea || "",
       deliveryCost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
@@ -1586,6 +1593,7 @@ export default function App() {
       delivery_cost: form.deliveryCost === "" ? null : Number(form.deliveryCost),
       earliest_delivery_date: form.earliestDeliveryDate || null,
       cold_transport: form.coldTransport,
+      commercial_fishing_id: profile.commercial_fishing_id || null,
       notes: form.notes,
       batch_id: batchId,
       owner_user_id: profile.id,
@@ -1867,6 +1875,7 @@ export default function App() {
             <div>
               <h1 style={styles.title}>Suoraan Kalastajalta</h1>
               <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · rooli: {profile.role === "owner" ? "omistaja" : profile.role === "buyer" ? "ostaja" : "käyttäjä"}</p>
+              {profile.role !== "buyer" ? <p style={{ ...styles.subtitle, marginTop: 4 }}>Kaupallisen kalastajan tunnus: <strong>{profile.commercial_fishing_id || "ei asetettu"}</strong></p> : null}
             </div>
             <div style={styles.toolbar}>
               {profile.role === "owner" ? (
@@ -1899,6 +1908,43 @@ export default function App() {
 
         {activeTab === "dashboard" ? (
           <div style={styles.stack}>
+            {profile.role !== "buyer" ? (
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+                <strong>Kalastajan tiedot</strong>
+                <div style={styles.field}>
+                  <label>Kaupallisen kalastajan tunnus</label>
+                  <input
+                    style={styles.input}
+                    value={fisherInfoForm.commercialFishingId}
+                    onChange={(e) => setFisherInfoForm({ commercialFishingId: e.target.value })}
+                    placeholder="Esim. 123456"
+                  />
+                </div>
+                <div>
+                  <button
+                    style={{ ...styles.button, ...styles.primaryButton }}
+                    onClick={async () => {
+                      const { data, error } = await supabase
+                        .from("profiles")
+                        .update({ commercial_fishing_id: fisherInfoForm.commercialFishingId.trim() || null })
+                        .eq("id", profile.id)
+                        .select("*")
+                        .single();
+                      if (error) {
+                        setAuthError(error.message);
+                        return;
+                      }
+                      setProfile(data);
+                      setFisherInfoForm({ commercialFishingId: data.commercial_fishing_id || "" });
+                      setAuthInfo("Kaupallisen kalastajan tunnus tallennettu.");
+                      setRefreshTick((prev) => prev + 1);
+                    }}
+                  >
+                    Tallenna tunnus
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <div style={grid3}>
               <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{totals.totalKg.toFixed(1)} kg</div><div style={styles.muted}>Kokonaissaalis</div></div>
               <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{euro(totals.totalValue)}</div><div style={styles.muted}>Arvioitu myyntiarvo</div></div>
