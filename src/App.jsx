@@ -25,7 +25,6 @@ const defaultFishPrices = {
 const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Onki", "Muu"];
 const destinations = ["Myyntiin", "Oma käyttö", "Jalostukseen", "Tukkuun", "Muu"];
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
-
 const defaultAreas = ["Suur-Saimaa", "Pien-Saimaa", "Saimaa", "Muu vesialue"];
 const fishingSpots = [
   { name: "Kyläniemen pohjoispuoli", lat: 61.33, lng: 28.18 },
@@ -57,7 +56,8 @@ function today() {
 function exportCsv(filename, rows) {
   const csv = rows
     .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(";"))
-    .join("\n");
+    .join("
+");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -76,7 +76,7 @@ async function clearBrokenSession() {
   try {
     await supabase.auth.signOut({ scope: "local" });
   } catch {
-    // Ignore cleanup errors and continue clearing local remnants below.
+    // ignore
   }
 
   try {
@@ -87,7 +87,7 @@ async function clearBrokenSession() {
     }
     keysToRemove.forEach((key) => localStorage.removeItem(key));
   } catch {
-    // localStorage may be unavailable in some environments.
+    // ignore
   }
 }
 
@@ -111,16 +111,13 @@ const styles = {
     color: "#0f172a",
     fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     padding: 16,
-    boxSizing: "border-box",
   },
-  container: { maxWidth: 1280, margin: "0 auto", width: "100%", boxSizing: "border-box" },
+  container: { maxWidth: 1280, margin: "0 auto" },
   card: {
     background: "#fff",
     border: "1px solid #e2e8f0",
     borderRadius: 20,
     boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-    boxSizing: "border-box",
-    overflow: "hidden",
   },
   headerCard: { padding: 20, marginBottom: 18 },
   sectionCard: { padding: 18 },
@@ -132,8 +129,8 @@ const styles = {
     alignItems: "center",
     flexWrap: "wrap",
   },
-  title: { margin: 0, fontSize: 32, lineHeight: 1.1, wordBreak: "break-word" },
-  subtitle: { margin: "6px 0 0", color: "#475569", fontSize: 14, wordBreak: "break-word" },
+  title: { margin: 0, fontSize: 32, lineHeight: 1.1 },
+  subtitle: { margin: "6px 0 0", color: "#475569", fontSize: 14 },
   badge: {
     display: "inline-flex",
     alignItems: "center",
@@ -144,35 +141,27 @@ const styles = {
     color: "#1e293b",
     fontSize: 14,
     border: "1px solid #cbd5e1",
-    maxWidth: "100%",
-    boxSizing: "border-box",
-    whiteSpace: "normal",
-    wordBreak: "break-word",
   },
   toolbar: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
   tabs: {
     display: "grid",
-    gridTemplateColumns: "repeat(8, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
     gap: 8,
     background: "#fff",
     border: "1px solid #e2e8f0",
     padding: 8,
     borderRadius: 18,
     marginBottom: 16,
-    width: "100%",
-    boxSizing: "border-box",
   },
   tabs6: {
     display: "grid",
-    gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
     gap: 8,
     background: "#fff",
     border: "1px solid #e2e8f0",
     padding: 8,
     borderRadius: 18,
     marginBottom: 16,
-    width: "100%",
-    boxSizing: "border-box",
   },
   tab: {
     border: 0,
@@ -185,47 +174,29 @@ const styles = {
     justifyContent: "center",
     gap: 8,
     color: "#0f172a",
-    minWidth: 0,
-    minHeight: 54,
-    textAlign: "center",
-    whiteSpace: "normal",
-    wordBreak: "break-word",
-    overflowWrap: "anywhere",
-  },
-  tabLabel: {
-    display: "block",
-    lineHeight: 1.15,
-    textAlign: "center",
-    whiteSpace: "normal",
-    wordBreak: "break-word",
-    overflowWrap: "anywhere",
   },
   activeTab: { background: "#0f172a", color: "#fff" },
   grid3: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 },
   grid2: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 },
   stack: { display: "flex", flexDirection: "column", gap: 12 },
   metric: { fontSize: 34, fontWeight: 700, margin: "8px 0 0" },
-  muted: { color: "#64748b", fontSize: 14, wordBreak: "break-word" },
+  muted: { color: "#64748b", fontSize: 14 },
   progress: { height: 12, background: "#e2e8f0", borderRadius: 999, overflow: "hidden" },
   progressFill: { display: "block", height: "100%", background: "#0f172a", borderRadius: 999 },
-  formGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, width: "100%" },
-  field: { display: "flex", flexDirection: "column", gap: 8, minWidth: 0 },
+  formGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 },
+  field: { display: "flex", flexDirection: "column", gap: 8 },
   fieldFull: { gridColumn: "1 / -1" },
   input: {
     width: "100%",
-    maxWidth: "100%",
-    boxSizing: "border-box",
     padding: "12px 14px",
     border: "1px solid #cbd5e1",
     borderRadius: 14,
     background: "#fff",
     font: "inherit",
-    minWidth: 0,
+    boxSizing: "border-box",
   },
   textarea: {
     width: "100%",
-    maxWidth: "100%",
-    boxSizing: "border-box",
     padding: "12px 14px",
     border: "1px solid #cbd5e1",
     borderRadius: 14,
@@ -233,7 +204,7 @@ const styles = {
     font: "inherit",
     minHeight: 96,
     resize: "vertical",
-    minWidth: 0,
+    boxSizing: "border-box",
   },
   button: {
     border: "1px solid #cbd5e1",
@@ -246,11 +217,6 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    maxWidth: "100%",
-    boxSizing: "border-box",
-    textAlign: "center",
-    whiteSpace: "normal",
-    wordBreak: "break-word",
   },
   primaryButton: { background: "#0f172a", color: "#fff", borderColor: "#0f172a" },
   speciesBox: {
@@ -258,7 +224,6 @@ const styles = {
     borderRadius: 18,
     background: "#f8fafc",
     padding: 16,
-    boxSizing: "border-box",
   },
   speciesRow: {
     display: "grid",
@@ -269,17 +234,12 @@ const styles = {
     border: "1px solid #e2e8f0",
     borderRadius: 16,
     padding: 12,
-    width: "100%",
-    boxSizing: "border-box",
   },
   entry: {
     border: "1px solid #e2e8f0",
     borderRadius: 18,
     padding: 14,
     background: "#fff",
-    width: "100%",
-    boxSizing: "border-box",
-    overflow: "hidden",
   },
   entryHeader: {
     display: "flex",
@@ -316,13 +276,6 @@ const styles = {
     whiteSpace: "pre-wrap",
   },
   small: { fontSize: 12, color: "#64748b" },
-  mapWrap: {
-    border: "1px solid #e2e8f0",
-    borderRadius: 18,
-    overflow: "hidden",
-    minHeight: 420,
-    background: "#f8fafc",
-  },
 };
 
 function responsiveGridStyle(base) {
@@ -332,24 +285,6 @@ function responsiveGridStyle(base) {
   return base;
 }
 
-function responsiveTabsStyle(isOwner) {
-  if (typeof window !== "undefined" && window.innerWidth < 960) {
-    return {
-      ...(isOwner ? styles.tabs : styles.tabs6),
-      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    };
-  }
-  return isOwner ? styles.tabs : styles.tabs6;
-}
-
-function TabButton({ active, onClick, children }) {
-  return (
-    <button style={{ ...styles.tab, ...(active ? styles.activeTab : {}) }} onClick={onClick}>
-      <span style={styles.tabLabel}>{children}</span>
-    </button>
-  );
-}
-
 function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, authError, authInfo }) {
   return (
     <div style={styles.app}>
@@ -357,8 +292,8 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
           <h1 style={styles.title}>Suoraan Kalastajalta</h1>
           <div style={{ ...styles.tabs6, gridTemplateColumns: "1fr 1fr", marginBottom: 0 }}>
-            <TabButton active={authMode === "signin"} onClick={() => setAuthMode("signin")}>Kirjaudu</TabButton>
-            <TabButton active={authMode === "signup"} onClick={() => setAuthMode("signup")}>Rekisteröidy</TabButton>
+            <button style={{ ...styles.tab, ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
+            <button style={{ ...styles.tab, ...(authMode === "signup" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signup")}>Rekisteröidy</button>
           </div>
 
           <div style={styles.field}>
@@ -371,12 +306,12 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
             <input style={styles.input} type="password" value={authForm.password} onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))} placeholder="salasana" />
           </div>
 
-          {authMode === "signup" && (
+          {authMode === "signup" ? (
             <div style={styles.field}>
               <label>Nimi</label>
               <input style={styles.input} value={authForm.displayName} onChange={(e) => setAuthForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Joonas Häkkinen" />
             </div>
-          )}
+          ) : null}
 
           {authError ? <div style={styles.noticeError}>{authError}</div> : null}
           {authInfo ? <div style={styles.noticeSuccess}>{authInfo}</div> : null}
@@ -467,14 +402,9 @@ function WholesaleOffersView({
                     {entry.offerToRestaurants ? <span style={styles.badge}>Ravintoloihin</span> : null}
                     {entry.offerToWholesalers ? <span style={styles.badge}>Tukkuihin</span> : null}
                   </div>
-                  <div style={styles.muted}>
-                    {entry.date} · {entry.area}
-                    {entry.spot ? ` / ${entry.spot}` : ""}
-                  </div>
+                  <div style={styles.muted}>{entry.date} · {entry.area}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                   <div style={styles.muted}>Oletushinta: {euro(entry.pricePerKg)} / kg</div>
-                  <div style={styles.muted}>
-                    Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}
-                  </div>
+                  <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                 </div>
               </div>
 
@@ -490,10 +420,7 @@ function WholesaleOffersView({
                           <span style={styles.badge}>{offer.contact_name}</span>
                           <span style={styles.badge}>{offer.status}</span>
                         </div>
-                        <div style={styles.muted}>
-                          {offer.contact_email}
-                          {offer.contact_phone ? ` · ${offer.contact_phone}` : ""}
-                        </div>
+                        <div style={styles.muted}>{offer.contact_email}{offer.contact_phone ? ` · ${offer.contact_phone}` : ""}</div>
                         {offer.message ? <div style={styles.muted}>{offer.message}</div> : null}
                       </div>
                       {profile?.role === "owner" || profile?.id === entry.ownerUserId ? (
@@ -512,9 +439,7 @@ function WholesaleOffersView({
                 ) : (
                   buyerMatches.map((offer) => {
                     const revealIdentity = shouldRevealBuyerIdentity(offer.status);
-                    const buyerIdentity = revealIdentity
-                      ? (offer.buyer_company_name || offer.buyer_email || "Ostaja")
-                      : buyerTypeLabel(offer.buyer_type);
+                    const buyerIdentity = revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type);
 
                     return (
                       <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc", borderLeft: "4px solid #0f172a" }}>
@@ -722,7 +647,6 @@ export default function App() {
   const [buyerOffersFilter, setBuyerOffersFilter] = useState("open");
   const [buyerOffersSearch, setBuyerOffersSearch] = useState("");
   const [buyerActiveOfferId, setBuyerActiveOfferId] = useState(null);
-  const [offerLinkId, setOfferLinkId] = useState("");
   const [allowedUsers, setAllowedUsers] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -802,21 +726,8 @@ export default function App() {
 
   const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const linkedOffer = params.get("offer");
-    if (linkedOffer) {
-      setOfferLinkId(linkedOffer);
-      setActiveTab("offers");
-      setBuyerActiveOfferId(linkedOffer);
-    }
-  }, []);
-  const saveButtonLabel = shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis";
-
   const buildOfferRecipients = (offerFormState, rows) => {
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
-
     const selectedTypes = [];
     if (offerFormState.offerToShops) selectedTypes.push("kauppa");
     if (offerFormState.offerToRestaurants) selectedTypes.push("ravintola");
@@ -832,17 +743,14 @@ export default function App() {
         if (buyer.buyer_type === "tukku") {
           return minKg == null || totalKilos >= minKg;
         }
-
         if (buyer.buyer_type === "ravintola") {
           return maxKg == null || totalKilos <= maxKg;
         }
-
         if (buyer.buyer_type === "kauppa") {
           const minOk = minKg == null || totalKilos >= minKg;
           const maxOk = maxKg == null || totalKilos <= maxKg;
           return minOk && maxOk;
         }
-
         return false;
       })
       .map((buyer) => ({
@@ -853,174 +761,6 @@ export default function App() {
         contact_name: buyer.contact_name,
       }))
       .filter((recipient, index, array) => index === array.findIndex((item) => item.email === recipient.email));
-  };
-
-  const sendCatchOfferEmail = async ({ formState, rows, profileState, batchId }) => {
-    const recipients = buildOfferRecipients(formState, rows);
-
-    if (recipients.length === 0) {
-      return { skipped: true, sent: [], failed: [] };
-    }
-
-    const summaryLines = rows
-      .map((row) => {
-        const kilos = Number(row.kilos || 0);
-        const count = Number(row.count || 0);
-        return `${row.species}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
-      })
-      .join(String.fromCharCode(10));
-
-    const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
-
-    const offerUrlBase = typeof window !== "undefined" ? window.location.origin : "https://suoraan-kalastajalta.vercel.app";
-
-    const logisticsLines = [
-      `Toimitustapa: ${formState.deliveryMethod || "-"}`,
-      `Toimitusalue: ${formState.deliveryArea || "-"}`,
-      `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
-      `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
-      `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
-    ];
-
-    const entry = {
-      species: rows.map((row) => row.species).join(", "),
-      kilos: totalKilos,
-      date: formState.date,
-      area: formState.area,
-      spot: formState.spot || "",
-      gear: formState.gear || "",
-      gearCount: Number(formState.gearCount || 0),
-      pricePerKg: Number(formState.pricePerKg || 0),
-      ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
-      deliveryMethod: formState.deliveryMethod || "Nouto",
-      deliveryArea: formState.deliveryArea || "",
-      deliveryCost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
-      earliestDeliveryDate: formState.earliestDeliveryDate || "",
-      coldTransport: Boolean(formState.coldTransport),
-      notes: [formState.notes || "", "", "Erän lajit:", summaryLines, "", "Toimitus:", ...logisticsLines].join(String.fromCharCode(10)).trim(),
-      offerUrlBase,
-    };
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData?.session?.access_token;
-    const sent = [];
-    const failed = [];
-
-    for (const recipient of recipients) {
-      const insertedOffer = await supabase
-        .from("buyer_offers")
-        .insert({
-          batch_id: batchId,
-          buyer_id: recipient.buyer_id || null,
-          buyer_email: recipient.email,
-          seller_user_id: profileState?.id || null,
-          seller_name: profileState?.display_name || profileState?.email || null,
-          total_kilos: entry.kilos,
-          species_summary: summaryLines,
-          area: entry.area,
-          spot: entry.spot,
-          gear: entry.gear,
-          gear_count: entry.gearCount,
-          price_per_kg: entry.pricePerKg || null,
-          notes: entry.notes || null,
-          status: "sent",
-        })
-        .select("id")
-        .single();
-
-      const offerId = insertedOffer?.data?.id || null;
-
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-catch-offer-email`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_PUBLISHABLE_KEY,
-          Authorization: accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({
-          entry,
-          recipients: [{
-            email: recipient.email,
-            company_name: recipient.company_name,
-            offer_id: offerId,
-            offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
-          }],
-        }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (response.ok) {
-        sent.push({
-          buyer_id: recipient.buyer_id,
-          company_name: recipient.company_name,
-          contact_name: recipient.contact_name,
-          email: recipient.email,
-          channel: recipient.channel,
-          offer_id: offerId,
-          offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
-          data,
-        });
-      } else {
-        failed.push({
-          company_name: recipient.company_name,
-          contact_name: recipient.contact_name,
-          email: recipient.email,
-          channel: recipient.channel,
-          error: data?.error || `Tarjoussähköpostin lähetys epäonnistui (${response.status})`,
-        });
-      }
-    }
-
-    if (failed.length > 0 && sent.length === 0) {
-      throw new Error(failed.map((item) => `${item.company_name}: ${item.error}`).join(" | "));
-    }
-
-    return {
-      skipped: false,
-      sent,
-      failed,
-    };
-  };
-
-  const sendBuyerResponseEmail = async (offer, actionLabel) => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData?.session?.access_token;
-    const sellerEmail = profile?.email || offer?.seller_email || null;
-    if (!sellerEmail) return;
-
-    const revealIdentity = offer?.status === "accepted";
-    const buyerLabel = revealIdentity
-      ? (offer?.buyer_company_name || offer?.buyer_email || "Ostaja")
-      : (offer?.buyer_type === "ravintola" ? "Anonyymi ravintola" : offer?.buyer_type === "tukku" ? "Anonyymi tukku" : offer?.buyer_type === "kauppa" ? "Anonyymi kauppa" : "Anonyymi ostaja");
-
-    await fetch(`${SUPABASE_URL}/functions/v1/send-buyer-response-email`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_PUBLISHABLE_KEY,
-        Authorization: accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-      },
-      body: JSON.stringify({
-        sellerEmail,
-        offerLink: typeof window !== "undefined" ? `${window.location.origin}?offer=${offer.id}` : null,
-        offer: {
-          buyerLabel,
-          buyerEmail: revealIdentity ? offer?.buyer_email : null,
-          buyerPhone: revealIdentity ? offer?.buyer_phone : null,
-          species_summary: offer?.species_summary,
-          total_kilos: offer?.total_kilos,
-          area: offer?.area,
-          spot: offer?.spot,
-          price_per_kg: offer?.price_per_kg,
-          counter_price_per_kg: offer?.counter_price_per_kg,
-          reserved_kilos: offer?.reserved_kilos,
-          buyer_message: offer?.buyer_message,
-          status: offer?.status,
-          actionLabel,
-        },
-      }),
-    }).catch(() => null);
   };
 
   const invalidateSession = async (message = "Istunto on vanhentunut. Kirjaudu uudelleen sisään.") => {
@@ -1071,6 +811,16 @@ export default function App() {
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const linkedOffer = params.get("offer");
+    if (linkedOffer) {
+      setBuyerActiveOfferId(linkedOffer);
+      setActiveTab("offers");
+    }
   }, []);
 
   useEffect(() => {
@@ -1150,12 +900,10 @@ export default function App() {
         const { error } = await supabase.from("wholesale_offers").select("id", { count: "exact", head: true });
         return !error;
       };
-
       const buyersTableExists = async () => {
         const { error } = await supabase.from("buyers").select("id", { count: "exact", head: true });
         return !error;
       };
-
       const buyerOffersTableExists = async () => {
         const { error } = await supabase.from("buyer_offers").select("id", { count: "exact", head: true });
         return !error;
@@ -1165,7 +913,14 @@ export default function App() {
         const hasOffersTable = await offerTableExists();
         const hasBuyersTable = await buyersTableExists();
         const hasBuyerOffersTable = await buyerOffersTableExists();
-        const [{ data: entryData, error: entryError }, { data: allowedData, error: allowedError }, offerResult, buyersResult, buyerOffersResult] = await Promise.all([
+
+        const [
+          { data: entryData, error: entryError },
+          { data: allowedData, error: allowedError },
+          offerResult,
+          buyersResult,
+          buyerOffersResult,
+        ] = await Promise.all([
           finalEntriesQuery,
           profile.role === "owner" ? supabase.from("allowed_users").select("*").order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
           hasOffersTable ? supabase.from("wholesale_offers").select("*").order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
@@ -1182,6 +937,7 @@ export default function App() {
         } else {
           setEntries((entryData || []).map((entry) => ({
             id: entry.id,
+            batchId: entry.batch_id,
             date: entry.date,
             area: entry.area,
             spot: entry.spot || "",
@@ -1222,7 +978,7 @@ export default function App() {
             await invalidateSession();
             return;
           }
-          setAuthInfo("Tarjoukset-välilehti tarvitsee wholesale_offers-taulun. SQL on näkyvissä Tarjoukset-välilehdellä.");
+          setAuthError(offerResult.error.message);
         } else {
           setOffers((offerResult?.data || []).map((offer) => ({
             ...offer,
@@ -1230,18 +986,20 @@ export default function App() {
           })));
         }
 
+        const buyersData = (buyersResult?.data || []).map((buyer) => ({
+          ...buyer,
+          min_kg: buyer.min_kg == null ? "" : Number(buyer.min_kg),
+          max_kg: buyer.max_kg == null ? "" : Number(buyer.max_kg),
+        }));
+
         if (buyersResult?.error && buyersResult.error.code !== "PGRST116") {
           if (isMissingRefreshTokenError(buyersResult.error)) {
             await invalidateSession();
             return;
           }
-          setAuthInfo("Ostajat-välilehti tarvitsee buyers-taulun.");
+          setAuthError(buyersResult.error.message);
         } else {
-          setBuyers((buyersResult?.data || []).map((buyer) => ({
-            ...buyer,
-            min_kg: buyer.min_kg == null ? "" : Number(buyer.min_kg),
-            max_kg: buyer.max_kg == null ? "" : Number(buyer.max_kg),
-          })));
+          setBuyers(buyersData);
         }
 
         if (buyerOffersResult?.error && buyerOffersResult.error.code !== "PGRST116") {
@@ -1249,19 +1007,22 @@ export default function App() {
             await invalidateSession();
             return;
           }
+          setAuthError(buyerOffersResult.error.message);
         } else {
-          setBuyerOffers((buyerOffersResult?.data || []).map((offer) => ({
-            ...offer,
-            total_kilos: Number(offer.total_kilos || 0),
-            price_per_kg: offer.price_per_kg == null ? "" : Number(offer.price_per_kg),
-            counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
-            reserved_kilos: offer.reserved_kilos == null ? "" : Number(offer.reserved_kilos),
-            buyer_type: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.buyer_type || "") : "",
-            buyer_company_name: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.company_name || "") : "",
-            buyer_contact_name: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.contact_name || "") : "",
-            buyer_phone: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.phone || "") : "",
-          })));
-
+          setBuyerOffers((buyerOffersResult?.data || []).map((offer) => {
+            const buyer = buyersData.find((item) => item.id === offer.buyer_id);
+            return {
+              ...offer,
+              total_kilos: Number(offer.total_kilos || 0),
+              price_per_kg: offer.price_per_kg == null ? "" : Number(offer.price_per_kg),
+              counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
+              reserved_kilos: offer.reserved_kilos == null ? "" : Number(offer.reserved_kilos),
+              buyer_type: buyer?.buyer_type || "",
+              buyer_company_name: buyer?.company_name || "",
+              buyer_contact_name: buyer?.contact_name || "",
+              buyer_phone: buyer?.phone || "",
+            };
+          }));
         }
       } catch (error) {
         if (isMissingRefreshTokenError(error)) {
@@ -1283,13 +1044,7 @@ export default function App() {
     });
   }, [entries, search]);
 
-  const saleEntries = useMemo(
-    () =>
-      entries.filter(
-        (entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers,
-      ),
-    [entries],
-  );
+  const saleEntries = useMemo(() => entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [entries]);
 
   const totals = useMemo(() => {
     const totalKg = entries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
@@ -1401,17 +1156,20 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
-  const toggleBuyerActive = async (buyer) => {
-    const { error } = await supabase.from("buyers").update({ is_active: !buyer.is_active }).eq("id", buyer.id);
-    if (error) {
-      if (isMissingRefreshTokenError(error)) {
-        await invalidateSession();
-        return;
-      }
-      setUserMessage(error.message);
-      return;
-    }
-    setRefreshTick((prev) => prev + 1);
+  const resetBuyerForm = () => {
+    setBuyerForm({
+      id: "",
+      company_name: "",
+      buyer_type: "ravintola",
+      contact_name: "",
+      email: "",
+      phone: "",
+      city: "",
+      min_kg: "",
+      max_kg: "",
+      is_active: true,
+      notes: "",
+    });
   };
 
   const startEditBuyer = (buyer) => {
@@ -1431,110 +1189,17 @@ export default function App() {
     setUserMessage(`Muokataan ostajaa: ${buyer.company_name}`);
   };
 
-  const resetBuyerForm = () => {
-    setBuyerForm({
-      id: "",
-      company_name: "",
-      buyer_type: "ravintola",
-      contact_name: "",
-      email: "",
-      phone: "",
-      city: "",
-      min_kg: "",
-      max_kg: "",
-      is_active: true,
-      notes: "",
-    });
-  };
-
-  const refreshBuyerOffers = async () => {
-    const { data, error } = await supabase.from("buyer_offers").select("*").order("created_at", { ascending: false });
+  const toggleBuyerActive = async (buyer) => {
+    const { error } = await supabase.from("buyers").update({ is_active: !buyer.is_active }).eq("id", buyer.id);
     if (error) {
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
         return;
       }
-      setAuthError(error.message);
+      setUserMessage(error.message);
       return;
     }
-    setBuyerOffers((data || []).map((offer) => ({
-      ...offer,
-      total_kilos: Number(offer.total_kilos || 0),
-      price_per_kg: offer.price_per_kg == null ? "" : Number(offer.price_per_kg),
-      counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
-      reserved_kilos: offer.reserved_kilos == null ? "" : Number(offer.reserved_kilos),
-      buyer_type: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.buyer_type || "") : "",
-      buyer_company_name: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.company_name || "") : "",
-      buyer_contact_name: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.contact_name || "") : "",
-      buyer_phone: offer.buyer_id ? (buyers.find((buyer) => buyer.id === offer.buyer_id)?.phone || "") : "",
-    })));
-  };
-
-  const buyerUpdateOffer = async (offerId, patch) => {
-    const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offerId);
-    if (error) {
-      if (isMissingRefreshTokenError(error)) {
-        await invalidateSession();
-        return false;
-      }
-      setAuthError(error.message);
-      return false;
-    }
-    await refreshBuyerOffers();
     setRefreshTick((prev) => prev + 1);
-    return true;
-  };
-
-  const onSubmitCounter = async (offer) => {
-    const price = buyerAction.counter_price_per_kg === "" ? null : Number(buyerAction.counter_price_per_kg);
-    const msg = buyerAction.buyer_message?.trim() || null;
-    const ok = await buyerUpdateOffer(offer.id, {
-      status: "countered",
-      counter_price_per_kg: price,
-      buyer_message: msg,
-    });
-    if (ok) {
-      const updatedOffer = {
-        ...offer,
-        status: "countered",
-        counter_price_per_kg: price,
-        buyer_message: msg,
-      };
-      await sendBuyerResponseEmail(updatedOffer, "Ostaja teki vastatarjouksen");
-      setAuthInfo("Vastatarjous lähetetty myyjälle.");
-      setBuyerAction({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
-      setBuyerActiveOfferId(null);
-    }
-  };
-
-  const onReserve = async (offer) => {
-    const reserved = buyerAction.reserved_kilos === "" ? Number(offer.total_kilos || 0) : Number(buyerAction.reserved_kilos);
-    const msg = buyerAction.buyer_message?.trim() || null;
-    const ok = await buyerUpdateOffer(offer.id, {
-      status: "reserved",
-      reserved_kilos: reserved,
-      buyer_message: msg,
-    });
-    if (ok) {
-      const updatedOffer = {
-        ...offer,
-        status: "reserved",
-        reserved_kilos: reserved,
-        buyer_message: msg,
-      };
-      await sendBuyerResponseEmail(updatedOffer, "Ostaja varasi erän");
-      setAuthInfo("Erä varattu. Myyjälle näkyy varaus.");
-      setBuyerAction({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
-      setBuyerActiveOfferId(null);
-    }
-  };
-
-  const onRejectBuyerOffer = async (offer) => {
-    const ok = await buyerUpdateOffer(offer.id, { status: "rejected" });
-    if (ok) {
-      await sendBuyerResponseEmail({ ...offer, status: "rejected" }, "Ostaja hylkäsi tarjouksen");
-      setAuthInfo("Tarjous hylätty.");
-    }
   };
 
   const handleSaveBuyer = async () => {
@@ -1593,6 +1258,265 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
+  const sendCatchOfferEmail = async ({ formState, rows, profileState, batchId }) => {
+    const recipients = buildOfferRecipients(formState, rows);
+    if (recipients.length === 0) {
+      return { skipped: true, sent: [], failed: [] };
+    }
+
+    const summaryLines = rows
+      .map((row) => {
+        const kilos = Number(row.kilos || 0);
+        const count = Number(row.count || 0);
+        return `${row.species}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
+      })
+      .join(String.fromCharCode(10));
+
+    const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
+    const offerUrlBase = typeof window !== "undefined" ? window.location.origin : "https://suoraan-kalastajalta.vercel.app";
+    const logisticsLines = [
+      `Toimitustapa: ${formState.deliveryMethod || "-"}`,
+      `Toimitusalue: ${formState.deliveryArea || "-"}`,
+      `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
+      `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
+      `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
+    ];
+
+    const entry = {
+      species: rows.map((row) => row.species).join(", "),
+      kilos: totalKilos,
+      date: formState.date,
+      area: formState.area,
+      spot: formState.spot || "",
+      gear: formState.gear || "",
+      gearCount: Number(formState.gearCount || 0),
+      pricePerKg: Number(formState.pricePerKg || 0),
+      ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
+      deliveryMethod: formState.deliveryMethod || "Nouto",
+      deliveryArea: formState.deliveryArea || "",
+      deliveryCost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
+      earliestDeliveryDate: formState.earliestDeliveryDate || "",
+      coldTransport: Boolean(formState.coldTransport),
+      notes: [formState.notes || "", "", "Erän lajit:", summaryLines, "", "Toimitus:", ...logisticsLines].join(String.fromCharCode(10)).trim(),
+      offerUrlBase,
+    };
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    const sent = [];
+    const failed = [];
+
+    for (const recipient of recipients) {
+      const insertedOffer = await supabase
+        .from("buyer_offers")
+        .insert({
+          batch_id: batchId,
+          buyer_id: recipient.buyer_id || null,
+          buyer_email: recipient.email,
+          seller_user_id: profileState?.id || null,
+          seller_name: profileState?.display_name || profileState?.email || null,
+          total_kilos: entry.kilos,
+          species_summary: summaryLines,
+          area: entry.area,
+          spot: entry.spot,
+          gear: entry.gear,
+          gear_count: entry.gearCount,
+          price_per_kg: entry.pricePerKg || null,
+          notes: entry.notes || null,
+          status: "sent",
+        })
+        .select("id")
+        .single();
+
+      const offerId = insertedOffer?.data?.id || null;
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-catch-offer-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Authorization: accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          entry,
+          recipients: [{
+            email: recipient.email,
+            company_name: recipient.company_name,
+            offer_id: offerId,
+            offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+          }],
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        sent.push({
+          buyer_id: recipient.buyer_id,
+          company_name: recipient.company_name,
+          contact_name: recipient.contact_name,
+          email: recipient.email,
+          channel: recipient.channel,
+          offer_id: offerId,
+          offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+          data,
+        });
+      } else {
+        failed.push({
+          company_name: recipient.company_name,
+          contact_name: recipient.contact_name,
+          email: recipient.email,
+          channel: recipient.channel,
+          error: data?.error || `Tarjoussähköpostin lähetys epäonnistui (${response.status})`,
+        });
+      }
+    }
+
+    if (failed.length > 0 && sent.length === 0) {
+      throw new Error(failed.map((item) => `${item.company_name}: ${item.error}`).join(" | "));
+    }
+
+    return { skipped: false, sent, failed };
+  };
+
+  const refreshBuyerOffers = async () => {
+    const { data, error } = await supabase.from("buyer_offers").select("*").order("created_at", { ascending: false });
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message);
+      return;
+    }
+    setBuyerOffers((data || []).map((offer) => {
+      const buyer = buyers.find((item) => item.id === offer.buyer_id);
+      return {
+        ...offer,
+        total_kilos: Number(offer.total_kilos || 0),
+        price_per_kg: offer.price_per_kg == null ? "" : Number(offer.price_per_kg),
+        counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
+        reserved_kilos: offer.reserved_kilos == null ? "" : Number(offer.reserved_kilos),
+        buyer_type: buyer?.buyer_type || "",
+        buyer_company_name: buyer?.company_name || "",
+        buyer_contact_name: buyer?.contact_name || "",
+        buyer_phone: buyer?.phone || "",
+      };
+    }));
+  };
+
+  const buyerUpdateOffer = async (offerId, patch) => {
+    const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offerId);
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return false;
+      }
+      setAuthError(error.message);
+      return false;
+    }
+    await refreshBuyerOffers();
+    setRefreshTick((prev) => prev + 1);
+    return true;
+  };
+
+  const sendBuyerResponseEmail = async (offer, actionLabel) => {
+    let sellerEmail = null;
+
+    if (offer?.seller_user_id) {
+      const { data: sellerProfile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", offer.seller_user_id)
+        .maybeSingle();
+      sellerEmail = sellerProfile?.email || null;
+    }
+
+    if (!sellerEmail) return;
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    const revealIdentity = offer?.status === "accepted";
+    const buyerLabel = revealIdentity
+      ? (offer?.buyer_company_name || offer?.buyer_email || "Ostaja")
+      : (offer?.buyer_type === "ravintola"
+        ? "Anonyymi ravintola"
+        : offer?.buyer_type === "tukku"
+        ? "Anonyymi tukku"
+        : offer?.buyer_type === "kauppa"
+        ? "Anonyymi kauppa"
+        : "Anonyymi ostaja");
+
+    await fetch(`${SUPABASE_URL}/functions/v1/send-buyer-response-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({
+        sellerEmail,
+        offerLink: typeof window !== "undefined" ? `${window.location.origin}?offer=${offer.id}` : null,
+        offer: {
+          buyerLabel,
+          buyerEmail: revealIdentity ? offer?.buyer_email : null,
+          buyerPhone: revealIdentity ? offer?.buyer_phone : null,
+          species_summary: offer?.species_summary,
+          total_kilos: offer?.total_kilos,
+          area: offer?.area,
+          spot: offer?.spot,
+          price_per_kg: offer?.price_per_kg,
+          counter_price_per_kg: offer?.counter_price_per_kg,
+          reserved_kilos: offer?.reserved_kilos,
+          buyer_message: offer?.buyer_message,
+          status: offer?.status,
+          actionLabel,
+        },
+      }),
+    }).catch(() => null);
+  };
+
+  const onSubmitCounter = async (offer) => {
+    const price = buyerAction.counter_price_per_kg === "" ? null : Number(buyerAction.counter_price_per_kg);
+    const msg = buyerAction.buyer_message?.trim() || null;
+    const ok = await buyerUpdateOffer(offer.id, {
+      status: "countered",
+      counter_price_per_kg: price,
+      buyer_message: msg,
+    });
+    if (ok) {
+      const updatedOffer = { ...offer, status: "countered", counter_price_per_kg: price, buyer_message: msg };
+      await sendBuyerResponseEmail(updatedOffer, "Ostaja teki vastatarjouksen");
+      setAuthInfo("Vastatarjous lähetetty myyjälle.");
+      setBuyerAction({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
+      setBuyerActiveOfferId(null);
+    }
+  };
+
+  const onReserve = async (offer) => {
+    const reserved = buyerAction.reserved_kilos === "" ? Number(offer.total_kilos || 0) : Number(buyerAction.reserved_kilos);
+    const msg = buyerAction.buyer_message?.trim() || null;
+    const ok = await buyerUpdateOffer(offer.id, {
+      status: "reserved",
+      reserved_kilos: reserved,
+      buyer_message: msg,
+    });
+    if (ok) {
+      const updatedOffer = { ...offer, status: "reserved", reserved_kilos: reserved, buyer_message: msg };
+      await sendBuyerResponseEmail(updatedOffer, "Ostaja varasi erän");
+      setAuthInfo("Erä varattu. Myyjälle näkyy varaus.");
+      setBuyerAction({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
+      setBuyerActiveOfferId(null);
+    }
+  };
+
+  const onRejectBuyerOffer = async (offer) => {
+    const ok = await buyerUpdateOffer(offer.id, { status: "rejected" });
+    if (ok) {
+      await sendBuyerResponseEmail({ ...offer, status: "rejected" }, "Ostaja hylkäsi tarjouksen");
+      setAuthInfo("Tarjous hylätty.");
+    }
+  };
+
   const handleCreateOffer = async (entry) => {
     setAuthError("");
     setAuthInfo("");
@@ -1625,11 +1549,7 @@ export default function App() {
   };
 
   const onUpdateOfferStatus = async (offer, status) => {
-    const payload = { status };
-    if (status === "accepted") {
-      payload.seller_message = "Kauppa hyväksytty appissa. Yhteystiedot on nyt avattu osapuolille.";
-    }
-    const { error } = await supabase.from("wholesale_offers").update(payload).eq("id", offer.id);
+    const { error } = await supabase.from("wholesale_offers").update({ status }).eq("id", offer.id);
     if (error) {
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
@@ -1646,7 +1566,7 @@ export default function App() {
     const validRows = speciesRows.filter((row) => Number(row.kilos || 0) > 0);
     if (!validRows.length) return;
     setSaving(true);
-    const timestamp = new Date().toISOString();
+    const batchId = new Date().toISOString();
     const payload = validRows.map((row) => ({
       offer_to_shops: form.offerToShops,
       offer_to_restaurants: form.offerToRestaurants,
@@ -1668,13 +1588,12 @@ export default function App() {
       earliest_delivery_date: form.earliestDeliveryDate || null,
       cold_transport: form.coldTransport,
       notes: form.notes,
-      batch_id: timestamp,
+      batch_id: batchId,
       owner_user_id: profile.id,
       owner_name: profile.display_name,
     }));
 
     const { error } = await supabase.from("catch_entries").insert(payload);
-
     if (error) {
       setSaving(false);
       if (isMissingRefreshTokenError(error)) {
@@ -1690,7 +1609,7 @@ export default function App() {
         formState: form,
         rows: validRows,
         profileState: profile,
-        batchId: timestamp,
+        batchId,
       });
 
       if (shouldSendOffer) {
@@ -1699,15 +1618,9 @@ export default function App() {
         } else {
           const sentLines = emailResult.sent.map((item) => `✔ ${item.company_name} (${item.email})`);
           const failedLines = emailResult.failed.map((item) => `✖ ${item.company_name} (${item.email}) – ${item.error}`);
-          const parts = [
-            `Saalis tallennettu. Tarjous lähetetty ${emailResult.sent.length} ostajalle.`,
-          ];
-          if (sentLines.length > 0) {
-            parts.push("", "Lähetetty:", ...sentLines);
-          }
-          if (failedLines.length > 0) {
-            parts.push("", "Epäonnistui:", ...failedLines);
-          }
+          const parts = [`Saalis tallennettu. Tarjous lähetetty ${emailResult.sent.length} ostajalle.`];
+          if (sentLines.length > 0) parts.push("", "Lähetetty:", ...sentLines);
+          if (failedLines.length > 0) parts.push("", "Epäonnistui:", ...failedLines);
           setAuthInfo(parts.join(String.fromCharCode(10)));
         }
       } else {
@@ -1803,7 +1716,7 @@ export default function App() {
                   <option value="rejected">Hylätyt</option>
                   <option value="all">Kaikki</option>
                 </select>
-                <input style={{ ...styles.input, width: 320, maxWidth: "100%" }} placeholder="Hae myyjällä, alueella, lajilla..." value={buyerOffersSearch} onChange={(e) => setBuyerOffersSearch(e.target.value)} />
+                <input style={{ ...styles.input, width: 320 }} placeholder="Hae myyjällä, alueella, lajilla..." value={buyerOffersSearch} onChange={(e) => setBuyerOffersSearch(e.target.value)} />
               </div>
             </div>
 
@@ -1814,7 +1727,7 @@ export default function App() {
                   <div style={styles.entryHeader}>
                     <div>
                       <div style={styles.entryBadges}>
-                        <span style={styles.badge}>{o.status}</span>
+                        <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
                         <span style={styles.badge}>{o.total_kilos} kg</span>
                         {o.price_per_kg !== "" && o.price_per_kg != null ? <span style={styles.badge}>{euro(o.price_per_kg)} / kg</span> : null}
                         <span style={styles.badge}>{o.area || "-"}</span>
@@ -1822,8 +1735,8 @@ export default function App() {
                       </div>
                       <div style={styles.muted}>{o.species_summary || "-"}</div>
                       {o.spot ? <div style={styles.muted}>Paikka: {o.spot}</div> : null}
+                      {o.notes ? <div style={styles.muted} style={{ color: "#64748b", whiteSpace: "pre-wrap" }}>{o.notes}</div> : null}
                       {o.buyer_message ? <div style={styles.muted}>Sinun viesti: {o.buyer_message}</div> : null}
-                      {o.seller_message ? <div style={styles.muted}>Myyjän viesti: {o.seller_message}</div> : null}
                     </div>
                     <div style={styles.row}>
                       <button style={styles.button} onClick={() => setBuyerActiveOfferId(isActive ? null : o.id)}>{isActive ? "Sulje" : "Tee vastatarjous / varaa"}</button>
@@ -1851,7 +1764,7 @@ export default function App() {
     );
   }
 
-  const tabStyle = responsiveTabsStyle(profile.role === "owner");
+  const tabStyle = profile.role === "owner" ? styles.tabs : styles.tabs6;
   const grid3 = responsiveGridStyle(styles.grid3);
   const grid2 = responsiveGridStyle(styles.grid2);
   const formGrid = responsiveGridStyle(styles.formGrid);
@@ -1886,16 +1799,16 @@ export default function App() {
         {authInfo ? <div style={{ ...styles.noticeSuccess, marginBottom: 16 }}>{authInfo}</div> : null}
 
         <div style={tabStyle}>
-          <TabButton active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")}>Yhteenveto</TabButton>
-          <TabButton active={activeTab === "add"} onClick={() => setActiveTab("add")}>Lisää saalis</TabButton>
-          <TabButton active={activeTab === "entries"} onClick={() => setActiveTab("entries")}>Saaliit</TabButton>
-          <TabButton active={activeTab === "offers"} onClick={() => setActiveTab("offers")}>Tarjoukset</TabButton>
-          <TabButton active={activeTab === "reports"} onClick={() => setActiveTab("reports")}>Raportit</TabButton>
-          {profile.role === "owner" ? <TabButton active={activeTab === "buyers"} onClick={() => setActiveTab("buyers")}>Ostajat</TabButton> : null}
-          {profile.role === "owner" ? <TabButton active={activeTab === "users"} onClick={() => setActiveTab("users")}>Käyttäjät</TabButton> : null}
+          <button style={{ ...styles.tab, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
+          <button style={{ ...styles.tab, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>Lisää saalis</button>
+          <button style={{ ...styles.tab, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>Saaliit</button>
+          <button style={{ ...styles.tab, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
+          <button style={{ ...styles.tab, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
+          {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
+          {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
         </div>
 
-        {activeTab === "dashboard" && (
+        {activeTab === "dashboard" ? (
           <div style={styles.stack}>
             <div style={grid3}>
               <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{totals.totalKg.toFixed(1)} kg</div><div style={styles.muted}>Kokonaissaalis</div></div>
@@ -1912,9 +1825,9 @@ export default function App() {
               ))}
             </div>
           </div>
-        )}
+        ) : null}
 
-        {activeTab === "add" && (
+        {activeTab === "add" ? (
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={formGrid}>
               <div style={styles.field}><label>Päivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
@@ -1952,11 +1865,11 @@ export default function App() {
               </div>
               <div style={{ ...styles.field, ...styles.fieldFull }}><label>Lisätiedot</label><textarea style={styles.textarea} placeholder="Esim. laatu, jäähdytys, toimitus, huomioita" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
             </div>
-            <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : saveButtonLabel}</button></div>
+            <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis"}</button></div>
           </div>
-        )}
+        ) : null}
 
-        {activeTab === "entries" && (
+        {activeTab === "entries" ? (
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}><strong>{profile.role === "owner" && entryScope === "all" ? "Kaikkien saaliit" : "Omat saaliit"}</strong><input style={{ ...styles.input, maxWidth: 360 }} placeholder="Hae lajilla, paikalla, pyydyksellä..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
             {filteredEntries.length === 0 ? <div style={styles.muted}>Ei hakutuloksia.</div> : filteredEntries.map((entry) => (
@@ -1981,13 +1894,27 @@ export default function App() {
               </div>
             ))}
           </div>
-        )}
+        ) : null}
 
-        {activeTab === "offers" && <WholesaleOffersView profile={profile} saleEntries={saleEntries} offers={offers} buyerOffers={buyerOffers} offerForm={offerForm} setOfferForm={setOfferForm} onCreateOffer={handleCreateOffer} onUpdateOfferStatus={onUpdateOfferStatus} buyerTypeLabel={buyerTypeLabel} buyerStatusLabel={buyerStatusLabel} shouldRevealBuyerIdentity={shouldRevealBuyerIdentity} />}
+        {activeTab === "offers" ? (
+          <WholesaleOffersView
+            profile={profile}
+            saleEntries={saleEntries}
+            offers={offers}
+            buyerOffers={buyerOffers}
+            offerForm={offerForm}
+            setOfferForm={setOfferForm}
+            onCreateOffer={handleCreateOffer}
+            onUpdateOfferStatus={onUpdateOfferStatus}
+            buyerTypeLabel={buyerTypeLabel}
+            buyerStatusLabel={buyerStatusLabel}
+            shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
+          />
+        ) : null}
 
-        {activeTab === "reports" && <ReportsView entries={entries} offers={offers} />}
+        {activeTab === "reports" ? <ReportsView entries={entries} offers={offers} /> : null}
 
-        {activeTab === "buyers" && profile.role === "owner" && (
+        {activeTab === "buyers" && profile.role === "owner" ? (
           <div style={grid2}>
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <div style={styles.noticeInfo}>Owner näkee ostajarekisterin. Tavalliset käyttäjät eivät näe ostajien tietoja.
@@ -2040,9 +1967,9 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               ))}
             </div>
           </div>
-        )}
+        ) : null}
 
-        {activeTab === "users" && profile.role === "owner" && (
+        {activeTab === "users" && profile.role === "owner" ? (
           <div style={grid2}>
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <div style={styles.noticeInfo}>Lisää tähän kollegan sähköposti. Sen jälkeen hän voi rekisteröityä itse omalla salasanallaan.</div>
@@ -2071,7 +1998,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               ))}
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
