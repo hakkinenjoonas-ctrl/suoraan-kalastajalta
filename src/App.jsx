@@ -761,7 +761,7 @@ export default function App() {
         company_name: buyer.company_name,
         contact_name: buyer.contact_name,
       }))
-      .filter((recipient, index, array) => index === array.findIndex((item) => item.email === recipient.email));
+      .filter((recipient, index, array) => index === array.findIndex((item) => (item.email || "").trim().toLowerCase() === (recipient.email || "").trim().toLowerCase()));
   };
 
   const invalidateSession = async (message = "Istunto on vanhentunut. Kirjaudu uudelleen sisään.") => {
@@ -834,7 +834,7 @@ export default function App() {
     }
 
     const ensureProfile = async () => {
-      const email = session.user.email || "";
+      const email = (session.user.email || "").trim().toLowerCase();
       const { data: existingProfile, error: profileError } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
       if (profileError && profileError.code !== "PGRST116") {
         if (isMissingRefreshTokenError(profileError)) {
@@ -845,7 +845,11 @@ export default function App() {
         return;
       }
       if (existingProfile) {
-        setProfile(existingProfile);
+        const normalizedProfile = {
+          ...existingProfile,
+          email: (existingProfile.email || email || "").trim().toLowerCase(),
+        };
+        setProfile(normalizedProfile);
         setFisherInfoForm({ commercialFishingId: existingProfile.commercial_fishing_id || "" });
         return;
       }
@@ -883,7 +887,11 @@ export default function App() {
         setAuthError(insertError.message);
         return;
       }
-      setProfile(insertedProfile);
+      const normalizedInsertedProfile = {
+        ...insertedProfile,
+        email: (insertedProfile.email || email || "").trim().toLowerCase(),
+      };
+      setProfile(normalizedInsertedProfile);
       setFisherInfoForm({ commercialFishingId: insertedProfile.commercial_fishing_id || "" });
     };
 
@@ -917,6 +925,21 @@ export default function App() {
         const hasBuyersTable = await buyersTableExists();
         const hasBuyerOffersTable = await buyerOffersTableExists();
 
+        const normalizedProfileEmail = (profile.email || "").trim().toLowerCase();
+
+        const buyerOffersPromise = hasBuyerOffersTable
+          ? profile.role === "buyer"
+            ? supabase
+                .from("buyer_offers")
+                .select("*")
+                .eq("buyer_email", normalizedProfileEmail)
+                .order("created_at", { ascending: false })
+            : supabase
+                .from("buyer_offers")
+                .select("*")
+                .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [], error: null });
+
         const [
           { data: entryData, error: entryError },
           { data: allowedData, error: allowedError },
@@ -925,10 +948,16 @@ export default function App() {
           buyerOffersResult,
         ] = await Promise.all([
           finalEntriesQuery,
-          profile.role === "owner" ? supabase.from("allowed_users").select("*").order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
-          hasOffersTable ? supabase.from("wholesale_offers").select("*").order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
-          hasBuyersTable ? supabase.from("buyers").select("*").order("company_name", { ascending: true }) : Promise.resolve({ data: [], error: null }),
-          hasBuyerOffersTable ? supabase.from("buyer_offers").select("*").order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+          profile.role === "owner"
+            ? supabase.from("allowed_users").select("*").order("created_at", { ascending: true })
+            : Promise.resolve({ data: [], error: null }),
+          hasOffersTable
+            ? supabase.from("wholesale_offers").select("*").order("created_at", { ascending: false })
+            : Promise.resolve({ data: [], error: null }),
+          hasBuyersTable
+            ? supabase.from("buyers").select("*").order("company_name", { ascending: true })
+            : Promise.resolve({ data: [], error: null }),
+          buyerOffersPromise,
         ]);
 
         if (entryError) {
@@ -992,6 +1021,7 @@ export default function App() {
 
         const buyersData = (buyersResult?.data || []).map((buyer) => ({
           ...buyer,
+          email: (buyer.email || "").toLowerCase(),
           min_kg: buyer.min_kg == null ? "" : Number(buyer.min_kg),
           max_kg: buyer.max_kg == null ? "" : Number(buyer.max_kg),
         }));
@@ -1014,9 +1044,10 @@ export default function App() {
           setAuthError(buyerOffersResult.error.message);
         } else {
           setBuyerOffers((buyerOffersResult?.data || []).map((offer) => {
-            const buyer = buyersData.find((item) => item.id === offer.buyer_id);
+            const buyer = buyersData.find((item) => item.id === offer.buyer_id || item.email === (offer.buyer_email || "").toLowerCase());
             return {
               ...offer,
+              buyer_email: (offer.buyer_email || "").toLowerCase(),
               total_kilos: Number(offer.total_kilos || 0),
               price_per_kg: offer.price_per_kg == null ? "" : Number(offer.price_per_kg),
               counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
@@ -1263,7 +1294,10 @@ export default function App() {
   };
 
   const sendCatchOfferEmail = async ({ formState, rows, profileState, batchId }) => {
-    const recipients = buildOfferRecipients(formState, rows);
+    const recipients = buildOfferRecipients(formState, rows).map((recipient) => ({
+      ...recipient,
+      email: (recipient.email || "").trim().toLowerCase(),
+    }));
     if (recipients.length === 0) {
       return { skipped: true, sent: [], failed: [] };
     }
@@ -1334,6 +1368,17 @@ export default function App() {
         .select("id")
         .single();
 
+      if (insertedOffer.error) {
+        failed.push({
+          company_name: recipient.company_name,
+          contact_name: recipient.contact_name,
+          email: recipient.email,
+          channel: recipient.channel,
+          error: insertedOffer.error.message || "buyer_offers-rivin tallennus epäonnistui",
+        });
+        continue;
+      }
+
       const offerId = insertedOffer?.data?.id || null;
 
       const response = await fetch(`${SUPABASE_URL}/functions/v1/send-catch-offer-email`, {
@@ -1385,7 +1430,12 @@ export default function App() {
   };
 
   const refreshBuyerOffers = async () => {
-    const { data, error } = await supabase.from("buyer_offers").select("*").order("created_at", { ascending: false });
+    const normalizedProfileEmail = (profile?.email || "").trim().toLowerCase();
+    const query = profile?.role === "buyer"
+      ? supabase.from("buyer_offers").select("*").eq("buyer_email", normalizedProfileEmail).order("created_at", { ascending: false })
+      : supabase.from("buyer_offers").select("*").order("created_at", { ascending: false });
+
+    const { data, error } = await query;
     if (error) {
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
@@ -1394,10 +1444,12 @@ export default function App() {
       setAuthError(error.message);
       return;
     }
+
     setBuyerOffers((data || []).map((offer) => {
-      const buyer = buyers.find((item) => item.id === offer.buyer_id);
+      const buyer = buyers.find((item) => item.id === offer.buyer_id || item.email === (offer.buyer_email || "").toLowerCase());
       return {
         ...offer,
+        buyer_email: (offer.buyer_email || "").toLowerCase(),
         total_kilos: Number(offer.total_kilos || 0),
         price_per_kg: offer.price_per_kg == null ? "" : Number(offer.price_per_kg),
         counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
