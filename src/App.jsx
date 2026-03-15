@@ -1707,8 +1707,7 @@ export default function App() {
     };
 
     const buildOfferHeadline = (offer) => {
-      const speciesText = offer.species_summary?.split("
-")?.[0] || offer.species_summary || "Kalaerä";
+      const speciesText = offer.species_summary?.split("\n")?.[0] || offer.species_summary || "Kalaerä";
       const amountText = offer.total_kilos ? `${offer.total_kilos} kg` : "";
       return `${speciesText} ${amountText}`.trim();
     };
