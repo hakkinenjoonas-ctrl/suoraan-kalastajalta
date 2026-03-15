@@ -1678,12 +1678,40 @@ export default function App() {
   }
 
   if (profile.role === "buyer") {
-    const filteredBuyerOffers = buyerOffers.filter((offer) => {
-      const q = buyerOffersSearch.trim().toLowerCase();
-      const statusOk = buyerOffersFilter === "all" ? true : buyerOffersFilter === "open" ? ["sent", "viewed", "countered"].includes(offer.status) : offer.status === buyerOffersFilter;
-      const text = [offer.seller_name, offer.area, offer.spot, offer.species_summary, offer.status, offer.buyer_message].filter(Boolean).join(" ").toLowerCase();
-      return statusOk && (!q || text.includes(q));
-    });
+    const formatOfferDate = (value) => {
+      if (!value) return "-";
+      try {
+        return new Date(value).toLocaleString("fi-FI", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      } catch {
+        return value;
+      }
+    };
+
+    const formatOfferDay = (value) => {
+      if (!value) return "Ei päivämäärää";
+      try {
+        return new Date(value).toLocaleDateString("fi-FI", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        });
+      } catch {
+        return value;
+      }
+    };
+
+    const buildOfferHeadline = (offer) => {
+      const speciesText = offer.species_summary?.split("
+")?.[0] || offer.species_summary || "Kalaerä";
+      const amountText = offer.total_kilos ? `${offer.total_kilos} kg` : "";
+      return `${speciesText} ${amountText}`.trim();
+    };
 
     return (
       <div style={styles.app}>
@@ -1719,44 +1747,62 @@ export default function App() {
               </div>
             </div>
 
-            {filteredBuyerOffers.length === 0 ? <div style={styles.muted}>Ei tarjottuja eriä.</div> : filteredBuyerOffers.map((o) => {
-              const isActive = buyerActiveOfferId === o.id;
-              return (
-                <div key={o.id} style={styles.entry}>
-                  <div style={styles.entryHeader}>
-                    <div>
-                      <div style={styles.entryBadges}>
-                        <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
-                        <span style={styles.badge}>{o.total_kilos} kg</span>
-                        {o.price_per_kg !== "" && o.price_per_kg != null ? <span style={styles.badge}>{euro(o.price_per_kg)} / kg</span> : null}
-                        <span style={styles.badge}>{o.area || "-"}</span>
-                        {o.seller_name ? <span style={styles.badge}>Myyjä: {o.seller_name}</span> : null}
-                      </div>
-                      <div style={styles.muted}>{o.species_summary || "-"}</div>
-                      {o.spot ? <div style={styles.muted}>Paikka: {o.spot}</div> : null}
-                      {o.notes ? <div style={styles.muted} style={{ color: "#64748b", whiteSpace: "pre-wrap" }}>{o.notes}</div> : null}
-                      {o.buyer_message ? <div style={styles.muted}>Sinun viesti: {o.buyer_message}</div> : null}
-                    </div>
-                    <div style={styles.row}>
-                      <button style={styles.button} onClick={() => setBuyerActiveOfferId(isActive ? null : o.id)}>{isActive ? "Sulje" : "Tee vastatarjous / varaa"}</button>
-                      <button style={styles.button} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button>
-                    </div>
-                  </div>
-
-                  {isActive ? (
-                    <div style={{ ...styles.stack, marginTop: 12 }}>
-                      <div style={styles.field}><label>Vastatarjous €/kg</label><input style={styles.input} type="number" value={buyerAction.counter_price_per_kg} onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))} placeholder="Esim. 5.80" /></div>
-                      <div style={styles.field}><label>Varaa kg (tyhjä = koko erä)</label><input style={styles.input} type="number" value={buyerAction.reserved_kilos} onChange={(e) => setBuyerAction((p) => ({ ...p, reserved_kilos: e.target.value }))} placeholder={`Max ${o.total_kilos}`} /></div>
-                      <div style={styles.field}><label>Viesti myyjälle</label><textarea style={styles.textarea} value={buyerAction.buyer_message} onChange={(e) => setBuyerAction((p) => ({ ...p, buyer_message: e.target.value }))} placeholder="Toimitus, nouto, aikataulu..." /></div>
-                      <div style={styles.row}>
-                        <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onSubmitCounter(o)}>Lähetä vastatarjous</button>
-                        <button style={styles.button} onClick={() => onReserve(o)}>Varaa erä</button>
-                      </div>
-                    </div>
-                  ) : null}
+            {filteredBuyerOffers.length === 0 ? <div style={styles.muted}>Ei tarjottuja eriä.</div> : orderedGroups.map(([dayLabel, offersForDay]) => (
+              <div key={dayLabel} style={styles.stack}>
+                <div style={{ ...styles.card, ...styles.sectionCard, padding: "12px 16px", background: "#eff6ff", borderColor: "#bfdbfe" }}>
+                  <strong style={{ fontSize: 18 }}>{dayLabel}</strong>
                 </div>
-              );
-            })}
+
+                {offersForDay.map((o) => {
+                  const isActive = buyerActiveOfferId === o.id;
+                  return (
+                    <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 13, color: "#64748b", marginBottom: 6 }}>{formatOfferDate(o.updated_at || o.created_at)}</div>
+                        <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, marginBottom: 8 }}>{buildOfferHeadline(o)}</div>
+                        <div style={styles.entryBadges}>
+                          <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
+                          {o.price_per_kg !== "" && o.price_per_kg != null ? <span style={styles.badge}>{euro(o.price_per_kg)} / kg</span> : null}
+                          <span style={styles.badge}>{o.area || "-"}</span>
+                          {o.seller_name ? <span style={styles.badge}>Myyjä: {o.seller_name}</span> : null}
+                        </div>
+                      </div>
+
+                      <div style={{ ...styles.grid2, marginBottom: 10 }}>
+                        <div>
+                          <div style={styles.muted}><strong>Erän tiedot</strong></div>
+                          <div style={styles.muted}>{o.species_summary || "-"}</div>
+                          {o.spot ? <div style={styles.muted}>Paikka: {o.spot}</div> : null}
+                        </div>
+                        <div>
+                          <div style={styles.muted}><strong>Toimitus</strong></div>
+                          {o.notes ? <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{o.notes}</div> : <div style={styles.muted}>Ei lisätietoja</div>}
+                        </div>
+                      </div>
+
+                      {o.buyer_message ? <div style={styles.muted}>Sinun viesti: {o.buyer_message}</div> : null}
+
+                      <div style={{ ...styles.row, marginTop: 12 }}>
+                        <button style={styles.button} onClick={() => setBuyerActiveOfferId(isActive ? null : o.id)}>{isActive ? "Sulje" : "Tee vastatarjous / varaa"}</button>
+                        <button style={styles.button} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button>
+                      </div>
+
+                      {isActive ? (
+                        <div style={{ ...styles.stack, marginTop: 12 }}>
+                          <div style={styles.field}><label>Vastatarjous €/kg</label><input style={styles.input} type="number" value={buyerAction.counter_price_per_kg} onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))} placeholder="Esim. 5.80" /></div>
+                          <div style={styles.field}><label>Varaa kg (tyhjä = koko erä)</label><input style={styles.input} type="number" value={buyerAction.reserved_kilos} onChange={(e) => setBuyerAction((p) => ({ ...p, reserved_kilos: e.target.value }))} placeholder={`Max ${o.total_kilos}`} /></div>
+                          <div style={styles.field}><label>Viesti myyjälle</label><textarea style={styles.textarea} value={buyerAction.buyer_message} onChange={(e) => setBuyerAction((p) => ({ ...p, buyer_message: e.target.value }))} placeholder="Toimitus, nouto, aikataulu..." /></div>
+                          <div style={styles.row}>
+                            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onSubmitCounter(o)}>Lähetä vastatarjous</button>
+                            <button style={styles.button} onClick={() => onReserve(o)}>Varaa erä</button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
       </div>
