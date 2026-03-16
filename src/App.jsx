@@ -1744,8 +1744,7 @@ export default function App() {
     };
 
     const buildOfferHeadline = (offer) => {
-      const firstLine = String(offer?.species_summary || "Kalaerä").split("
-")[0] || "Kalaerä";
+      const firstLine = String(offer?.species_summary || "Kalaerä").split("\n")[0] || "Kalaerä";
       const amountText = offer?.total_kilos ? `${offer.total_kilos} kg` : "";
       return `${firstLine} ${amountText}`.trim();
     };
