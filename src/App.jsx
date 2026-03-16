@@ -753,8 +753,8 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
           group.monthKey,
           group.sellerLabel,
           offer.buyerLabel,
-          String(offer.species_summary || "").replace(/
-/g, " | "),
+          String(offer.species_summary || "").split("
+").join(" | "),
           offer.billingKilos,
           offer.billingPricePerKg,
           offer.tradeValue.toFixed(2),
