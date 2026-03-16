@@ -1671,14 +1671,8 @@ export default function App() {
 
       const offerId = insertedOffer?.data?.id || null;
 
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-catch-offer-email`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_PUBLISHABLE_KEY,
-          Authorization: accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke("send-catch-offer-email", {
+        body: {
           entry,
           recipients: [{
             email: recipient.email,
@@ -1686,11 +1680,9 @@ export default function App() {
             offer_id: offerId,
             offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
           }],
-        }),
+        },
       });
-
-      const data = await response.json().catch(() => ({}));
-      if (response.ok) {
+      if (!error) {
         sent.push({
           buyer_id: recipient.buyer_id,
           company_name: recipient.company_name,
@@ -1707,7 +1699,7 @@ export default function App() {
           contact_name: recipient.contact_name,
           email: recipient.email,
           channel: recipient.channel,
-          error: data?.error || `Tarjoussähköpostin lähetys epäonnistui (${response.status})`,
+          error: error.message || "Tarjoussähköpostin lähetys epäonnistui",
         });
       }
     }
@@ -1832,14 +1824,8 @@ export default function App() {
         ? "Anonyymi kauppa"
         : "Anonyymi ostaja");
 
-    await fetch(`${SUPABASE_URL}/functions/v1/send-buyer-response-email`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_PUBLISHABLE_KEY,
-        Authorization: accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-      },
-      body: JSON.stringify({
+    await supabase.functions.invoke("send-buyer-response-email", {
+      body: {
         sellerEmail,
         offerLink: typeof window !== "undefined" ? `${window.location.origin}?offer=${offer.id}` : null,
         offer: {
@@ -1856,7 +1842,7 @@ export default function App() {
           status: offer?.status,
           actionLabel,
         },
-      }),
+      },
     }).catch(() => null);
   };
 
@@ -2025,14 +2011,8 @@ export default function App() {
 
       const offerId = insertedOffer?.data?.id || null;
 
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-catch-offer-email`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_PUBLISHABLE_KEY,
-          Authorization: accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke("send-catch-offer-email", {
+        body: {
           entry: {
             species: formState.productName || formState.productType || "Jaloste-erä",
             kilos: Number(formState.kilos || 0),
@@ -2057,11 +2037,9 @@ export default function App() {
             offer_id: offerId,
             offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
           }],
-        }),
+        },
       });
-
-      const data = await response.json().catch(() => ({}));
-      if (response.ok) {
+      if (!error) {
         sent.push({
           buyer_id: recipient.buyer_id,
           company_name: recipient.company_name,
@@ -2078,7 +2056,7 @@ export default function App() {
           contact_name: recipient.contact_name,
           email: recipient.email,
           channel: recipient.channel,
-          error: data?.error || `Tarjoussähköpostin lähetys epäonnistui (${response.status})`,
+          error: error.message || "Tarjoussähköpostin lähetys epäonnistui",
         });
       }
     }
