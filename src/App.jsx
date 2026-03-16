@@ -1178,6 +1178,7 @@ export default function App() {
                 .from("buyer_offers")
                 .select("*")
                 .eq("buyer_email", normalizedProfileEmail)
+                .in("status", ["sent", "viewed", "countered", "reserved", "accepted", "rejected", "expired", "cancelled"])
                 .order("created_at", { ascending: false })
             : supabase
                 .from("buyer_offers")
@@ -1654,6 +1655,7 @@ export default function App() {
           gear: entry.gear,
           notes: entry.notes || null,
           status: "sent",
+          billing_status: "unbilled",
         })
         .select("id")
         .single();
@@ -1683,6 +1685,7 @@ export default function App() {
         },
       });
       if (!error) {
+        console.log("send-catch-offer-email ok", recipient.email, data);
         sent.push({
           buyer_id: recipient.buyer_id,
           company_name: recipient.company_name,
@@ -1694,6 +1697,7 @@ export default function App() {
           data,
         });
       } else {
+        console.error("send-catch-offer-email error", recipient.email, error);
         failed.push({
           company_name: recipient.company_name,
           contact_name: recipient.contact_name,
@@ -1714,7 +1718,12 @@ export default function App() {
   const refreshBuyerOffers = async () => {
     const normalizedProfileEmail = (profile?.email || "").trim().toLowerCase();
     const query = profile?.role === "buyer"
-      ? supabase.from("buyer_offers").select("*").eq("buyer_email", normalizedProfileEmail).order("created_at", { ascending: false })
+      ? supabase
+          .from("buyer_offers")
+          .select("*")
+          .eq("buyer_email", normalizedProfileEmail)
+          .in("status", ["sent", "viewed", "countered", "reserved", "accepted", "rejected", "expired", "cancelled"])
+          .order("created_at", { ascending: false })
       : supabase.from("buyer_offers").select("*").order("created_at", { ascending: false });
 
     const { data, error } = await query;
@@ -1994,6 +2003,7 @@ export default function App() {
           gear: `Jaloste / ${formState.processingMethod || formState.productType || "-"}`,
           notes,
           status: "sent",
+          billing_status: "unbilled",
         })
         .select("id")
         .single();
@@ -2040,6 +2050,7 @@ export default function App() {
         },
       });
       if (!error) {
+        console.log("send-catch-offer-email ok", recipient.email, data);
         sent.push({
           buyer_id: recipient.buyer_id,
           company_name: recipient.company_name,
@@ -2051,6 +2062,7 @@ export default function App() {
           data,
         });
       } else {
+        console.error("send-catch-offer-email error", recipient.email, error);
         failed.push({
           company_name: recipient.company_name,
           contact_name: recipient.contact_name,
@@ -2332,7 +2344,6 @@ export default function App() {
     };
 
     const filteredBuyerOffers = (buyerOffers || []).filter((offer) => {
-      if (offer.status === "accepted" || offer.status === "expired") return true;
       const q = buyerOffersSearch.trim().toLowerCase();
       const statusOk = buyerOffersFilter === "all"
         ? true
@@ -2386,6 +2397,7 @@ export default function App() {
                   <option value="open">Avoimet</option>
                   <option value="reserved">Varatut</option>
                   <option value="accepted">Hyväksytyt / myydyt</option>
+                  <option value="countered">Vastatarjoukset</option>
                   <option value="rejected">Hylätyt</option>
                   <option value="all">Kaikki</option>
                 </select>
@@ -2437,7 +2449,12 @@ export default function App() {
                         {o.buyer_message ? <div style={styles.muted}>Sinun viesti: {o.buyer_message}</div> : null}
 
                         <div style={{ ...styles.row, marginTop: 12 }}>
-                          <button style={styles.button} onClick={() => setBuyerActiveOfferId(isActive ? null : o.id)}>{isActive ? "Sulje" : o.status === "reserved" ? "Muokkaa varausta" : "Tee vastatarjous / varaa"}</button>
+                          <button style={styles.button} onClick={() => {
+                            if (o.status === "sent") {
+                              buyerUpdateOffer(o.id, { status: "viewed" });
+                            }
+                            setBuyerActiveOfferId(isActive ? null : o.id);
+                          }}>{isActive ? "Sulje" : o.status === "reserved" ? "Muokkaa varausta" : "Tee vastatarjous / varaa"}</button>
                           {o.status !== "accepted" ? <button style={styles.button} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button> : null}
                         </div>
 
