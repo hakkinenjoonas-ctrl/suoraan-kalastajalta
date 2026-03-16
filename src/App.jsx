@@ -15,6 +15,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 const fishSpecies = ["Muikku", "Kuha", "Ahven", "Hauki", "Lahna", "Särki", "Säyne", "Siika", "Made", "Muu"];
 const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Nuotta", "Vapaväline", "Muu"];
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
+const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
+const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Jauhatus", "Kypsennys", "Muu"];
 const defaultAreas = [
   "Saimaa",
   "Suur-Saimaa",
@@ -567,7 +569,7 @@ function WholesaleOffersView({
   );
 }
 
-function ReportsView({ entries, offers }) {
+function ReportsView({ entries, processedEntries, offers }) {
   const reportRows = entries.map((entry) => [
     entry.date,
     entry.ownerName,
@@ -597,8 +599,31 @@ function ReportsView({ entries, offers }) {
     offer.message,
   ]);
 
+  const processedRows = processedEntries.map((entry) => [
+    entry.productionDate,
+    entry.ownerName,
+    entry.area,
+    entry.municipality || "",
+    entry.productName,
+    entry.productType,
+    entry.processingMethod,
+    entry.speciesSummary,
+    entry.kilos,
+    entry.packageSizeG,
+    entry.packageCount,
+    entry.bestBeforeDate,
+    entry.deliveryMethod,
+    entry.deliveryArea,
+    entry.deliveryCost,
+    entry.earliestDeliveryDate,
+    entry.coldTransport ? "Kyllä" : "Ei",
+    entry.notes,
+  ]);
+
   const totalKg = entries.reduce((sum, entry) => sum + Number(entry.kilos || 0), 0);
+  const totalProcessedKg = processedEntries.reduce((sum, entry) => sum + Number(entry.kilos || 0), 0);
   const saleCount = entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers).length;
+  const processedSaleCount = processedEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers).length;
 
   return (
     <div style={styles.grid2}>
@@ -617,13 +642,21 @@ function ReportsView({ entries, offers }) {
         >
           Lataa tarjousraportti Exceliin
         </button>
+        <button
+          style={styles.button}
+          onClick={() => exportCsv(`jaloste-erat-${today()}.csv`, [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows])}
+        >
+          Lataa jaloste-erät Exceliin
+        </button>
       </div>
 
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Raporttiyhteenveto</strong>
         <div style={styles.entryBadges}>
-          <span style={styles.badge}>{totalKg.toFixed(1)} kg yhteensä</span>
-          <span style={styles.badge}>{saleCount} myyntierää</span>
+          <span style={styles.badge}>{totalKg.toFixed(1)} kg raakasaalista</span>
+          <span style={styles.badge}>{totalProcessedKg.toFixed(1)} kg jalosteita</span>
+          <span style={styles.badge}>{saleCount} saaliserää myynnissä</span>
+          <span style={styles.badge}>{processedSaleCount} jaloste-erää myynnissä</span>
           <span style={styles.badge}>{offers.length} tarjousta</span>
         </div>
         <div style={styles.muted}>Raportit sisältävät kaikki tällä hetkellä näkyvät erät ja tarjoukset.</div>
@@ -636,6 +669,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [entries, setEntries] = useState([]);
+  const [processedEntries, setProcessedEntries] = useState([]);
   const [offers, setOffers] = useState([]);
   const [buyerOffers, setBuyerOffers] = useState([]);
   const [buyerOffersFilter, setBuyerOffersFilter] = useState("open");
@@ -670,6 +704,29 @@ export default function App() {
     coldTransport: false,
   });
   const [speciesRows, setSpeciesRows] = useState([createSpeciesRow()]);
+  const [processedForm, setProcessedForm] = useState({
+    productionDate: today(),
+    bestBeforeDate: "",
+    area: "Saimaa",
+    municipality: "",
+    spot: "",
+    productName: "",
+    productType: "Filee",
+    processingMethod: "Fileointi",
+    speciesSummary: "",
+    kilos: "",
+    packageSizeG: "",
+    packageCount: "",
+    notes: "",
+    offerToShops: false,
+    offerToRestaurants: false,
+    offerToWholesalers: false,
+    deliveryMethod: "Nouto",
+    deliveryArea: "",
+    deliveryCost: "",
+    earliestDeliveryDate: today(),
+    coldTransport: true,
+  });
   const [newAllowedForm, setNewAllowedForm] = useState({ email: "", displayName: "", role: "member" });
   const [buyerAction, setBuyerAction] = useState({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
   const [offerForm, setOfferForm] = useState({
@@ -716,6 +773,7 @@ export default function App() {
 
   const shouldRevealBuyerIdentity = (status) => status === "accepted";
   const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
+  const shouldSendProcessedOffer = processedForm.offerToShops || processedForm.offerToRestaurants || processedForm.offerToWholesalers;
 
   const buildOfferRecipients = (offerFormState, rows) => {
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
@@ -759,8 +817,9 @@ export default function App() {
     setSession(null);
     setProfile(null);
     setEntries([]);
-    setOffers([]);
-    setAllowedUsers([]);
+      setProcessedEntries([]);
+      setOffers([]);
+      setAllowedUsers([]);
     setAuthMode("signin");
     setAuthInfo("");
     setAuthError(message);
@@ -817,8 +876,9 @@ export default function App() {
   useEffect(() => {
     if (!session?.user) {
       setProfile(null);
-      setEntries([]);
-      setOffers([]);
+    setEntries([]);
+    setProcessedEntries([]);
+    setOffers([]);
       setAllowedUsers([]);
       return;
     }
@@ -905,6 +965,10 @@ export default function App() {
         const { error } = await supabase.from("buyers").select("id", { count: "exact", head: true });
         return !error;
       };
+      const processedBatchesTableExists = async () => {
+        const { error } = await supabase.from("processed_batches").select("id", { count: "exact", head: true });
+        return !error;
+      };
       const buyerOffersTableExists = async () => {
         const { error } = await supabase.from("buyer_offers").select("id", { count: "exact", head: true });
         return !error;
@@ -913,6 +977,7 @@ export default function App() {
       try {
         const hasOffersTable = await offerTableExists();
         const hasBuyersTable = await buyersTableExists();
+        const hasProcessedBatchesTable = await processedBatchesTableExists();
         const hasBuyerOffersTable = await buyerOffersTableExists();
 
         const normalizedProfileEmail = (profile.email || "").trim().toLowerCase();
@@ -932,12 +997,18 @@ export default function App() {
 
         const [
           { data: entryData, error: entryError },
+          processedEntriesResult,
           { data: allowedData, error: allowedError },
           offerResult,
           buyersResult,
           buyerOffersResult,
         ] = await Promise.all([
           finalEntriesQuery,
+          hasProcessedBatchesTable
+            ? ((profile.role === "owner" && entryScope === "all")
+              ? supabase.from("processed_batches").select("*").order("production_date", { ascending: false }).order("created_at", { ascending: false })
+              : supabase.from("processed_batches").select("*").eq("owner_user_id", profile.id).order("production_date", { ascending: false }).order("created_at", { ascending: false }))
+            : Promise.resolve({ data: [], error: null }),
           profile.role === "owner"
             ? supabase.from("allowed_users").select("*").order("created_at", { ascending: true })
             : Promise.resolve({ data: [], error: null }),
@@ -980,6 +1051,44 @@ export default function App() {
             offerToShops: Boolean(entry.offer_to_shops),
             offerToRestaurants: Boolean(entry.offer_to_restaurants),
             offerToWholesalers: Boolean(entry.offer_to_wholesalers),
+          })));
+        }
+
+        if (processedEntriesResult?.error && processedEntriesResult.error.code !== "PGRST116") {
+          if (isMissingRefreshTokenError(processedEntriesResult.error)) {
+            await invalidateSession();
+            return;
+          }
+          setAuthError(processedEntriesResult.error.message);
+        } else {
+          setProcessedEntries((processedEntriesResult?.data || []).map((entry) => ({
+            id: entry.id,
+            batchId: entry.batch_id,
+            productionDate: entry.production_date,
+            bestBeforeDate: entry.best_before_date || "",
+            area: entry.area,
+            municipality: entry.municipality || "",
+            spot: entry.spot || "",
+            productName: entry.product_name || "",
+            productType: entry.product_type || "",
+            processingMethod: entry.processing_method || "",
+            speciesSummary: entry.species_summary || "",
+            kilos: Number(entry.kilos || 0),
+            packageSizeG: entry.package_size_g == null ? "" : Number(entry.package_size_g),
+            packageCount: entry.package_count == null ? "" : Number(entry.package_count),
+            notes: entry.notes || "",
+            deliveryMethod: entry.delivery_method || "Nouto",
+            deliveryArea: entry.delivery_area || "",
+            deliveryCost: entry.delivery_cost == null ? "" : Number(entry.delivery_cost),
+            earliestDeliveryDate: entry.earliest_delivery_date || "",
+            coldTransport: Boolean(entry.cold_transport),
+            ownerName: entry.owner_name,
+            commercialFishingId: entry.commercial_fishing_id || "",
+            ownerUserId: entry.owner_user_id,
+            offerToShops: Boolean(entry.offer_to_shops),
+            offerToRestaurants: Boolean(entry.offer_to_restaurants),
+            offerToWholesalers: Boolean(entry.offer_to_wholesalers),
+            kind: "processed",
           })));
         }
 
@@ -1067,16 +1176,23 @@ export default function App() {
   }, [entries, search]);
 
   const saleEntries = useMemo(() => entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [entries]);
+  const processedSaleEntries = useMemo(() => processedEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [processedEntries]);
 
   const totals = useMemo(() => {
     const totalKg = entries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
     const forSaleKg = saleEntries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
+    const totalProcessedKg = processedEntries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
+    const processedForSaleKg = processedSaleEntries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
     const speciesSummary = fishSpecies
       .map((species) => ({ species, kilos: entries.filter((e) => e.species === species).reduce((sum, e) => sum + Number(e.kilos || 0), 0) }))
       .filter((item) => item.kilos > 0)
       .sort((a, b) => b.kilos - a.kilos);
-    return { totalKg, forSaleKg, speciesSummary };
-  }, [entries, saleEntries]);
+    const processedSummary = processedProductTypes
+      .map((productType) => ({ productType, kilos: processedEntries.filter((e) => e.productType === productType).reduce((sum, e) => sum + Number(e.kilos || 0), 0) }))
+      .filter((item) => item.kilos > 0)
+      .sort((a, b) => b.kilos - a.kilos);
+    return { totalKg, forSaleKg, totalProcessedKg, processedForSaleKg, speciesSummary, processedSummary };
+  }, [entries, saleEntries, processedEntries, processedSaleEntries]);
 
   const addSpeciesRow = () => setSpeciesRows((prev) => [...prev, createSpeciesRow()]);
   const updateSpeciesRow = (id, field, value) => setSpeciesRows((prev) => prev.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
@@ -1155,7 +1271,7 @@ export default function App() {
       setUserMessage("Täytä sähköposti ja nimi.");
       return;
     }
-    const role = newAllowedForm.role === "owner" ? "owner" : newAllowedForm.role === "buyer" ? "buyer" : "member";
+    const role = newAllowedForm.role === "owner" ? "owner" : newAllowedForm.role === "buyer" ? "buyer" : newAllowedForm.role === "processor" ? "processor" : "member";
     const { error } = await supabase.from("allowed_users").insert({
       email,
       display_name: displayName,
@@ -1600,6 +1716,150 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
+  const sendProcessedOfferEmail = async ({ formState, profileState, batchId }) => {
+    const rows = [{ species: formState.productName || formState.productType || "Jaloste-erä", kilos: formState.kilos, count: formState.packageCount }];
+    const recipients = buildOfferRecipients({
+      offerToShops: formState.offerToShops,
+      offerToRestaurants: formState.offerToRestaurants,
+      offerToWholesalers: formState.offerToWholesalers,
+    }, rows).map((recipient) => ({
+      ...recipient,
+      email: (recipient.email || "").trim().toLowerCase(),
+    }));
+
+    if (recipients.length === 0) {
+      return { skipped: true, sent: [], failed: [] };
+    }
+
+    const offerUrlBase = typeof window !== "undefined" ? window.location.origin : "https://suoraan-kalastajalta.vercel.app";
+    const summaryLines = [
+      `Tuote: ${formState.productName || "-"}`,
+      `Tyyppi: ${formState.productType || "-"}`,
+      `Käsittely: ${formState.processingMethod || "-"}`,
+      `Raaka-aine: ${formState.speciesSummary || "-"}`,
+      `Määrä: ${formState.kilos || 0} kg`,
+      `Pakkauskoko: ${formState.packageSizeG || "-"} g`,
+      `Pakkausten määrä: ${formState.packageCount || "-"}`,
+      `Tuotantopäivä: ${formState.productionDate || "-"}`,
+      `Parasta ennen: ${formState.bestBeforeDate || "-"}`,
+    ].join(String.fromCharCode(10));
+
+    const notes = [
+      formState.notes || "",
+      "",
+      "Toimitus:",
+      `Toimitustapa: ${formState.deliveryMethod || "-"}`,
+      `Toimitusalue: ${formState.deliveryArea || "-"}`,
+      `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
+      `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
+      `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
+      `Paikkakunta: ${formState.municipality || "-"}`,
+      `Käsittelypaikka: ${formState.spot || "-"}`,
+    ].join(String.fromCharCode(10)).trim();
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    const sent = [];
+    const failed = [];
+
+    for (const recipient of recipients) {
+      const insertedOffer = await supabase
+        .from("buyer_offers")
+        .insert({
+          batch_id: batchId,
+          buyer_id: recipient.buyer_id || null,
+          buyer_email: recipient.email,
+          seller_user_id: profileState?.id || null,
+          seller_name: profileState?.display_name || profileState?.email || null,
+          total_kilos: Number(formState.kilos || 0),
+          species_summary: summaryLines,
+          area: formState.area,
+          spot: formState.spot,
+          gear: `Jaloste / ${formState.processingMethod || formState.productType || "-"}`,
+          notes,
+          status: "sent",
+        })
+        .select("id")
+        .single();
+
+      if (insertedOffer.error) {
+        failed.push({
+          company_name: recipient.company_name,
+          contact_name: recipient.contact_name,
+          email: recipient.email,
+          channel: recipient.channel,
+          error: insertedOffer.error.message || "buyer_offers-rivin tallennus epäonnistui",
+        });
+        continue;
+      }
+
+      const offerId = insertedOffer?.data?.id || null;
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-catch-offer-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Authorization: accessToken ? `Bearer ${accessToken}` : `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          entry: {
+            species: formState.productName || formState.productType || "Jaloste-erä",
+            kilos: Number(formState.kilos || 0),
+            date: formState.productionDate,
+            area: formState.area,
+            municipality: formState.municipality || "",
+            spot: formState.spot || "",
+            gear: `Jaloste / ${formState.processingMethod || formState.productType || "-"}`,
+            ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
+            commercialFishingId: profileState?.commercial_fishing_id || "",
+            deliveryMethod: formState.deliveryMethod || "Nouto",
+            deliveryArea: formState.deliveryArea || "",
+            deliveryCost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
+            earliestDeliveryDate: formState.earliestDeliveryDate || "",
+            coldTransport: Boolean(formState.coldTransport),
+            notes: [summaryLines, "", notes].join(String.fromCharCode(10)).trim(),
+            offerUrlBase,
+          },
+          recipients: [{
+            email: recipient.email,
+            company_name: recipient.company_name,
+            offer_id: offerId,
+            offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+          }],
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        sent.push({
+          buyer_id: recipient.buyer_id,
+          company_name: recipient.company_name,
+          contact_name: recipient.contact_name,
+          email: recipient.email,
+          channel: recipient.channel,
+          offer_id: offerId,
+          offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+          data,
+        });
+      } else {
+        failed.push({
+          company_name: recipient.company_name,
+          contact_name: recipient.contact_name,
+          email: recipient.email,
+          channel: recipient.channel,
+          error: data?.error || `Tarjoussähköpostin lähetys epäonnistui (${response.status})`,
+        });
+      }
+    }
+
+    if (failed.length > 0 && sent.length === 0) {
+      throw new Error(failed.map((item) => `${item.company_name}: ${item.error}`).join(" | "));
+    }
+
+    return { skipped: false, sent, failed };
+  };
+
   const handleSave = async () => {
     if (!profile) return;
     const validRows = speciesRows.filter((row) => Number(row.kilos || 0) > 0);
@@ -1686,6 +1946,120 @@ export default function App() {
     setSpeciesRows([createSpeciesRow()]);
     setRefreshTick((prev) => prev + 1);
     setActiveTab("entries");
+  };
+
+  const handleSaveProcessed = async () => {
+    if (!profile) return;
+    if (!processedForm.productName.trim() || Number(processedForm.kilos || 0) <= 0) {
+      setAuthError("Täytä jaloste-erälle vähintään tuotenimi ja määrä kiloina.");
+      return;
+    }
+
+    setSaving(true);
+    const batchId = `processed-${new Date().toISOString()}`;
+    const payload = {
+      batch_id: batchId,
+      production_date: processedForm.productionDate,
+      best_before_date: processedForm.bestBeforeDate || null,
+      area: processedForm.area,
+      municipality: processedForm.municipality,
+      spot: processedForm.spot,
+      product_name: processedForm.productName.trim(),
+      product_type: processedForm.productType,
+      processing_method: processedForm.processingMethod,
+      species_summary: processedForm.speciesSummary.trim(),
+      kilos: Number(processedForm.kilos || 0),
+      package_size_g: processedForm.packageSizeG === "" ? null : Number(processedForm.packageSizeG),
+      package_count: processedForm.packageCount === "" ? null : Number(processedForm.packageCount),
+      notes: processedForm.notes,
+      offer_to_shops: processedForm.offerToShops,
+      offer_to_restaurants: processedForm.offerToRestaurants,
+      offer_to_wholesalers: processedForm.offerToWholesalers,
+      delivery_method: processedForm.deliveryMethod,
+      delivery_area: processedForm.deliveryArea,
+      delivery_cost: processedForm.deliveryCost === "" ? null : Number(processedForm.deliveryCost),
+      earliest_delivery_date: processedForm.earliestDeliveryDate || null,
+      cold_transport: processedForm.coldTransport,
+      commercial_fishing_id: profile.commercial_fishing_id || null,
+      owner_user_id: profile.id,
+      owner_name: profile.display_name,
+    };
+
+    const { error } = await supabase.from("processed_batches").insert(payload);
+    if (error) {
+      setSaving(false);
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message);
+      return;
+    }
+
+    try {
+      const emailResult = await sendProcessedOfferEmail({ formState: processedForm, profileState: profile, batchId });
+      if (shouldSendProcessedOffer) {
+        if (emailResult.skipped) {
+          setAuthInfo("Jaloste-erä tallennettu, mutta yhtään ostajaa ei täyttänyt tarjousehtoja.");
+        } else {
+          const sentLines = emailResult.sent.map((item) => `✔ ${item.company_name} (${item.email})`);
+          const failedLines = emailResult.failed.map((item) => `✖ ${item.company_name} (${item.email}) – ${item.error}`);
+          const parts = [`Jaloste-erä tallennettu. Tarjous lähetetty ${emailResult.sent.length} ostajalle.`];
+          if (sentLines.length > 0) parts.push("", "Lähetetty:", ...sentLines);
+          if (failedLines.length > 0) parts.push("", "Epäonnistui:", ...failedLines);
+          setAuthInfo(parts.join(String.fromCharCode(10)));
+        }
+      } else {
+        setAuthInfo("Jaloste-erä tallennettu.");
+      }
+    } catch {
+      setAuthInfo("Jaloste-erä tallennettu, mutta tarjoussähköpostin lähetys epäonnistui.");
+    }
+
+    setSaving(false);
+    setProcessedForm({
+      productionDate: today(),
+      bestBeforeDate: "",
+      area: "Saimaa",
+      municipality: "",
+      spot: "",
+      productName: "",
+      productType: "Filee",
+      processingMethod: "Fileointi",
+      speciesSummary: "",
+      kilos: "",
+      packageSizeG: "",
+      packageCount: "",
+      notes: "",
+      offerToShops: false,
+      offerToRestaurants: false,
+      offerToWholesalers: false,
+      deliveryMethod: "Nouto",
+      deliveryArea: "",
+      deliveryCost: "",
+      earliestDeliveryDate: today(),
+      coldTransport: true,
+    });
+    setRefreshTick((prev) => prev + 1);
+    setActiveTab("entries");
+  };
+
+  const handleDeleteProcessedEntry = async (entry) => {
+    const ok = window.confirm(`Poistetaanko jaloste-erä: ${entry.productName} ${entry.kilos} kg / ${entry.productionDate}?`);
+    if (!ok) return;
+
+    const { error } = await supabase.from("processed_batches").delete().eq("id", entry.id);
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message);
+      return;
+    }
+
+    setAuthInfo("Jaloste-erä poistettu.");
+    setRefreshTick((prev) => prev + 1);
   };
 
   const handleDeleteEntry = async (entry) => {
@@ -1902,7 +2276,7 @@ export default function App() {
           <div style={styles.rowBetween}>
             <div>
               <h1 style={styles.title}>Suoraan Kalastajalta</h1>
-              <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · rooli: {profile.role === "owner" ? "omistaja" : profile.role === "buyer" ? "ostaja" : "käyttäjä"}</p>
+              <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · rooli: {profile.role === "owner" ? "omistaja" : profile.role === "buyer" ? "ostaja" : profile.role === "processor" ? "kalanjalostaja" : "käyttäjä"}</p>
               {profile.role !== "buyer" ? <p style={{ ...styles.subtitle, marginTop: 4 }}>Kaupallisen kalastajan tunnus: <strong>{profile.commercial_fishing_id || "ei asetettu"}</strong></p> : null}
             </div>
             <div style={styles.toolbar}>
@@ -1912,7 +2286,7 @@ export default function App() {
                   <option value="all">Näytä kaikkien saaliit</option>
                 </select>
               ) : null}
-              <span style={styles.badge}>{totals.totalKg.toFixed(1)} kg yhteensä</span>
+              <span style={styles.badge}>{profile.role === "processor" ? `${totals.totalProcessedKg.toFixed(1)} kg jalosteita` : `${totals.totalKg.toFixed(1)} kg yhteensä`}</span>
               <button style={styles.button} onClick={() => setRefreshTick((prev) => prev + 1)}>Päivitä</button>
               <button style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
             </div>
@@ -1924,8 +2298,8 @@ export default function App() {
 
         <div style={tabStyle}>
           <button style={{ ...styles.tab, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
-          <button style={{ ...styles.tab, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>Lisää saalis</button>
-          <button style={{ ...styles.tab, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>Saaliit</button>
+          <button style={{ ...styles.tab, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button>
+          <button style={{ ...styles.tab, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button>
           <button style={{ ...styles.tab, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
           <button style={{ ...styles.tab, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
           {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
@@ -1972,89 +2346,169 @@ export default function App() {
               </div>
             ) : null}
             <div style={grid3}>
-              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{totals.totalKg.toFixed(1)} kg</div><div style={styles.muted}>Kokonaissaalis</div></div>
-              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{totals.forSaleKg.toFixed(1)} kg</div><div style={styles.muted}>Tarjolla ostajille</div></div>
-              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{entries.length}</div><div style={styles.muted}>Tallennettuja eriä</div></div>
+              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? totals.totalProcessedKg.toFixed(1) : totals.totalKg.toFixed(1)} kg</div><div style={styles.muted}>{profile.role === "processor" ? "Jalosteita yhteensä" : "Kokonaissaalis"}</div></div>
+              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? totals.processedForSaleKg.toFixed(1) : totals.forSaleKg.toFixed(1)} kg</div><div style={styles.muted}>Tarjolla ostajille</div></div>
+              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? processedEntries.length : entries.length}</div><div style={styles.muted}>{profile.role === "processor" ? "Tallennettuja jaloste-eriä" : "Tallennettuja eriä"}</div></div>
             </div>
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-              <strong>Lajikohtainen yhteenveto</strong>
-              {totals.speciesSummary.length === 0 ? <div style={styles.muted}>Ei vielä saalistietoja.</div> : totals.speciesSummary.map((item) => (
-                <div key={item.species} style={{ ...styles.stack, gap: 6 }}>
-                  <div style={styles.rowBetween}><span>{item.species}</span><span>{item.kilos.toFixed(1)} kg</span></div>
-                  <div style={styles.progress}><span style={{ ...styles.progressFill, width: `${Math.max((item.kilos / Math.max(totals.totalKg, 1)) * 100, 4)}%` }} /></div>
-                </div>
-              ))}
+              <strong>{profile.role === "processor" ? "Tuotetyyppien yhteenveto" : "Lajikohtainen yhteenveto"}</strong>
+              {profile.role === "processor"
+                ? (totals.processedSummary.length === 0
+                  ? <div style={styles.muted}>Ei vielä jaloste-eriä.</div>
+                  : totals.processedSummary.map((item) => (
+                    <div key={item.productType} style={{ ...styles.stack, gap: 6 }}>
+                      <div style={styles.rowBetween}><span>{item.productType}</span><span>{item.kilos.toFixed(1)} kg</span></div>
+                      <div style={styles.progress}><span style={{ ...styles.progressFill, width: `${Math.max((item.kilos / Math.max(totals.totalProcessedKg, 1)) * 100, 4)}%` }} /></div>
+                    </div>
+                  )))
+                : (totals.speciesSummary.length === 0
+                  ? <div style={styles.muted}>Ei vielä saalistietoja.</div>
+                  : totals.speciesSummary.map((item) => (
+                    <div key={item.species} style={{ ...styles.stack, gap: 6 }}>
+                      <div style={styles.rowBetween}><span>{item.species}</span><span>{item.kilos.toFixed(1)} kg</span></div>
+                      <div style={styles.progress}><span style={{ ...styles.progressFill, width: `${Math.max((item.kilos / Math.max(totals.totalKg, 1)) * 100, 4)}%` }} /></div>
+                    </div>
+                  )))}
             </div>
           </div>
         ) : null}
 
         {activeTab === "add" ? (
-          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-            <div style={formGrid}>
-              <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
-              <div style={styles.field}><label>Vesialue</label><select style={styles.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
-              <div style={styles.field}><label>Paikkakunta</label><input style={styles.input} value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} placeholder="Esim. Savonlinna" /></div>
-              <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Kyläniemen eteläpuoli" /></div>
-              <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
-              <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
-                <div style={styles.rowBetween}><div><label>Kalalajit samasta tarkastuskerrasta</label><div style={styles.small}>Lisää yhdellä kertaa kaikki lajit, jotka tulivat samalla pyyntikerralla.</div></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
-                {speciesRows.map((row, index) => (
-                  <div key={row.id} style={speciesRow}>
-                    <div style={styles.field}><label>Laji {index + 1}</label><select style={styles.input} value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)}>{fishSpecies.map((species) => <option key={species} value={species}>{species}</option>)}</select></div>
-                    <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
-                    <div style={styles.field}><label>Kpl</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
-                    <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
+          profile.role === "processor" ? (
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div style={formGrid}>
+                <div style={styles.field}><label>Tuotantopäivä</label><input style={styles.input} type="date" value={processedForm.productionDate} onChange={(e) => setProcessedForm({ ...processedForm, productionDate: e.target.value })} /></div>
+                <div style={styles.field}><label>Parasta ennen</label><input style={styles.input} type="date" value={processedForm.bestBeforeDate} onChange={(e) => setProcessedForm({ ...processedForm, bestBeforeDate: e.target.value })} /></div>
+                <div style={styles.field}><label>Vesialue / alkuperä</label><select style={styles.input} value={processedForm.area} onChange={(e) => setProcessedForm({ ...processedForm, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
+                <div style={styles.field}><label>Paikkakunta</label><input style={styles.input} value={processedForm.municipality} onChange={(e) => setProcessedForm({ ...processedForm, municipality: e.target.value })} placeholder="Esim. Lappeenranta" /></div>
+                <div style={styles.field}><label>Tuotenimi</label><input style={styles.input} value={processedForm.productName} onChange={(e) => setProcessedForm({ ...processedForm, productName: e.target.value })} placeholder="Esim. Kylmäsavulohi viipale" /></div>
+                <div style={styles.field}><label>Tuotetyyppi</label><select style={styles.input} value={processedForm.productType} onChange={(e) => setProcessedForm({ ...processedForm, productType: e.target.value })}>{processedProductTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
+                <div style={styles.field}><label>Käsittelytapa</label><select style={styles.input} value={processedForm.processingMethod} onChange={(e) => setProcessedForm({ ...processedForm, processingMethod: e.target.value })}>{processingMethods.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
+                <div style={styles.field}><label>Käsittelypaikka</label><input style={styles.input} value={processedForm.spot} onChange={(e) => setProcessedForm({ ...processedForm, spot: e.target.value })} placeholder="Esim. jalostuskontti / Forelli" /></div>
+                <div style={{ ...styles.field, ...styles.fieldFull }}><label>Raaka-aine / lajiyhteenveto</label><textarea style={styles.textarea} value={processedForm.speciesSummary} onChange={(e) => setProcessedForm({ ...processedForm, speciesSummary: e.target.value })} placeholder="Esim. lohi fileenä, kuha fileenä, muikkumassa" /></div>
+                <div style={styles.field}><label>Määrä kg</label><input style={styles.input} type="number" value={processedForm.kilos} onChange={(e) => setProcessedForm({ ...processedForm, kilos: e.target.value })} placeholder="0" /></div>
+                <div style={styles.field}><label>Pakkauskoko g</label><input style={styles.input} type="number" value={processedForm.packageSizeG} onChange={(e) => setProcessedForm({ ...processedForm, packageSizeG: e.target.value })} placeholder="Esim. 500" /></div>
+                <div style={styles.field}><label>Pakkausten määrä</label><input style={styles.input} type="number" value={processedForm.packageCount} onChange={(e) => setProcessedForm({ ...processedForm, packageCount: e.target.value })} placeholder="Esim. 40" /></div>
+                <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={processedForm.deliveryMethod} onChange={(e) => setProcessedForm({ ...processedForm, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
+                <div style={styles.field}><label>Toimitusalue</label><input style={styles.input} value={processedForm.deliveryArea} onChange={(e) => setProcessedForm({ ...processedForm, deliveryArea: e.target.value })} placeholder="Esim. Etelä-Suomi" /></div>
+                <div style={styles.field}><label>Toimituskustannus €</label><input style={styles.input} type="number" value={processedForm.deliveryCost} onChange={(e) => setProcessedForm({ ...processedForm, deliveryCost: e.target.value })} placeholder="Esim. 65" /></div>
+                <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={processedForm.earliestDeliveryDate} onChange={(e) => setProcessedForm({ ...processedForm, earliestDeliveryDate: e.target.value })} /></div>
+                <div style={styles.field}><label><input type="checkbox" checked={processedForm.coldTransport} onChange={(e) => setProcessedForm({ ...processedForm, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
+                <div style={{ ...styles.field, ...styles.fieldFull }}>
+                  <label>Tarjoa jaloste-erää myyntiin</label>
+                  <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                    <label><input type="checkbox" checked={processedForm.offerToShops} onChange={(e) => setProcessedForm({ ...processedForm, offerToShops: e.target.checked })} /> Kauppoihin</label>
+                    <label><input type="checkbox" checked={processedForm.offerToRestaurants} onChange={(e) => setProcessedForm({ ...processedForm, offerToRestaurants: e.target.checked })} /> Ravintoloihin</label>
+                    <label><input type="checkbox" checked={processedForm.offerToWholesalers} onChange={(e) => setProcessedForm({ ...processedForm, offerToWholesalers: e.target.checked })} /> Tukkuihin</label>
                   </div>
-                ))}
-              </div>
-              <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm({ ...form, gear: e.target.value })}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
-              <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={form.deliveryMethod} onChange={(e) => setForm({ ...form, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
-              <div style={styles.field}><label>Toimitusalue</label><input style={styles.input} placeholder="Esim. Etelä-Suomi / Helsinki / koko Suomi" value={form.deliveryArea} onChange={(e) => setForm({ ...form, deliveryArea: e.target.value })} /></div>
-              <div style={styles.field}><label>Toimituskustannus €</label><input style={styles.input} type="number" placeholder="Esim. 90" value={form.deliveryCost} onChange={(e) => setForm({ ...form, deliveryCost: e.target.value })} /></div>
-              <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
-              <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
-              <div style={{ ...styles.field, ...styles.fieldFull }}>
-                <label>Tarjoa erää myyntiin</label>
-                <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-                  <label><input type="checkbox" checked={form.offerToShops} onChange={(e) => setForm({ ...form, offerToShops: e.target.checked })} /> Kauppoihin</label>
-                  <label><input type="checkbox" checked={form.offerToRestaurants} onChange={(e) => setForm({ ...form, offerToRestaurants: e.target.checked })} /> Ravintoloihin</label>
-                  <label><input type="checkbox" checked={form.offerToWholesalers} onChange={(e) => setForm({ ...form, offerToWholesalers: e.target.checked })} /> Tukkuihin</label>
                 </div>
+                <div style={{ ...styles.field, ...styles.fieldFull }}><label>Lisätiedot</label><textarea style={styles.textarea} value={processedForm.notes} onChange={(e) => setProcessedForm({ ...processedForm, notes: e.target.value })} placeholder="Esim. allergeenit, säilytys, pakkausmuoto, toimitusrytmi" /></div>
               </div>
-              <div style={{ ...styles.field, ...styles.fieldFull }}><label>Lisätiedot</label><textarea style={styles.textarea} placeholder="Esim. laatu, jäähdytys, toimitus, huomioita" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+              <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveProcessed} disabled={saving}>{saving ? "Tallennetaan..." : shouldSendProcessedOffer ? "Tallenna jaloste-erä ja lähetä tarjous" : "Tallenna jaloste-erä"}</button></div>
             </div>
-            <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis"}</button></div>
-          </div>
+          ) : (
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div style={formGrid}>
+                <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
+                <div style={styles.field}><label>Vesialue</label><select style={styles.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
+                <div style={styles.field}><label>Paikkakunta</label><input style={styles.input} value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} placeholder="Esim. Savonlinna" /></div>
+                <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Kyläniemen eteläpuoli" /></div>
+                <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
+                <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
+                  <div style={styles.rowBetween}><div><label>Kalalajit samasta tarkastuskerrasta</label><div style={styles.small}>Lisää yhdellä kertaa kaikki lajit, jotka tulivat samalla pyyntikerralla.</div></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
+                  {speciesRows.map((row, index) => (
+                    <div key={row.id} style={speciesRow}>
+                      <div style={styles.field}><label>Laji {index + 1}</label><select style={styles.input} value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)}>{fishSpecies.map((species) => <option key={species} value={species}>{species}</option>)}</select></div>
+                      <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
+                      <div style={styles.field}><label>Kpl</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
+                      <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
+                    </div>
+                  ))}
+                </div>
+                <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm({ ...form, gear: e.target.value })}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
+                <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={form.deliveryMethod} onChange={(e) => setForm({ ...form, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
+                <div style={styles.field}><label>Toimitusalue</label><input style={styles.input} placeholder="Esim. Etelä-Suomi / Helsinki / koko Suomi" value={form.deliveryArea} onChange={(e) => setForm({ ...form, deliveryArea: e.target.value })} /></div>
+                <div style={styles.field}><label>Toimituskustannus €</label><input style={styles.input} type="number" placeholder="Esim. 90" value={form.deliveryCost} onChange={(e) => setForm({ ...form, deliveryCost: e.target.value })} /></div>
+                <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
+                <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
+                <div style={{ ...styles.field, ...styles.fieldFull }}>
+                  <label>Tarjoa erää myyntiin</label>
+                  <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                    <label><input type="checkbox" checked={form.offerToShops} onChange={(e) => setForm({ ...form, offerToShops: e.target.checked })} /> Kauppoihin</label>
+                    <label><input type="checkbox" checked={form.offerToRestaurants} onChange={(e) => setForm({ ...form, offerToRestaurants: e.target.checked })} /> Ravintoloihin</label>
+                    <label><input type="checkbox" checked={form.offerToWholesalers} onChange={(e) => setForm({ ...form, offerToWholesalers: e.target.checked })} /> Tukkuihin</label>
+                  </div>
+                </div>
+                <div style={{ ...styles.field, ...styles.fieldFull }}><label>Lisätiedot</label><textarea style={styles.textarea} placeholder="Esim. laatu, jäähdytys, toimitus, huomioita" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+              </div>
+              <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis"}</button></div>
+            </div>
+          )
         ) : null}
 
         {activeTab === "entries" ? (
-          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-            <div style={styles.rowBetween}><strong>{profile.role === "owner" && entryScope === "all" ? "Kaikkien saaliit" : "Omat saaliit"}</strong><input style={{ ...styles.input, maxWidth: 360 }} placeholder="Hae lajilla, paikalla, pyydyksellä..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-            {filteredEntries.length === 0 ? <div style={styles.muted}>Ei hakutuloksia.</div> : filteredEntries.map((entry) => (
-              <div key={entry.id} style={styles.entry}>
-                <div style={styles.entryHeader}>
-                  <div>
-                    <div style={styles.entryBadges}>
-                      <span style={styles.badge}>{entry.species}</span>
-                      <span style={styles.badge}>{entry.kilos} kg</span>
-                      <span style={styles.badge}>{entry.gear}</span>
-                      <span style={styles.badge}>{entry.ownerName}</span>
+          profile.role === "processor" ? (
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div style={styles.rowBetween}><strong>Omat jaloste-erät</strong><input style={{ ...styles.input, maxWidth: 360 }} placeholder="Hae tuotteella, alueella tai käsittelyllä..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+              {processedEntries.filter((entry) => {
+                const q = search.trim().toLowerCase();
+                if (!q) return true;
+                return [entry.productName, entry.productType, entry.processingMethod, entry.speciesSummary, entry.area, entry.municipality, entry.spot, entry.notes, entry.ownerName].join(" ").toLowerCase().includes(q);
+              }).length === 0 ? <div style={styles.muted}>Ei hakutuloksia.</div> : processedEntries.filter((entry) => {
+                const q = search.trim().toLowerCase();
+                if (!q) return true;
+                return [entry.productName, entry.productType, entry.processingMethod, entry.speciesSummary, entry.area, entry.municipality, entry.spot, entry.notes, entry.ownerName].join(" ").toLowerCase().includes(q);
+              }).map((entry) => (
+                <div key={entry.id} style={styles.entry}>
+                  <div style={styles.entryHeader}>
+                    <div>
+                      <div style={styles.entryBadges}>
+                        <span style={styles.badge}>{entry.productName}</span>
+                        <span style={styles.badge}>{entry.productType}</span>
+                        <span style={styles.badge}>{entry.kilos} kg</span>
+                        {entry.packageSizeG !== "" ? <span style={styles.badge}>{entry.packageSizeG} g</span> : null}
+                        {entry.packageCount !== "" ? <span style={styles.badge}>{entry.packageCount} pkt</span> : null}
+                      </div>
+                      <div style={styles.muted}>{entry.productionDate} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                      <div style={styles.muted}>Käsittely: {entry.processingMethod || "-"} · Raaka-aine: {entry.speciesSummary || "-"}</div>
+                      <div style={styles.muted}>Parasta ennen: {entry.bestBeforeDate || "-"}</div>
+                      <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                      {entry.notes ? <div style={styles.muted}>{entry.notes}</div> : null}
                     </div>
-                    <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
-                    <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
-                    {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
+                    <button style={styles.button} onClick={() => handleDeleteProcessedEntry(entry)}>Poista jaloste-erä</button>
                   </div>
-                  <button style={styles.button} onClick={() => handleDeleteEntry(entry)}>Poista saalistieto</button>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div style={styles.rowBetween}><strong>{profile.role === "owner" && entryScope === "all" ? "Kaikkien saaliit" : "Omat saaliit"}</strong><input style={{ ...styles.input, maxWidth: 360 }} placeholder="Hae lajilla, paikalla, pyydyksellä..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+              {filteredEntries.length === 0 ? <div style={styles.muted}>Ei hakutuloksia.</div> : filteredEntries.map((entry) => (
+                <div key={entry.id} style={styles.entry}>
+                  <div style={styles.entryHeader}>
+                    <div>
+                      <div style={styles.entryBadges}>
+                        <span style={styles.badge}>{entry.species}</span>
+                        <span style={styles.badge}>{entry.kilos} kg</span>
+                        <span style={styles.badge}>{entry.gear}</span>
+                        <span style={styles.badge}>{entry.ownerName}</span>
+                      </div>
+                      <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                      <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                      {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
+                    </div>
+                    <button style={styles.button} onClick={() => handleDeleteEntry(entry)}>Poista saalistieto</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         ) : null}
 
         {activeTab === "offers" ? (
           <WholesaleOffersView
             profile={profile}
-            saleEntries={saleEntries}
+            saleEntries={profile.role === "processor" ? processedSaleEntries : saleEntries}
             offers={offers}
             buyerOffers={buyerOffers}
             offerForm={offerForm}
@@ -2067,7 +2521,7 @@ export default function App() {
           />
         ) : null}
 
-        {activeTab === "reports" ? <ReportsView entries={entries} offers={offers} /> : null}
+        {activeTab === "reports" ? <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} /> : null}
 
         {activeTab === "buyers" && profile.role === "owner" ? (
           <div style={grid2}>
@@ -2130,7 +2584,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               <div style={styles.noticeInfo}>Lisää tähän kollegan sähköposti. Sen jälkeen hän voi rekisteröityä itse omalla salasanallaan.</div>
               <div style={styles.field}><label>Nimi</label><input style={styles.input} value={newAllowedForm.displayName} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Antti Kalastaja" /></div>
               <div style={styles.field}><label>Sähköposti</label><input style={styles.input} type="email" value={newAllowedForm.email} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. antti@yritys.fi" /></div>
-              <div style={styles.field}><label>Rooli</label><select style={styles.input} value={newAllowedForm.role} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, role: e.target.value }))}><option value="member">Kalastaja</option><option value="buyer">Ostaja</option><option value="owner">Omistaja</option></select></div>
+              <div style={styles.field}><label>Rooli</label><select style={styles.input} value={newAllowedForm.role} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, role: e.target.value }))}><option value="member">Kalastaja</option><option value="processor">Kalanjalostaja</option><option value="buyer">Ostaja</option><option value="owner">Omistaja</option></select></div>
               {userMessage ? <div style={styles.noticeSuccess}>{userMessage}</div> : null}
               <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleCreateAllowedUser}>Lisää sallittuihin</button>
             </div>
@@ -2143,7 +2597,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                       <div style={styles.entryBadges}>
                         <span style={styles.badge}>{user.display_name}</span>
                         <span style={styles.badge}>{user.email}</span>
-                        <span style={styles.badge}>{user.role === "owner" ? "Omistaja" : user.role === "buyer" ? "Ostaja" : "Käyttäjä"}</span>
+                        <span style={styles.badge}>{user.role === "owner" ? "Omistaja" : user.role === "buyer" ? "Ostaja" : user.role === "processor" ? "Kalanjalostaja" : "Käyttäjä"}</span>
                         <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
                       </div>
                     </div>
