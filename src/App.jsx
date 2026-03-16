@@ -13,23 +13,24 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 });
 
 const fishSpecies = ["Muikku", "Kuha", "Ahven", "Hauki", "Lahna", "Särki", "Säyne", "Siika", "Made", "Muu"];
-const defaultFishPrices = {
-  Hauki: 3,
-  Kuha: 7,
-  Ahven: 4,
-  Lahna: 0.8,
-  Säyne: 0.8,
-  Siika: 5,
-  Muikku: 2,
-};
-const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Onki", "Muu"];
-const destinations = ["Myyntiin", "Oma käyttö", "Jalostukseen", "Tukkuun", "Muu"];
+const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Nuotta", "Vapaväline", "Muu"];
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
-const defaultAreas = ["Suur-Saimaa", "Pien-Saimaa", "Saimaa", "Muu vesialue"];
-const fishingSpots = [
-  { name: "Kyläniemen pohjoispuoli", lat: 61.33, lng: 28.18 },
-  { name: "Kyläniemen eteläpuoli", lat: 61.28, lng: 28.22 },
-  { name: "Sammaljärven ok", lat: 61.25, lng: 28.35 },
+const defaultAreas = [
+  "Saimaa",
+  "Suur-Saimaa",
+  "Pien-Saimaa",
+  "Päijänne",
+  "Oulunjärvi",
+  "Inarijärvi",
+  "Pielinen",
+  "Keitele",
+  "Näsijärvi",
+  "Vanajavesi",
+  "Pyhäjärvi",
+  "Kemijärvi",
+  "Lokka",
+  "Porttipahta",
+  "Muu",
 ];
 
 function safeId() {
@@ -56,7 +57,8 @@ function today() {
 function exportCsv(filename, rows) {
   const csv = rows
     .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(";"))
-    .join("\n");
+    .join("
+");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -92,9 +94,9 @@ async function clearBrokenSession() {
 
 function runLocalTests() {
   const tests = [
-    { name: "Muikun oletushinta löytyy", pass: defaultFishPrices.Muikku === 2 },
     { name: "Kuha on kalalistassa", pass: fishSpecies.includes("Kuha") },
-    { name: "Pyyntipaikkoja on 3", pass: fishingSpots.length === 3 },
+    { name: "Nuotta on pyydyslistassa", pass: gearTypes.includes("Nuotta") },
+    { name: "Muu on vesialuelistassa", pass: defaultAreas.includes("Muu") },
     { name: "Refresh token -virhe tunnistuu", pass: isMissingRefreshTokenError(new Error("Invalid Refresh Token: Refresh Token Not Found")) },
   ];
   const failed = tests.filter((test) => !test.pass);
@@ -395,16 +397,15 @@ function WholesaleOffersView({
                   <div style={styles.entryBadges}>
                     <span style={styles.badge}>{entry.species}</span>
                     <span style={styles.badge}>{entry.kilos} kg</span>
-                    <span style={styles.badge}>{entry.destination}</span>
                     <span style={styles.badge}>{entry.ownerName}</span>
                     {entry.offerToShops ? <span style={styles.badge}>Kauppoihin</span> : null}
                     {entry.offerToRestaurants ? <span style={styles.badge}>Ravintoloihin</span> : null}
                     {entry.offerToWholesalers ? <span style={styles.badge}>Tukkuihin</span> : null}
                   </div>
-                  <div style={styles.muted}>{entry.date} · {entry.area}{entry.spot ? ` / ${entry.spot}` : ""}</div>
-                  <div style={styles.muted}>Oletushinta: {euro(entry.pricePerKg)} / kg</div>
+                  <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                  <div style={styles.muted}>Pyydys: {entry.gear || "-"}</div>
                   <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
-                    {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
+                  {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                 </div>
               </div>
 
@@ -455,12 +456,12 @@ function WholesaleOffersView({
                           <div>
                             <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
                             <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
-                            <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{offer.spot ? ` / ${offer.spot}` : ""}</div>
+                            <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{entry.municipality ? ` · ${entry.municipality}` : ""}{offer.spot ? ` / ${offer.spot}` : ""}</div>
                           </div>
                           <div>
-                            <div style={styles.muted}><strong>Pyyntihinta:</strong> {offer.price_per_kg !== "" && offer.price_per_kg != null ? `${euro(offer.price_per_kg)} / kg` : "-"}</div>
                             <div style={styles.muted}><strong>Vastatarjous:</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? `${euro(offer.counter_price_per_kg)} / kg` : "-"}</div>
                             <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? `${offer.reserved_kilos} kg` : "-"}</div>
+                            <div style={styles.muted}><strong>Pyydys:</strong> {entry.gear || "-"}</div>
                           </div>
                         </div>
 
@@ -572,16 +573,12 @@ function ReportsView({ entries, offers }) {
     entry.date,
     entry.ownerName,
     entry.area,
+    entry.municipality || "",
     entry.spot,
     entry.species,
     entry.kilos,
     entry.count,
     entry.gear,
-    entry.gearCount,
-    entry.destination,
-    entry.buyer,
-    entry.pricePerKg,
-    entry.kilos * entry.pricePerKg,
     entry.deliveryMethod,
     entry.deliveryArea,
     entry.deliveryCost,
@@ -602,8 +599,7 @@ function ReportsView({ entries, offers }) {
   ]);
 
   const totalKg = entries.reduce((sum, entry) => sum + Number(entry.kilos || 0), 0);
-  const totalValue = entries.reduce((sum, entry) => sum + Number(entry.kilos || 0) * Number(entry.pricePerKg || 0), 0);
-  const saleCount = entries.filter((entry) => ["Myyntiin", "Tukkuun", "Jalostukseen"].includes(entry.destination)).length;
+  const saleCount = entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers).length;
 
   return (
     <div style={styles.grid2}>
@@ -612,7 +608,7 @@ function ReportsView({ entries, offers }) {
         <div style={styles.noticeInfo}>Raportit ladataan CSV-muodossa, joka aukeaa suoraan Excelissä.</div>
         <button
           style={{ ...styles.button, ...styles.primaryButton }}
-          onClick={() => exportCsv(`saaliit-${today()}.csv`, [["Päivä", "Kirjaaja", "Vesialue", "Pyyntipaikka", "Laji", "Kg", "Kpl", "Pyydys", "Pyydysten määrä", "Käyttötarkoitus", "Ostaja", "Hinta €/kg", "Arvo €", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...reportRows])}
+          onClick={() => exportCsv(`saaliit-${today()}.csv`, [["Pyyntipäivämäärä", "Kirjaaja", "Vesialue", "Paikkakunta", "Pyyntipaikka", "Laji", "Kg", "Kpl", "Pyydys", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...reportRows])}
         >
           Lataa saalisraportti Exceliin
         </button>
@@ -628,11 +624,10 @@ function ReportsView({ entries, offers }) {
         <strong>Raporttiyhteenveto</strong>
         <div style={styles.entryBadges}>
           <span style={styles.badge}>{totalKg.toFixed(1)} kg yhteensä</span>
-          <span style={styles.badge}>{euro(totalValue)} arvo</span>
           <span style={styles.badge}>{saleCount} myyntierää</span>
           <span style={styles.badge}>{offers.length} tarjousta</span>
         </div>
-        <div style={styles.muted}>Raportit sisältävät kaikki tällä hetkellä näkyvät saaliit ja tarjoukset.</div>
+        <div style={styles.muted}>Raportit sisältävät kaikki tällä hetkellä näkyvät erät ja tarjoukset.</div>
       </div>
     </div>
   );
@@ -661,13 +656,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [form, setForm] = useState({
     date: today(),
-    area: "Suur-Saimaa",
+    area: "Saimaa",
+    municipality: "",
     spot: "",
     gear: "Rysä",
-    gearCount: "",
-    destination: "Myyntiin",
-    buyer: "",
-    pricePerKg: "",
     notes: "",
     offerToShops: false,
     offerToRestaurants: false,
@@ -724,7 +716,6 @@ export default function App() {
   };
 
   const shouldRevealBuyerIdentity = (status) => status === "accepted";
-
   const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
 
   const buildOfferRecipients = (offerFormState, rows) => {
@@ -972,15 +963,12 @@ export default function App() {
             batchId: entry.batch_id,
             date: entry.date,
             area: entry.area,
+            municipality: entry.municipality || "",
             spot: entry.spot || "",
             species: entry.species,
             kilos: Number(entry.kilos || 0),
             count: Number(entry.count || 0),
             gear: entry.gear,
-            gearCount: Number(entry.gear_count || 0),
-            destination: entry.destination,
-            buyer: entry.buyer || "",
-            pricePerKg: Number(entry.price_per_kg || 0),
             notes: entry.notes || "",
             deliveryMethod: entry.delivery_method || "Nouto",
             deliveryArea: entry.delivery_area || "",
@@ -1075,7 +1063,7 @@ export default function App() {
     const q = search.trim().toLowerCase();
     return entries.filter((entry) => {
       if (!q) return true;
-      return [entry.species, entry.area, entry.spot, entry.gear, entry.destination, entry.buyer, entry.notes, entry.ownerName].join(" ").toLowerCase().includes(q);
+      return [entry.species, entry.area, entry.municipality, entry.spot, entry.gear, entry.notes, entry.ownerName].join(" ").toLowerCase().includes(q);
     });
   }, [entries, search]);
 
@@ -1083,15 +1071,12 @@ export default function App() {
 
   const totals = useMemo(() => {
     const totalKg = entries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
-    const totalValue = entries.reduce((sum, e) => sum + Number(e.kilos || 0) * Number(e.pricePerKg || 0), 0);
-    const totalGearCount = entries.reduce((sum, e) => sum + Number(e.gearCount || 0), 0);
-    const catchPerGear = totalGearCount > 0 ? totalKg / totalGearCount : 0;
     const forSaleKg = saleEntries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
     const speciesSummary = fishSpecies
       .map((species) => ({ species, kilos: entries.filter((e) => e.species === species).reduce((sum, e) => sum + Number(e.kilos || 0), 0) }))
       .filter((item) => item.kilos > 0)
       .sort((a, b) => b.kilos - a.kilos);
-    return { totalKg, totalValue, forSaleKg, catchPerGear, speciesSummary };
+    return { totalKg, forSaleKg, speciesSummary };
   }, [entries, saleEntries]);
 
   const addSpeciesRow = () => setSpeciesRows((prev) => [...prev, createSpeciesRow()]);
@@ -1319,6 +1304,7 @@ export default function App() {
       `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
       `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
       `Kaupallisen kalastajan tunnus: ${profileState?.commercial_fishing_id || "-"}`,
+      `Paikkakunta: ${formState.municipality || "-"}`,
     ];
 
     const entry = {
@@ -1326,10 +1312,9 @@ export default function App() {
       kilos: totalKilos,
       date: formState.date,
       area: formState.area,
+      municipality: formState.municipality || "",
       spot: formState.spot || "",
       gear: formState.gear || "",
-      gearCount: Number(formState.gearCount || 0),
-      pricePerKg: Number(formState.pricePerKg || 0),
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
       commercialFishingId: profileState?.commercial_fishing_id || "",
       deliveryMethod: formState.deliveryMethod || "Nouto",
@@ -1360,8 +1345,6 @@ export default function App() {
           area: entry.area,
           spot: entry.spot,
           gear: entry.gear,
-          gear_count: entry.gearCount,
-          price_per_kg: entry.pricePerKg || null,
           notes: entry.notes || null,
           status: "sent",
         })
@@ -1522,7 +1505,6 @@ export default function App() {
           total_kilos: offer?.total_kilos,
           area: offer?.area,
           spot: offer?.spot,
-          price_per_kg: offer?.price_per_kg,
           counter_price_per_kg: offer?.counter_price_per_kg,
           reserved_kilos: offer?.reserved_kilos,
           buyer_message: offer?.buyer_message,
@@ -1631,15 +1613,12 @@ export default function App() {
       offer_to_wholesalers: form.offerToWholesalers,
       date: form.date,
       area: form.area,
+      municipality: form.municipality,
       spot: form.spot,
       species: row.species,
       kilos: Number(row.kilos || 0),
       count: Number(row.count || 0),
       gear: form.gear,
-      gear_count: Number(form.gearCount || 0),
-      destination: form.destination,
-      buyer: form.buyer,
-      price_per_kg: Number(form.pricePerKg || defaultFishPrices[row.species] || 0),
       delivery_method: form.deliveryMethod,
       delivery_area: form.deliveryArea,
       delivery_cost: form.deliveryCost === "" ? null : Number(form.deliveryCost),
@@ -1693,8 +1672,7 @@ export default function App() {
     setSaving(false);
     setForm((prev) => ({
       ...prev,
-      buyer: "",
-      pricePerKg: "",
+      municipality: "",
       notes: "",
       date: today(),
       offerToShops: false,
@@ -1767,7 +1745,8 @@ export default function App() {
     };
 
     const buildOfferHeadline = (offer) => {
-      const firstLine = String(offer?.species_summary || "Kalaerä").split("\n")[0] || "Kalaerä";
+      const firstLine = String(offer?.species_summary || "Kalaerä").split("
+")[0] || "Kalaerä";
       const amountText = offer?.total_kilos ? `${offer.total_kilos} kg` : "";
       return `${firstLine} ${amountText}`.trim();
     };
@@ -1856,7 +1835,6 @@ export default function App() {
                           <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, marginBottom: 8 }}>{buildOfferHeadline(o)}</div>
                           <div style={styles.entryBadges}>
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
-                            {o.price_per_kg !== "" && o.price_per_kg != null ? <span style={styles.badge}>{euro(o.price_per_kg)} / kg</span> : null}
                             <span style={styles.badge}>{o.area || "-"}</span>
                             {o.seller_name ? <span style={styles.badge}>Myyjä: {o.seller_name}</span> : null}
                           </div>
@@ -1937,8 +1915,6 @@ export default function App() {
                 </select>
               ) : null}
               <span style={styles.badge}>{totals.totalKg.toFixed(1)} kg yhteensä</span>
-              <span style={styles.badge}>{euro(totals.totalValue)} arvo</span>
-              <span style={styles.badge}>{totals.catchPerGear.toFixed(1)} kg / pyydys</span>
               <button style={styles.button} onClick={() => setRefreshTick((prev) => prev + 1)}>Päivitä</button>
               <button style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
             </div>
@@ -1999,8 +1975,8 @@ export default function App() {
             ) : null}
             <div style={grid3}>
               <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{totals.totalKg.toFixed(1)} kg</div><div style={styles.muted}>Kokonaissaalis</div></div>
-              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{euro(totals.totalValue)}</div><div style={styles.muted}>Arvioitu myyntiarvo</div></div>
-              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{totals.forSaleKg.toFixed(1)} kg</div><div style={styles.muted}>Myytävissä / jalostukseen</div></div>
+              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{totals.forSaleKg.toFixed(1)} kg</div><div style={styles.muted}>Tarjolla ostajille</div></div>
+              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{entries.length}</div><div style={styles.muted}>Tallennettuja eriä</div></div>
             </div>
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <strong>Lajikohtainen yhteenveto</strong>
@@ -2017,12 +1993,13 @@ export default function App() {
         {activeTab === "add" ? (
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={formGrid}>
-              <div style={styles.field}><label>Päivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
+              <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
               <div style={styles.field}><label>Vesialue</label><select style={styles.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
-              <div style={styles.field}><label>Pyyntipaikka</label><select style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })}><option value="">Valitse pyyntipaikka</option>{fishingSpots.map((spot) => <option key={spot.name} value={spot.name}>{spot.name}</option>)}</select></div>
+              <div style={styles.field}><label>Paikkakunta</label><input style={styles.input} value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} placeholder="Esim. Savonlinna" /></div>
+              <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Kyläniemen eteläpuoli" /></div>
               <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
               <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
-                <div style={styles.rowBetween}><div><label>Kalalajit samasta tarkastuskerrasta</label><div style={styles.small}>Lisää yhdellä kertaa kaikki lajit, jotka tulivat samoista pyydyksistä.</div></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
+                <div style={styles.rowBetween}><div><label>Kalalajit samasta tarkastuskerrasta</label><div style={styles.small}>Lisää yhdellä kertaa kaikki lajit, jotka tulivat samalla pyyntikerralla.</div></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
                 {speciesRows.map((row, index) => (
                   <div key={row.id} style={speciesRow}>
                     <div style={styles.field}><label>Laji {index + 1}</label><select style={styles.input} value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)}>{fishSpecies.map((species) => <option key={species} value={species}>{species}</option>)}</select></div>
@@ -2033,10 +2010,6 @@ export default function App() {
                 ))}
               </div>
               <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm({ ...form, gear: e.target.value })}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
-              <div style={styles.field}><label>Pyydysten määrä</label><input style={styles.input} type="number" placeholder="Esim. 4" value={form.gearCount} onChange={(e) => setForm({ ...form, gearCount: e.target.value })} /></div>
-              <div style={styles.field}><label>Käyttötarkoitus</label><select style={styles.input} value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })}>{destinations.map((d) => <option key={d} value={d}>{d}</option>)}</select></div>
-              <div style={styles.field}><label>Ostaja</label><input style={styles.input} placeholder="Esim. Forelli / tukku" value={form.buyer} onChange={(e) => setForm({ ...form, buyer: e.target.value })} /></div>
-              <div style={styles.field}><label>Hinta €/kg</label><input style={styles.input} type="number" placeholder="Tyhjä = oletushinta" value={form.pricePerKg} onChange={(e) => setForm({ ...form, pricePerKg: e.target.value })} /></div>
               <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={form.deliveryMethod} onChange={(e) => setForm({ ...form, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
               <div style={styles.field}><label>Toimitusalue</label><input style={styles.input} placeholder="Esim. Etelä-Suomi / Helsinki / koko Suomi" value={form.deliveryArea} onChange={(e) => setForm({ ...form, deliveryArea: e.target.value })} /></div>
               <div style={styles.field}><label>Toimituskustannus €</label><input style={styles.input} type="number" placeholder="Esim. 90" value={form.deliveryCost} onChange={(e) => setForm({ ...form, deliveryCost: e.target.value })} /></div>
@@ -2067,14 +2040,11 @@ export default function App() {
                       <span style={styles.badge}>{entry.species}</span>
                       <span style={styles.badge}>{entry.kilos} kg</span>
                       <span style={styles.badge}>{entry.gear}</span>
-                      {entry.gearCount > 0 ? <span style={styles.badge}>{entry.gearCount} pyydystä</span> : null}
-                      {entry.gearCount > 0 ? <span style={styles.badge}>{(Number(entry.kilos || 0) / Number(entry.gearCount)).toFixed(1)} kg / pyydys</span> : null}
-                      <span style={styles.badge}>{entry.destination}</span>
                       <span style={styles.badge}>{entry.ownerName}</span>
                     </div>
-                    <div style={styles.muted}>{entry.date} · {entry.area}{entry.spot ? ` / ${entry.spot}` : ""}</div>
-                    <div style={styles.muted}>Ostaja: {entry.buyer || "-"} · Arvo: {euro(Number(entry.kilos || 0) * Number(entry.pricePerKg || 0))}</div>
+                    <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                     <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                    {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                   </div>
                   <button style={styles.button} onClick={() => handleDeleteEntry(entry)}>Poista saalistieto</button>
                 </div>
