@@ -17,6 +17,8 @@ const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Nuotta", "Vapavälin
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
 const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Jauhatus", "Kypsennys", "Muu"];
+const COMMISSION_RATE = 0.03;
+
 const defaultAreas = [
   "Saimaa",
   "Suur-Saimaa",
@@ -360,6 +362,7 @@ function WholesaleOffersView({
   };
 
   const groupedBuyerOffers = saleEntries.map((entry) => {
+    const reservation = getEntryReservation(entry);
     const batchMatches = (buyerOffers || []).filter(
       (offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId,
     );
@@ -376,6 +379,7 @@ function WholesaleOffersView({
 
     return {
       entry,
+      reservation,
       entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
       buyerMatches: [...batchMatches, ...entryMatches].sort(
         (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
@@ -391,7 +395,7 @@ function WholesaleOffersView({
         {groupedBuyerOffers.length === 0 ? (
           <div style={styles.muted}>Ei vielä myyntiin merkittyjä eriä.</div>
         ) : (
-          groupedBuyerOffers.map(({ entry, entryOffers, buyerMatches }) => (
+          groupedBuyerOffers.map(({ entry, reservation, entryOffers, buyerMatches }) => (
             <div key={entry.id} style={styles.entry}>
               <div style={styles.entryHeader}>
                 <div>
@@ -399,12 +403,21 @@ function WholesaleOffersView({
                     <span style={styles.badge}>{entry.species}</span>
                     <span style={styles.badge}>{entry.kilos} kg</span>
                     <span style={styles.badge}>{entry.ownerName}</span>
+                    {reservation?.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varattu</span> : null}
+                    {reservation?.status === "accepted" ? <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>Myyty</span> : null}
                     {entry.offerToShops ? <span style={styles.badge}>Kauppoihin</span> : null}
                     {entry.offerToRestaurants ? <span style={styles.badge}>Ravintoloihin</span> : null}
                     {entry.offerToWholesalers ? <span style={styles.badge}>Tukkuihin</span> : null}
                   </div>
                   <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                   <div style={styles.muted}>Pyydys: {entry.gear || "-"}</div>
+                  {reservation ? (
+                    <div style={styles.muted}>
+                      {reservation.status === "reserved"
+                        ? `Erä on varattu. Varannut: ${shouldRevealBuyerIdentity(reservation.status) ? (reservation.buyer_company_name || reservation.buyer_email || "ostaja") : buyerTypeLabel(reservation.buyer_type)}`
+                        : `Erä on myyty. Ostaja: ${shouldRevealBuyerIdentity(reservation.status) ? (reservation.buyer_company_name || reservation.buyer_email || "ostaja") : buyerTypeLabel(reservation.buyer_type)}`}
+                    </div>
+                  ) : null}
                   <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                   {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                 </div>
@@ -412,6 +425,8 @@ function WholesaleOffersView({
 
               <div style={{ ...styles.stack, marginTop: 12 }}>
                 <div style={styles.small}>Suorat tarjoukset tälle erälle: {entryOffers.length}</div>
+                {reservation?.status === "reserved" ? <div style={styles.noticeInfo}>Erä on tällä hetkellä varattu. Voit hyväksyä varauksen tai hylätä sen ostajien vastauksista.</div> : null}
+                {reservation?.status === "accepted" ? <div style={styles.noticeSuccess}>Erä on merkitty myydyksi hyväksytyn varauksen perusteella.</div> : null}
                 {entryOffers.map((offer) => (
                   <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc" }}>
                     <div style={styles.entryHeader}>
@@ -461,6 +476,8 @@ function WholesaleOffersView({
                           </div>
                           <div>
                             <div style={styles.muted}><strong>Vastatarjous:</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? `${euro(offer.counter_price_per_kg)} / kg` : "-"}</div>
+                            {offer.status === "accepted" ? <div style={styles.muted}><strong>Kaupan arvo:</strong> {euro(calculateCommissionDetails(offer).tradeValue)}</div> : null}
+                            {offer.status === "accepted" ? <div style={styles.muted}><strong>Komissio ({(COMMISSION_RATE * 100).toFixed(1)} %):</strong> {euro(calculateCommissionDetails(offer).commissionValue)}</div> : null}
                             <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? `${offer.reserved_kilos} kg` : "-"}</div>
                             <div style={styles.muted}><strong>Pyydys:</strong> {entry.gear || "-"}</div>
                           </div>
@@ -502,6 +519,7 @@ function WholesaleOffersView({
                   })
                 )}
 
+                {reservation?.status === "accepted" ? null : (
                 <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginTop: 8 }}>
                   <strong>Tee tarjous tästä erästä</strong>
                   <div style={styles.field}>
@@ -528,8 +546,9 @@ function WholesaleOffersView({
                     <label>Viesti</label>
                     <textarea style={styles.textarea} value={offerForm.message} onChange={(e) => setOfferForm((prev) => ({ ...prev, message: e.target.value }))} placeholder="Toimitus, nouto, lisäehdot" />
                   </div>
-                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onCreateOffer(entry)}>Lähetä tarjous</button>
+                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onCreateOffer(entry)} disabled={reservation?.status === "reserved"}>Lähetä tarjous</button>
                 </div>
+                )}
               </div>
             </div>
           ))
@@ -665,6 +684,153 @@ function ReportsView({ entries, processedEntries, offers }) {
   );
 }
 
+function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity, billingFilter, setBillingFilter, onUpdateBillingStatus }) {
+  const acceptedOffers = (buyerOffers || []).filter((offer) => {
+    if (offer.status !== "accepted") return false;
+    if (billingFilter === "all") return true;
+    return (offer.billing_status || "unbilled") === billingFilter;
+  });
+
+  const grouped = acceptedOffers.reduce((acc, offer) => {
+    const dateValue = offer.updated_at || offer.created_at || new Date().toISOString();
+    const monthKey = (() => {
+      try {
+        const d = new Date(dateValue);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      } catch {
+        return "Ei kuukautta";
+      }
+    })();
+
+    const sellerKey = offer.seller_user_id || offer.seller_name || "Tuntematon myyjä";
+    const sellerLabel = offer.seller_name || "Tuntematon myyjä";
+    const buyerLabel = shouldRevealBuyerIdentity(offer.status)
+      ? (offer.buyer_company_name || offer.buyer_email || "Ostaja")
+      : "Anonyymi ostaja";
+    const kilos = Number(offer.reserved_kilos || offer.total_kilos || 0);
+    const pricePerKg = Number(offer.counter_price_per_kg || offer.price_per_kg || 0);
+    const tradeValue = kilos * pricePerKg;
+    const commissionValue = tradeValue * COMMISSION_RATE;
+    const groupKey = `${monthKey}__${sellerKey}`;
+
+    if (!acc[groupKey]) {
+      acc[groupKey] = {
+        monthKey,
+        sellerKey,
+        sellerLabel,
+        offers: [],
+        totalKilos: 0,
+        totalTradeValue: 0,
+        totalCommissionValue: 0,
+      };
+    }
+
+    acc[groupKey].offers.push({
+      ...offer,
+      buyerLabel,
+      billingKilos: kilos,
+      billingPricePerKg: pricePerKg,
+      tradeValue,
+      commissionValue,
+    });
+    acc[groupKey].totalKilos += kilos;
+    acc[groupKey].totalTradeValue += tradeValue;
+    acc[groupKey].totalCommissionValue += commissionValue;
+    return acc;
+  }, {});
+
+  const groups = Object.values(grouped).sort((a, b) => {
+    if (a.monthKey === b.monthKey) return a.sellerLabel.localeCompare(b.sellerLabel, "fi");
+    return b.monthKey.localeCompare(a.monthKey, "fi");
+  });
+
+  const exportBillingCsv = (group) => {
+    exportCsv(
+      `laskutus-${group.monthKey}-${group.sellerLabel.replace(/[^a-z0-9åäö_-]+/gi, "-")}.csv`,
+      [
+        ["Kuukausi", "Myyjä", "Ostaja", "Erä", "Kg", "Hinta €/kg", "Kaupan arvo €", "Komissio %", "Komissio €", "Päivä", "Tila"],
+        ...group.offers.map((offer) => [
+          group.monthKey,
+          group.sellerLabel,
+          offer.buyerLabel,
+          String(offer.species_summary || "").replace(/
+/g, " | "),
+          offer.billingKilos,
+          offer.billingPricePerKg,
+          offer.tradeValue.toFixed(2),
+          `${(COMMISSION_RATE * 100).toFixed(1)} %`,
+          offer.commissionValue.toFixed(2),
+          offer.updated_at || offer.created_at || "",
+          buyerStatusLabel(offer.status),
+        ]),
+      ],
+    );
+  };
+
+  return (
+    <div style={styles.stack}>
+      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+        <div style={styles.rowBetween}>
+          <strong>Laskutus</strong>
+          <select style={styles.input} value={billingFilter} onChange={(e) => setBillingFilter(e.target.value)}>
+            <option value="unbilled">Laskuttamattomat</option>
+            <option value="invoiced">Laskutetut</option>
+            <option value="paid">Maksetut</option>
+            <option value="all">Kaikki</option>
+          </select>
+        </div>
+        <div style={styles.noticeInfo}>Tähän kerätään kaikki hyväksytyt kaupat myyjäkohtaisesti ja kuukausittain. Komissio lasketaan oletuksella {(COMMISSION_RATE * 100).toFixed(1)} % kaupan arvosta.</div>
+      </div>
+
+      {groups.length === 0 ? (
+        <div style={{ ...styles.card, ...styles.sectionCard }}>
+          <div style={styles.muted}>Ei vielä hyväksyttyjä kauppoja laskutettavaksi.</div>
+        </div>
+      ) : (
+        groups.map((group) => (
+          <div key={`${group.monthKey}-${group.sellerKey}`} style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={styles.rowBetween}>
+              <div>
+                <strong>{group.sellerLabel}</strong>
+                <div style={styles.muted}>Kuukausi: {group.monthKey}</div>
+              </div>
+              <button style={styles.button} onClick={() => exportBillingCsv(group)}>Vie laskutus CSV</button>
+            </div>
+
+            <div style={styles.entryBadges}>
+              <span style={styles.badge}>{group.totalKilos.toFixed(1)} kg</span>
+              <span style={styles.badge}>{euro(group.totalTradeValue)} kaupan arvo</span>
+              <span style={styles.badge}>{euro(group.totalCommissionValue)} komissio</span>
+              <span style={styles.badge}>{group.offers.length} kauppaa</span>
+            </div>
+
+            {group.offers.map((offer) => (
+              <div key={offer.id} style={styles.entry}>
+                <div style={styles.entryBadges}>
+                  <span style={styles.badge}>{offer.buyerLabel}</span>
+                  <span style={styles.badge}>{offer.billingKilos} kg</span>
+                  <span style={styles.badge}>{euro(offer.billingPricePerKg)} / kg</span>
+                  <span style={styles.badge}>{euro(offer.tradeValue)}</span>
+                  <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{euro(offer.commissionValue)} komissio</span>
+                </div>
+                <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                <div style={styles.muted}><strong>Päivä:</strong> {offer.updated_at || offer.created_at || "-"}</div>
+                <div style={styles.muted}><strong>Laskutustila:</strong> {offer.billing_status === "paid" ? "Maksettu" : offer.billing_status === "invoiced" ? "Laskutettu" : "Laskuttamaton"}</div>
+                {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
+                <div style={{ ...styles.row, marginTop: 10 }}>
+                  {offer.billing_status !== "invoiced" ? <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "invoiced")}>Merkitse laskutetuksi</button> : null}
+                  {offer.billing_status !== "paid" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBillingStatus(offer, "paid")}>Merkitse maksetuksi</button> : null}
+                  {offer.billing_status !== "unbilled" ? <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "unbilled")}>Palauta laskuttamattomaksi</button> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -673,6 +839,7 @@ export default function App() {
   const [offers, setOffers] = useState([]);
   const [buyerOffers, setBuyerOffers] = useState([]);
   const [buyerOffersFilter, setBuyerOffersFilter] = useState("open");
+  const [billingFilter, setBillingFilter] = useState("unbilled");
   const [buyerOffersSearch, setBuyerOffersSearch] = useState("");
   const [buyerActiveOfferId, setBuyerActiveOfferId] = useState(null);
   const [allowedUsers, setAllowedUsers] = useState([]);
@@ -753,6 +920,14 @@ export default function App() {
   });
   const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "" });
 
+  const calculateCommissionDetails = (offer) => {
+    const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
+    const pricePerKg = Number(offer?.counter_price_per_kg || offer?.price_per_kg || 0);
+    const tradeValue = kilos * pricePerKg;
+    const commissionValue = tradeValue * COMMISSION_RATE;
+    return { kilos, pricePerKg, tradeValue, commissionValue };
+  };
+
   const buyerTypeLabel = (type) => {
     if (type === "ravintola") return "Anonyymi ravintola";
     if (type === "tukku") return "Anonyymi tukku";
@@ -765,13 +940,29 @@ export default function App() {
     if (status === "viewed") return "Avattu";
     if (status === "countered") return "Vastatarjous";
     if (status === "reserved") return "Varattu";
-    if (status === "accepted") return "Hyväksytty";
+    if (status === "accepted") return "Kauppa hyväksytty";
     if (status === "rejected") return "Hylätty";
     if (status === "cancelled") return "Peruttu";
+    if (status === "expired") return "Varaus rauennut";
     return status || "-";
   };
 
   const shouldRevealBuyerIdentity = (status) => status === "accepted";
+  const getEntryReservation = (entry) => {
+    const matches = (buyerOffers || []).filter((offer) => {
+      if (offer.status !== "reserved" && offer.status !== "accepted") return false;
+      if (offer.batch_id && entry.batchId) return offer.batch_id === entry.batchId;
+      return (
+        offer.seller_user_id === entry.ownerUserId &&
+        offer.area === entry.area &&
+        offer.spot === (entry.spot || "") &&
+        Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
+      );
+    });
+
+    if (matches.length === 0) return null;
+    return matches.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
+  };
   const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
   const shouldSendProcessedOffer = processedForm.offerToShops || processedForm.offerToRestaurants || processedForm.offerToWholesalers;
 
@@ -1152,6 +1343,8 @@ export default function App() {
               buyer_company_name: buyer?.company_name || "",
               buyer_contact_name: buyer?.contact_name || "",
               buyer_phone: buyer?.phone || "",
+              billing_status: offer.billing_status || "unbilled",
+              billing_month: offer.billing_month || "",
             };
           }));
         }
@@ -1558,6 +1751,44 @@ export default function App() {
         buyer_phone: buyer?.phone || "",
       };
     }));
+  };
+
+  const handleUpdateBillingStatus = async (offer, billingStatus) => {
+    const patch = {
+      billing_status: billingStatus,
+      billed_at: billingStatus === "invoiced" ? new Date().toISOString() : null,
+      paid_at: billingStatus === "paid" ? new Date().toISOString() : null,
+      billing_month: offer.billing_month || (() => {
+        try {
+          const d = new Date(offer.updated_at || offer.created_at || new Date().toISOString());
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        } catch {
+          return "";
+        }
+      })(),
+      commission_rate: COMMISSION_RATE,
+      trade_value: calculateCommissionDetails(offer).tradeValue,
+      commission_amount: calculateCommissionDetails(offer).commissionValue,
+    };
+
+    const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offer.id);
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message);
+      return;
+    }
+
+    setAuthInfo(
+      billingStatus === "paid"
+        ? "Kauppa merkitty maksetuksi."
+        : billingStatus === "invoiced"
+        ? "Kauppa merkitty laskutetuksi."
+        : "Kauppa palautettu laskuttamattomaksi."
+    );
+    setRefreshTick((prev) => prev + 1);
   };
 
   const buyerUpdateOffer = async (offerId, patch) => {
@@ -2124,11 +2355,12 @@ export default function App() {
     };
 
     const filteredBuyerOffers = (buyerOffers || []).filter((offer) => {
+      if (offer.status === "accepted" || offer.status === "expired") return true;
       const q = buyerOffersSearch.trim().toLowerCase();
       const statusOk = buyerOffersFilter === "all"
         ? true
         : buyerOffersFilter === "open"
-        ? ["sent", "viewed", "countered"].includes(offer.status)
+        ? ["sent", "viewed", "countered", "reserved"].includes(offer.status)
         : offer.status === buyerOffersFilter;
       const text = [offer.seller_name, offer.area, offer.spot, offer.species_summary, offer.status, offer.buyer_message]
         .filter(Boolean)
@@ -2176,7 +2408,7 @@ export default function App() {
                 <select style={styles.input} value={buyerOffersFilter} onChange={(e) => setBuyerOffersFilter(e.target.value)}>
                   <option value="open">Avoimet</option>
                   <option value="reserved">Varatut</option>
-                  <option value="accepted">Hyväksytyt</option>
+                  <option value="accepted">Hyväksytyt / myydyt</option>
                   <option value="rejected">Hylätyt</option>
                   <option value="all">Kaikki</option>
                 </select>
@@ -2208,6 +2440,7 @@ export default function App() {
                           <div style={styles.entryBadges}>
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
                             <span style={styles.badge}>{o.area || "-"}</span>
+                            {o.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varaus käynnissä</span> : null}
                             {o.seller_name ? <span style={styles.badge}>Myyjä: {o.seller_name}</span> : null}
                           </div>
                         </div>
@@ -2227,14 +2460,17 @@ export default function App() {
                         {o.buyer_message ? <div style={styles.muted}>Sinun viesti: {o.buyer_message}</div> : null}
 
                         <div style={{ ...styles.row, marginTop: 12 }}>
-                          <button style={styles.button} onClick={() => setBuyerActiveOfferId(isActive ? null : o.id)}>{isActive ? "Sulje" : "Tee vastatarjous / varaa"}</button>
-                          <button style={styles.button} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button>
+                          <button style={styles.button} onClick={() => setBuyerActiveOfferId(isActive ? null : o.id)}>{isActive ? "Sulje" : o.status === "reserved" ? "Muokkaa varausta" : "Tee vastatarjous / varaa"}</button>
+                          {o.status !== "accepted" ? <button style={styles.button} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button> : null}
                         </div>
 
                         {isActive ? (
                           <div style={{ ...styles.stack, marginTop: 12 }}>
-                            <div style={styles.field}>
-                              <label>Vastatarjous €/kg</label>
+                            {o.status === "accepted" ? (
+                          <div style={styles.noticeSuccess}>Kauppa on hyväksytty. Myyjän yhteystiedot ja lopullinen toimitus voidaan sopia tämän varauksen pohjalta.</div>
+                        ) : null}
+                        <div style={styles.field}>
+                          <label>Vastatarjous €/kg</label>
                               <input style={styles.input} type="number" value={buyerAction.counter_price_per_kg} onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))} placeholder="Esim. 5.80" />
                             </div>
                             <div style={styles.field}>
@@ -2247,7 +2483,7 @@ export default function App() {
                             </div>
                             <div style={styles.row}>
                               <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onSubmitCounter(o)}>Lähetä vastatarjous</button>
-                              <button style={styles.button} onClick={() => onReserve(o)}>Varaa erä</button>
+                              <button style={styles.button} onClick={() => onReserve(o)}>{o.status === "reserved" ? "Päivitä varaus" : "Varaa erä"}</button>
                             </div>
                           </div>
                         ) : null}
@@ -2263,7 +2499,9 @@ export default function App() {
     );
   }
 
-  const tabStyle = profile.role === "owner" ? styles.tabs : styles.tabs6;
+  const tabStyle = profile.role === "owner"
+    ? { ...styles.tabs, gridTemplateColumns: "repeat(8, minmax(0, 1fr))" }
+    : styles.tabs6;
   const grid3 = responsiveGridStyle(styles.grid3);
   const grid2 = responsiveGridStyle(styles.grid2);
   const formGrid = responsiveGridStyle(styles.formGrid);
@@ -2304,6 +2542,7 @@ export default function App() {
           <button style={{ ...styles.tab, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
           {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
           {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
+          {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => setActiveTab("billing")}>Laskutus</button> : null}
         </div>
 
         {activeTab === "dashboard" ? (
@@ -2522,6 +2761,17 @@ export default function App() {
         ) : null}
 
         {activeTab === "reports" ? <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} /> : null}
+
+        {activeTab === "billing" && profile.role === "owner" ? (
+          <BillingView
+            buyerOffers={buyerOffers.map((offer) => ({ ...offer, ...calculateCommissionDetails(offer) }))}
+            buyerStatusLabel={buyerStatusLabel}
+            shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
+            billingFilter={billingFilter}
+            setBillingFilter={setBillingFilter}
+            onUpdateBillingStatus={handleUpdateBillingStatus}
+          />
+        ) : null}
 
         {activeTab === "buyers" && profile.role === "owner" ? (
           <div style={grid2}>
