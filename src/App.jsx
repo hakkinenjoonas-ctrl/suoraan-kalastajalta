@@ -348,8 +348,14 @@ function WholesaleOffersView({
 }) {
   const getEntryReservation = (entry) => {
     const matches = (buyerOffers || []).filter((offer) => {
-      if (offer.status !== "reserved" && offer.status !== "accepted") return false;
-      if (offer.batch_id && entry.batchId) return offer.batch_id === entry.batchId;
+      if (offer.status !== "reserved" && offer.status !== "accepted") {
+        return false;
+      }
+
+      if (offer.batch_id && entry.batchId) {
+        return offer.batch_id === entry.batchId;
+      }
+
       return (
         offer.seller_user_id === entry.ownerUserId &&
         offer.area === entry.area &&
@@ -359,8 +365,11 @@ function WholesaleOffersView({
     });
 
     if (matches.length === 0) return null;
+
     return matches.sort(
-      (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
+      (a, b) =>
+        new Date(b.updated_at || b.created_at || 0).getTime() -
+        new Date(a.updated_at || a.created_at || 0).getTime()
     )[0];
   };
 
@@ -381,12 +390,14 @@ function WholesaleOffersView({
 
   const groupedBuyerOffers = saleEntries.map((entry) => {
     const reservation = getEntryReservation(entry);
+
     const batchMatches = (buyerOffers || []).filter(
-      (offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId,
+      (offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId
     );
 
     const entryMatches = (buyerOffers || []).filter((offer) => {
       if (offer.batch_id && entry.batchId) return false;
+
       return (
         offer.seller_user_id === entry.ownerUserId &&
         offer.area === entry.area &&
@@ -394,6 +405,18 @@ function WholesaleOffersView({
         Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
       );
     });
+
+    return {
+      entry,
+      reservation,
+      entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
+      buyerMatches: [...batchMatches, ...entryMatches].sort(
+        (a, b) =>
+          new Date(b.updated_at || b.created_at || 0).getTime() -
+          new Date(a.updated_at || a.created_at || 0).getTime()
+      ),
+    };
+  });
 
     return {
       entry,
