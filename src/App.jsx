@@ -1634,6 +1634,151 @@ export default function App() {
       offerUrlBase,
     };
 
+    const sent = [];
+    const failed = [];
+
+    for (const recipient of recipients) {
+      const insertedOffer = await supabase
+        .from("buyer_offers")
+        .insert({
+          batch_id: batchId,
+          buyer_id: recipient.buyer_id || null,
+          buyer_email: recipient.email,
+          seller_user_id: profileState?.id || null,
+          seller_name: profileState?.display_name || profileState?.email || null,
+          total_kilos: entry.kilos,
+          species_summary: summaryLines,
+          area: entry.area,
+          spot: entry.spot,
+          gear: entry.gear,
+          notes: entry.notes || null,
+          status: "sent",
+          billing_status: "unbilled",
+        })
+        .select("id")
+        .single();
+
+      if (insertedOffer.error) {
+        failed.push({
+          company_name: recipient.company_name,
+          contact_name: recipient.contact_name,
+          email: recipient.email,
+          channel: recipient.channel,
+          error: insertedOffer.error.message || "buyer_offers-rivin tallennus epäonnistui",
+        });
+        continue;
+      }
+
+      const offerId = insertedOffer?.data?.id || null;
+
+      try {
+        console.log("About to invoke send-catch-offer-email", {
+          recipientEmail: recipient.email,
+          recipientCompany: recipient.company_name,
+          entry,
+        });
+
+        const { data, error } = await supabase.functions.invoke("send-catch-offer-email", {
+          body: {
+            entry,
+            recipients: [{
+              email: recipient.email,
+              company_name: recipient.company_name,
+              offer_id: offerId,
+              offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+            }],
+          },
+        });
+
+        console.log("Invoke result", { data, error });
+
+        if (error) {
+          failed.push({
+            company_name: recipient.company_name,
+            contact_name: recipient.contact_name,
+            email: recipient.email,
+            channel: recipient.channel,
+            error: error.message || "Tarjoussähköpostin lähetys epäonnistui",
+          });
+        } else {
+          sent.push({
+            buyer_id: recipient.buyer_id,
+            company_name: recipient.company_name,
+            contact_name: recipient.contact_name,
+            email: recipient.email,
+            channel: recipient.channel,
+            offer_id: offerId,
+            offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+            data,
+          });
+        }
+      } catch (err) {
+        console.error("Email sending failed", err);
+        failed.push({
+          company_name: recipient.company_name,
+          contact_name: recipient.contact_name,
+          email: recipient.email,
+          channel: recipient.channel,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    if (failed.length > 0 && sent.length === 0) {
+      throw new Error(failed.map((item) => `${item.company_name}: ${item.error}`).join(" | "));
+    }
+
+    return { skipped: false, sent, failed };
+  };
+
+  const sendCatchOfferEmail_OLD = async ({ formState, rows, profileState, batchId }) => {
+    const recipients = buildOfferRecipients(formState, rows).map((recipient) => ({
+      ...recipient,
+      email: (recipient.email || "").trim().toLowerCase(),
+    }));
+    if (recipients.length === 0) {
+      return { skipped: true, sent: [], failed: [] };
+    }
+
+    const summaryLines = rows
+      .map((row) => {
+        const kilos = Number(row.kilos || 0);
+        const count = Number(row.count || 0);
+        return `${row.species}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
+      })
+      .join(String.fromCharCode(10));
+
+    const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
+    const offerUrlBase = typeof window !== "undefined" ? window.location.origin : "https://suoraan-kalastajalta.vercel.app";
+    const logisticsLines = [
+      `Toimitustapa: ${formState.deliveryMethod || "-"}`,
+      `Toimitusalue: ${formState.deliveryArea || "-"}`,
+      `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
+      `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
+      `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
+      `Kaupallisen kalastajan tunnus: ${profileState?.commercial_fishing_id || "-"}`,
+      `Paikkakunta: ${formState.municipality || "-"}`,
+    ];
+
+    const entry = {
+      species: rows.map((row) => row.species).join(", "),
+      kilos: totalKilos,
+      date: formState.date,
+      area: formState.area,
+      municipality: formState.municipality || "",
+      spot: formState.spot || "",
+      gear: formState.gear || "",
+      ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
+      commercialFishingId: profileState?.commercial_fishing_id || "",
+      deliveryMethod: formState.deliveryMethod || "Nouto",
+      deliveryArea: formState.deliveryArea || "",
+      deliveryCost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
+      earliestDeliveryDate: formState.earliestDeliveryDate || "",
+      coldTransport: Boolean(formState.coldTransport),
+      notes: [formState.notes || "", "", "Erän lajit:", summaryLines, "", "Toimitus:", ...logisticsLines].join(String.fromCharCode(10)).trim(),
+      offerUrlBase,
+    };
+
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
     const sent = [];
