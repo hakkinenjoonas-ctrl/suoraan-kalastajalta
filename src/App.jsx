@@ -342,6 +342,7 @@ function WholesaleOffersView({
   setOfferForm,
   onCreateOffer,
   onUpdateOfferStatus,
+  onUpdateBuyerOfferStatus,
   buyerTypeLabel,
   buyerStatusLabel,
   shouldRevealBuyerIdentity,
@@ -456,7 +457,7 @@ function WholesaleOffersView({
 
               <div style={{ ...styles.stack, marginTop: 12 }}>
                 <div style={styles.small}>Suorat tarjoukset tälle erälle: {entryOffers.length}</div>
-                <div style={styles.small}>Tarjous lähetetty {buyerMatches.filter((offer) => offer.status === "sent" || offer.status === "viewed").length} ostajalle</div>
+                <div style={styles.small}>Tarjous lähetetty {buyerMatches.length} ostajalle</div>
                 {reservation?.status === "reserved" ? <div style={styles.noticeInfo}>Erä on tällä hetkellä varattu. Voit hyväksyä varauksen tai hylätä sen ostajien vastauksista.</div> : null}
                 {reservation?.status === "accepted" ? <div style={styles.noticeSuccess}>Erä on merkitty myydyksi hyväksytyn varauksen perusteella.</div> : null}
                 {entryOffers.map((offer) => (
@@ -475,14 +476,14 @@ function WholesaleOffersView({
                       {profile?.role === "owner" || profile?.id === entry.ownerUserId ? (
                         <div style={styles.row}>
                           <button style={styles.button} onClick={() => onUpdateOfferStatus(offer, "accepted")}>Hyväksy</button>
-                          <button style={styles.button} onClick={() => onUpdateOfferStatus(offer, "rejected")}>Hylkää</button>
+                          <button style={styles.button} onClick={() => onUpdateBuyerOfferStatus(offer, "rejected")}>Hylkää</button>
                         </div>
                       ) : null}
                     </div>
                   </div>
                 ))}
 
-                <div style={styles.small}>Ostajien vastaukset: {buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length}</div>
+                <div style={styles.small}>Vastauksia: {buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length}</div>
                 {buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length === 0 ? (
                   <div style={styles.muted}>Ei vielä ostajien vastauksia.</div>
                 ) : (
@@ -542,7 +543,7 @@ function WholesaleOffersView({
 
                         {!revealIdentity && (profile?.role === "owner" || profile?.id === entry.ownerUserId) ? (
                           <div style={styles.row}>
-                            {offer.status !== "accepted" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateOfferStatus(offer, "accepted")}>Hyväksy kauppa</button> : null}
+                            {offer.status !== "accepted" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBuyerOfferStatus(offer, "accepted")}>Hyväksy kauppa</button> : null}
                             {offer.status !== "rejected" ? <button style={styles.button} onClick={() => onUpdateOfferStatus(offer, "rejected")}>Hylkää</button> : null}
                           </div>
                         ) : null}
@@ -954,11 +955,34 @@ export default function App() {
     if (status === "accepted") return "Kauppa hyväksytty";
     if (status === "rejected") return "Hylätty";
     if (status === "cancelled") return "Peruttu";
-    if (status === "expired") return "Varaus rauennut";
     return status || "-";
   };
 
   const shouldRevealBuyerIdentity = (status) => status === "accepted";
+
+  const getSellerIdentityForBuyer = (offer) => {
+    const matchingEntry = entries.find((entry) => {
+      if (offer.batch_id && entry.batchId) return offer.batch_id === entry.batchId;
+      return (
+        entry.ownerUserId === offer.seller_user_id &&
+        entry.area === offer.area &&
+        (entry.spot || "") === (offer.spot || "") &&
+        Number(entry.kilos || 0) === Number(offer.total_kilos || 0)
+      );
+    });
+
+    return {
+      sellerName: offer.seller_name || matchingEntry?.ownerName || "Myyjä",
+      sellerCommercialFishingId: matchingEntry?.commercialFishingId || "",
+      sellerArea: matchingEntry?.area || offer.area || "",
+      sellerSpot: matchingEntry?.spot || offer.spot || "",
+      deliveryMethod: matchingEntry?.deliveryMethod || "",
+      deliveryArea: matchingEntry?.deliveryArea || "",
+      deliveryCost: matchingEntry?.deliveryCost,
+      earliestDeliveryDate: matchingEntry?.earliestDeliveryDate || "",
+      coldTransport: matchingEntry?.coldTransport,
+    };
+  };
   const getEntryReservation = (entry) => {
     const matches = (buyerOffers || []).filter((offer) => {
       if (offer.status !== "reserved" && offer.status !== "accepted") return false;
@@ -2102,6 +2126,33 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
+  const onUpdateBuyerOfferStatus = async (offer, status) => {
+    const { error } = await supabase
+      .from("buyer_offers")
+      .update({ status })
+      .eq("id", offer.id);
+
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message);
+      return;
+    }
+
+    setAuthInfo(
+      status === "accepted"
+        ? "Kauppa hyväksytty."
+        : status === "rejected"
+        ? "Tarjous hylätty."
+        : "Tarjouksen tila päivitetty."
+    );
+
+    await refreshBuyerOffers();
+    setRefreshTick((prev) => prev + 1);
+  };
+
   const sendProcessedOfferEmail = async ({ formState, profileState, batchId }) => {
     const rows = [{ species: formState.productName || formState.productType || "Jaloste-erä", kilos: formState.kilos, count: formState.packageCount }];
     const recipients = buildOfferRecipients({
@@ -2608,6 +2659,11 @@ export default function App() {
                         </div>
 
                         {o.buyer_message ? <div style={styles.muted}>Sinun viesti: {o.buyer_message}</div> : null}
+                        {o.status === "accepted" ? (
+                          <div style={{ ...styles.noticeSuccess, marginTop: 10 }}>
+                            Kauppa hyväksytty. Myyjä hyväksyi tarjouksesi.
+                          </div>
+                        ) : null}
 
                         <div style={{ ...styles.row, marginTop: 12 }}>
                           <button style={styles.button} onClick={() => {
@@ -2909,6 +2965,7 @@ export default function App() {
             setOfferForm={setOfferForm}
             onCreateOffer={handleCreateOffer}
             onUpdateOfferStatus={onUpdateOfferStatus}
+            onUpdateBuyerOfferStatus={onUpdateBuyerOfferStatus}
             buyerTypeLabel={buyerTypeLabel}
             buyerStatusLabel={buyerStatusLabel}
             shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
