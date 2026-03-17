@@ -945,6 +945,14 @@ export default function App() {
     max_kg: "",
     is_active: true,
     notes: "",
+    delivery_address: "",
+    delivery_postcode: "",
+    delivery_city: "",
+    billing_address: "",
+    billing_postcode: "",
+    billing_city: "",
+    billing_email: "",
+    business_id: "",
   });
   const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "" });
 
@@ -1549,6 +1557,14 @@ export default function App() {
       max_kg: "",
       is_active: true,
       notes: "",
+      delivery_address: "",
+      delivery_postcode: "",
+      delivery_city: "",
+      billing_address: "",
+      billing_postcode: "",
+      billing_city: "",
+      billing_email: "",
+      business_id: "",
     });
   };
 
@@ -1565,6 +1581,14 @@ export default function App() {
       max_kg: buyer.max_kg === "" || buyer.max_kg == null ? "" : String(buyer.max_kg),
       is_active: Boolean(buyer.is_active),
       notes: buyer.notes || "",
+      delivery_address: buyer.delivery_address || "",
+      delivery_postcode: buyer.delivery_postcode || "",
+      delivery_city: buyer.delivery_city || "",
+      billing_address: buyer.billing_address || "",
+      billing_postcode: buyer.billing_postcode || "",
+      billing_city: buyer.billing_city || "",
+      billing_email: buyer.billing_email || "",
+      business_id: buyer.business_id || "",
     });
     setUserMessage(`Muokataan ostajaa: ${buyer.company_name}`);
   };
@@ -1595,6 +1619,14 @@ export default function App() {
       max_kg: buyerForm.max_kg === "" ? null : Number(buyerForm.max_kg),
       is_active: buyerForm.is_active,
       notes: buyerForm.notes.trim(),
+      delivery_address: (buyerForm.delivery_address || "").trim(),
+      delivery_postcode: (buyerForm.delivery_postcode || "").trim(),
+      delivery_city: (buyerForm.delivery_city || "").trim(),
+      billing_address: (buyerForm.billing_address || "").trim(),
+      billing_postcode: (buyerForm.billing_postcode || "").trim(),
+      billing_city: (buyerForm.billing_city || "").trim(),
+      billing_email: (buyerForm.billing_email || "").trim().toLowerCase(),
+      business_id: (buyerForm.business_id || "").trim(),
     };
 
     if (!payload.company_name || !payload.email) {
@@ -2143,9 +2175,29 @@ export default function App() {
   };
 
   const onUpdateBuyerOfferStatus = async (offer, status) => {
+    let updatePayload = { status };
+
+    if (status === "accepted") {
+      const buyerRecord = buyers.find((buyer) => buyer.id === offer.buyer_id || buyer.email === (offer.buyer_email || "").toLowerCase());
+
+      if (buyerRecord) {
+        updatePayload = {
+          ...updatePayload,
+          buyer_delivery_address: buyerRecord.delivery_address || null,
+          buyer_delivery_postcode: buyerRecord.delivery_postcode || null,
+          buyer_delivery_city: buyerRecord.delivery_city || null,
+          buyer_billing_address: buyerRecord.billing_address || null,
+          buyer_billing_postcode: buyerRecord.billing_postcode || null,
+          buyer_billing_city: buyerRecord.billing_city || null,
+          buyer_billing_email: buyerRecord.billing_email || null,
+          buyer_business_id: buyerRecord.business_id || null,
+        };
+      }
+    }
+
     const { error } = await supabase
       .from("buyer_offers")
-      .update({ status })
+      .update(updatePayload)
       .eq("id", offer.id);
 
     if (error) {
@@ -2159,7 +2211,7 @@ export default function App() {
 
     setAuthInfo(
       status === "accepted"
-        ? "Kauppa hyväksytty."
+        ? "Kauppa hyväksytty. Ostajan toimitus- ja laskutustiedot tallennettu kaupalle."
         : status === "rejected"
         ? "Tarjous hylätty."
         : "Tarjouksen tila päivitetty."
@@ -3021,6 +3073,14 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               <div style={styles.field}><label>Min kg</label><input style={styles.input} type="number" value={buyerForm.min_kg} onChange={(e) => setBuyerForm((prev) => ({ ...prev, min_kg: e.target.value }))} placeholder="Esim. tukkuille" /></div>
               <div style={styles.field}><label>Max kg</label><input style={styles.input} type="number" value={buyerForm.max_kg} onChange={(e) => setBuyerForm((prev) => ({ ...prev, max_kg: e.target.value }))} placeholder="Esim. ravintoloille" /></div>
               <div style={styles.field}><label><input type="checkbox" checked={buyerForm.is_active} onChange={(e) => setBuyerForm((prev) => ({ ...prev, is_active: e.target.checked }))} /> Aktiivinen</label></div>
+              <div style={styles.field}><label>Toimitusosoite</label><input style={styles.input} value={buyerForm.delivery_address} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_address: e.target.value }))} placeholder="Katuosoite" /></div>
+              <div style={styles.field}><label>Toimitus postinumero</label><input style={styles.input} value={buyerForm.delivery_postcode} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_postcode: e.target.value }))} placeholder="00100" /></div>
+              <div style={styles.field}><label>Toimitus kaupunki</label><input style={styles.input} value={buyerForm.delivery_city} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_city: e.target.value }))} placeholder="Helsinki" /></div>
+              <div style={styles.field}><label>Laskutusosoite</label><input style={styles.input} value={buyerForm.billing_address} onChange={(e) => setBuyerForm((prev) => ({ ...prev, billing_address: e.target.value }))} placeholder="Katuosoite" /></div>
+              <div style={styles.field}><label>Laskutus postinumero</label><input style={styles.input} value={buyerForm.billing_postcode} onChange={(e) => setBuyerForm((prev) => ({ ...prev, billing_postcode: e.target.value }))} placeholder="00100" /></div>
+              <div style={styles.field}><label>Laskutus kaupunki</label><input style={styles.input} value={buyerForm.billing_city} onChange={(e) => setBuyerForm((prev) => ({ ...prev, billing_city: e.target.value }))} placeholder="Helsinki" /></div>
+              <div style={styles.field}><label>Laskutussähköposti</label><input style={styles.input} type="email" value={buyerForm.billing_email} onChange={(e) => setBuyerForm((prev) => ({ ...prev, billing_email: e.target.value }))} placeholder="laskutus@yritys.fi" /></div>
+              <div style={styles.field}><label>Y-tunnus</label><input style={styles.input} value={buyerForm.business_id} onChange={(e) => setBuyerForm((prev) => ({ ...prev, business_id: e.target.value }))} placeholder="1234567-8" /></div>
               <div style={styles.field}><label>Lisätiedot</label><textarea style={styles.textarea} value={buyerForm.notes} onChange={(e) => setBuyerForm((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Erätoiveet, toimitus, huomioita" /></div>
               {userMessage ? <div style={styles.noticeSuccess}>{userMessage}</div> : null}
               <div style={styles.row}>
@@ -3044,6 +3104,8 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                       </div>
                       <div style={styles.muted}>{buyer.contact_name || "-"}{buyer.phone ? ` · ${buyer.phone}` : ""}{buyer.city ? ` · ${buyer.city}` : ""}</div>
                       {buyer.notes ? <div style={styles.muted}>{buyer.notes}</div> : null}
+                      {(buyer.delivery_address || buyer.delivery_postcode || buyer.delivery_city) ? <div style={styles.muted}><strong>Toimitus:</strong> {[buyer.delivery_address, buyer.delivery_postcode, buyer.delivery_city].filter(Boolean).join(", ")}</div> : null}
+                      {(buyer.billing_address || buyer.billing_postcode || buyer.billing_city || buyer.billing_email || buyer.business_id) ? <div style={styles.muted}><strong>Laskutus:</strong> {[buyer.billing_address, buyer.billing_postcode, buyer.billing_city].filter(Boolean).join(", ")}{buyer.billing_email ? ` · ${buyer.billing_email}` : ""}{buyer.business_id ? ` · Y-tunnus ${buyer.business_id}` : ""}</div> : null}
                     </div>
                     <div style={styles.row}>
                       <button style={styles.button} onClick={() => startEditBuyer(buyer)}>Muokkaa</button>
