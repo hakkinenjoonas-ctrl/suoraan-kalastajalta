@@ -12,7 +12,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   },
 });
 
-const fishSpecies = ["Muikku", "Kuha", "Ahven", "Hauki", "Lahna", "Särki", "Säyne", "Siika", "Made", "Muu"];
+const fishSpecies = ["Muikku", "Kuha", "Ahven", "Hauki", "Lahna", "Särki", "Säyne", "Siika", "Made", "Silakka", "Muu"];
 const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Nuotta", "Vapaväline", "Muu"];
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
@@ -84,7 +84,14 @@ function safeId() {
 }
 
 function createSpeciesRow() {
-  return { id: safeId(), species: "Muikku", kilos: "", count: "" };
+  return { id: safeId(), species: "Muikku", customSpecies: "", kilos: "", count: "" };
+}
+
+function getSpeciesRowLabel(row) {
+  if (row?.species === "Muu") {
+    return String(row?.customSpecies || "").trim() || "Muu";
+  }
+  return row?.species || "";
 }
 
 function euro(value) {
@@ -1506,7 +1513,7 @@ export default function App() {
     const forSaleKg = saleEntries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
     const totalProcessedKg = processedEntries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
     const processedForSaleKg = processedSaleEntries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
-    const speciesSummary = fishSpecies
+    const speciesSummary = Array.from(new Set([...fishSpecies.filter((species) => species !== "Muu"), ...entries.map((entry) => entry.species).filter(Boolean)]))
       .map((species) => ({ species, kilos: entries.filter((e) => e.species === species).reduce((sum, e) => sum + Number(e.kilos || 0), 0) }))
       .filter((item) => item.kilos > 0)
       .sort((a, b) => b.kilos - a.kilos);
@@ -1518,7 +1525,13 @@ export default function App() {
   }, [entries, saleEntries, processedEntries, processedSaleEntries]);
 
   const addSpeciesRow = () => setSpeciesRows((prev) => [...prev, createSpeciesRow()]);
-  const updateSpeciesRow = (id, field, value) => setSpeciesRows((prev) => prev.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
+  const updateSpeciesRow = (id, field, value) => setSpeciesRows((prev) => prev.map((row) => {
+    if (row.id !== id) return row;
+    if (field === "species") {
+      return { ...row, species: value, customSpecies: value === "Muu" ? row.customSpecies : "" };
+    }
+    return { ...row, [field]: value };
+  }));
   const removeSpeciesRow = (id) => setSpeciesRows((prev) => (prev.length === 1 ? [createSpeciesRow()] : prev.filter((row) => row.id !== id)));
   const duplicateSpeciesRow = (id) => setSpeciesRows((prev) => {
     const row = prev.find((item) => item.id === id);
@@ -1753,7 +1766,7 @@ export default function App() {
       .map((row) => {
         const kilos = Number(row.kilos || 0);
         const count = Number(row.count || 0);
-        return `${row.species}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
+        return `${getSpeciesRowLabel(row)}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
       })
       .join(String.fromCharCode(10));
 
@@ -1770,7 +1783,7 @@ export default function App() {
     ];
 
     const entry = {
-      species: rows.map((row) => row.species).join(", "),
+      species: rows.map((row) => getSpeciesRowLabel(row)).join(", "),
       kilos: totalKilos,
       date: formState.date,
       area: formState.area,
@@ -2434,6 +2447,10 @@ export default function App() {
     if (!profile) return;
     const validRows = speciesRows.filter((row) => Number(row.kilos || 0) > 0);
     if (!validRows.length) return;
+    if (validRows.some((row) => row.species === "Muu" && !String(row.customSpecies || "").trim())) {
+      setAuthError("Kirjoita kalalajin nimi kaikille riveille, joilla lajiksi on valittu Muu.");
+      return;
+    }
     setSaving(true);
     const batchId = new Date().toISOString();
     const payload = validRows.map((row) => ({
@@ -2444,7 +2461,7 @@ export default function App() {
       area: form.area,
       municipality: form.municipality,
       spot: form.spot,
-      species: row.species,
+      species: getSpeciesRowLabel(row),
       kilos: Number(row.kilos || 0),
       count: Number(row.count || 0),
       gear: form.gear,
@@ -3003,10 +3020,14 @@ export default function App() {
                 <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Isoselkä" /></div>
                 <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
-                  <div style={styles.rowBetween}><div><label>Kalalajit samasta tarkastuskerrasta</label><div style={styles.small}>Lisää yhdellä kertaa kaikki lajit, jotka tulivat samalla pyyntikerralla.</div></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
+                  <div style={styles.rowBetween}><div><label>KALAERÄ</label><div style={styles.small}>Lisää yhdellä kertaa kaikki lajit, jotka tulivat samalla pyyntikerralla.</div></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
                   {speciesRows.map((row, index) => (
                     <div key={row.id} style={speciesRow}>
-                      <div style={styles.field}><label>Laji {index + 1}</label><select style={styles.input} value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)}>{fishSpecies.map((species) => <option key={species} value={species}>{species}</option>)}</select></div>
+                      <div style={styles.field}>
+                        <label>Laji {index + 1}</label>
+                        <select style={styles.input} value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)}>{fishSpecies.map((species) => <option key={species} value={species}>{species}</option>)}</select>
+                        {row.species === "Muu" ? <input style={{ ...styles.input, marginTop: 8 }} placeholder="Kirjoita kalalaji" value={row.customSpecies} onChange={(e) => updateSpeciesRow(row.id, "customSpecies", e.target.value)} /> : null}
+                      </div>
                       <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
                       <div style={styles.field}><label>Kpl</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
                       <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
