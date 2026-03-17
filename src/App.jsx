@@ -1058,16 +1058,7 @@ export default function App() {
     if (status === "viewed") return "Avattu";
     if (status === "countered") return "Vastatarjous";
     if (status === "reserved") return "Varattu";
-    if (status === "accepted") return "<span style={{
-  backgroundColor: "#22c55e",
-  color: "white",
-  padding: "4px 10px",
-  borderRadius: "999px",
-  fontSize: 12,
-  fontWeight: 600
-}}>
-  Kauppa hyväksytty
-</span>";
+    if (status === "accepted") return "Kauppa hyväksytty";
     if (status === "rejected") return "Hylätty";
     if (status === "cancelled") return "Peruttu";
     return status || "-";
