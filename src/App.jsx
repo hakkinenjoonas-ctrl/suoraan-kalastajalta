@@ -500,8 +500,8 @@ function WholesaleOffersView({
                     <span style={styles.badge}>{entry.species}</span>
                     <span style={styles.badge}>{entry.kilos} kg</span>
                     <span style={styles.badge}>{entry.ownerName}</span>
-                    {reservation?.status === "reserved" ? Kauppa hyväksytty /* removed invalid JSX string */ // ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varattu</span> : null}
-                    {reservation?.status === "accepted" ? Kauppa hyväksytty /* removed invalid JSX string */ // ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>Myyty</span> : null}
+                    {reservation?.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varattu</span> : null}
+                    {reservation?.status === "accepted" ? <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>Myyty</span> : null}
                     {entry.offerToShops ? <span style={styles.badge}>Kauppoihin</span> : null}
                     {entry.offerToRestaurants ? <span style={styles.badge}>Ravintoloihin</span> : null}
                     {entry.offerToWholesalers ? <span style={styles.badge}>Tukkuihin</span> : null}
