@@ -1692,13 +1692,17 @@ export default function App() {
 
         console.log("Invoke result", { data, error });
 
+        if (data?.results) {
+          console.log("Function results", data.results);
+        }
+
         if (error) {
           failed.push({
             company_name: recipient.company_name,
             contact_name: recipient.contact_name,
             email: recipient.email,
             channel: recipient.channel,
-            error: error.message || "Tarjoussähköpostin lähetys epäonnistui",
+            error: error?.context?.error || error?.message || "Tarjoussähköpostin lähetys epäonnistui",
           });
         } else {
           sent.push({
@@ -1848,7 +1852,7 @@ export default function App() {
           contact_name: recipient.contact_name,
           email: recipient.email,
           channel: recipient.channel,
-          error: error.message || "Tarjoussähköpostin lähetys epäonnistui",
+          error: error?.context?.error || error?.message || "Tarjoussähköpostin lähetys epäonnistui",
         });
       }
     }
@@ -2213,7 +2217,7 @@ export default function App() {
           contact_name: recipient.contact_name,
           email: recipient.email,
           channel: recipient.channel,
-          error: error.message || "Tarjoussähköpostin lähetys epäonnistui",
+          error: error?.context?.error || error?.message || "Tarjoussähköpostin lähetys epäonnistui",
         });
       }
     }
