@@ -346,6 +346,21 @@ function WholesaleOffersView({
   buyerStatusLabel,
   shouldRevealBuyerIdentity,
 }) {
+  const formatOfferDate = (value) => {
+    if (!value) return "-";
+    try {
+      return new Date(value).toLocaleString("fi-FI", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return value;
+    }
+  };
+
   const getEntryReservation = (entry) => {
     const matches = (buyerOffers || []).filter((offer) => {
       if (offer.status !== "reserved" && offer.status !== "accepted") {
@@ -371,21 +386,6 @@ function WholesaleOffersView({
         new Date(b.updated_at || b.created_at || 0).getTime() -
         new Date(a.updated_at || a.created_at || 0).getTime()
     )[0];
-  };
-
-  const formatOfferDate = (value) => {
-    if (!value) return "-";
-    try {
-      return new Date(value).toLocaleString("fi-FI", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return value;
-    }
   };
 
   const groupedBuyerOffers = saleEntries.map((entry) => {
@@ -414,152 +414,6 @@ function WholesaleOffersView({
         (a, b) =>
           new Date(b.updated_at || b.created_at || 0).getTime() -
           new Date(a.updated_at || a.created_at || 0).getTime()
-      ),
-    };
-  });
-
-    return {
-      entry,
-      reservation,
-      entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
-      buyerMatches: [...batchMatches, ...entryMatches].sort(
-        (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
-      ),
-    };
-  });
-
-  return (
-        offer.seller_user_id === entry.ownerUserId &&
-        offer.area === entry.area &&
-        offer.spot === (entry.spot || "") &&
-        Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
-      );
-    });
-
-    if (matches.length === 0) return null;
-    return matches.sort(
-      (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
-    )[0];
-  };
-
-  const formatOfferDate = (value) => {
-    if (!value) return "-";
-    try {
-      return new Date(value).toLocaleString("fi-FI", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return value;
-    }
-  };
-
-  const groupedBuyerOffers = saleEntries.map((entry) => {
-    const reservation = getEntryReservation(entry);
-    const batchMatches = (buyerOffers || []).filter(
-      (offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId,
-    );
-
-    const entryMatches = (buyerOffers || []).filter((offer) => {
-      if (offer.batch_id && entry.batchId) return false;
-      return (
-        offer.seller_user_id === entry.ownerUserId &&
-        offer.area === entry.area &&
-        offer.spot === (entry.spot || "") &&
-        Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
-      );
-    });
-
-    return {
-      entry,
-      reservation,
-      entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
-      buyerMatches: [...batchMatches, ...entryMatches].sort(
-        (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
-      ),
-    };
-  });
-
-  return (
-        offer.seller_user_id === entry.ownerUserId &&
-        offer.area === entry.area &&
-        offer.spot === (entry.spot || "") &&
-        Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
-      );
-    });
-
-    if (matches.length === 0) return null;
-    return matches.sort(
-      (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
-    )[0];
-  };
-
-  
-    const reservation = getEntryReservation(entry);
-    const batchMatches = (buyerOffers || []).filter(
-      (offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId,
-    );
-
-    const entryMatches = (buyerOffers || []).filter((offer) => {
-      if (offer.batch_id && entry.batchId) return false;
-      return (
-        offer.seller_user_id === entry.ownerUserId &&
-        offer.area === entry.area &&
-        offer.spot === (entry.spot || "") &&
-        Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
-      );
-    });
-
-    return {
-      entry,
-      reservation,
-      entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
-      buyerMatches: [...batchMatches, ...entryMatches].sort(
-        (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
-      ),
-    };
-  });
-
-  const formatOfferDate = (value) => {
-    if (!value) return "-";
-    try {
-      return new Date(value).toLocaleString("fi-FI", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return value;
-    }
-  };
-
-  const groupedBuyerOffers = saleEntries.map((entry) => {
-    const reservation = getEntryReservation(entry);
-    const batchMatches = (buyerOffers || []).filter(
-      (offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId,
-    );
-
-    const entryMatches = (buyerOffers || []).filter((offer) => {
-      if (offer.batch_id && entry.batchId) return false;
-      return (
-        offer.seller_user_id === entry.ownerUserId &&
-        offer.area === entry.area &&
-        offer.spot === (entry.spot || "") &&
-        Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
-      );
-    });
-
-    return {
-      entry,
-      reservation,
-      entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
-      buyerMatches: [...batchMatches, ...entryMatches].sort(
-        (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
       ),
     };
   });
@@ -697,34 +551,34 @@ function WholesaleOffersView({
                 )}
 
                 {reservation?.status === "accepted" ? null : (
-                <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginTop: 8 }}>
-                  <strong>Tee tarjous tästä erästä</strong>
-                  <div style={styles.field}>
-                    <label>Yritys</label>
-                    <input style={styles.input} value={offerForm.company_name} onChange={(e) => setOfferForm((prev) => ({ ...prev, company_name: e.target.value }))} placeholder="Esim. Forelli / tukku" />
+                  <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginTop: 8 }}>
+                    <strong>Tee tarjous tästä erästä</strong>
+                    <div style={styles.field}>
+                      <label>Yritys</label>
+                      <input style={styles.input} value={offerForm.company_name} onChange={(e) => setOfferForm((prev) => ({ ...prev, company_name: e.target.value }))} placeholder="Esim. Forelli / tukku" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Yhteyshenkilö</label>
+                      <input style={styles.input} value={offerForm.contact_name} onChange={(e) => setOfferForm((prev) => ({ ...prev, contact_name: e.target.value }))} placeholder="Nimi" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Sähköposti</label>
+                      <input style={styles.input} type="email" value={offerForm.contact_email} onChange={(e) => setOfferForm((prev) => ({ ...prev, contact_email: e.target.value }))} placeholder="email@yritys.fi" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Puhelin</label>
+                      <input style={styles.input} value={offerForm.contact_phone} onChange={(e) => setOfferForm((prev) => ({ ...prev, contact_phone: e.target.value }))} placeholder="Puhelin" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Tarjous €/kg</label>
+                      <input style={styles.input} type="number" value={offerForm.offer_price_per_kg} onChange={(e) => setOfferForm((prev) => ({ ...prev, offer_price_per_kg: e.target.value }))} placeholder="0" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Viesti</label>
+                      <textarea style={styles.textarea} value={offerForm.message} onChange={(e) => setOfferForm((prev) => ({ ...prev, message: e.target.value }))} placeholder="Toimitus, nouto, lisäehdot" />
+                    </div>
+                    <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onCreateOffer(entry)} disabled={reservation?.status === "reserved"}>Lähetä tarjous</button>
                   </div>
-                  <div style={styles.field}>
-                    <label>Yhteyshenkilö</label>
-                    <input style={styles.input} value={offerForm.contact_name} onChange={(e) => setOfferForm((prev) => ({ ...prev, contact_name: e.target.value }))} placeholder="Nimi" />
-                  </div>
-                  <div style={styles.field}>
-                    <label>Sähköposti</label>
-                    <input style={styles.input} type="email" value={offerForm.contact_email} onChange={(e) => setOfferForm((prev) => ({ ...prev, contact_email: e.target.value }))} placeholder="email@yritys.fi" />
-                  </div>
-                  <div style={styles.field}>
-                    <label>Puhelin</label>
-                    <input style={styles.input} value={offerForm.contact_phone} onChange={(e) => setOfferForm((prev) => ({ ...prev, contact_phone: e.target.value }))} placeholder="Puhelin" />
-                  </div>
-                  <div style={styles.field}>
-                    <label>Tarjous €/kg</label>
-                    <input style={styles.input} type="number" value={offerForm.offer_price_per_kg} onChange={(e) => setOfferForm((prev) => ({ ...prev, offer_price_per_kg: e.target.value }))} placeholder="0" />
-                  </div>
-                  <div style={styles.field}>
-                    <label>Viesti</label>
-                    <textarea style={styles.textarea} value={offerForm.message} onChange={(e) => setOfferForm((prev) => ({ ...prev, message: e.target.value }))} placeholder="Toimitus, nouto, lisäehdot" />
-                  </div>
-                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onCreateOffer(entry)} disabled={reservation?.status === "reserved"}>Lähetä tarjous</button>
-                </div>
                 )}
               </div>
             </div>
@@ -755,6 +609,7 @@ function WholesaleOffersView({
                   {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
                   {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
                   {revealIdentity ? <div style={styles.muted}><strong>Yhteystiedot:</strong> {offer.buyer_contact_name || "-"} · {offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div> : null}
+                  {offer.status === "accepted" ? <div style={styles.muted}><strong>Laskutus:</strong> tämä kauppa siirtyy ownerin laskutusnäkymään kuukausikohtaisesti.</div> : null}
                 </div>
               </div>
             );
