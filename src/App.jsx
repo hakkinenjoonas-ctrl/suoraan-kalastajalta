@@ -389,18 +389,7 @@ function WholesaleOffersView({
       ),
     };
   });
-  profile,
-  saleEntries,
-  offers,
-  buyerOffers,
-  offerForm,
-  setOfferForm,
-  onCreateOffer,
-  onUpdateOfferStatus,
-  buyerTypeLabel,
-  buyerStatusLabel,
-  shouldRevealBuyerIdentity,
-}) {
+
   const formatOfferDate = (value) => {
     if (!value) return "-";
     try {
