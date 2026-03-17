@@ -500,8 +500,8 @@ function WholesaleOffersView({
                     <span style={styles.badge}>{entry.species}</span>
                     <span style={styles.badge}>{entry.kilos} kg</span>
                     <span style={styles.badge}>{entry.ownerName}</span>
-                    {reservation?.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varattu</span> : null}
-                    {reservation?.status === "accepted" ? <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>Myyty</span> : null}
+                    {reservation?.status === "reserved" ? Kauppa hyväksytty /* removed invalid JSX string */ // ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varattu</span> : null}
+                    {reservation?.status === "accepted" ? Kauppa hyväksytty /* removed invalid JSX string */ // ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>Myyty</span> : null}
                     {entry.offerToShops ? <span style={styles.badge}>Kauppoihin</span> : null}
                     {entry.offerToRestaurants ? <span style={styles.badge}>Ravintoloihin</span> : null}
                     {entry.offerToWholesalers ? <span style={styles.badge}>Tukkuihin</span> : null}
@@ -921,7 +921,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
                   <span style={styles.badge}>{offer.billingKilos} kg</span>
                   <span style={styles.badge}>{euro(offer.billingPricePerKg)} / kg</span>
                   <span style={styles.badge}>{euro(offer.tradeValue)}</span>
-                  <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{euro(offer.commissionValue)} komissio</span>
+                  Kauppa hyväksytty /* removed invalid JSX string */ // ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{euro(offer.commissionValue)} komissio</span>
                 </div>
                 <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
                 <div style={styles.muted}><strong>Päivä:</strong> {offer.updated_at || offer.created_at || "-"}</div>
@@ -2293,7 +2293,7 @@ export default function App() {
 
     setAuthInfo(
       status === "accepted"
-        ? "<span style={{
+        ? "Kauppa hyväksytty /* removed invalid JSX string */ //
   backgroundColor: "#22c55e",
   color: "white",
   padding: "4px 10px",
@@ -2816,7 +2816,7 @@ export default function App() {
                           <div style={styles.entryBadges}>
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
                             <span style={styles.badge}>{o.area || "-"}</span>
-                            {o.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varaus käynnissä</span> : null}
+                            {o.status === "reserved" ? Kauppa hyväksytty /* removed invalid JSX string */ // ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varaus käynnissä</span> : null}
                             {o.seller_name ? <span style={styles.badge}>Myyjä: {o.seller_name}</span> : null}
                           </div>
                         </div>
@@ -2836,7 +2836,7 @@ export default function App() {
                         {o.buyer_message ? <div style={styles.muted}>Sinun viesti: {o.buyer_message}</div> : null}
                         {o.status === "accepted" ? (
                           <div style={{ ...styles.noticeSuccess, marginTop: 10 }}>
-                            <span style={{
+                            Kauppa hyväksytty /* removed invalid JSX string */ //
   backgroundColor: "#22c55e",
   color: "white",
   padding: "4px 10px",
@@ -3016,7 +3016,7 @@ export default function App() {
                   : totals.processedSummary.map((item) => (
                     <div key={item.productType} style={{ ...styles.stack, gap: 6 }}>
                       <div style={styles.rowBetween}><span>{item.productType}</span><span>{item.kilos.toFixed(1)} kg</span></div>
-                      <div style={styles.progress}><span style={{ ...styles.progressFill, width: `${Math.max((item.kilos / Math.max(totals.totalProcessedKg, 1)) * 100, 4)}%` }} /></div>
+                      <div style={styles.progress}>Kauppa hyväksytty /* removed invalid JSX string */ // ...styles.progressFill, width: `${Math.max((item.kilos / Math.max(totals.totalProcessedKg, 1)) * 100, 4)}%` }} /></div>
                     </div>
                   )))
                 : (totals.speciesSummary.length === 0
@@ -3024,7 +3024,7 @@ export default function App() {
                   : totals.speciesSummary.map((item) => (
                     <div key={item.species} style={{ ...styles.stack, gap: 6 }}>
                       <div style={styles.rowBetween}><span>{item.species}</span><span>{item.kilos.toFixed(1)} kg</span></div>
-                      <div style={styles.progress}><span style={{ ...styles.progressFill, width: `${Math.max((item.kilos / Math.max(totals.totalKg, 1)) * 100, 4)}%` }} /></div>
+                      <div style={styles.progress}>Kauppa hyväksytty /* removed invalid JSX string */ // ...styles.progressFill, width: `${Math.max((item.kilos / Math.max(totals.totalKg, 1)) * 100, 4)}%` }} /></div>
                     </div>
                   )))}
             </div>
