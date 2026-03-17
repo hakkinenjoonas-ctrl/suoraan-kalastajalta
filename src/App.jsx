@@ -456,6 +456,7 @@ function WholesaleOffersView({
 
               <div style={{ ...styles.stack, marginTop: 12 }}>
                 <div style={styles.small}>Suorat tarjoukset tälle erälle: {entryOffers.length}</div>
+                <div style={styles.small}>Tarjous lähetetty {buyerMatches.filter((offer) => offer.status === "sent" || offer.status === "viewed").length} ostajalle</div>
                 {reservation?.status === "reserved" ? <div style={styles.noticeInfo}>Erä on tällä hetkellä varattu. Voit hyväksyä varauksen tai hylätä sen ostajien vastauksista.</div> : null}
                 {reservation?.status === "accepted" ? <div style={styles.noticeSuccess}>Erä on merkitty myydyksi hyväksytyn varauksen perusteella.</div> : null}
                 {entryOffers.map((offer) => (
@@ -481,11 +482,11 @@ function WholesaleOffersView({
                   </div>
                 ))}
 
-                <div style={styles.small}>Ostajien vastaukset: {buyerMatches.length}</div>
-                {buyerMatches.length === 0 ? (
+                <div style={styles.small}>Ostajien vastaukset: {buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length}</div>
+                {buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length === 0 ? (
                   <div style={styles.muted}>Ei vielä ostajien vastauksia.</div>
                 ) : (
-                  buyerMatches.map((offer) => {
+                  buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).map((offer) => {
                     const revealIdentity = shouldRevealBuyerIdentity(offer.status);
                     const buyerIdentity = revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type);
 
@@ -552,32 +553,7 @@ function WholesaleOffersView({
 
                 {reservation?.status === "accepted" ? null : (
                   <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginTop: 8 }}>
-                    <strong>Tee tarjous tästä erästä</strong>
-                    <div style={styles.field}>
-                      <label>Yritys</label>
-                      <input style={styles.input} value={offerForm.company_name} onChange={(e) => setOfferForm((prev) => ({ ...prev, company_name: e.target.value }))} placeholder="Esim. Forelli / tukku" />
-                    </div>
-                    <div style={styles.field}>
-                      <label>Yhteyshenkilö</label>
-                      <input style={styles.input} value={offerForm.contact_name} onChange={(e) => setOfferForm((prev) => ({ ...prev, contact_name: e.target.value }))} placeholder="Nimi" />
-                    </div>
-                    <div style={styles.field}>
-                      <label>Sähköposti</label>
-                      <input style={styles.input} type="email" value={offerForm.contact_email} onChange={(e) => setOfferForm((prev) => ({ ...prev, contact_email: e.target.value }))} placeholder="email@yritys.fi" />
-                    </div>
-                    <div style={styles.field}>
-                      <label>Puhelin</label>
-                      <input style={styles.input} value={offerForm.contact_phone} onChange={(e) => setOfferForm((prev) => ({ ...prev, contact_phone: e.target.value }))} placeholder="Puhelin" />
-                    </div>
-                    <div style={styles.field}>
-                      <label>Tarjous €/kg</label>
-                      <input style={styles.input} type="number" value={offerForm.offer_price_per_kg} onChange={(e) => setOfferForm((prev) => ({ ...prev, offer_price_per_kg: e.target.value }))} placeholder="0" />
-                    </div>
-                    <div style={styles.field}>
-                      <label>Viesti</label>
-                      <textarea style={styles.textarea} value={offerForm.message} onChange={(e) => setOfferForm((prev) => ({ ...prev, message: e.target.value }))} placeholder="Toimitus, nouto, lisäehdot" />
-                    </div>
-                    <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onCreateOffer(entry)} disabled={reservation?.status === "reserved"}>Lähetä tarjous</button>
+                    <strong>
                   </div>
                 )}
               </div>
@@ -588,10 +564,14 @@ function WholesaleOffersView({
 
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Ostajien viimeisimmät vastaukset</strong>
-        {!buyerOffers || buyerOffers.length === 0 ? (
-          <div style={styles.muted}>Ei vielä ostajille lähetettyjä tarjousrivejä.</div>
+        <div style={styles.noticeInfo}>Tässä listassa näytetään vain ostajien tekemät vastaukset: vastatarjoukset, varaukset, hyväksytyt ja hylätyt. Pelkkiä lähetettyjä tarjousrivejä ei näytetä tässä, jotta näkymä pysyy selkeänä.</div>
+        {!buyerOffers || buyerOffers.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length === 0 ? (
+          <div style={styles.muted}>Ei vielä ostajien vastauksia.</div>
         ) : (
-          buyerOffers.slice(0, 20).map((offer) => {
+          buyerOffers
+            .filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status))
+            .slice(0, 20)
+            .map((offer) => {
             const revealIdentity = shouldRevealBuyerIdentity(offer.status);
             return (
               <div key={offer.id} style={{ ...styles.entry, borderLeft: "4px solid #0f172a" }}>
