@@ -852,7 +852,8 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
           group.monthKey,
           group.sellerLabel,
           offer.buyerLabel,
-          String(offer.species_summary || "").split("\n").join(" | "),
+          String(offer.species_summary || "").split("
+").join(" | "),
           offer.billingKilos,
           offer.billingPricePerKg,
           offer.tradeValue.toFixed(2),
@@ -867,11 +868,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
 
   return (
     <div style={styles.stack}>
-      <div style={{ ...styles.card,
-  ...(offer?.status === "accepted" ? {
-    border: "2px solid #22c55e",
-    backgroundColor: "#f0fdf4"
-  } : {}), ...styles.sectionCard, ...styles.stack }}>
+      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <div style={styles.rowBetween}>
           <strong>Laskutus</strong>
           <select style={styles.input} value={billingFilter} onChange={(e) => setBillingFilter(e.target.value)}>
@@ -885,20 +882,12 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
       </div>
 
       {groups.length === 0 ? (
-        <div style={{ ...styles.card,
-  ...(offer?.status === "accepted" ? {
-    border: "2px solid #22c55e",
-    backgroundColor: "#f0fdf4"
-  } : {}), ...styles.sectionCard }}>
+        <div style={{ ...styles.card, ...styles.sectionCard }}>
           <div style={styles.muted}>Ei vielä hyväksyttyjä kauppoja laskutettavaksi.</div>
         </div>
       ) : (
         groups.map((group) => (
-          <div key={`${group.monthKey}-${group.sellerKey}`} style={{ ...styles.card,
-  ...(offer?.status === "accepted" ? {
-    border: "2px solid #22c55e",
-    backgroundColor: "#f0fdf4"
-  } : {}), ...styles.sectionCard, ...styles.stack }}>
+          <div key={`${group.monthKey}-${group.sellerKey}`} style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}>
               <div>
                 <strong>{group.sellerLabel}</strong>
@@ -921,7 +910,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
                   <span style={styles.badge}>{offer.billingKilos} kg</span>
                   <span style={styles.badge}>{euro(offer.billingPricePerKg)} / kg</span>
                   <span style={styles.badge}>{euro(offer.tradeValue)}</span>
-                  Kauppa hyväksytty /* removed invalid JSX string */ // ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{euro(offer.commissionValue)} komissio</span>
+                  <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{euro(offer.commissionValue)} komissio</span>
                 </div>
                 <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
                 <div style={styles.muted}><strong>Päivä:</strong> {offer.updated_at || offer.created_at || "-"}</div>
