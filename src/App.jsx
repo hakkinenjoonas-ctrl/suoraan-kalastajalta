@@ -350,7 +350,11 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
   return (
     <div style={styles.app}>
       <div style={{ ...styles.container, maxWidth: 520 }}>
-        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+        <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
           <h1 style={styles.title}>Suoraan Kalastajalta</h1>
           <div style={{ ...styles.tabs6, gridTemplateColumns: "1fr 1fr", marginBottom: 0 }}>
             <button style={{ ...styles.tab, ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
@@ -478,7 +482,11 @@ function WholesaleOffersView({
 
   return (
     <div style={styles.grid2}>
-      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+      <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
         <strong>Myyntiin merkityt erät</strong>
 
         {groupedBuyerOffers.length === 0 ? (
@@ -610,7 +618,11 @@ function WholesaleOffersView({
                 )}
 
                 {reservation?.status === "accepted" ? null : (
-                  <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginTop: 8 }}>
+                  <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack, marginTop: 8 }}>
                     <strong></strong>
                     </div>
                 )}
@@ -620,7 +632,11 @@ function WholesaleOffersView({
         )}
       </div>
 
-      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+      <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
         <strong>Ostajien viimeisimmät vastaukset</strong>
         <div style={styles.noticeInfo}>Tässä listassa näytetään vain ostajien tekemät vastaukset: vastatarjoukset, varaukset, hyväksytyt ja hylätyt. Pelkkiä lähetettyjä tarjousrivejä ei näytetä tässä, jotta näkymä pysyy selkeänä.</div>
         {!buyerOffers || buyerOffers.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length === 0 ? (
@@ -628,6 +644,11 @@ function WholesaleOffersView({
         ) : (
           buyerOffers
             .filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status))
+            .sort((a, b) => {
+              if (a.status === "accepted" && b.status !== "accepted") return -1;
+              if (a.status !== "accepted" && b.status === "accepted") return 1;
+              return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+            })
             .slice(0, 20)
             .map((offer) => {
             const revealIdentity = shouldRevealBuyerIdentity(offer.status);
@@ -716,7 +737,11 @@ function ReportsView({ entries, processedEntries, offers }) {
 
   return (
     <div style={styles.grid2}>
-      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+      <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
         <strong>Excel-raportit</strong>
         <div style={styles.noticeInfo}>Raportit ladataan CSV-muodossa, joka aukeaa suoraan Excelissä.</div>
         <button
@@ -739,7 +764,11 @@ function ReportsView({ entries, processedEntries, offers }) {
         </button>
       </div>
 
-      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+      <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
         <strong>Raporttiyhteenveto</strong>
         <div style={styles.entryBadges}>
           <span style={styles.badge}>{totalKg.toFixed(1)} kg raakasaalista</span>
@@ -838,7 +867,11 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
 
   return (
     <div style={styles.stack}>
-      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+      <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
         <div style={styles.rowBetween}>
           <strong>Laskutus</strong>
           <select style={styles.input} value={billingFilter} onChange={(e) => setBillingFilter(e.target.value)}>
@@ -852,12 +885,20 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
       </div>
 
       {groups.length === 0 ? (
-        <div style={{ ...styles.card, ...styles.sectionCard }}>
+        <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard }}>
           <div style={styles.muted}>Ei vielä hyväksyttyjä kauppoja laskutettavaksi.</div>
         </div>
       ) : (
         groups.map((group) => (
-          <div key={`${group.monthKey}-${group.sellerKey}`} style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <div key={`${group.monthKey}-${group.sellerKey}`} style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}>
               <div>
                 <strong>{group.sellerLabel}</strong>
@@ -1017,7 +1058,16 @@ export default function App() {
     if (status === "viewed") return "Avattu";
     if (status === "countered") return "Vastatarjous";
     if (status === "reserved") return "Varattu";
-    if (status === "accepted") return "Kauppa hyväksytty";
+    if (status === "accepted") return "<span style={{
+  backgroundColor: "#22c55e",
+  color: "white",
+  padding: "4px 10px",
+  borderRadius: "999px",
+  fontSize: 12,
+  fontWeight: 600
+}}>
+  Kauppa hyväksytty
+</span>";
     if (status === "rejected") return "Hylätty";
     if (status === "cancelled") return "Peruttu";
     return status || "-";
@@ -2252,7 +2302,16 @@ export default function App() {
 
     setAuthInfo(
       status === "accepted"
-        ? "Kauppa hyväksytty. Ostajan toimitus- ja laskutustiedot tallennettu kaupalle."
+        ? "<span style={{
+  backgroundColor: "#22c55e",
+  color: "white",
+  padding: "4px 10px",
+  borderRadius: "999px",
+  fontSize: 12,
+  fontWeight: 600
+}}>
+  Kauppa hyväksytty
+</span>. Ostajan toimitus- ja laskutustiedot tallennettu kaupalle."
         : status === "rejected"
         ? "Tarjous hylätty."
         : "Tarjouksen tila päivitetty."
@@ -2622,7 +2681,11 @@ export default function App() {
   };
 
   if (loading) {
-    return <div style={styles.app}><div style={styles.container}><div style={{ ...styles.card, ...styles.sectionCard }}>Ladataan...</div></div></div>;
+    return <div style={styles.app}><div style={styles.container}><div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard }}>Ladataan...</div></div></div>;
   }
 
   if (!session || !profile) {
@@ -2694,7 +2757,11 @@ export default function App() {
     return (
       <div style={styles.app}>
         <div style={styles.container}>
-          <div style={{ ...styles.card, ...styles.headerCard }}>
+          <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.headerCard }}>
             <div style={styles.rowBetween}>
               <div>
                 <h1 style={styles.title}>Suoraan Kalastajalta</h1>
@@ -2710,7 +2777,11 @@ export default function App() {
           {authError ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{authError}</div> : null}
           {authInfo ? <div style={{ ...styles.noticeSuccess, marginBottom: 16 }}>{authInfo}</div> : null}
 
-          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}>
               <strong>Minulle tarjotut erät</strong>
               <div style={styles.row}>
@@ -2736,7 +2807,11 @@ export default function App() {
             ) : (
               orderedGroups.map(([dayLabel, offersForDay]) => (
                 <div key={dayLabel} style={styles.stack}>
-                  <div style={{ ...styles.card, ...styles.sectionCard, padding: "12px 16px", background: "#eff6ff", borderColor: "#bfdbfe" }}>
+                  <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, padding: "12px 16px", background: "#eff6ff", borderColor: "#bfdbfe" }}>
                     <strong style={{ fontSize: 18 }}>{dayLabel}</strong>
                   </div>
 
@@ -2770,7 +2845,16 @@ export default function App() {
                         {o.buyer_message ? <div style={styles.muted}>Sinun viesti: {o.buyer_message}</div> : null}
                         {o.status === "accepted" ? (
                           <div style={{ ...styles.noticeSuccess, marginTop: 10 }}>
-                            Kauppa hyväksytty. Myyjä hyväksyi tarjouksesi.
+                            <span style={{
+  backgroundColor: "#22c55e",
+  color: "white",
+  padding: "4px 10px",
+  borderRadius: "999px",
+  fontSize: 12,
+  fontWeight: 600
+}}>
+  Kauppa hyväksytty
+</span>. ✅ Myyjä hyväksyi tarjouksesi.
                           </div>
                         ) : null}
 
@@ -2830,7 +2914,11 @@ export default function App() {
   return (
     <div style={styles.app}>
       <div style={styles.container}>
-        <div style={{ ...styles.card, ...styles.headerCard }}>
+        <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.headerCard }}>
           <div style={styles.rowBetween}>
             <div>
               <h1 style={styles.title}>Suoraan Kalastajalta</h1>
@@ -2868,7 +2956,11 @@ export default function App() {
         {activeTab === "dashboard" ? (
           <div style={styles.stack}>
             {profile.role !== "buyer" ? (
-              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
                 <strong>Kalastajan tiedot</strong>
                 <div style={styles.field}>
                   <label>Kaupallisen kalastajan tunnus</label>
@@ -2905,11 +2997,27 @@ export default function App() {
               </div>
             ) : null}
             <div style={grid3}>
-              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? totals.totalProcessedKg.toFixed(1) : totals.totalKg.toFixed(1)} kg</div><div style={styles.muted}>{profile.role === "processor" ? "Jalosteita yhteensä" : "Kokonaissaalis"}</div></div>
-              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? totals.processedForSaleKg.toFixed(1) : totals.forSaleKg.toFixed(1)} kg</div><div style={styles.muted}>Tarjolla ostajille</div></div>
-              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? processedEntries.length : entries.length}</div><div style={styles.muted}>{profile.role === "processor" ? "Tallennettuja jaloste-eriä" : "Tallennettuja eriä"}</div></div>
+              <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? totals.totalProcessedKg.toFixed(1) : totals.totalKg.toFixed(1)} kg</div><div style={styles.muted}>{profile.role === "processor" ? "Jalosteita yhteensä" : "Kokonaissaalis"}</div></div>
+              <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? totals.processedForSaleKg.toFixed(1) : totals.forSaleKg.toFixed(1)} kg</div><div style={styles.muted}>Tarjolla ostajille</div></div>
+              <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? processedEntries.length : entries.length}</div><div style={styles.muted}>{profile.role === "processor" ? "Tallennettuja jaloste-eriä" : "Tallennettuja eriä"}</div></div>
             </div>
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
               <strong>{profile.role === "processor" ? "Tuotetyyppien yhteenveto" : "Lajikohtainen yhteenveto"}</strong>
               {profile.role === "processor"
                 ? (totals.processedSummary.length === 0
@@ -2934,7 +3042,11 @@ export default function App() {
 
         {activeTab === "add" ? (
           profile.role === "processor" ? (
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
               <div style={formGrid}>
                 <div style={styles.field}><label>Tuotantopäivä</label><input style={styles.input} type="date" value={processedForm.productionDate} onChange={(e) => setProcessedForm({ ...processedForm, productionDate: e.target.value })} /></div>
                 <div style={styles.field}><label>Parasta ennen</label><input style={styles.input} type="date" value={processedForm.bestBeforeDate} onChange={(e) => setProcessedForm({ ...processedForm, bestBeforeDate: e.target.value })} /></div>
@@ -2966,7 +3078,11 @@ export default function App() {
               <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveProcessed} disabled={saving}>{saving ? "Tallennetaan..." : shouldSendProcessedOffer ? "Tallenna jaloste-erä ja lähetä tarjous" : "Tallenna jaloste-erä"}</button></div>
             </div>
           ) : (
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
               <div style={formGrid}>
                 <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
                 <div style={styles.field}><label>Vesialue</label><select style={styles.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
@@ -3008,7 +3124,11 @@ export default function App() {
 
         {activeTab === "entries" ? (
           profile.role === "processor" ? (
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
               <div style={styles.rowBetween}><strong>Omat jaloste-erät</strong><input style={{ ...styles.input, maxWidth: 360 }} placeholder="Hae tuotteella, alueella tai käsittelyllä..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
               {processedEntries.filter((entry) => {
                 const q = search.trim().toLowerCase();
@@ -3041,7 +3161,11 @@ export default function App() {
               ))}
             </div>
           ) : (
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
               <div style={styles.rowBetween}><strong>{profile.role === "owner" && entryScope === "all" ? "Kaikkien saaliit" : "Omat saaliit"}</strong><input style={{ ...styles.input, maxWidth: 360 }} placeholder="Hae lajilla, paikalla, pyydyksellä..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
               {filteredEntries.length === 0 ? <div style={styles.muted}>Ei hakutuloksia.</div> : filteredEntries.map((entry) => (
                 <div key={entry.id} style={styles.entry}>
@@ -3097,7 +3221,11 @@ export default function App() {
 
         {activeTab === "buyers" && profile.role === "owner" ? (
           <div style={grid2}>
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
               <div style={styles.noticeInfo}>Owner näkee ostajarekisterin. Tavalliset käyttäjät eivät näe ostajien tietoja.
 
 Tarjouslogiikka:
@@ -3130,7 +3258,11 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                 {buyerForm.id ? <button style={styles.button} onClick={resetBuyerForm}>Peruuta muokkaus</button> : null}
               </div>
             </div>
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
               <strong>Ostajarekisteri</strong>
               {buyers.length === 0 ? <div style={styles.muted}>Ei vielä ostajia.</div> : buyers.map((buyer) => (
                 <div key={buyer.id} style={styles.entry}>
@@ -3162,7 +3294,11 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
 
         {activeTab === "users" && profile.role === "owner" ? (
           <div style={grid2}>
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
               <div style={styles.noticeInfo}>Lisää tähän kollegan sähköposti. Sen jälkeen hän voi rekisteröityä itse omalla salasanallaan.</div>
               <div style={styles.field}><label>Nimi</label><input style={styles.input} value={newAllowedForm.displayName} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Antti Kalastaja" /></div>
               <div style={styles.field}><label>Sähköposti</label><input style={styles.input} type="email" value={newAllowedForm.email} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. antti@yritys.fi" /></div>
@@ -3170,7 +3306,11 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               {userMessage ? <div style={styles.noticeSuccess}>{userMessage}</div> : null}
               <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleCreateAllowedUser}>Lisää sallittuihin</button>
             </div>
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={{ ...styles.card,
+  ...(offer?.status === "accepted" ? {
+    border: "2px solid #22c55e",
+    backgroundColor: "#f0fdf4"
+  } : {}), ...styles.sectionCard, ...styles.stack }}>
               <strong>Käyttäjähallinta</strong>
               {allowedUsers.length === 0 ? <div style={styles.muted}>Ei vielä sallittuja käyttäjiä.</div> : allowedUsers.map((user) => (
                 <div key={user.id} style={styles.entry}>
