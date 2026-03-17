@@ -545,15 +545,31 @@ function WholesaleOffersView({
                   <div style={styles.muted}>Ei vielä ostajien vastauksia.</div>
                 ) : (
                   buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).map((offer) => {
+                    const isAccepted = offer.status === "accepted";
                     const revealIdentity = shouldRevealBuyerIdentity(offer.status);
                     const buyerIdentity = revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type);
 
                     return (
-                      <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc", borderLeft: "4px solid #0f172a" }}>
+                      <div
+                        key={offer.id}
+                        style={{
+                          ...styles.entry,
+                          background: isAccepted ? "#ecfdf5" : "#f8fafc",
+                          borderLeft: `4px solid ${isAccepted ? "#16a34a" : "#0f172a"}`,
+                        }}
+                      >
                         <div style={{ ...styles.rowBetween, marginBottom: 10 }}>
                           <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
                           <div style={styles.entryBadges}>
-                            <span style={styles.badge}>{buyerStatusLabel(offer.status)}</span>
+                            <span
+                              style={
+                                isAccepted
+                                  ? { ...styles.badge, background: "#dcfce7", borderColor: "#86efac", color: "#166534" }
+                                  : styles.badge
+                              }
+                            >
+                              {buyerStatusLabel(offer.status)}
+                            </span>
                             <span style={styles.badge}>{buyerIdentity}</span>
                           </div>
                         </div>
@@ -2970,7 +2986,7 @@ export default function App() {
               <div style={formGrid}>
                 <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
                 <div style={styles.field}><label>Vesialue</label><select style={styles.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
-                <div style={styles.field}><label>Paikkakunta</label><input style={styles.input} value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} placeholder="Esim. Savonlinna" /></div>
+                <div style={styles.field}><label>Paikkakunta</label><input style={styles.input} value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} placeholder="Esim. Lappeenranta" /></div>
                 <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Isoselkä" /></div>
                 <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
