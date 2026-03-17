@@ -20,21 +20,61 @@ const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsa
 const COMMISSION_RATE = 0.03;
 
 const defaultAreas = [
+  // SAIMAA
   "Saimaa",
   "Suur-Saimaa",
   "Pien-Saimaa",
-  "Päijänne",
-  "Oulunjärvi",
-  "Inarijärvi",
-  "Pielinen",
+  "Puruvesi",
+  "Haukivesi",
+  "Pihlajavesi",
+  "Orivesi (Saimaa)",
+  "Pyhäselkä",
+  "Enonvesi",
+  "Lietvesi",
+  "Luonteri",
+  "Yövesi",
+
+  // ITÄ-SUOMI
+  "Kallavesi",
+  "Unnukka",
+  "Suvasvesi",
+  "Onkivesi",
+  "Porovesi",
+  "Iisvesi",
+  "Nilakka",
   "Keitele",
+  "Konnevesi",
+
+  // ETELÄ / KESKI
+  "Päijänne",
+  "Puula",
+  "Jääsjärvi",
+  "Vesijärvi (Lahti)",
+
+  // LÄNSI
   "Näsijärvi",
+  "Pyhäjärvi (Tampere)",
   "Vanajavesi",
-  "Pyhäjärvi",
+  "Kyrösjärvi",
+  "Lappajärvi",
+
+  // POHJOINEN
+  "Oulujärvi",
+  "Inari",
   "Kemijärvi",
   "Lokka",
   "Porttipahta",
-  "Muu",
+
+  // MERI
+  "Suomenlahti",
+  "Saaristomeri",
+  "Selkämeri",
+  "Perämeri",
+  "Ahvenanmeri",
+
+  // FALLBACK
+  "Muu järvi",
+  "Merialue (muu)"
 ];
 
 function safeId() {
