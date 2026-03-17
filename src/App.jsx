@@ -364,6 +364,61 @@ function WholesaleOffersView({
     )[0];
   };
 
+  const formatOfferDate = (value) => {
+    if (!value) return "-";
+    try {
+      return new Date(value).toLocaleString("fi-FI", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return value;
+    }
+  };
+
+  const groupedBuyerOffers = saleEntries.map((entry) => {
+    const reservation = getEntryReservation(entry);
+    const batchMatches = (buyerOffers || []).filter(
+      (offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId,
+    );
+
+    const entryMatches = (buyerOffers || []).filter((offer) => {
+      if (offer.batch_id && entry.batchId) return false;
+      return (
+        offer.seller_user_id === entry.ownerUserId &&
+        offer.area === entry.area &&
+        offer.spot === (entry.spot || "") &&
+        Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
+      );
+    });
+
+    return {
+      entry,
+      reservation,
+      entryOffers: offers.filter((offer) => offer.entry_id === entry.id),
+      buyerMatches: [...batchMatches, ...entryMatches].sort(
+        (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
+      ),
+    };
+  });
+
+  return (
+        offer.seller_user_id === entry.ownerUserId &&
+        offer.area === entry.area &&
+        offer.spot === (entry.spot || "") &&
+        Number(offer.total_kilos || 0) === Number(entry.kilos || 0)
+      );
+    });
+
+    if (matches.length === 0) return null;
+    return matches.sort(
+      (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime(),
+    )[0];
+  };
+
   
     const reservation = getEntryReservation(entry);
     const batchMatches = (buyerOffers || []).filter(
