@@ -54,6 +54,22 @@ function euro(value) {
   }).format(value || 0);
 }
 
+function calculateCommissionDetails(offer, commissionRate = 0.03) {
+  const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
+  const pricePerKg = Number(
+    offer?.counter_price_per_kg || offer?.price_per_kg || offer?.offer_price_per_kg || 0
+  );
+  const tradeValue = kilos * pricePerKg;
+  const commissionValue = tradeValue * commissionRate;
+
+  return {
+    billingKilos: kilos,
+    billingPricePerKg: pricePerKg,
+    tradeValue,
+    commissionValue,
+  };
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
