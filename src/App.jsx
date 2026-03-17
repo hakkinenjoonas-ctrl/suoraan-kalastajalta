@@ -553,8 +553,8 @@ function WholesaleOffersView({
 
                 {reservation?.status === "accepted" ? null : (
                   <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginTop: 8 }}>
-                    <strong>
-                  </div>
+                    <strong></strong>
+                    </div>
                 )}
               </div>
             </div>
