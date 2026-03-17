@@ -53,6 +53,7 @@ const defaultAreas = [
 
   // LÄNSI
   "Näsijärvi",
+  "Pyhäjärvi",
   "Pyhäjärvi (Tampere)",
   "Vanajavesi",
   "Kyrösjärvi",
