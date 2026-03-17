@@ -2971,7 +2971,7 @@ export default function App() {
                 <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
                 <div style={styles.field}><label>Vesialue</label><select style={styles.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
                 <div style={styles.field}><label>Paikkakunta</label><input style={styles.input} value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} placeholder="Esim. Savonlinna" /></div>
-                <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Kyläniemen eteläpuoli" /></div>
+                <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Isoselkä" /></div>
                 <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
                   <div style={styles.rowBetween}><div><label>Kalalajit samasta tarkastuskerrasta</label><div style={styles.small}>Lisää yhdellä kertaa kaikki lajit, jotka tulivat samalla pyyntikerralla.</div></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
