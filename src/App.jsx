@@ -339,6 +339,16 @@ const styles = {
   small: { fontSize: 12, color: "#64748b" },
 };
 
+function buyerStatusBadgeStyle(status, baseStyle) {
+  if (status === "accepted") {
+    return { ...baseStyle, background: "#dcfce7", borderColor: "#86efac", color: "#166534" };
+  }
+  if (status === "reserved") {
+    return { ...baseStyle, background: "#fef3c7", borderColor: "#fcd34d", color: "#92400e" };
+  }
+  return baseStyle;
+}
+
 function responsiveGridStyle(base) {
   if (typeof window !== "undefined" && window.innerWidth < 960) {
     return { ...base, gridTemplateColumns: "1fr" };
@@ -492,8 +502,8 @@ function WholesaleOffersView({
                     <span style={styles.badge}>{entry.species}</span>
                     <span style={styles.badge}>{entry.kilos} kg</span>
                     <span style={styles.badge}>{entry.ownerName}</span>
-                    {reservation?.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varattu</span> : null}
-                    {reservation?.status === "accepted" ? <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>Myyty</span> : null}
+                    {reservation?.status === "reserved" ? <span style={buyerStatusBadgeStyle("reserved", styles.badge)}>Varattu</span> : null}
+                    {reservation?.status === "accepted" ? <span style={buyerStatusBadgeStyle("accepted", styles.badge)}>Myyty</span> : null}
                     {entry.offerToShops ? <span style={styles.badge}>Kauppoihin</span> : null}
                     {entry.offerToRestaurants ? <span style={styles.badge}>Ravintoloihin</span> : null}
                     {entry.offerToWholesalers ? <span style={styles.badge}>Tukkuihin</span> : null}
@@ -561,13 +571,7 @@ function WholesaleOffersView({
                         <div style={{ ...styles.rowBetween, marginBottom: 10 }}>
                           <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
                           <div style={styles.entryBadges}>
-                            <span
-                              style={
-                                isAccepted
-                                  ? { ...styles.badge, background: "#dcfce7", borderColor: "#86efac", color: "#166534" }
-                                  : styles.badge
-                              }
-                            >
+                            <span style={buyerStatusBadgeStyle(offer.status, styles.badge)}>
                               {buyerStatusLabel(offer.status)}
                             </span>
                             <span style={styles.badge}>{buyerIdentity}</span>
@@ -646,13 +650,22 @@ function WholesaleOffersView({
             .filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status))
             .slice(0, 20)
             .map((offer) => {
+            const isAccepted = offer.status === "accepted";
+            const isReserved = offer.status === "reserved";
             const revealIdentity = shouldRevealBuyerIdentity(offer.status);
             return (
-              <div key={offer.id} style={{ ...styles.entry, borderLeft: "4px solid #0f172a" }}>
+              <div
+                key={offer.id}
+                style={{
+                  ...styles.entry,
+                  background: isAccepted ? "#ecfdf5" : isReserved ? "#fffbeb" : "#fff",
+                  borderLeft: `4px solid ${isAccepted ? "#16a34a" : isReserved ? "#f59e0b" : "#0f172a"}`,
+                }}
+              >
                 <div style={{ ...styles.rowBetween, marginBottom: 8 }}>
                   <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
                   <div style={styles.entryBadges}>
-                    <span style={styles.badge}>{buyerStatusLabel(offer.status)}</span>
+                    <span style={buyerStatusBadgeStyle(offer.status, styles.badge)}>{buyerStatusLabel(offer.status)}</span>
                     <span style={styles.badge}>{revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type)}</span>
                   </div>
                 </div>
