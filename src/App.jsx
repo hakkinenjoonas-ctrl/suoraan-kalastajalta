@@ -110,7 +110,8 @@ function getSpeciesRowLabel(row) {
 }
 
 function getBatchTraceValue(batchId) {
-  return batchId ? `ERATUNNUS:${batchId}` : "";
+  if (!batchId) return "";
+  return `${getPublicAppBaseUrl()}?batch=${encodeURIComponent(batchId)}`;
 }
 
 function getBatchQrImageUrl(batchId) {
