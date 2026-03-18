@@ -49,6 +49,8 @@ Deno.serve(async (req) => {
       ? "-"
       : `${offer.counter_price_per_kg} EUR/kg`;
     const tradeValue = String(offer.trade_value || "-");
+    const batchId = String(offer.batch_id || "").trim();
+    const qrImageUrl = String(offer.qr_image_url || "").trim();
     const deliveryAddress = buildDeliveryAddress(offer);
     const billingEmail = String(offer.buyer_billing_email || "").trim();
 
@@ -59,6 +61,7 @@ Deno.serve(async (req) => {
       "",
       `Erä: ${speciesSummary}`,
       `Määrä: ${kilos} kg`,
+      batchId ? `Erätunnus: ${batchId}` : null,
       `Alue: ${area}${spot ? ` / ${spot}` : ""}`,
       `Hinta: ${pricePerKg}`,
       `Kaupan arvo: ${tradeValue}`,
@@ -74,10 +77,12 @@ Deno.serve(async (req) => {
         <p><strong>Erä:</strong><br />${speciesSummary.replaceAll("\n", "<br />")}</p>
         <p>
           <strong>Määrä:</strong> ${kilos} kg<br />
+          ${batchId ? `<strong>Erätunnus:</strong> ${batchId}<br />` : ""}
           <strong>Alue:</strong> ${area}${spot ? ` / ${spot}` : ""}<br />
           <strong>Hinta:</strong> ${pricePerKg}<br />
           <strong>Kaupan arvo:</strong> ${tradeValue}
         </p>
+        ${qrImageUrl ? `<p><strong>QR-koodi erälle</strong><br /><img src="${qrImageUrl}" alt="QR ${batchId || "era"}" style="width:160px;height:160px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;padding:8px;" /></p>` : ""}
         ${deliveryAddress ? `<p><strong>Toimitusosoite:</strong> ${deliveryAddress}</p>` : ""}
         ${billingEmail ? `<p><strong>Laskutussähköposti:</strong> ${billingEmail}</p>` : ""}
         ${offerLink ? `<p><a href="${offerLink}" style="display:inline-block;padding:10px 14px;background:#166534;color:#fff;text-decoration:none;border-radius:8px;">Avaa kaupan tiedot</a></p>` : ""}

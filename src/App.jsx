@@ -109,6 +109,15 @@ function getSpeciesRowLabel(row) {
   return row?.species || "";
 }
 
+function getBatchTraceValue(batchId) {
+  return batchId ? `ERATUNNUS:${batchId}` : "";
+}
+
+function getBatchQrImageUrl(batchId) {
+  const traceValue = getBatchTraceValue(batchId);
+  return traceValue ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(traceValue)}` : "";
+}
+
 function formatBatchArea(area) {
   return String(area || "BATCH")
     .normalize("NFD")
@@ -414,6 +423,24 @@ const styles = {
     background: "#ffffff",
     fontWeight: 500,
   },
+  qrBlock: {
+    display: "inline-flex",
+    flexDirection: "column",
+    gap: 8,
+    padding: 12,
+    borderRadius: 16,
+    border: "1px solid #dbeafe",
+    background: "#f8fafc",
+    alignItems: "center",
+    width: "fit-content",
+  },
+  qrImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 12,
+    border: "1px solid #cbd5e1",
+    background: "#fff",
+  },
 };
 
 function buyerStatusBadgeStyle(status, baseStyle) {
@@ -587,6 +614,7 @@ function WholesaleOffersView({
                   </div>
                   <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                   {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
+                  {entry.batchId ? <div style={styles.qrBlock}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                   <div style={styles.muted}>Pyydys: {entry.gear || "-"}</div>
                   {reservation ? (
                     <div style={styles.muted}>
@@ -660,6 +688,7 @@ function WholesaleOffersView({
                           <div>
                             <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
                             {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
+                            {offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                             <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
                             <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{entry.municipality ? ` · ${entry.municipality}` : ""}{offer.spot ? ` / ${offer.spot}` : ""}</div>
                           </div>
@@ -751,6 +780,7 @@ function WholesaleOffersView({
                 <div>
                   <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
                   {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
+                  {offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                   <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
                   {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous:</strong> {euro(offer.counter_price_per_kg)} / kg</div> : null}
                   {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
@@ -2255,6 +2285,7 @@ export default function App() {
     const sellerName = profile?.display_name || profile?.email || offer?.seller_name || "Myyja";
     const tradeValue = euro(calculateCommissionDetails(offer).tradeValue);
     const acceptedKilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
+    const batchId = offer?.batch_id || "";
 
     await supabase.functions.invoke("send-buyer-accepted-email", {
       body: {
@@ -2270,6 +2301,8 @@ export default function App() {
           counter_price_per_kg: offer?.counter_price_per_kg,
           reserved_kilos: offer?.reserved_kilos,
           trade_value: tradeValue,
+          batch_id: batchId,
+          qr_image_url: getBatchQrImageUrl(batchId),
           buyer_delivery_address: offer?.buyer_delivery_address,
           buyer_delivery_postcode: offer?.buyer_delivery_postcode,
           buyer_delivery_city: offer?.buyer_delivery_city,
@@ -2953,6 +2986,7 @@ export default function App() {
                           <div style={{ fontSize: 13, color: "#64748b", marginBottom: 6 }}>{formatOfferDate(o.updated_at || o.created_at)}</div>
                           <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, marginBottom: 8 }}>{buildOfferHeadline(o)}</div>
                           {o.batch_id ? <div style={{ ...styles.muted, marginBottom: 8 }}><strong>Erätunnus:</strong> {o.batch_id}</div> : null}
+                          {o.batch_id ? <div style={{ ...styles.qrBlock, marginBottom: 8 }}><img src={getBatchQrImageUrl(o.batch_id)} alt={`QR ${o.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                           <div style={styles.entryBadges}>
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
                             <span style={styles.badge}>{o.area || "-"}</span>
@@ -3246,6 +3280,7 @@ export default function App() {
                       </div>
                       <div style={styles.muted}>{entry.productionDate} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                       {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
+                      {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                       <div style={styles.muted}>Käsittely: {entry.processingMethod || "-"} · Raaka-aine: {entry.speciesSummary || "-"}</div>
                       <div style={styles.muted}>Parasta ennen: {entry.bestBeforeDate || "-"}</div>
                       <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
@@ -3271,6 +3306,7 @@ export default function App() {
                       </div>
                       <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                       {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
+                      {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                       <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                       {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                     </div>
