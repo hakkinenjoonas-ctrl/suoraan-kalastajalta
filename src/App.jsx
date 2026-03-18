@@ -344,6 +344,29 @@ const styles = {
     whiteSpace: "pre-wrap",
   },
   small: { fontSize: 12, color: "#64748b" },
+  offerBox: {
+    border: "1px solid #bfdbfe",
+    borderRadius: 18,
+    background: "linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)",
+    padding: 16,
+  },
+  successHighlightBox: {
+    border: "1px solid #86efac",
+    borderRadius: 18,
+    background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)",
+    padding: 16,
+  },
+  checkboxRow: { display: "flex", gap: 20, flexWrap: "wrap" },
+  checkboxCard: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 14px",
+    borderRadius: 999,
+    border: "1px solid #93c5fd",
+    background: "#ffffff",
+    fontWeight: 500,
+  },
 };
 
 function buyerStatusBadgeStyle(status, baseStyle) {
@@ -2736,6 +2759,7 @@ export default function App() {
       const bTime = new Date((b[1]?.[0]?.updated_at || b[1]?.[0]?.created_at || 0)).getTime();
       return bTime - aTime;
     });
+    const acceptedBuyerOffers = (buyerOffers || []).filter((offer) => offer.status === "accepted");
 
     return (
       <div style={styles.app}>
@@ -2755,6 +2779,26 @@ export default function App() {
 
           {authError ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{authError}</div> : null}
           {authInfo ? <div style={{ ...styles.noticeSuccess, marginBottom: 16 }}>{authInfo}</div> : null}
+          {acceptedBuyerOffers.length > 0 ? (
+            <div style={{ ...styles.successHighlightBox, ...styles.stack, marginBottom: 16 }}>
+              <div style={styles.rowBetween}>
+                <div>
+                  <strong>Kauppa hyväksytty</strong>
+                  <div style={styles.muted}>
+                    {acceptedBuyerOffers.length === 1
+                      ? "Sinulla on 1 hyväksytty kauppa. Tarkemmat tiedot löytyvät alempaa tarjouslistan vetolaatikosta."
+                      : `Sinulla on ${acceptedBuyerOffers.length} hyväksyttyä kauppaa. Tarkemmat tiedot löytyvät alempaa tarjouslistan vetolaatikosta.`}
+                  </div>
+                </div>
+                <button
+                  style={{ ...styles.button, background: "#166534", borderColor: "#166534", color: "#fff" }}
+                  onClick={() => setBuyerOffersFilter("accepted")}
+                >
+                  Näytä hyväksytyt
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}>
@@ -3020,7 +3064,7 @@ export default function App() {
                 <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Isoselkä" /></div>
                 <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
-                  <div style={styles.rowBetween}><div><label>KALAERÄ</label><div style={styles.small}>Lisää yhdellä kertaa kaikki lajit, jotka tulivat samalla pyyntikerralla.</div></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
+                  <div style={styles.rowBetween}><div><label>KALAERÄ</label></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
                   {speciesRows.map((row, index) => (
                     <div key={row.id} style={speciesRow}>
                       <div style={styles.field}>
@@ -3042,11 +3086,16 @@ export default function App() {
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
-                  <label>Tarjoa erää myyntiin</label>
-                  <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-                    <label><input type="checkbox" checked={form.offerToShops} onChange={(e) => setForm({ ...form, offerToShops: e.target.checked })} /> Kauppoihin</label>
-                    <label><input type="checkbox" checked={form.offerToRestaurants} onChange={(e) => setForm({ ...form, offerToRestaurants: e.target.checked })} /> Ravintoloihin</label>
-                    <label><input type="checkbox" checked={form.offerToWholesalers} onChange={(e) => setForm({ ...form, offerToWholesalers: e.target.checked })} /> Tukkuihin</label>
+                  <div style={{ ...styles.offerBox, ...styles.stack }}>
+                    <div>
+                      <label>Tarjoa erää myyntiin</label>
+                      <div style={styles.small}>Valitse ostajaryhmät, joille tämä kalaerä lähetetään heti tallennuksen yhteydessä.</div>
+                    </div>
+                    <div style={styles.checkboxRow}>
+                      <label style={styles.checkboxCard}><input type="checkbox" checked={form.offerToShops} onChange={(e) => setForm({ ...form, offerToShops: e.target.checked })} /> Kauppoihin</label>
+                      <label style={styles.checkboxCard}><input type="checkbox" checked={form.offerToRestaurants} onChange={(e) => setForm({ ...form, offerToRestaurants: e.target.checked })} /> Ravintoloihin</label>
+                      <label style={styles.checkboxCard}><input type="checkbox" checked={form.offerToWholesalers} onChange={(e) => setForm({ ...form, offerToWholesalers: e.target.checked })} /> Tukkuihin</label>
+                    </div>
                   </div>
                 </div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}><label>Lisätiedot</label><textarea style={styles.textarea} placeholder="Esim. laatu, jäähdytys, toimitus, huomioita" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
