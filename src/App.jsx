@@ -1844,7 +1844,6 @@ export default function App() {
       supabase.from("allowed_users").update({ buyer_id: null }).eq("buyer_id", buyer.id),
       supabase.from("profiles").update({ buyer_id: null }).eq("buyer_id", buyer.id),
       supabase.from("buyer_offers").update({ buyer_id: null }).eq("buyer_id", buyer.id),
-      supabase.from("wholesale_offers").update({ buyer_id: null }).eq("buyer_id", buyer.id),
     ];
 
     for (const operation of unlinkOperations) {
