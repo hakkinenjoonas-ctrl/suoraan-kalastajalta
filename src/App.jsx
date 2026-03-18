@@ -2194,6 +2194,38 @@ export default function App() {
     }).catch(() => null);
   };
 
+  const sendBuyerAcceptedEmail = async (offer) => {
+    const buyerEmail = (offer?.buyer_email || "").trim().toLowerCase();
+    if (!buyerEmail) return;
+
+    const sellerName = profile?.display_name || profile?.email || offer?.seller_name || "Myyja";
+    const tradeValue = euro(calculateCommissionDetails(offer).tradeValue);
+    const acceptedKilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
+
+    await supabase.functions.invoke("send-buyer-accepted-email", {
+      body: {
+        buyerEmail,
+        offerLink: typeof window !== "undefined" ? `${window.location.origin}?offer=${offer.id}` : null,
+        offer: {
+          sellerName,
+          species_summary: offer?.species_summary,
+          total_kilos: offer?.total_kilos,
+          accepted_kilos: acceptedKilos,
+          area: offer?.area,
+          spot: offer?.spot,
+          counter_price_per_kg: offer?.counter_price_per_kg,
+          reserved_kilos: offer?.reserved_kilos,
+          trade_value: tradeValue,
+          buyer_delivery_address: offer?.buyer_delivery_address,
+          buyer_delivery_postcode: offer?.buyer_delivery_postcode,
+          buyer_delivery_city: offer?.buyer_delivery_city,
+          buyer_billing_email: offer?.buyer_billing_email,
+          status: "accepted",
+        },
+      },
+    }).catch(() => null);
+  };
+
   const onSubmitCounter = async (offer) => {
     const price = buyerAction.counter_price_per_kg === "" ? null : Number(buyerAction.counter_price_per_kg);
     const msg = buyerAction.buyer_message?.trim() || null;
@@ -2322,6 +2354,10 @@ export default function App() {
         ? "Tarjous hylätty."
         : "Tarjouksen tila päivitetty."
     );
+
+    if (status === "accepted") {
+      await sendBuyerAcceptedEmail({ ...offer, ...updatePayload, status: "accepted" });
+    }
 
     await refreshBuyerOffers();
     setRefreshTick((prev) => prev + 1);
