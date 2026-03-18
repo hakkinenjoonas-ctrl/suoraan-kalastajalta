@@ -1839,13 +1839,33 @@ export default function App() {
       const confirmed = window.confirm(`Poistetaanko ostaja ${buyer.company_name || buyer.email} kokonaan?`);
       if (!confirmed) return;
     }
+
+    const unlinkOperations = [
+      supabase.from("allowed_users").update({ buyer_id: null }).eq("buyer_id", buyer.id),
+      supabase.from("profiles").update({ buyer_id: null }).eq("buyer_id", buyer.id),
+      supabase.from("buyer_offers").update({ buyer_id: null }).eq("buyer_id", buyer.id),
+      supabase.from("wholesale_offers").update({ buyer_id: null }).eq("buyer_id", buyer.id),
+    ];
+
+    for (const operation of unlinkOperations) {
+      const { error } = await operation;
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        setUserMessage(`Ostajan poisto epäonnistui: ${error.message}`);
+        return;
+      }
+    }
+
     const { error } = await supabase.from("buyers").delete().eq("id", buyer.id);
     if (error) {
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
         return;
       }
-      setUserMessage(error.message);
+      setUserMessage(`Ostajan poisto epäonnistui: ${error.message}`);
       return;
     }
     if (buyerForm.id === buyer.id) {
