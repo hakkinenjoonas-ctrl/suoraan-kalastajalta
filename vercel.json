@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/batch/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

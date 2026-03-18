@@ -109,14 +109,37 @@ function getSpeciesRowLabel(row) {
   return row?.species || "";
 }
 
+function getBatchPublicUrl(batchId) {
+  if (!batchId) return "";
+  return `${getPublicAppBaseUrl()}/batch/${encodeURIComponent(batchId)}`;
+}
+
 function getBatchTraceValue(batchId) {
   if (!batchId) return "";
-  return `${getPublicAppBaseUrl()}?batch=${encodeURIComponent(batchId)}`;
+  return getBatchPublicUrl(batchId);
 }
 
 function getBatchQrImageUrl(batchId) {
   const traceValue = getBatchTraceValue(batchId);
   return traceValue ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(traceValue)}` : "";
+}
+
+function getRequestedPublicBatchId() {
+  if (typeof window === "undefined") return "";
+  const pathname = String(window.location.pathname || "");
+  if (pathname.startsWith("/batch/")) {
+    return decodeURIComponent(pathname.slice("/batch/".length)).trim();
+  }
+  const params = new URLSearchParams(window.location.search);
+  if (!params.get("offer") && params.get("batch")) {
+    return String(params.get("batch") || "").trim();
+  }
+  return "";
+}
+
+function getPublicBatchInfoUrl(batchId) {
+  if (!batchId) return "";
+  return `${SUPABASE_URL}/functions/v1/public-batch-info?batchId=${encodeURIComponent(batchId)}`;
 }
 
 function formatBatchArea(area) {
@@ -477,6 +500,114 @@ function responsiveGridStyle(base) {
     return { ...base, gridTemplateColumns: "1fr" };
   }
   return base;
+}
+
+function PublicBatchView({ batchId, data, loading, error }) {
+  const infoRows = [
+    ["Erätunnus", data?.batch_id],
+    ["Tila", data?.status],
+    ["Laji", data?.species],
+    ["Tuote", data?.product_name],
+    ["Käsittelymenetelmä", data?.processing_method],
+    ["Pyyntipäivämäärä", data?.catch_date],
+    ["Tuotantopäivä", data?.production_date],
+    ["Parasta ennen", data?.best_before_date],
+    ["Alue", data?.area],
+    ["Paikka", [data?.municipality, data?.spot].filter(Boolean).join(" / ")],
+    ["Pyydys", data?.gear],
+    ["Määrä", data?.quantity != null && data?.quantity !== "" ? `${data.quantity} ${data.unit || "kg"}` : ""],
+    ["Myyjä / jalostaja", data?.seller_name],
+    ["Luotu", data?.created_at ? new Date(data.created_at).toLocaleString("fi-FI") : ""],
+  ].filter(([, value]) => value);
+
+  const saleRows = [
+    ["Myyntitila", data?.sale_info?.status],
+    ["Tarjouksia", data?.sale_info?.offer_count],
+    ["Viimeisin päivitys", data?.sale_info?.updated_at ? new Date(data.sale_info.updated_at).toLocaleString("fi-FI") : ""],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+
+  const processingRows = [
+    ["Tuotetyyppi", data?.related_processing?.product_type],
+    ["Pakkauskoko", data?.related_processing?.package_size_g ? `${data.related_processing.package_size_g} g` : ""],
+    ["Pakkausten määrä", data?.related_processing?.package_count],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+
+  return (
+    <div style={styles.app}>
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: #fff !important; }
+          .print-card { box-shadow: none !important; border-color: #cbd5e1 !important; break-inside: avoid; }
+        }
+      `}</style>
+      <div style={{ ...styles.container, maxWidth: 960 }}>
+        <div style={{ ...styles.card, ...styles.headerCard, marginBottom: 16, background: "linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)" }} className="print-card">
+          <div style={styles.rowBetween}>
+            <div>
+              <div style={{ fontSize: 14, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>Erän jäljitettävyys</div>
+              <h1 style={{ ...styles.title, marginBottom: 8 }}>Batch information</h1>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{batchId}</div>
+            </div>
+            <div className="no-print" style={styles.row}>
+              <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => window.print()}>
+                Print batch information
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {loading ? <div style={{ ...styles.card, ...styles.sectionCard }} className="print-card">Haetaan erän tietoja...</div> : null}
+        {error ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{error}</div> : null}
+
+        {!loading && !error && data ? (
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
+              <strong style={{ fontSize: 20 }}>Erän perustiedot</strong>
+              {infoRows.map(([label, value]) => (
+                <div key={label} style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, borderBottom: "1px solid #e2e8f0", paddingBottom: 8 }}>
+                  <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
+                  <div style={{ color: "#0f172a" }}>{String(value)}</div>
+                </div>
+              ))}
+            </div>
+
+            {data?.species_summary || data?.notes ? (
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
+                <strong style={{ fontSize: 20 }}>Sisältö ja lisätiedot</strong>
+                {data?.species_summary ? <div style={{ whiteSpace: "pre-wrap", color: "#0f172a" }}>{data.species_summary}</div> : null}
+                {data?.notes ? <div style={{ whiteSpace: "pre-wrap", color: "#475569" }}>{data.notes}</div> : null}
+              </div>
+            ) : null}
+
+            {processingRows.length > 0 ? (
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
+                <strong style={{ fontSize: 20 }}>Jalostustiedot</strong>
+                {processingRows.map(([label, value]) => (
+                  <div key={label} style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, borderBottom: "1px solid #e2e8f0", paddingBottom: 8 }}>
+                    <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
+                    <div style={{ color: "#0f172a" }}>{String(value)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {saleRows.length > 0 ? (
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
+                <strong style={{ fontSize: 20 }}>Myynti / tarjous</strong>
+                {saleRows.map(([label, value]) => (
+                  <div key={label} style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, borderBottom: "1px solid #e2e8f0", paddingBottom: 8 }}>
+                    <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
+                    <div style={{ color: "#0f172a" }}>{String(value)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, authError, authInfo }) {
@@ -1059,6 +1190,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
 }
 
 export default function App() {
+  const publicBatchId = getRequestedPublicBatchId();
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [entries, setEntries] = useState([]);
@@ -1154,6 +1286,9 @@ export default function App() {
     business_id: "",
   });
   const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "" });
+  const [publicBatchData, setPublicBatchData] = useState(null);
+  const [publicBatchLoading, setPublicBatchLoading] = useState(Boolean(publicBatchId));
+  const [publicBatchError, setPublicBatchError] = useState("");
 
   const calculateCommissionDetails = (offer) => {
     const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
@@ -1322,6 +1457,49 @@ export default function App() {
       setActiveTab("offers");
     }
   }, []);
+
+  useEffect(() => {
+    if (!publicBatchId) {
+      setPublicBatchData(null);
+      setPublicBatchLoading(false);
+      setPublicBatchError("");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPublicBatch = async () => {
+      setPublicBatchLoading(true);
+      setPublicBatchError("");
+
+      try {
+        const response = await fetch(getPublicBatchInfoUrl(publicBatchId));
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(result?.error || "Erän tietoja ei voitu hakea.");
+        }
+
+        if (!cancelled) {
+          setPublicBatchData(result);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPublicBatchData(null);
+          setPublicBatchError(String(error?.message || error || "Erän tietoja ei voitu hakea."));
+        }
+      } finally {
+        if (!cancelled) {
+          setPublicBatchLoading(false);
+        }
+      }
+    };
+
+    loadPublicBatch();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicBatchId]);
 
   useEffect(() => {
     if (!session?.user) {
@@ -2978,6 +3156,10 @@ export default function App() {
     setAuthInfo("Saalistieto poistettu.");
     setRefreshTick((prev) => prev + 1);
   };
+
+  if (publicBatchId) {
+    return <PublicBatchView batchId={publicBatchId} data={publicBatchData} loading={publicBatchLoading} error={publicBatchError} />;
+  }
 
   if (loading) {
     return <div style={styles.app}><div style={styles.container}><div style={{ ...styles.card, ...styles.sectionCard }}>Ladataan...</div></div></div>;
