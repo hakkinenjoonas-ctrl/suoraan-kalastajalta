@@ -2759,7 +2759,10 @@ export default function App() {
       const bTime = new Date((b[1]?.[0]?.updated_at || b[1]?.[0]?.created_at || 0)).getTime();
       return bTime - aTime;
     });
-    const acceptedBuyerOffers = (buyerOffers || []).filter((offer) => offer.status === "accepted");
+    const todayLabel = formatOfferDay(new Date().toISOString());
+    const acceptedBuyerOffers = (buyerOffers || []).filter(
+      (offer) => offer.status === "accepted" && formatOfferDay(offer.updated_at || offer.created_at) === todayLabel
+    );
 
     return (
       <div style={styles.app}>
