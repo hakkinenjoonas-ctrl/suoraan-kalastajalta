@@ -450,6 +450,9 @@ function buyerStatusBadgeStyle(status, baseStyle) {
   if (status === "reserved") {
     return { ...baseStyle, background: "#fef3c7", borderColor: "#fcd34d", color: "#92400e" };
   }
+  if (status === "sold") {
+    return { ...baseStyle, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" };
+  }
   return baseStyle;
 }
 
@@ -1157,6 +1160,7 @@ export default function App() {
     if (status === "countered") return "Vastatarjous";
     if (status === "reserved") return "Varattu";
     if (status === "accepted") return "Kauppa hyväksytty";
+    if (status === "sold") return "MYYTY";
     if (status === "rejected") return "Hylätty";
     if (status === "cancelled") return "Peruttu";
     return status || "-";
@@ -1418,7 +1422,7 @@ export default function App() {
                 .from("buyer_offers")
                 .select("*")
                 .eq("buyer_email", normalizedProfileEmail)
-                .in("status", ["sent", "viewed", "countered", "reserved", "accepted", "rejected", "expired", "cancelled"])
+                .in("status", ["sent", "viewed", "countered", "reserved", "accepted", "sold", "rejected", "expired", "cancelled"])
                 .order("created_at", { ascending: false })
             : supabase
                 .from("buyer_offers")
@@ -2434,6 +2438,34 @@ export default function App() {
       return;
     }
 
+    if (status === "accepted") {
+      let competingOffersQuery = supabase
+        .from("buyer_offers")
+        .update({ status: "sold" })
+        .neq("id", offer.id)
+        .in("status", ["sent", "viewed", "countered", "reserved"]);
+
+      if (offer.batch_id) {
+        competingOffersQuery = competingOffersQuery.eq("batch_id", offer.batch_id);
+      } else {
+        competingOffersQuery = competingOffersQuery
+          .eq("seller_user_id", offer.seller_user_id)
+          .eq("area", offer.area)
+          .eq("spot", offer.spot || "")
+          .eq("total_kilos", offer.total_kilos);
+      }
+
+      const { error: competingOffersError } = await competingOffersQuery;
+      if (competingOffersError) {
+        if (isMissingRefreshTokenError(competingOffersError)) {
+          await invalidateSession();
+          return;
+        }
+        setAuthError(competingOffersError.message);
+        return;
+      }
+    }
+
     setAuthInfo(
       status === "accepted"
         ? "Kauppa hyväksytty. Ostajan toimitus- ja laskutustiedot tallennettu kaupalle."
@@ -2883,7 +2915,9 @@ export default function App() {
       const statusOk = buyerOffersFilter === "all"
         ? true
         : buyerOffersFilter === "open"
-        ? ["sent", "viewed", "countered", "reserved"].includes(offer.status)
+        ? ["sent", "viewed", "countered", "reserved", "sold"].includes(offer.status)
+        : buyerOffersFilter === "accepted"
+        ? ["accepted", "sold"].includes(offer.status)
         : offer.status === buyerOffersFilter;
       const text = [offer.seller_name, offer.area, offer.spot, offer.species_summary, offer.status, offer.buyer_message]
         .filter(Boolean)
@@ -2991,6 +3025,7 @@ export default function App() {
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
                             <span style={styles.badge}>{o.area || "-"}</span>
                             {o.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varaus käynnissä</span> : null}
+                            {o.status === "sold" ? <span style={{ ...styles.badge, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }}>MYYTY</span> : null}
                             {o.seller_name ? <span style={styles.badge}>Myyjä: {o.seller_name}</span> : null}
                           </div>
                         </div>
@@ -3013,6 +3048,11 @@ export default function App() {
                             Kauppa hyväksytty. Myyjä hyväksyi tarjouksesi.
                           </div>
                         ) : null}
+                        {o.status === "sold" ? (
+                          <div style={{ ...styles.noticeError, marginTop: 10 }}>
+                            MYYTY. Tämä erä on myyty toiselle ostajalle, eikä sitä voi enää varata.
+                          </div>
+                        ) : null}
 
                         <div style={{ ...styles.row, marginTop: 12 }}>
                           <button style={styles.button} onClick={() => {
@@ -3020,8 +3060,8 @@ export default function App() {
                               buyerUpdateOffer(o.id, { status: "viewed" });
                             }
                             setBuyerActiveOfferId(isActive ? null : o.id);
-                          }}>{isActive ? "Sulje" : o.status === "reserved" ? "Muokkaa varausta" : "Tee vastatarjous / varaa"}</button>
-                          {o.status !== "accepted" ? <button style={styles.button} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button> : null}
+                          }}>{isActive ? "Sulje" : o.status === "reserved" ? "Muokkaa varausta" : o.status === "sold" ? "Näytä tiedot" : "Tee vastatarjous / varaa"}</button>
+                          {o.status !== "accepted" && o.status !== "sold" ? <button style={styles.button} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button> : null}
                         </div>
 
                         {isActive ? (
@@ -3029,6 +3069,11 @@ export default function App() {
                             {o.status === "accepted" ? (
                           <div style={styles.noticeSuccess}>Kauppa on hyväksytty. Myyjän yhteystiedot ja lopullinen toimitus voidaan sopia tämän varauksen pohjalta.</div>
                         ) : null}
+                        {o.status === "sold" ? (
+                          <div style={styles.noticeError}>Erä on myyty toiselle ostajalle. Varaus- ja vastatarjoustoiminnot eivät ole enää käytettävissä.</div>
+                        ) : null}
+                        {o.status === "sold" ? null : (
+                        <>
                         <div style={styles.field}>
                           <label>Vastatarjous €/kg</label>
                               <input style={styles.input} type="number" value={buyerAction.counter_price_per_kg} onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))} placeholder="Esim. 5.80" />
@@ -3045,6 +3090,8 @@ export default function App() {
                               <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onSubmitCounter(o)}>Lähetä vastatarjous</button>
                               <button style={styles.button} onClick={() => onReserve(o)}>{o.status === "reserved" ? "Päivitä varaus" : "Varaa erä"}</button>
                             </div>
+                            </>
+                        )}
                           </div>
                         ) : null}
                       </div>
