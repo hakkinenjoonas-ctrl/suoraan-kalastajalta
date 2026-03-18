@@ -456,6 +456,21 @@ function buyerStatusBadgeStyle(status, baseStyle) {
   return baseStyle;
 }
 
+const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+
+async function findAllowedUserByEmail(supabase, email) {
+  const normalizedEmail = normalizeEmail(email);
+  const { data, error } = await supabase
+    .from("allowed_users")
+    .select("*")
+    .ilike("email", normalizedEmail);
+
+  if (error) return { data: null, error };
+
+  const match = (data || []).find((row) => normalizeEmail(row.email) === normalizedEmail) || null;
+  return { data: match, error: null };
+}
+
 function responsiveGridStyle(base) {
   if (typeof window !== "undefined" && window.innerWidth < 960) {
     return { ...base, gridTemplateColumns: "1fr" };
@@ -1337,7 +1352,7 @@ export default function App() {
         setFisherInfoForm({ commercialFishingId: existingProfile.commercial_fishing_id || "" });
         return;
       }
-      const { data: allowed, error: allowedError } = await supabase.from("allowed_users").select("*").eq("email", email).maybeSingle();
+      const { data: allowed, error: allowedError } = await findAllowedUserByEmail(supabase, email);
       if (allowedError && allowedError.code !== "PGRST116") {
         if (isMissingRefreshTokenError(allowedError)) {
           await invalidateSession();
@@ -1651,7 +1666,7 @@ export default function App() {
   const handleSignIn = async () => {
     setAuthError("");
     setAuthInfo("");
-    const email = authForm.email.trim().toLowerCase();
+    const email = normalizeEmail(authForm.email);
     const password = authForm.password;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
@@ -1666,14 +1681,14 @@ export default function App() {
   const handleSignUp = async () => {
     setAuthError("");
     setAuthInfo("");
-    const email = authForm.email.trim().toLowerCase();
+    const email = normalizeEmail(authForm.email);
     const password = authForm.password;
     const displayName = authForm.displayName.trim();
     if (!email || !password || !displayName) {
       setAuthError("Täytä sähköposti, salasana ja nimi.");
       return;
     }
-    const { data: allowed, error: allowedError } = await supabase.from("allowed_users").select("*").eq("email", email).maybeSingle();
+    const { data: allowed, error: allowedError } = await findAllowedUserByEmail(supabase, email);
     if (allowedError && allowedError.code !== "PGRST116") {
       if (isMissingRefreshTokenError(allowedError)) {
         await invalidateSession();
@@ -1708,7 +1723,7 @@ export default function App() {
   const handleCreateAllowedUser = async () => {
     if (!profile || profile.role !== "owner") return;
     setUserMessage("");
-    const email = newAllowedForm.email.trim().toLowerCase();
+    const email = normalizeEmail(newAllowedForm.email);
     const displayName = newAllowedForm.displayName.trim();
     if (!email || !displayName) {
       setUserMessage("Täytä sähköposti ja nimi.");
