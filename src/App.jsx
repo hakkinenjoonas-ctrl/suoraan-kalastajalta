@@ -1120,7 +1120,7 @@ export default function App() {
     earliestDeliveryDate: today(),
     coldTransport: true,
   });
-  const [newAllowedForm, setNewAllowedForm] = useState({ email: "", displayName: "", role: "member" });
+  const [newAllowedForm, setNewAllowedForm] = useState({ email: "", displayName: "", role: "member", buyer_id: "" });
   const [buyerAction, setBuyerAction] = useState({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
   const [offerForm, setOfferForm] = useState({
     company_name: "",
@@ -1334,6 +1334,16 @@ export default function App() {
 
     const ensureProfile = async () => {
       const email = (session.user.email || "").trim().toLowerCase();
+      const { data: allowed, error: allowedError } = await findAllowedUserByEmail(supabase, email);
+      if (allowedError && allowedError.code !== "PGRST116") {
+        if (isMissingRefreshTokenError(allowedError)) {
+          await invalidateSession();
+          return;
+        }
+        setAuthError(allowedError.message);
+        return;
+      }
+
       const { data: existingProfile, error: profileError } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
       if (profileError && profileError.code !== "PGRST116") {
         if (isMissingRefreshTokenError(profileError)) {
@@ -1344,21 +1354,24 @@ export default function App() {
         return;
       }
       if (existingProfile) {
+        let profileToUse = existingProfile;
+        if (!existingProfile.buyer_id && allowed?.buyer_id) {
+          const { data: updatedProfile, error: updateProfileError } = await supabase
+            .from("profiles")
+            .update({ buyer_id: allowed.buyer_id })
+            .eq("id", session.user.id)
+            .select("*")
+            .single();
+          if (!updateProfileError && updatedProfile) {
+            profileToUse = updatedProfile;
+          }
+        }
         const normalizedProfile = {
-          ...existingProfile,
-          email: (existingProfile.email || email || "").trim().toLowerCase(),
+          ...profileToUse,
+          email: (profileToUse.email || email || "").trim().toLowerCase(),
         };
         setProfile(normalizedProfile);
-        setFisherInfoForm({ commercialFishingId: existingProfile.commercial_fishing_id || "" });
-        return;
-      }
-      const { data: allowed, error: allowedError } = await findAllowedUserByEmail(supabase, email);
-      if (allowedError && allowedError.code !== "PGRST116") {
-        if (isMissingRefreshTokenError(allowedError)) {
-          await invalidateSession();
-          return;
-        }
-        setAuthError(allowedError.message);
+        setFisherInfoForm({ commercialFishingId: profileToUse.commercial_fishing_id || "" });
         return;
       }
       if (!allowed || !allowed.is_active) {
@@ -1375,6 +1388,7 @@ export default function App() {
           display_name: allowed.display_name || session.user.user_metadata?.display_name || email,
           role: allowed.role || "member",
           is_active: allowed.is_active,
+          buyer_id: allowed.buyer_id || null,
         })
         .select("*")
         .single();
@@ -1433,12 +1447,16 @@ export default function App() {
 
         const buyerOffersPromise = hasBuyerOffersTable
           ? profile.role === "buyer"
-            ? supabase
-                .from("buyer_offers")
-                .select("*")
-                .eq("buyer_email", normalizedProfileEmail)
-                .in("status", ["sent", "viewed", "countered", "reserved", "accepted", "sold", "rejected", "expired", "cancelled"])
-                .order("created_at", { ascending: false })
+            ? (() => {
+                const query = supabase
+                  .from("buyer_offers")
+                  .select("*")
+                  .in("status", ["sent", "viewed", "countered", "reserved", "accepted", "sold", "rejected", "expired", "cancelled"])
+                  .order("created_at", { ascending: false });
+                return profile.buyer_id
+                  ? query.or(`buyer_id.eq.${profile.buyer_id},buyer_email.eq.${normalizedProfileEmail}`)
+                  : query.eq("buyer_email", normalizedProfileEmail);
+              })()
             : supabase
                 .from("buyer_offers")
                 .select("*")
@@ -1730,11 +1748,16 @@ export default function App() {
       return;
     }
     const role = newAllowedForm.role === "owner" ? "owner" : newAllowedForm.role === "buyer" ? "buyer" : newAllowedForm.role === "processor" ? "processor" : "member";
+    if (role === "buyer" && !newAllowedForm.buyer_id) {
+      setUserMessage("Valitse ostajakäyttäjälle ostajarekisterin yritys.");
+      return;
+    }
     const { error } = await supabase.from("allowed_users").insert({
       email,
       display_name: displayName,
       role,
       is_active: true,
+      buyer_id: role === "buyer" ? newAllowedForm.buyer_id : null,
     });
     if (error) {
       if (isMissingRefreshTokenError(error)) {
@@ -1744,7 +1767,7 @@ export default function App() {
       setUserMessage(error.message);
       return;
     }
-    setNewAllowedForm({ email: "", displayName: "", role: "member" });
+    setNewAllowedForm({ email: "", displayName: "", role: "member", buyer_id: "" });
     setUserMessage(`Sallittu käyttäjä ${displayName} lisätty.`);
     setRefreshTick((prev) => prev + 1);
   };
@@ -3531,6 +3554,23 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               <div style={styles.field}><label>Nimi</label><input style={styles.input} value={newAllowedForm.displayName} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Antti Kalastaja" /></div>
               <div style={styles.field}><label>Sähköposti</label><input style={styles.input} type="email" value={newAllowedForm.email} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. antti@yritys.fi" /></div>
               <div style={styles.field}><label>Rooli</label><select style={styles.input} value={newAllowedForm.role} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, role: e.target.value }))}><option value="member">Kalastaja</option><option value="processor">Kalanjalostaja</option><option value="buyer">Ostaja</option><option value="owner">Omistaja</option></select></div>
+              {newAllowedForm.role === "buyer" ? (
+                <div style={styles.field}>
+                  <label>Liitetty ostaja</label>
+                  <select
+                    style={styles.input}
+                    value={newAllowedForm.buyer_id}
+                    onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, buyer_id: e.target.value }))}
+                  >
+                    <option value="">Valitse ostaja</option>
+                    {buyers.map((buyer) => (
+                      <option key={buyer.id} value={buyer.id}>
+                        {buyer.company_name} ({buyer.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
               {userMessage ? <div style={styles.noticeSuccess}>{userMessage}</div> : null}
               <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleCreateAllowedUser}>Lisää sallittuihin</button>
             </div>
@@ -3538,6 +3578,9 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               <strong>Käyttäjähallinta</strong>
               {allowedUsers.length === 0 ? <div style={styles.muted}>Ei vielä sallittuja käyttäjiä.</div> : allowedUsers.map((user) => (
                 <div key={user.id} style={styles.entry}>
+                  {(() => {
+                    const linkedBuyer = buyers.find((buyer) => buyer.id === user.buyer_id);
+                    return (
                   <div style={styles.entryHeader}>
                     <div>
                       <div style={styles.entryBadges}>
@@ -3545,6 +3588,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                         <span style={styles.badge}>{user.email}</span>
                         <span style={styles.badge}>{user.role === "owner" ? "Omistaja" : user.role === "buyer" ? "Ostaja" : user.role === "processor" ? "Kalanjalostaja" : "Käyttäjä"}</span>
                         <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
+                        {linkedBuyer ? <span style={styles.badge}>Ostaja: {linkedBuyer.company_name}</span> : null}
                       </div>
                     </div>
                     <div style={styles.row}>
@@ -3557,6 +3601,8 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                       </button>
                     </div>
                   </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
