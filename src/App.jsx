@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://exuqgemipmaqdkficlfn.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_6OpTn3AxVjMnpei8Bpsy7A_Y8kOXaZP";
+const DEFAULT_PUBLIC_APP_URL = "https://suoraan-kalastajalta.vercel.app";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -85,6 +86,20 @@ function safeId() {
 
 function createSpeciesRow() {
   return { id: safeId(), species: "Muikku", customSpecies: "", kilos: "", count: "" };
+}
+
+function getPublicAppBaseUrl() {
+  const configuredUrl = typeof import.meta !== "undefined" ? import.meta.env?.VITE_PUBLIC_APP_URL : "";
+  if (configuredUrl) return String(configuredUrl).replace(/\/$/, "");
+
+  if (typeof window !== "undefined") {
+    const origin = String(window.location.origin || "").replace(/\/$/, "");
+    if (origin && !origin.includes("localhost") && !origin.includes("127.0.0.1")) {
+      return origin;
+    }
+  }
+
+  return DEFAULT_PUBLIC_APP_URL;
 }
 
 function getSpeciesRowLabel(row) {
@@ -1794,7 +1809,7 @@ export default function App() {
       .join(String.fromCharCode(10));
 
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
-    const offerUrlBase = typeof window !== "undefined" ? window.location.origin : "https://suoraan-kalastajalta.vercel.app";
+    const offerUrlBase = getPublicAppBaseUrl();
     const logisticsLines = [
       `Toimitustapa: ${formState.deliveryMethod || "-"}`,
       `Toimitusalue: ${formState.deliveryArea || "-"}`,
@@ -1943,7 +1958,7 @@ export default function App() {
       .join(String.fromCharCode(10));
 
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
-    const offerUrlBase = typeof window !== "undefined" ? window.location.origin : "https://suoraan-kalastajalta.vercel.app";
+    const offerUrlBase = getPublicAppBaseUrl();
     const logisticsLines = [
       `Toimitustapa: ${formState.deliveryMethod || "-"}`,
       `Toimitusalue: ${formState.deliveryArea || "-"}`,
@@ -2175,7 +2190,7 @@ export default function App() {
     await supabase.functions.invoke("send-buyer-response-email", {
       body: {
         sellerEmail,
-        offerLink: typeof window !== "undefined" ? `${window.location.origin}?offer=${offer.id}` : null,
+        offerLink: `${getPublicAppBaseUrl()}?offer=${offer.id}`,
         offer: {
           buyerLabel,
           buyerEmail: revealIdentity ? offer?.buyer_email : null,
@@ -2205,7 +2220,7 @@ export default function App() {
     await supabase.functions.invoke("send-buyer-accepted-email", {
       body: {
         buyerEmail,
-        offerLink: typeof window !== "undefined" ? `${window.location.origin}?offer=${offer.id}` : null,
+        offerLink: `${getPublicAppBaseUrl()}?offer=${offer.id}`,
         offer: {
           sellerName,
           species_summary: offer?.species_summary,
@@ -2378,7 +2393,7 @@ export default function App() {
       return { skipped: true, sent: [], failed: [] };
     }
 
-    const offerUrlBase = typeof window !== "undefined" ? window.location.origin : "https://suoraan-kalastajalta.vercel.app";
+    const offerUrlBase = getPublicAppBaseUrl();
     const summaryLines = [
       `Tuote: ${formState.productName || "-"}`,
       `Tyyppi: ${formState.productType || "-"}`,
