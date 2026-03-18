@@ -109,6 +109,38 @@ function getSpeciesRowLabel(row) {
   return row?.species || "";
 }
 
+function formatBatchArea(area) {
+  return String(area || "BATCH")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toUpperCase() || "BATCH";
+}
+
+async function generateBatchId({ area, date, supabaseClient }) {
+  const batchArea = formatBatchArea(area);
+  const batchDate = String(date || today()).slice(0, 7);
+  const prefix = `${batchArea}-${batchDate}`;
+
+  const [{ count: catchCount, error: catchError }, { count: processedCount, error: processedError }] = await Promise.all([
+    supabaseClient
+      .from("catch_entries")
+      .select("id", { count: "exact", head: true })
+      .like("batch_id", `${prefix}-%`),
+    supabaseClient
+      .from("processed_batches")
+      .select("id", { count: "exact", head: true })
+      .like("batch_id", `${prefix}-%`),
+  ]);
+
+  if (catchError) throw catchError;
+  if (processedError && processedError.code !== "PGRST116") throw processedError;
+
+  const sequence = String((Number(catchCount || 0) + Number(processedCount || 0) + 1)).padStart(3, "0");
+  return `${prefix}-${sequence}`;
+}
+
 function euro(value) {
   return new Intl.NumberFormat("fi-FI", {
     style: "currency",
@@ -2526,7 +2558,18 @@ export default function App() {
       return;
     }
     setSaving(true);
-    const batchId = new Date().toISOString();
+    let batchId;
+    try {
+      batchId = await generateBatchId({ area: form.area, date: form.date, supabaseClient: supabase });
+    } catch (error) {
+      setSaving(false);
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message || "Batch ID:n luonti epäonnistui.");
+      return;
+    }
     const payload = validRows.map((row) => ({
       offer_to_shops: form.offerToShops,
       offer_to_restaurants: form.offerToRestaurants,
@@ -2617,7 +2660,18 @@ export default function App() {
     }
 
     setSaving(true);
-    const batchId = `processed-${new Date().toISOString()}`;
+    let batchId;
+    try {
+      batchId = await generateBatchId({ area: processedForm.area, date: processedForm.productionDate, supabaseClient: supabase });
+    } catch (error) {
+      setSaving(false);
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message || "Batch ID:n luonti epäonnistui.");
+      return;
+    }
     const payload = {
       batch_id: batchId,
       production_date: processedForm.productionDate,
