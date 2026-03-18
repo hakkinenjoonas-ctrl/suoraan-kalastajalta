@@ -1811,6 +1811,27 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
+  const deleteBuyer = async (buyer) => {
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(`Poistetaanko ostaja ${buyer.company_name || buyer.email} kokonaan?`);
+      if (!confirmed) return;
+    }
+    const { error } = await supabase.from("buyers").delete().eq("id", buyer.id);
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(error.message);
+      return;
+    }
+    if (buyerForm.id === buyer.id) {
+      resetBuyerForm();
+    }
+    setUserMessage(`Ostaja ${buyer.company_name || buyer.email} poistettu kokonaan.`);
+    setRefreshTick((prev) => prev + 1);
+  };
+
   const handleSaveBuyer = async () => {
     if (!profile || profile.role !== "owner") return;
     const payload = {
@@ -3489,6 +3510,12 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                     <div style={styles.row}>
                       <button style={styles.button} onClick={() => startEditBuyer(buyer)}>Muokkaa</button>
                       <button style={styles.button} onClick={() => toggleBuyerActive(buyer)}>{buyer.is_active ? "Poista käytöstä" : "Aktivoi"}</button>
+                      <button
+                        style={{ ...styles.button, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff1f2" }}
+                        onClick={() => deleteBuyer(buyer)}
+                      >
+                        Poista kokonaan
+                      </button>
                     </div>
                   </div>
                 </div>
