@@ -586,6 +586,7 @@ function WholesaleOffersView({
                     {entry.offerToWholesalers ? <span style={styles.badge}>Tukkuihin</span> : null}
                   </div>
                   <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                  {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                   <div style={styles.muted}>Pyydys: {entry.gear || "-"}</div>
                   {reservation ? (
                     <div style={styles.muted}>
@@ -658,6 +659,7 @@ function WholesaleOffersView({
                         <div style={{ ...styles.grid2, marginBottom: 10 }}>
                           <div>
                             <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                            {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
                             <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
                             <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{entry.municipality ? ` · ${entry.municipality}` : ""}{offer.spot ? ` / ${offer.spot}` : ""}</div>
                           </div>
@@ -748,6 +750,7 @@ function WholesaleOffersView({
                 </div>
                 <div>
                   <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                  {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
                   <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
                   {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous:</strong> {euro(offer.counter_price_per_kg)} / kg</div> : null}
                   {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
@@ -2945,6 +2948,7 @@ export default function App() {
                         <div style={{ marginBottom: 10 }}>
                           <div style={{ fontSize: 13, color: "#64748b", marginBottom: 6 }}>{formatOfferDate(o.updated_at || o.created_at)}</div>
                           <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, marginBottom: 8 }}>{buildOfferHeadline(o)}</div>
+                          {o.batch_id ? <div style={{ ...styles.muted, marginBottom: 8 }}><strong>Erätunnus:</strong> {o.batch_id}</div> : null}
                           <div style={styles.entryBadges}>
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
                             <span style={styles.badge}>{o.area || "-"}</span>
@@ -3237,6 +3241,7 @@ export default function App() {
                         {entry.packageCount !== "" ? <span style={styles.badge}>{entry.packageCount} pkt</span> : null}
                       </div>
                       <div style={styles.muted}>{entry.productionDate} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                      {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                       <div style={styles.muted}>Käsittely: {entry.processingMethod || "-"} · Raaka-aine: {entry.speciesSummary || "-"}</div>
                       <div style={styles.muted}>Parasta ennen: {entry.bestBeforeDate || "-"}</div>
                       <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
@@ -3261,6 +3266,7 @@ export default function App() {
                         <span style={styles.badge}>{entry.ownerName}</span>
                       </div>
                       <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                      {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                       <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                       {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                     </div>
