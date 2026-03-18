@@ -1989,6 +1989,7 @@ export default function App() {
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
     const offerUrlBase = getPublicAppBaseUrl();
     const logisticsLines = [
+      `Hinta: ${formState.price_per_kg !== "" && formState.price_per_kg != null ? `${formState.price_per_kg} € / kg` : "-"}`,
       `Toimitustapa: ${formState.deliveryMethod || "-"}`,
       `Toimitusalue: ${formState.deliveryArea || "-"}`,
       `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
@@ -2141,6 +2142,7 @@ export default function App() {
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
     const offerUrlBase = getPublicAppBaseUrl();
     const logisticsLines = [
+      `Hinta: ${formState.price_per_kg !== "" && formState.price_per_kg != null ? `${formState.price_per_kg} € / kg` : "-"}`,
       `Toimitustapa: ${formState.deliveryMethod || "-"}`,
       `Toimitusalue: ${formState.deliveryArea || "-"}`,
       `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
@@ -3016,8 +3018,7 @@ export default function App() {
 
     const buildOfferHeadline = (offer) => {
       const firstLine = String(offer?.species_summary || "Kalaerä").split("\n")[0] || "Kalaerä";
-      const amountText = offer?.total_kilos ? `${offer.total_kilos} kg` : "";
-      return `${firstLine} ${amountText}`.trim();
+      return firstLine.trim();
     };
 
     const filteredBuyerOffers = (buyerOffers || []).filter((offer) => {
