@@ -1875,6 +1875,28 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
+  const deleteAllowedUser = async (row) => {
+    if (normalizeEmail(row.email) === normalizeEmail(profile?.email)) {
+      setUserMessage("Et voi poistaa omaa käyttäjääsi sallittujen käyttäjien listasta.");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(`Poistetaanko käyttäjä ${row.display_name || row.email} kokonaan?`);
+      if (!confirmed) return;
+    }
+    const { error } = await supabase.from("allowed_users").delete().eq("id", row.id);
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(error.message);
+      return;
+    }
+    setUserMessage(`Käyttäjä ${row.display_name || row.email} poistettu kokonaan.`);
+    setRefreshTick((prev) => prev + 1);
+  };
+
   const sendCatchOfferEmail = async ({ formState, rows, profileState, batchId }) => {
     const recipients = buildOfferRecipients(formState, rows).map((recipient) => ({
       ...recipient,
@@ -3498,7 +3520,15 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                         <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
                       </div>
                     </div>
-                    <button style={styles.button} onClick={() => toggleAllowedUserActive(user)}>{user.is_active ? "Poista käytöstä" : "Aktivoi"}</button>
+                    <div style={styles.row}>
+                      <button style={styles.button} onClick={() => toggleAllowedUserActive(user)}>{user.is_active ? "Poista käytöstä" : "Aktivoi"}</button>
+                      <button
+                        style={{ ...styles.button, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff1f2" }}
+                        onClick={() => deleteAllowedUser(user)}
+                      >
+                        Poista kokonaan
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
