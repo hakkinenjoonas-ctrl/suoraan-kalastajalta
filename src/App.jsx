@@ -3603,35 +3603,52 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             </div>
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <strong>Käyttäjähallinta</strong>
-              {allowedUsers.length === 0 ? <div style={styles.muted}>Ei vielä sallittuja käyttäjiä.</div> : allowedUsers.map((user) => (
-                <div key={user.id} style={styles.entry}>
-                  {(() => {
-                    const linkedBuyer = buyers.find((buyer) => buyer.id === user.buyer_id);
-                    return (
-                  <div style={styles.entryHeader}>
-                    <div>
-                      <div style={styles.entryBadges}>
-                        <span style={styles.badge}>{user.display_name}</span>
-                        <span style={styles.badge}>{user.email}</span>
-                        <span style={styles.badge}>{user.role === "owner" ? "Omistaja" : user.role === "buyer" ? "Ostaja" : user.role === "processor" ? "Kalanjalostaja" : "Käyttäjä"}</span>
-                        <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
-                        {linkedBuyer ? <span style={styles.badge}>Ostaja: {linkedBuyer.company_name}</span> : null}
+              {allowedUsers.length === 0 ? <div style={styles.muted}>Ei vielä sallittuja käyttäjiä.</div> : (
+                (() => {
+                  const userSections = [
+                    { title: "Ownerit", items: allowedUsers.filter((user) => user.role === "owner") },
+                    { title: "Ostajakäyttäjät", items: allowedUsers.filter((user) => user.role === "buyer") },
+                    { title: "Käyttäjät", items: allowedUsers.filter((user) => user.role !== "owner" && user.role !== "buyer") },
+                  ];
+
+                  return userSections.map((section) => (
+                    section.items.length === 0 ? null : (
+                      <div key={section.title} style={styles.stack}>
+                        <div style={{ ...styles.card, ...styles.sectionCard, padding: "12px 16px", background: "#f8fafc" }}>
+                          <strong>{section.title}</strong>
+                        </div>
+                        {section.items.map((user) => {
+                          const linkedBuyer = buyers.find((buyer) => buyer.id === user.buyer_id);
+                          return (
+                            <div key={user.id} style={styles.entry}>
+                              <div style={styles.entryHeader}>
+                                <div>
+                                  <div style={styles.entryBadges}>
+                                    <span style={styles.badge}>{user.display_name}</span>
+                                    <span style={styles.badge}>{user.email}</span>
+                                    <span style={styles.badge}>{user.role === "owner" ? "Omistaja" : user.role === "buyer" ? "Ostaja" : user.role === "processor" ? "Kalanjalostaja" : "Käyttäjä"}</span>
+                                    <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
+                                    {linkedBuyer ? <span style={styles.badge}>Ostaja: {linkedBuyer.company_name}</span> : null}
+                                  </div>
+                                </div>
+                                <div style={styles.row}>
+                                  <button style={styles.button} onClick={() => toggleAllowedUserActive(user)}>{user.is_active ? "Poista käytöstä" : "Aktivoi"}</button>
+                                  <button
+                                    style={{ ...styles.button, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff1f2" }}
+                                    onClick={() => deleteAllowedUser(user)}
+                                  >
+                                    Poista kokonaan
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    </div>
-                    <div style={styles.row}>
-                      <button style={styles.button} onClick={() => toggleAllowedUserActive(user)}>{user.is_active ? "Poista käytöstä" : "Aktivoi"}</button>
-                      <button
-                        style={{ ...styles.button, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff1f2" }}
-                        onClick={() => deleteAllowedUser(user)}
-                      >
-                        Poista kokonaan
-                      </button>
-                    </div>
-                  </div>
-                    );
-                  })()}
-                </div>
-              ))}
+                    )
+                  ));
+                })()
+              )}
             </div>
           </div>
         ) : null}
