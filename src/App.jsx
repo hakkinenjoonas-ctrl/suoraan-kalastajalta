@@ -2032,6 +2032,7 @@ export default function App() {
           seller_user_id: profileState?.id || null,
           seller_name: profileState?.display_name || profileState?.email || null,
           total_kilos: entry.kilos,
+          price_per_kg: entry.price_per_kg,
           species_summary: summaryLines,
           area: entry.area,
           spot: entry.spot,
@@ -3128,6 +3129,16 @@ export default function App() {
                         <div style={{ marginBottom: 10 }}>
                           <div style={{ fontSize: 13, color: "#64748b", marginBottom: 6 }}>{formatOfferDate(o.updated_at || o.created_at)}</div>
                           <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, marginBottom: 8 }}>{buildOfferHeadline(o)}</div>
+                          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
+                              {o.total_kilos} kg
+                            </div>
+                            {o.price_per_kg !== "" && o.price_per_kg != null ? (
+                              <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
+                                {euro(o.price_per_kg)} / kg
+                              </div>
+                            ) : null}
+                          </div>
                           {o.batch_id ? <div style={{ ...styles.muted, marginBottom: 8 }}><strong>Erätunnus:</strong> {o.batch_id}</div> : null}
                           {o.batch_id ? <div style={{ ...styles.qrBlock, marginBottom: 8 }}><img src={getBatchQrImageUrl(o.batch_id)} alt={`QR ${o.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                           <div style={styles.entryBadges}>
