@@ -1858,13 +1858,21 @@ export default function App() {
       }
     }
 
-    const { error } = await supabase.from("buyers").delete().eq("id", buyer.id);
+    const { data: deletedRows, error } = await supabase
+      .from("buyers")
+      .delete()
+      .eq("id", buyer.id)
+      .select("id");
     if (error) {
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
         return;
       }
       setUserMessage(`Ostajan poisto epäonnistui: ${error.message}`);
+      return;
+    }
+    if (!deletedRows || deletedRows.length === 0) {
+      setUserMessage("Ostajan poisto ei onnistunut. Riviä ei poistettu tietokannasta.");
       return;
     }
     if (buyerForm.id === buyer.id) {
