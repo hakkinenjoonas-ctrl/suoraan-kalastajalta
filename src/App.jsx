@@ -3620,7 +3620,15 @@ export default function App() {
                 <div style={styles.field}><label>Hinta (€/kg)</label><input style={styles.input} type="number" step="0.01" value={form.price_per_kg || ""} onChange={(e) => setForm((prev) => ({ ...prev, price_per_kg: e.target.value }))} placeholder="Esim. 5.50" /></div>
               <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm({ ...form, gear: e.target.value })}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
                 <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={form.deliveryMethod} onChange={(e) => setForm({ ...form, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
-                <div style={styles.field}><label>Toimitusalue</label><input style={styles.input} placeholder="Esim. Etelä-Suomi / Helsinki / koko Suomi" value={form.deliveryArea} onChange={(e) => setForm({ ...form, deliveryArea: e.target.value })} /></div>
+                <div style={styles.field}>
+                  <label>{form.deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}</label>
+                  <input
+                    style={styles.input}
+                    placeholder={form.deliveryMethod === "Nouto" ? "Esim. Satamakatu 1, Kuopio" : "Esim. Etelä-Suomi / Helsinki / koko Suomi"}
+                    value={form.deliveryArea}
+                    onChange={(e) => setForm({ ...form, deliveryArea: e.target.value })}
+                  />
+                </div>
                 <div style={styles.field}><label>Toimituskustannus €</label><input style={styles.input} type="number" placeholder="Esim. 90" value={form.deliveryCost} onChange={(e) => setForm({ ...form, deliveryCost: e.target.value })} /></div>
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
