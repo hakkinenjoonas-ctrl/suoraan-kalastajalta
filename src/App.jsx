@@ -156,6 +156,32 @@ function getPublicBatchInfoUrl(batchId) {
   return `${SUPABASE_URL}/functions/v1/public-batch-info?batchId=${encodeURIComponent(batchId)}`;
 }
 
+async function invokeEdgeFunctionAuthenticated(functionName, body, accessToken) {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      data,
+      error: {
+        message: data?.error || `HTTP ${response.status}`,
+        status: response.status,
+        context: data,
+      },
+    };
+  }
+
+  return { data, error: null };
+}
+
 function formatBatchArea(area) {
   return String(area || "BATCH")
     .normalize("NFD")
@@ -2219,6 +2245,12 @@ export default function App() {
       offerUrlBase,
     };
 
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) {
+      throw new Error("Istunto puuttuu. Kirjaudu ulos ja takaisin sisään ennen tarjouksen lähetystä.");
+    }
+
     const sent = [];
     const failed = [];
 
@@ -2264,8 +2296,9 @@ export default function App() {
           entry,
         });
 
-        const { data, error } = await supabase.functions.invoke("send-catch-offer-email", {
-          body: {
+        const { data, error } = await invokeEdgeFunctionAuthenticated(
+          "send-catch-offer-email",
+          {
             entry,
             recipients: [{
               email: recipient.email,
@@ -2274,7 +2307,8 @@ export default function App() {
               offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
             }],
           },
-        });
+          accessToken
+        );
 
         console.log("Invoke result", { data, error });
 
@@ -2887,8 +2921,9 @@ export default function App() {
 
       const offerId = insertedOffer?.data?.id || null;
 
-      const { data, error } = await supabase.functions.invoke("send-catch-offer-email", {
-        body: {
+      const { data, error } = await invokeEdgeFunctionAuthenticated(
+        "send-catch-offer-email",
+        {
           entry: {
             species: formState.productName || formState.productType || "Jaloste-erä",
             kilos: Number(formState.kilos || 0),
@@ -2914,7 +2949,8 @@ export default function App() {
             offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
           }],
         },
-      });
+        accessToken
+      );
       if (!error) {
         console.log("send-catch-offer-email ok", recipient.email, data);
         sent.push({
