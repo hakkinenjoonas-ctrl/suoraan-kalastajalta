@@ -116,6 +116,13 @@ function getOfferSpeciesHeadline(summary) {
     .trim() || "Kalaerä";
 }
 
+function parsePricePerKgFromNotes(notes) {
+  const match = String(notes || "").match(/Hinta:\s*([0-9]+(?:[.,][0-9]+)?)\s*€/i);
+  if (!match) return "";
+  const parsed = Number(String(match[1]).replace(",", "."));
+  return Number.isNaN(parsed) ? "" : parsed;
+}
+
 function getBatchPublicUrl(batchId) {
   if (!batchId) return "";
   return `${getPublicAppBaseUrl()}/batch/${encodeURIComponent(batchId)}`;
@@ -1230,6 +1237,7 @@ export default function App() {
     municipality: "",
     spot: "",
     gear: "Rysä",
+    price_per_kg: "",
     notes: "",
     offerToShops: false,
     offerToRestaurants: false,
@@ -1478,7 +1486,7 @@ export default function App() {
         const result = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error(result?.error || "Erän tietoja ei voitu hakea.");
+          throw new Error(result?.error || `Erän tietoja ei voitu hakea (HTTP ${response.status}).`);
         }
 
         if (!cancelled) {
@@ -1793,7 +1801,7 @@ export default function App() {
               ...offer,
               buyer_email: (offer.buyer_email || "").toLowerCase(),
               total_kilos: Number(offer.total_kilos || 0),
-              price_per_kg: offer.price_per_kg == null ? "" : Number(offer.price_per_kg),
+              price_per_kg: offer.price_per_kg == null || offer.price_per_kg === "" ? parsePricePerKgFromNotes(offer.notes) : Number(offer.price_per_kg),
               counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
               reserved_kilos: offer.reserved_kilos == null ? "" : Number(offer.reserved_kilos),
               buyer_type: buyer?.buyer_type || "",
@@ -3024,6 +3032,7 @@ export default function App() {
       ...prev,
       municipality: "",
       notes: "",
+      price_per_kg: "",
       date: today(),
       offerToShops: false,
       offerToRestaurants: false,

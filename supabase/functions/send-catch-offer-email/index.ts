@@ -33,6 +33,13 @@ function formatPrice(value: unknown) {
   return `${number.toLocaleString("fi-FI")} €/kg`;
 }
 
+function parsePriceFromNotes(notesValue: unknown) {
+  const match = safeString(notesValue).match(/Hinta:\s*([0-9]+(?:[.,][0-9]+)?)\s*€/i);
+  if (!match) return "";
+  const parsed = Number(match[1].replace(",", "."));
+  return Number.isNaN(parsed) ? "" : parsed;
+}
+
 function formatKilos(value: unknown) {
   const number = Number(value);
   if (Number.isNaN(number)) return safeString(value) || "-";
@@ -99,7 +106,7 @@ Deno.serve(async (req) => {
     const area = safeString(entry.area);
     const spot = safeString(entry.spot);
     const gear = safeString(entry.gear);
-    const price = formatPrice(entry.price_per_kg);
+    const price = formatPrice(entry.price_per_kg === null || entry.price_per_kg === undefined || entry.price_per_kg === "" ? parsePriceFromNotes(entry.notes) : entry.price_per_kg);
     const sellerName = safeString(entry.ownerName || "Tarjoaja");
     const batchId = safeString(entry.batch_id);
     const extraNotes = formatAdditionalNotes(entry.notes);
