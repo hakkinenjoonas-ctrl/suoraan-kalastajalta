@@ -3003,14 +3003,20 @@ export default function App() {
           const parts = [`Saalis tallennettu. Tarjous lähetetty ${emailResult.sent.length} ostajalle.`];
           if (sentLines.length > 0) parts.push("", "Lähetetty:", ...sentLines);
           if (failedLines.length > 0) parts.push("", "Epäonnistui:", ...failedLines);
-          setAuthInfo(parts.join(String.fromCharCode(10)));
+          if (failedLines.length > 0) {
+            setAuthError(parts.join(String.fromCharCode(10)));
+            setAuthInfo("");
+          } else {
+            setAuthInfo(parts.join(String.fromCharCode(10)));
+          }
         }
       } else {
         setAuthInfo("Saalis tallennettu.");
       }
     } catch (emailError) {
       console.error("Sähköpostin lähetys epäonnistui:", emailError);
-      setAuthInfo(`Saalis tallennettu, mutta tarjoussähköpostin lähetys epäonnistui: ${String(emailError?.message || emailError)}`);
+      setAuthError(`Saalis tallennettu, mutta tarjoussähköpostin lähetys epäonnistui: ${String(emailError?.message || emailError)}`);
+      setAuthInfo("");
     }
 
     setSaving(false);
@@ -3103,13 +3109,19 @@ export default function App() {
           const parts = [`Jaloste-erä tallennettu. Tarjous lähetetty ${emailResult.sent.length} ostajalle.`];
           if (sentLines.length > 0) parts.push("", "Lähetetty:", ...sentLines);
           if (failedLines.length > 0) parts.push("", "Epäonnistui:", ...failedLines);
-          setAuthInfo(parts.join(String.fromCharCode(10)));
+          if (failedLines.length > 0) {
+            setAuthError(parts.join(String.fromCharCode(10)));
+            setAuthInfo("");
+          } else {
+            setAuthInfo(parts.join(String.fromCharCode(10)));
+          }
         }
       } else {
         setAuthInfo("Jaloste-erä tallennettu.");
       }
-    } catch {
-      setAuthInfo("Jaloste-erä tallennettu, mutta tarjoussähköpostin lähetys epäonnistui.");
+    } catch (emailError) {
+      setAuthError(`Jaloste-erä tallennettu, mutta tarjoussähköpostin lähetys epäonnistui: ${String(emailError?.message || emailError)}`);
+      setAuthInfo("");
     }
 
     setSaving(false);
