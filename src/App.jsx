@@ -2675,8 +2675,9 @@ export default function App() {
 
       const offerId = insertedOffer?.data?.id || null;
 
-      const { data, error } = await supabase.functions.invoke("send-catch-offer-email", {
-        body: {
+      const { data, error } = await invokeEdgeFunctionAuthenticated(
+        "send-catch-offer-email",
+        {
           entry,
           recipients: [{
             email: recipient.email,
@@ -2685,7 +2686,8 @@ export default function App() {
             offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
           }],
         },
-      });
+        accessToken,
+      );
       const functionFailure = Array.isArray(data?.results)
         ? data.results.find((result) => result?.ok === false)
         : null;
