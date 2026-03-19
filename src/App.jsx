@@ -3010,7 +3010,7 @@ export default function App() {
       }
     } catch (emailError) {
       console.error("Sähköpostin lähetys epäonnistui:", emailError);
-      setAuthInfo("Saalis tallennettu, mutta tarjoussähköpostin lähetys epäonnistui.");
+      setAuthInfo(`Saalis tallennettu, mutta tarjoussähköpostin lähetys epäonnistui: ${String(emailError?.message || emailError)}`);
     }
 
     setSaving(false);
