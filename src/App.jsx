@@ -2990,6 +2990,10 @@ export default function App() {
       setAuthError("Kirjoita kalalajin nimi kaikille riveille, joilla lajiksi on valittu Muu.");
       return;
     }
+    if (form.price_per_kg === "" || form.price_per_kg == null || Number.isNaN(Number(form.price_per_kg))) {
+      setAuthError("Täytä hinta (€/kg) ennen saaliin tallennusta.");
+      return;
+    }
     setSaving(true);
     let batchId;
     try {
