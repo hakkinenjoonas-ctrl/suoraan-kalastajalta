@@ -109,6 +109,13 @@ function getSpeciesRowLabel(row) {
   return row?.species || "";
 }
 
+function getOfferSpeciesHeadline(summary) {
+  const firstLine = String(summary || "Kalaerä").split("\n")[0] || "Kalaerä";
+  return firstLine
+    .replace(/:\s*\d+(?:[.,]\d+)?\s*kg(?:\s*\([^)]*\))?$/i, "")
+    .trim() || "Kalaerä";
+}
+
 function getBatchPublicUrl(batchId) {
   if (!batchId) return "";
   return `${getPublicAppBaseUrl()}/batch/${encodeURIComponent(batchId)}`;
@@ -3193,8 +3200,7 @@ export default function App() {
     };
 
     const buildOfferHeadline = (offer) => {
-      const firstLine = String(offer?.species_summary || "Kalaerä").split("\n")[0] || "Kalaerä";
-      return firstLine.trim();
+      return getOfferSpeciesHeadline(offer?.species_summary);
     };
 
     const filteredBuyerOffers = (buyerOffers || []).filter((offer) => {
