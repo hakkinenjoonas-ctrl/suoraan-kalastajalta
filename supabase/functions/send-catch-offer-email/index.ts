@@ -105,12 +105,6 @@ function describeResendError(data: unknown) {
   }
 }
 
-function getBearerToken(req: Request) {
-  const header = req.headers.get("Authorization") || req.headers.get("authorization") || "";
-  if (!header.toLowerCase().startsWith("bearer ")) return "";
-  return header.slice(7).trim();
-}
-
 function buildFieldRow(label: string, value: string) {
   return `
     <tr>
@@ -141,21 +135,12 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: "Missing RESEND_API_KEY" });
     }
 
-    const accessToken = getBearerToken(req);
-    if (!accessToken) {
-      return jsonResponse(401, { error: "Missing bearer token" });
-    }
-
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
       },
     });
-    const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
-    if (userError || !userData?.user) {
-      return jsonResponse(401, { error: "Invalid bearer token" });
-    }
 
     const { entry, recipients } = await req.json();
     if (!entry || !Array.isArray(recipients) || recipients.length === 0) {
@@ -202,7 +187,6 @@ Deno.serve(async (req) => {
       kilos,
       price,
       batchId,
-      authenticatedUserId: userData.user.id,
     });
 
     for (const recipient of recipients) {
