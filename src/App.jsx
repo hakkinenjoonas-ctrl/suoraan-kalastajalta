@@ -13,7 +13,28 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   },
 });
 
-const fishSpecies = ["Muikku", "Kuha", "Ahven", "Hauki", "Lahna", "Särki", "Säyne", "Siika", "Made", "Silakka", "Muu"];
+const fishSpecies = [
+  "Muikku",
+  "Muikku, perattu",
+  "Muikku, perattu päätön",
+  "Kuha",
+  "Kuha, avattu",
+  "Kuha filee",
+  "Ahven",
+  "Ahven, avattu",
+  "Ahven filee",
+  "Hauki",
+  "Hauki, avattu",
+  "Hauki filee",
+  "Lahna",
+  "Särki",
+  "Säyne",
+  "Siika",
+  "Made",
+  "Made, nyljetty",
+  "Silakka",
+  "Muu",
+];
 const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Nuotta", "Vapaväline", "Muu"];
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
