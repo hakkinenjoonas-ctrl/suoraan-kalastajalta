@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -89,6 +91,12 @@ function describeResendError(data: unknown) {
   }
 }
 
+function getBearerToken(req: Request) {
+  const header = req.headers.get("Authorization") || req.headers.get("authorization") || "";
+  if (!header.toLowerCase().startsWith("bearer ")) return "";
+  return header.slice(7).trim();
+}
+
 function buildFieldRow(label: string, value: string) {
   return `
     <tr>
@@ -104,13 +112,34 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     const fromEmail =
       Deno.env.get("FROM_EMAIL") ||
       Deno.env.get("RESEND_FROM_EMAIL") ||
       "Suoraan Kalastajalta <noreply@suoraankalastajalta.fi>";
+    if (!supabaseUrl || !serviceRoleKey) {
+      return jsonResponse(500, { error: "Missing Supabase service credentials" });
+    }
     if (!resendApiKey) {
       return jsonResponse(500, { error: "Missing RESEND_API_KEY" });
+    }
+
+    const accessToken = getBearerToken(req);
+    if (!accessToken) {
+      return jsonResponse(401, { error: "Missing bearer token" });
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+    const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
+    if (userError || !userData?.user) {
+      return jsonResponse(401, { error: "Invalid bearer token" });
     }
 
     const { entry, recipients } = await req.json();
