@@ -1364,9 +1364,36 @@ export default function App() {
     business_id: "",
   });
   const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "" });
+  const [accountPanelOpen, setAccountPanelOpen] = useState(false);
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [accountForm, setAccountForm] = useState({
+    displayName: "",
+    commercialFishingId: "",
+    companyName: "",
+    contactName: "",
+    phone: "",
+    city: "",
+    deliveryAddress: "",
+    deliveryPostcode: "",
+    deliveryCity: "",
+    billingAddress: "",
+    billingPostcode: "",
+    billingCity: "",
+    billingEmail: "",
+    businessId: "",
+    notes: "",
+  });
+  const [passwordForm, setPasswordForm] = useState({ newPassword: "", confirmPassword: "" });
   const [publicBatchData, setPublicBatchData] = useState(null);
   const [publicBatchLoading, setPublicBatchLoading] = useState(Boolean(publicBatchId));
   const [publicBatchError, setPublicBatchError] = useState("");
+
+  const linkedBuyerRecord = useMemo(() => {
+    if (!profile || profile.role !== "buyer") return null;
+    const normalizedProfileEmail = normalizeEmail(profile.email);
+    return buyers.find((buyer) => buyer.id === profile.buyer_id || normalizeEmail(buyer.email) === normalizedProfileEmail) || null;
+  }, [buyers, profile]);
 
   const calculateCommissionDetails = (offer) => {
     const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
@@ -1884,6 +1911,27 @@ export default function App() {
     loadData();
   }, [profile, entryScope, refreshTick]);
 
+  useEffect(() => {
+    if (!profile) return;
+    setAccountForm({
+      displayName: profile.display_name || "",
+      commercialFishingId: profile.commercial_fishing_id || "",
+      companyName: linkedBuyerRecord?.company_name || "",
+      contactName: linkedBuyerRecord?.contact_name || "",
+      phone: linkedBuyerRecord?.phone || "",
+      city: linkedBuyerRecord?.city || "",
+      deliveryAddress: linkedBuyerRecord?.delivery_address || "",
+      deliveryPostcode: linkedBuyerRecord?.delivery_postcode || "",
+      deliveryCity: linkedBuyerRecord?.delivery_city || "",
+      billingAddress: linkedBuyerRecord?.billing_address || "",
+      billingPostcode: linkedBuyerRecord?.billing_postcode || "",
+      billingCity: linkedBuyerRecord?.billing_city || "",
+      billingEmail: linkedBuyerRecord?.billing_email || "",
+      businessId: linkedBuyerRecord?.business_id || "",
+      notes: linkedBuyerRecord?.notes || "",
+    });
+  }, [profile, linkedBuyerRecord]);
+
   const filteredEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
     return entries.filter((entry) => {
@@ -1983,6 +2031,124 @@ export default function App() {
     await clearBrokenSession();
     setProfile(null);
     setSession(null);
+  };
+
+  const handleSaveOwnDetails = async () => {
+    if (!profile) return;
+    setAuthError("");
+    setAuthInfo("");
+
+    const displayName = accountForm.displayName.trim();
+    if (!displayName) {
+      setAuthError("Täytä vähintään nimi.");
+      return;
+    }
+
+    setAccountSaving(true);
+    try {
+      const profilePayload = {
+        display_name: displayName,
+        ...(profile.role !== "buyer"
+          ? { commercial_fishing_id: accountForm.commercialFishingId.trim() || null }
+          : {}),
+      };
+
+      const { data: updatedProfile, error: profileUpdateError } = await supabase
+        .from("profiles")
+        .update(profilePayload)
+        .eq("id", profile.id)
+        .select("*")
+        .single();
+      if (profileUpdateError) {
+        if (isMissingRefreshTokenError(profileUpdateError)) {
+          await invalidateSession();
+          return;
+        }
+        throw profileUpdateError;
+      }
+
+      if (profile.role === "buyer" && linkedBuyerRecord?.id) {
+        const buyerPayload = {
+          company_name: accountForm.companyName.trim(),
+          contact_name: accountForm.contactName.trim(),
+          phone: accountForm.phone.trim(),
+          city: accountForm.city.trim(),
+          delivery_address: accountForm.deliveryAddress.trim(),
+          delivery_postcode: accountForm.deliveryPostcode.trim(),
+          delivery_city: accountForm.deliveryCity.trim(),
+          billing_address: accountForm.billingAddress.trim(),
+          billing_postcode: accountForm.billingPostcode.trim(),
+          billing_city: accountForm.billingCity.trim(),
+          billing_email: accountForm.billingEmail.trim().toLowerCase(),
+          business_id: accountForm.businessId.trim(),
+          notes: accountForm.notes.trim(),
+        };
+        if (!buyerPayload.company_name) {
+          setAuthError("Täytä yrityksen nimi.");
+          setAccountSaving(false);
+          return;
+        }
+        const { error: buyerUpdateError } = await supabase.from("buyers").update(buyerPayload).eq("id", linkedBuyerRecord.id);
+        if (buyerUpdateError) {
+          if (isMissingRefreshTokenError(buyerUpdateError)) {
+            await invalidateSession();
+            return;
+          }
+          throw buyerUpdateError;
+        }
+      }
+
+      const normalizedUpdatedProfile = {
+        ...updatedProfile,
+        email: normalizeEmail(updatedProfile.email || profile.email || ""),
+      };
+      setProfile(normalizedUpdatedProfile);
+      setFisherInfoForm({ commercialFishingId: normalizedUpdatedProfile.commercial_fishing_id || "" });
+      setRefreshTick((prev) => prev + 1);
+      setAuthInfo("Omat tiedot tallennettu.");
+    } catch (error) {
+      setAuthError(String(error?.message || error));
+    } finally {
+      setAccountSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setAuthError("");
+    setAuthInfo("");
+
+    const newPassword = passwordForm.newPassword;
+    const confirmPassword = passwordForm.confirmPassword;
+    if (!newPassword || !confirmPassword) {
+      setAuthError("Täytä uusi salasana kahteen kertaan.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setAuthError("Salasanassa pitää olla vähintään 8 merkkiä.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setAuthError("Salasanat eivät täsmää.");
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        throw error;
+      }
+      setPasswordForm({ newPassword: "", confirmPassword: "" });
+      setAuthInfo("Salasana vaihdettu.");
+    } catch (error) {
+      setAuthError(String(error?.message || error));
+    } finally {
+      setPasswordSaving(false);
+    }
   };
 
   const handleCreateAllowedUser = async () => {
@@ -3365,10 +3531,112 @@ export default function App() {
               </div>
               <div style={styles.toolbar}>
                 <button style={styles.button} onClick={() => setRefreshTick((prev) => prev + 1)}>Päivitä</button>
+                <button style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
                 <button style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
               </div>
             </div>
           </div>
+
+          {accountPanelOpen ? (
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginBottom: 16 }}>
+              <div style={styles.rowBetween}>
+                <div>
+                  <strong>Omat tiedot</strong>
+                  <div style={styles.muted}>Päivitä käyttäjänimi, yrityksen tiedot ja salasana.</div>
+                </div>
+                <span style={styles.badge}>{profile.email}</span>
+              </div>
+              <div style={styles.grid2}>
+                <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+                  <strong>Profiili</strong>
+                  <div style={styles.field}>
+                    <label>Käyttäjän nimi</label>
+                    <input style={styles.input} value={accountForm.displayName} onChange={(e) => setAccountForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Nimi" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Kirjautumissähköposti</label>
+                    <input style={styles.input} value={profile.email || ""} disabled />
+                  </div>
+                  {linkedBuyerRecord ? (
+                    <>
+                      <div style={styles.field}>
+                        <label>Yritys</label>
+                        <input style={styles.input} value={accountForm.companyName} onChange={(e) => setAccountForm((prev) => ({ ...prev, companyName: e.target.value }))} placeholder="Yrityksen nimi" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Yhteyshenkilö</label>
+                        <input style={styles.input} value={accountForm.contactName} onChange={(e) => setAccountForm((prev) => ({ ...prev, contactName: e.target.value }))} placeholder="Yhteyshenkilö" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Puhelin</label>
+                        <input style={styles.input} value={accountForm.phone} onChange={(e) => setAccountForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Puhelin" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Paikkakunta</label>
+                        <input style={styles.input} value={accountForm.city} onChange={(e) => setAccountForm((prev) => ({ ...prev, city: e.target.value }))} placeholder="Paikkakunta" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Toimitusosoite</label>
+                        <input style={styles.input} value={accountForm.deliveryAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryAddress: e.target.value }))} placeholder="Katuosoite" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Toimitus postinumero</label>
+                        <input style={styles.input} value={accountForm.deliveryPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryPostcode: e.target.value }))} placeholder="00100" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Toimitus kaupunki</label>
+                        <input style={styles.input} value={accountForm.deliveryCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryCity: e.target.value }))} placeholder="Helsinki" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Laskutusosoite</label>
+                        <input style={styles.input} value={accountForm.billingAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingAddress: e.target.value }))} placeholder="Katuosoite" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Laskutus postinumero</label>
+                        <input style={styles.input} value={accountForm.billingPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingPostcode: e.target.value }))} placeholder="00100" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Laskutus kaupunki</label>
+                        <input style={styles.input} value={accountForm.billingCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingCity: e.target.value }))} placeholder="Helsinki" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Laskutussähköposti</label>
+                        <input style={styles.input} type="email" value={accountForm.billingEmail} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingEmail: e.target.value }))} placeholder="laskutus@yritys.fi" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Y-tunnus</label>
+                        <input style={styles.input} value={accountForm.businessId} onChange={(e) => setAccountForm((prev) => ({ ...prev, businessId: e.target.value }))} placeholder="1234567-8" />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Lisätiedot</label>
+                        <textarea style={styles.textarea} value={accountForm.notes} onChange={(e) => setAccountForm((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Toimitusohjeet, huomioita" />
+                      </div>
+                    </>
+                  ) : (
+                    <div style={styles.noticeInfo}>Tälle ostajakäyttäjälle ei löytynyt linkitettyä ostajarekisterin yritystä. Nimi ja salasana voidaan silti päivittää.</div>
+                  )}
+                  <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+                    <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveOwnDetails} disabled={accountSaving}>{accountSaving ? "Tallennetaan..." : "Tallenna tiedot"}</button>
+                  </div>
+                </div>
+                <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+                  <strong>Vaihda salasana</strong>
+                  <div style={styles.field}>
+                    <label>Uusi salasana</label>
+                    <input style={styles.input} type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))} placeholder="Vähintään 8 merkkiä" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Uusi salasana uudelleen</label>
+                    <input style={styles.input} type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))} placeholder="Kirjoita salasana uudelleen" />
+                  </div>
+                  <div style={styles.muted}>Salasanan vaihto tehdään heti nykyiselle käyttäjätilille.</div>
+                  <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+                    <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleChangePassword} disabled={passwordSaving}>{passwordSaving ? "Vaihdetaan..." : "Vaihda salasana"}</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {authError ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{authError}</div> : null}
           {authInfo ? <div style={{ ...styles.noticeSuccess, marginBottom: 16 }}>{authInfo}</div> : null}
@@ -3556,10 +3824,58 @@ export default function App() {
               ) : null}
               <span style={styles.badge}>{profile.role === "processor" ? `${totals.totalProcessedKg.toFixed(1)} kg jalosteita` : `${totals.totalKg.toFixed(1)} kg yhteensä`}</span>
               <button style={styles.button} onClick={() => setRefreshTick((prev) => prev + 1)}>Päivitä</button>
+              <button style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
               <button style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
             </div>
           </div>
         </div>
+
+        {accountPanelOpen ? (
+          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginBottom: 16 }}>
+            <div style={styles.rowBetween}>
+              <div>
+                <strong>Omat tiedot</strong>
+                <div style={styles.muted}>Päivitä oma nimi, kalastajatunnus ja salasana.</div>
+              </div>
+              <span style={styles.badge}>{profile.email}</span>
+            </div>
+            <div style={styles.grid2}>
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+                <strong>Profiili</strong>
+                <div style={styles.field}>
+                  <label>Nimi</label>
+                  <input style={styles.input} value={accountForm.displayName} onChange={(e) => setAccountForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Nimi" />
+                </div>
+                <div style={styles.field}>
+                  <label>Kirjautumissähköposti</label>
+                  <input style={styles.input} value={profile.email || ""} disabled />
+                </div>
+                <div style={styles.field}>
+                  <label>Kaupallisen kalastajan tunnus</label>
+                  <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 123456" />
+                </div>
+                <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveOwnDetails} disabled={accountSaving}>{accountSaving ? "Tallennetaan..." : "Tallenna tiedot"}</button>
+                </div>
+              </div>
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+                <strong>Vaihda salasana</strong>
+                <div style={styles.field}>
+                  <label>Uusi salasana</label>
+                  <input style={styles.input} type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))} placeholder="Vähintään 8 merkkiä" />
+                </div>
+                <div style={styles.field}>
+                  <label>Uusi salasana uudelleen</label>
+                  <input style={styles.input} type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))} placeholder="Kirjoita salasana uudelleen" />
+                </div>
+                <div style={styles.muted}>Salasanan vaihto tehdään heti nykyiselle käyttäjätilille.</div>
+                <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleChangePassword} disabled={passwordSaving}>{passwordSaving ? "Vaihdetaan..." : "Vaihda salasana"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {authError ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{authError}</div> : null}
         {authInfo ? <div style={{ ...styles.noticeSuccess, marginBottom: 16 }}>{authInfo}</div> : null}

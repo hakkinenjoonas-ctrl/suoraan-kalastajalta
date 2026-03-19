@@ -116,9 +116,10 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     const fromEmail =
+      Deno.env.get("OFFERS_FROM_EMAIL") ||
       Deno.env.get("FROM_EMAIL") ||
       Deno.env.get("RESEND_FROM_EMAIL") ||
-      "Suoraan Kalastajalta <noreply@suoraankalastajalta.fi>";
+      "Suoraan Kalastajalta <tarjoukset@mail.suoraankalastajalta.fi>";
     if (!supabaseUrl || !serviceRoleKey) {
       return jsonResponse(500, { error: "Missing Supabase service credentials" });
     }

@@ -30,7 +30,11 @@ Deno.serve(async (req) => {
 
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    const fromEmail = Deno.env.get("FROM_EMAIL") || "Suoraan Kalastajalta <noreply@suoraankalastajalta.fi>";
+    const fromEmail =
+      Deno.env.get("OFFERS_FROM_EMAIL") ||
+      Deno.env.get("FROM_EMAIL") ||
+      Deno.env.get("RESEND_FROM_EMAIL") ||
+      "Suoraan Kalastajalta <tarjoukset@mail.suoraankalastajalta.fi>";
     if (!resendApiKey) {
       return jsonResponse(500, { error: "Missing RESEND_API_KEY" });
     }
