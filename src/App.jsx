@@ -3618,93 +3618,91 @@ export default function App() {
                 </div>
                 <span style={styles.badge}>{profile.email}</span>
               </div>
-              <div style={styles.grid2}>
-                <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
-                  <strong>Profiili</strong>
-                  <div style={styles.field}>
-                    <label>Käyttäjän nimi</label>
-                    <input style={styles.input} value={accountForm.displayName} onChange={(e) => setAccountForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Nimi" />
-                  </div>
-                  <div style={styles.field}>
-                    <label>Kirjautumissähköposti</label>
-                    <input style={styles.input} value={profile.email || ""} disabled />
-                  </div>
-                  {linkedBuyerRecord ? (
-                    <>
-                      <div style={styles.field}>
-                        <label>Yritys</label>
-                        <input style={styles.input} value={accountForm.companyName} onChange={(e) => setAccountForm((prev) => ({ ...prev, companyName: e.target.value }))} placeholder="Yrityksen nimi" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Yhteyshenkilö</label>
-                        <input style={styles.input} value={accountForm.contactName} onChange={(e) => setAccountForm((prev) => ({ ...prev, contactName: e.target.value }))} placeholder="Yhteyshenkilö" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Puhelin</label>
-                        <input style={styles.input} value={accountForm.phone} onChange={(e) => setAccountForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Puhelin" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Paikkakunta</label>
-                        <input style={styles.input} value={accountForm.city} onChange={(e) => setAccountForm((prev) => ({ ...prev, city: e.target.value }))} placeholder="Paikkakunta" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Toimitusosoite</label>
-                        <input style={styles.input} value={accountForm.deliveryAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryAddress: e.target.value }))} placeholder="Katuosoite" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Toimitus postinumero</label>
-                        <input style={styles.input} value={accountForm.deliveryPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryPostcode: e.target.value }))} placeholder="00100" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Toimitus kaupunki</label>
-                        <input style={styles.input} value={accountForm.deliveryCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryCity: e.target.value }))} placeholder="Helsinki" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Laskutusosoite</label>
-                        <input style={styles.input} value={accountForm.billingAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingAddress: e.target.value }))} placeholder="Katuosoite" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Laskutus postinumero</label>
-                        <input style={styles.input} value={accountForm.billingPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingPostcode: e.target.value }))} placeholder="00100" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Laskutus kaupunki</label>
-                        <input style={styles.input} value={accountForm.billingCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingCity: e.target.value }))} placeholder="Helsinki" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Laskutussähköposti</label>
-                        <input style={styles.input} type="email" value={accountForm.billingEmail} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingEmail: e.target.value }))} placeholder="laskutus@yritys.fi" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Y-tunnus</label>
-                        <input style={styles.input} value={accountForm.businessId} onChange={(e) => setAccountForm((prev) => ({ ...prev, businessId: e.target.value }))} placeholder="1234567-8" />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Lisätiedot</label>
-                        <textarea style={styles.textarea} value={accountForm.notes} onChange={(e) => setAccountForm((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Toimitusohjeet, huomioita" />
-                      </div>
-                    </>
-                  ) : (
-                    <div style={styles.noticeInfo}>Tälle ostajakäyttäjälle ei löytynyt linkitettyä ostajarekisterin yritystä. Nimi ja salasana voidaan silti päivittää.</div>
-                  )}
-                  <div style={{ ...styles.row, justifyContent: "flex-end" }}>
-                    <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveOwnDetails} disabled={accountSaving}>{accountSaving ? "Tallennetaan..." : "Tallenna tiedot"}</button>
-                  </div>
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+                <strong>Profiili</strong>
+                <div style={styles.field}>
+                  <label>Käyttäjän nimi</label>
+                  <input style={styles.input} value={accountForm.displayName} onChange={(e) => setAccountForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Nimi" />
                 </div>
-                <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
-                  <strong>Vaihda salasana</strong>
-                  <div style={styles.field}>
-                    <label>Uusi salasana</label>
-                    <input style={styles.input} type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))} placeholder="Vähintään 8 merkkiä" />
-                  </div>
-                  <div style={styles.field}>
-                    <label>Uusi salasana uudelleen</label>
-                    <input style={styles.input} type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))} placeholder="Kirjoita salasana uudelleen" />
-                  </div>
-                  <div style={styles.muted}>Salasanan vaihto tehdään heti nykyiselle käyttäjätilille.</div>
-                  <div style={{ ...styles.row, justifyContent: "flex-end" }}>
-                    <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleChangePassword} disabled={passwordSaving}>{passwordSaving ? "Vaihdetaan..." : "Vaihda salasana"}</button>
-                  </div>
+                <div style={styles.field}>
+                  <label>Kirjautumissähköposti</label>
+                  <input style={styles.input} value={profile.email || ""} disabled />
+                </div>
+                {linkedBuyerRecord ? (
+                  <>
+                    <div style={styles.field}>
+                      <label>Yritys</label>
+                      <input style={styles.input} value={accountForm.companyName} onChange={(e) => setAccountForm((prev) => ({ ...prev, companyName: e.target.value }))} placeholder="Yrityksen nimi" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Yhteyshenkilö</label>
+                      <input style={styles.input} value={accountForm.contactName} onChange={(e) => setAccountForm((prev) => ({ ...prev, contactName: e.target.value }))} placeholder="Yhteyshenkilö" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Puhelin</label>
+                      <input style={styles.input} value={accountForm.phone} onChange={(e) => setAccountForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Puhelin" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Paikkakunta</label>
+                      <input style={styles.input} value={accountForm.city} onChange={(e) => setAccountForm((prev) => ({ ...prev, city: e.target.value }))} placeholder="Paikkakunta" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Toimitusosoite</label>
+                      <input style={styles.input} value={accountForm.deliveryAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryAddress: e.target.value }))} placeholder="Katuosoite" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Toimitus postinumero</label>
+                      <input style={styles.input} value={accountForm.deliveryPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryPostcode: e.target.value }))} placeholder="00100" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Toimitus kaupunki</label>
+                      <input style={styles.input} value={accountForm.deliveryCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryCity: e.target.value }))} placeholder="Helsinki" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Laskutusosoite</label>
+                      <input style={styles.input} value={accountForm.billingAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingAddress: e.target.value }))} placeholder="Katuosoite" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Laskutus postinumero</label>
+                      <input style={styles.input} value={accountForm.billingPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingPostcode: e.target.value }))} placeholder="00100" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Laskutus kaupunki</label>
+                      <input style={styles.input} value={accountForm.billingCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingCity: e.target.value }))} placeholder="Helsinki" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Laskutussähköposti</label>
+                      <input style={styles.input} type="email" value={accountForm.billingEmail} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingEmail: e.target.value }))} placeholder="laskutus@yritys.fi" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Y-tunnus</label>
+                      <input style={styles.input} value={accountForm.businessId} onChange={(e) => setAccountForm((prev) => ({ ...prev, businessId: e.target.value }))} placeholder="1234567-8" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Lisätiedot</label>
+                      <textarea style={styles.textarea} value={accountForm.notes} onChange={(e) => setAccountForm((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Toimitusohjeet, huomioita" />
+                    </div>
+                  </>
+                ) : (
+                  <div style={styles.noticeInfo}>Tälle ostajakäyttäjälle ei löytynyt linkitettyä ostajarekisterin yritystä. Nimi ja salasana voidaan silti päivittää.</div>
+                )}
+                <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveOwnDetails} disabled={accountSaving}>{accountSaving ? "Tallennetaan..." : "Tallenna tiedot"}</button>
+                </div>
+              </div>
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+                <strong>Vaihda salasana</strong>
+                <div style={styles.field}>
+                  <label>Uusi salasana</label>
+                  <input style={styles.input} type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))} placeholder="Vähintään 8 merkkiä" />
+                </div>
+                <div style={styles.field}>
+                  <label>Uusi salasana uudelleen</label>
+                  <input style={styles.input} type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))} placeholder="Kirjoita salasana uudelleen" />
+                </div>
+                <div style={styles.muted}>Salasanan vaihto tehdään heti nykyiselle käyttäjätilille.</div>
+                <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleChangePassword} disabled={passwordSaving}>{passwordSaving ? "Vaihdetaan..." : "Vaihda salasana"}</button>
                 </div>
               </div>
             </div>
@@ -3939,39 +3937,37 @@ export default function App() {
               </div>
               <span style={styles.badge}>{profile.email}</span>
             </div>
-            <div style={styles.grid2}>
-              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
-                <strong>Profiili</strong>
-                <div style={styles.field}>
-                  <label>Nimi</label>
-                  <input style={styles.input} value={accountForm.displayName} onChange={(e) => setAccountForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Nimi" />
-                </div>
-                <div style={styles.field}>
-                  <label>Kirjautumissähköposti</label>
-                  <input style={styles.input} value={profile.email || ""} disabled />
-                </div>
-                <div style={styles.field}>
-                  <label>Kaupallisen kalastajan tunnus</label>
-                  <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 123456" />
-                </div>
-                <div style={{ ...styles.row, justifyContent: "flex-end" }}>
-                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveOwnDetails} disabled={accountSaving}>{accountSaving ? "Tallennetaan..." : "Tallenna tiedot"}</button>
-                </div>
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+              <strong>Profiili</strong>
+              <div style={styles.field}>
+                <label>Nimi</label>
+                <input style={styles.input} value={accountForm.displayName} onChange={(e) => setAccountForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Nimi" />
               </div>
-              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
-                <strong>Vaihda salasana</strong>
-                <div style={styles.field}>
-                  <label>Uusi salasana</label>
-                  <input style={styles.input} type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))} placeholder="Vähintään 8 merkkiä" />
-                </div>
-                <div style={styles.field}>
-                  <label>Uusi salasana uudelleen</label>
-                  <input style={styles.input} type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))} placeholder="Kirjoita salasana uudelleen" />
-                </div>
-                <div style={styles.muted}>Salasanan vaihto tehdään heti nykyiselle käyttäjätilille.</div>
-                <div style={{ ...styles.row, justifyContent: "flex-end" }}>
-                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleChangePassword} disabled={passwordSaving}>{passwordSaving ? "Vaihdetaan..." : "Vaihda salasana"}</button>
-                </div>
+              <div style={styles.field}>
+                <label>Kirjautumissähköposti</label>
+                <input style={styles.input} value={profile.email || ""} disabled />
+              </div>
+              <div style={styles.field}>
+                <label>Kaupallisen kalastajan tunnus</label>
+                <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 123456" />
+              </div>
+              <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+                <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveOwnDetails} disabled={accountSaving}>{accountSaving ? "Tallennetaan..." : "Tallenna tiedot"}</button>
+              </div>
+            </div>
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+              <strong>Vaihda salasana</strong>
+              <div style={styles.field}>
+                <label>Uusi salasana</label>
+                <input style={styles.input} type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))} placeholder="Vähintään 8 merkkiä" />
+              </div>
+              <div style={styles.field}>
+                <label>Uusi salasana uudelleen</label>
+                <input style={styles.input} type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))} placeholder="Kirjoita salasana uudelleen" />
+              </div>
+              <div style={styles.muted}>Salasanan vaihto tehdään heti nykyiselle käyttäjätilille.</div>
+              <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+                <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleChangePassword} disabled={passwordSaving}>{passwordSaving ? "Vaihdetaan..." : "Vaihda salasana"}</button>
               </div>
             </div>
           </div>
