@@ -554,6 +554,21 @@ function buyerStatusBadgeStyle(status, baseStyle) {
 }
 
 const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+const ANONYMOUS_SELLER_LABEL = "Anonyymi kalastaja";
+
+function getPublicPickupLocation({ municipality, deliveryArea, area }) {
+  const municipalityValue = String(municipality || "").trim();
+  if (municipalityValue) return municipalityValue;
+
+  const deliveryAreaValue = String(deliveryArea || "").trim();
+  if (deliveryAreaValue) {
+    const parts = deliveryAreaValue.split(",").map((part) => part.trim()).filter(Boolean);
+    if (parts.length > 1) return parts[parts.length - 1];
+    return deliveryAreaValue;
+  }
+
+  return String(area || "").trim() || "-";
+}
 
 async function findAllowedUserByEmail(supabase, email) {
   const normalizedEmail = normalizeEmail(email);
@@ -1439,12 +1454,33 @@ export default function App() {
       sellerName: offer.seller_name || matchingEntry?.ownerName || "Myyjä",
       sellerCommercialFishingId: matchingEntry?.commercialFishingId || "",
       sellerArea: matchingEntry?.area || offer.area || "",
+      municipality: matchingEntry?.municipality || "",
       sellerSpot: matchingEntry?.spot || offer.spot || "",
       deliveryMethod: matchingEntry?.deliveryMethod || "",
       deliveryArea: matchingEntry?.deliveryArea || "",
       deliveryCost: matchingEntry?.deliveryCost,
       earliestDeliveryDate: matchingEntry?.earliestDeliveryDate || "",
       coldTransport: matchingEntry?.coldTransport,
+    };
+  };
+
+  const getBuyerVisibleSellerInfo = (offer) => {
+    const sellerIdentity = getSellerIdentityForBuyer(offer);
+    const revealIdentity = offer?.status === "accepted";
+    const isPickup = sellerIdentity.deliveryMethod === "Nouto";
+    const publicPickupLocation = getPublicPickupLocation({
+      municipality: sellerIdentity.municipality,
+      deliveryArea: sellerIdentity.deliveryArea,
+      area: sellerIdentity.sellerArea || offer?.area,
+    });
+
+    return {
+      ...sellerIdentity,
+      revealIdentity,
+      sellerLabel: revealIdentity ? sellerIdentity.sellerName : ANONYMOUS_SELLER_LABEL,
+      publicLocation: isPickup ? publicPickupLocation : (sellerIdentity.deliveryArea || sellerIdentity.sellerArea || "-"),
+      exactLocation: sellerIdentity.deliveryArea || sellerIdentity.sellerArea || "-",
+      publicSpot: revealIdentity ? (sellerIdentity.sellerSpot || "") : "",
     };
   };
   const getEntryReservation = (entry) => {
@@ -2832,7 +2868,8 @@ export default function App() {
     const buyerEmail = (offer?.buyer_email || "").trim().toLowerCase();
     if (!buyerEmail) return;
 
-    const sellerName = profile?.display_name || profile?.email || offer?.seller_name || "Myyja";
+    const sellerInfo = getBuyerVisibleSellerInfo({ ...offer, status: "accepted" });
+    const sellerName = sellerInfo.sellerName || profile?.display_name || profile?.email || offer?.seller_name || "Myyja";
     const tradeValue = euro(calculateCommissionDetails(offer).tradeValue);
     const acceptedKilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
     const batchId = offer?.batch_id || "";
@@ -2843,11 +2880,15 @@ export default function App() {
         offerLink: `${getPublicAppBaseUrl()}?offer=${offer.id}`,
         offer: {
           sellerName,
+          sellerCommercialFishingId: sellerInfo.sellerCommercialFishingId,
           species_summary: offer?.species_summary,
           total_kilos: offer?.total_kilos,
           accepted_kilos: acceptedKilos,
-          area: offer?.area,
-          spot: offer?.spot,
+          area: sellerInfo.sellerArea || offer?.area,
+          spot: sellerInfo.sellerSpot || offer?.spot,
+          delivery_method: sellerInfo.deliveryMethod,
+          delivery_area: sellerInfo.deliveryArea,
+          public_location: sellerInfo.publicLocation,
           counter_price_per_kg: offer?.counter_price_per_kg,
           reserved_kilos: offer?.reserved_kilos,
           trade_value: tradeValue,
@@ -3694,6 +3735,7 @@ export default function App() {
                   {offersForDay.map((o) => {
                     const isActive = buyerActiveOfferId === o.id;
                     const visiblePrice = getVisibleOfferPrice(o);
+                    const sellerInfo = getBuyerVisibleSellerInfo(o);
                     return (
                       <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
                         <div style={{ marginBottom: 10 }}>
@@ -3716,7 +3758,7 @@ export default function App() {
                             <span style={styles.badge}>{o.area || "-"}</span>
                             {o.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varaus käynnissä</span> : null}
                             {o.status === "sold" ? <span style={{ ...styles.badge, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }}>MYYTY</span> : null}
-                            {o.seller_name ? <span style={styles.badge}>Myyjä: {o.seller_name}</span> : null}
+                            <span style={styles.badge}>Tarjoaja: {sellerInfo.sellerLabel}</span>
                           </div>
                         </div>
 
@@ -3725,10 +3767,19 @@ export default function App() {
                             <div style={styles.muted}><strong>Erän tiedot</strong></div>
                             <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{o.species_summary || "-"}</div>
                             {visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta: {euro(visiblePrice)} / kg</div> : null}
-                            {o.spot ? <div style={styles.muted}>Paikka: {o.spot}</div> : null}
+                            <div style={styles.muted}>Tarjoaja: {sellerInfo.sellerLabel}</div>
+                            {sellerInfo.sellerCommercialFishingId && sellerInfo.revealIdentity ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
+                            <div style={styles.muted}>
+                              {sellerInfo.deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue"}: {sellerInfo.revealIdentity ? sellerInfo.exactLocation : sellerInfo.publicLocation}
+                            </div>
+                            {sellerInfo.publicSpot ? <div style={styles.muted}>Paikka: {sellerInfo.publicSpot}</div> : null}
                           </div>
                           <div>
                             <div style={styles.muted}><strong>Toimitus ja lisätiedot</strong></div>
+                            <div style={styles.muted}>Toimitustapa: {sellerInfo.deliveryMethod || "-"}</div>
+                            <div style={styles.muted}>Kulu: {sellerInfo.deliveryCost !== "" && sellerInfo.deliveryCost != null ? `${sellerInfo.deliveryCost} €` : "-"}</div>
+                            <div style={styles.muted}>Aikaisin toimitus: {sellerInfo.earliestDeliveryDate || "-"}</div>
+                            <div style={styles.muted}>Kylmäkuljetus: {sellerInfo.coldTransport ? "kyllä" : "ei"}</div>
                             {o.notes ? <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{o.notes}</div> : <div style={styles.muted}>Ei lisätietoja</div>}
                           </div>
                         </div>
@@ -3758,10 +3809,28 @@ export default function App() {
                         {isActive ? (
                           <div style={{ ...styles.stack, marginTop: 12 }}>
                             {o.status === "accepted" ? (
-                          <div style={styles.noticeSuccess}>Kauppa on hyväksytty. Myyjän yhteystiedot ja lopullinen toimitus voidaan sopia tämän varauksen pohjalta.</div>
+                          <div style={styles.noticeSuccess}>
+                            Kauppa on hyväksytty. Kalastajan täydet tiedot ja lopullinen nouto- tai toimitusosoite näkyvät nyt alla.
+                          </div>
                         ) : null}
                         {o.status === "sold" ? (
                           <div style={styles.noticeError}>Erä on myyty toiselle ostajalle. Varaus- ja vastatarjoustoiminnot eivät ole enää käytettävissä.</div>
+                        ) : null}
+                        {o.status === "accepted" ? (
+                          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+                            <strong>Kalastajan tiedot</strong>
+                            <div style={styles.muted}>Nimi: {sellerInfo.sellerName || "-"}</div>
+                            {sellerInfo.sellerCommercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
+                            <div style={styles.muted}>Vesialue: {sellerInfo.sellerArea || "-"}</div>
+                            {sellerInfo.sellerSpot ? <div style={styles.muted}>Pyyntipaikka: {sellerInfo.sellerSpot}</div> : null}
+                            <div style={styles.muted}>
+                              {sellerInfo.deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}: {sellerInfo.exactLocation}
+                            </div>
+                            <div style={styles.muted}>Toimitustapa: {sellerInfo.deliveryMethod || "-"}</div>
+                            <div style={styles.muted}>Toimituskulu: {sellerInfo.deliveryCost !== "" && sellerInfo.deliveryCost != null ? `${sellerInfo.deliveryCost} €` : "-"}</div>
+                            <div style={styles.muted}>Aikaisin toimitus: {sellerInfo.earliestDeliveryDate || "-"}</div>
+                            <div style={styles.muted}>Kylmäkuljetus: {sellerInfo.coldTransport ? "kyllä" : "ei"}</div>
+                          </div>
                         ) : null}
                         {o.status === "sold" ? null : (
                         <>

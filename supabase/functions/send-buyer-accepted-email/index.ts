@@ -45,9 +45,12 @@ Deno.serve(async (req) => {
     }
 
     const sellerName = String(offer.sellerName || "Myyja");
+    const sellerCommercialFishingId = String(offer.sellerCommercialFishingId || "").trim();
     const speciesSummary = String(offer.species_summary || "Kalaera");
     const area = String(offer.area || "-");
     const spot = String(offer.spot || "");
+    const deliveryMethod = String(offer.delivery_method || "").trim();
+    const deliveryArea = String(offer.delivery_area || "").trim();
     const kilos = String(offer.accepted_kilos || offer.reserved_kilos || offer.total_kilos || "-");
     const pricePerKg = offer.counter_price_per_kg == null || offer.counter_price_per_kg === ""
       ? "-"
@@ -67,6 +70,9 @@ Deno.serve(async (req) => {
       `Määrä: ${kilos} kg`,
       batchId ? `Erätunnus: ${batchId}` : null,
       `Alue: ${area}${spot ? ` / ${spot}` : ""}`,
+      sellerCommercialFishingId ? `Kaupallisen kalastajan tunnus: ${sellerCommercialFishingId}` : null,
+      deliveryMethod ? `Toimitustapa: ${deliveryMethod}` : null,
+      deliveryArea ? `${deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}: ${deliveryArea}` : null,
       `Hinta: ${pricePerKg}`,
       `Kaupan arvo: ${tradeValue}`,
       deliveryAddress ? `Toimitusosoite: ${deliveryAddress}` : null,
@@ -83,6 +89,9 @@ Deno.serve(async (req) => {
           <strong>Määrä:</strong> ${kilos} kg<br />
           ${batchId ? `<strong>Erätunnus:</strong> ${batchId}<br />` : ""}
           <strong>Alue:</strong> ${area}${spot ? ` / ${spot}` : ""}<br />
+          ${sellerCommercialFishingId ? `<strong>Kaupallisen kalastajan tunnus:</strong> ${sellerCommercialFishingId}<br />` : ""}
+          ${deliveryMethod ? `<strong>Toimitustapa:</strong> ${deliveryMethod}<br />` : ""}
+          ${deliveryArea ? `<strong>${deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}:</strong> ${deliveryArea}<br />` : ""}
           <strong>Hinta:</strong> ${pricePerKg}<br />
           <strong>Kaupan arvo:</strong> ${tradeValue}
         </p>

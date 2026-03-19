@@ -75,6 +75,20 @@ function formatAdditionalNotes(notesValue: unknown) {
   return cleaned.join("\n");
 }
 
+function getPublicPickupLocation(entry: Record<string, unknown>) {
+  const municipality = safeString(entry.municipality);
+  if (municipality) return municipality;
+
+  const deliveryArea = safeString(entry.deliveryArea);
+  if (deliveryArea) {
+    const parts = deliveryArea.split(",").map((part) => part.trim()).filter(Boolean);
+    if (parts.length > 1) return parts[parts.length - 1];
+    return deliveryArea;
+  }
+
+  return safeString(entry.area) || "-";
+}
+
 function describeResendError(data: unknown) {
   if (!data) return "Tuntematon sähköpostivirhe";
   if (typeof data === "string") return data;
@@ -153,19 +167,22 @@ Deno.serve(async (req) => {
     const dateLabel = safeString(entry.dateLabel || "Pyyntipäivämäärä");
     const date = safeString(entry.date);
     const area = safeString(entry.area);
-    const spot = safeString(entry.spot);
     const gear = safeString(entry.gear);
     const price = formatPrice(entry.price_per_kg === null || entry.price_per_kg === undefined || entry.price_per_kg === "" ? parsePriceFromNotes(entry.notes) : entry.price_per_kg);
-    const sellerName = safeString(entry.ownerName || "Tarjoaja");
+    const sellerName = "Anonyymi kalastaja";
     const batchId = safeString(entry.batch_id);
     const extraNotes = formatAdditionalNotes(entry.notes);
+    const deliveryMethod = safeString(entry.deliveryMethod || "Nouto");
+    const publicDeliveryLocation = deliveryMethod === "Nouto"
+      ? getPublicPickupLocation(entry as Record<string, unknown>)
+      : safeString(entry.deliveryArea || entry.area || "-");
 
     const tableRows = [
       buildFieldRow("Laji / erä", species),
       buildFieldRow("Määrä", kilos),
       buildFieldRow(dateLabel, date),
       buildFieldRow("Vesialue", area),
-      buildFieldRow("Pyyntipaikka", spot || "-"),
+      buildFieldRow(deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue", publicDeliveryLocation || "-"),
       buildFieldRow("Pyydys", gear || "-"),
       buildFieldRow("Hinta", price),
       batchId ? buildFieldRow("Erätunnus", batchId) : "",
@@ -205,7 +222,7 @@ Deno.serve(async (req) => {
         `Määrä: ${kilos}`,
         `${dateLabel}: ${date || "-"}`,
         `Vesialue: ${area || "-"}`,
-        `Pyyntipaikka: ${spot || "-"}`,
+        `${deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue"}: ${publicDeliveryLocation || "-"}`,
         `Pyydys: ${gear || "-"}`,
         `Hinta: ${price}`,
         batchId ? `Erätunnus: ${batchId}` : null,
