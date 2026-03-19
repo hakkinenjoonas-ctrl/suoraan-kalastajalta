@@ -69,6 +69,42 @@ function buildCatchPayload(entry: Record<string, unknown>, offers: Array<Record<
   };
 }
 
+function buildCatchPayloadFromRows(rows: Array<Record<string, unknown>>, offers: Array<Record<string, unknown>>) {
+  const saleInfo = deriveSaleInfo(offers);
+  const first = rows[0] || {};
+  const speciesRows = rows
+    .map((row) => {
+      const species = safeString(row.species);
+      const kilos = row.kilos == null || row.kilos === "" ? "" : `${row.kilos} kg`;
+      return [species, kilos].filter(Boolean).join(": ");
+    })
+    .filter(Boolean);
+  const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
+
+  return {
+    batch_id: safeString(first.batch_id),
+    status: saleInfo.status,
+    species: speciesRows.length === 1 ? safeString(first.species) : `${speciesRows.length} lajia`,
+    species_summary: speciesRows.join("\n"),
+    product_name: "",
+    processing_method: "",
+    catch_date: safeString(first.date),
+    production_date: "",
+    best_before_date: "",
+    area: safeString(first.area),
+    municipality: safeString(first.municipality),
+    spot: safeString(first.spot),
+    gear: safeString(first.gear),
+    quantity: totalKilos,
+    unit: "kg",
+    seller_name: safeString(first.owner_name),
+    notes: rows.map((row) => safeString(row.notes)).filter(Boolean).join("\n\n"),
+    created_at: safeString(first.created_at),
+    related_processing: null,
+    sale_info: saleInfo,
+  };
+}
+
 function buildProcessedPayload(entry: Record<string, unknown>, offers: Array<Record<string, unknown>>) {
   const saleInfo = deriveSaleInfo(offers);
   return {
@@ -119,17 +155,17 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const [{ data: catchEntry, error: catchError }, { data: processedEntry, error: processedError }, { data: offers, error: offerError }] = await Promise.all([
+    const [{ data: catchEntries, error: catchError }, { data: processedEntries, error: processedError }, { data: offers, error: offerError }] = await Promise.all([
       supabase
         .from("catch_entries")
         .select("*")
         .eq("batch_id", batchId)
-        .maybeSingle(),
+        .order("created_at", { ascending: true }),
       supabase
         .from("processed_batches")
         .select("*")
         .eq("batch_id", batchId)
-        .maybeSingle(),
+        .order("created_at", { ascending: true }),
       supabase
         .from("buyer_offers")
         .select("status, created_at, updated_at")
@@ -140,12 +176,12 @@ Deno.serve(async (req) => {
     if (processedError) throw processedError;
     if (offerError) throw offerError;
 
-    if (catchEntry) {
-      return jsonResponse(200, buildCatchPayload(catchEntry, offers || []));
+    if (catchEntries && catchEntries.length > 0) {
+      return jsonResponse(200, buildCatchPayloadFromRows(catchEntries, offers || []));
     }
 
-    if (processedEntry) {
-      return jsonResponse(200, buildProcessedPayload(processedEntry, offers || []));
+    if (processedEntries && processedEntries.length > 0) {
+      return jsonResponse(200, buildProcessedPayload(processedEntries[0], offers || []));
     }
 
     return jsonResponse(404, { error: "Batch not found" });
