@@ -122,12 +122,12 @@ Deno.serve(async (req) => {
     const [{ data: catchEntry, error: catchError }, { data: processedEntry, error: processedError }, { data: offers, error: offerError }] = await Promise.all([
       supabase
         .from("catch_entries")
-        .select("batch_id, species, date, area, municipality, spot, gear, kilos, owner_name, notes, created_at")
+        .select("*")
         .eq("batch_id", batchId)
         .maybeSingle(),
       supabase
         .from("processed_batches")
-        .select("batch_id, species_summary, product_name, processing_method, production_date, best_before_date, area, municipality, spot, kilos, owner_name, notes, created_at, product_type, package_size_g, package_count")
+        .select("*")
         .eq("batch_id", batchId)
         .maybeSingle(),
       supabase

@@ -503,6 +503,9 @@ function responsiveGridStyle(base) {
 }
 
 function PublicBatchView({ batchId, data, loading, error }) {
+  const headerSummary = [data?.species, data?.quantity != null && data?.quantity !== "" ? `${data.quantity} ${data.unit || "kg"}` : ""]
+    .filter(Boolean)
+    .join(" · ");
   const infoRows = [
     ["Erätunnus", data?.batch_id],
     ["Tila", data?.status],
@@ -548,6 +551,7 @@ function PublicBatchView({ batchId, data, loading, error }) {
               <div style={{ fontSize: 14, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>Erän jäljitettävyys</div>
               <h1 style={{ ...styles.title, marginBottom: 8 }}>Batch information</h1>
               <div style={{ fontSize: 18, fontWeight: 700 }}>{batchId}</div>
+              {headerSummary ? <div style={{ marginTop: 8, fontSize: 18, color: "#0f172a", fontWeight: 700 }}>{headerSummary}</div> : null}
             </div>
             <div className="no-print" style={styles.row}>
               <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => window.print()}>
