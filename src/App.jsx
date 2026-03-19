@@ -706,11 +706,21 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
   return (
     <div style={styles.app}>
       <div style={{ ...styles.container, maxWidth: 520 }}>
-        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+        <form
+          style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (authMode === "signin") {
+              onSignIn();
+            } else {
+              onSignUp();
+            }
+          }}
+        >
           <h1 style={styles.title}>Suoraan Kalastajalta</h1>
           <div style={{ ...styles.tabs6, gridTemplateColumns: "1fr 1fr", marginBottom: 0 }}>
-            <button style={{ ...styles.tab, ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
-            <button style={{ ...styles.tab, ...(authMode === "signup" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signup")}>Rekisteröidy</button>
+            <button type="button" style={{ ...styles.tab, ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
+            <button type="button" style={{ ...styles.tab, ...(authMode === "signup" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signup")}>Rekisteröidy</button>
           </div>
 
           <div style={styles.field}>
@@ -734,13 +744,13 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
           {authInfo ? <div style={styles.noticeSuccess}>{authInfo}</div> : null}
 
           {authMode === "signin" ? (
-            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={onSignIn}>Kirjaudu sisään</button>
+            <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Kirjaudu sisään</button>
           ) : (
-            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={onSignUp}>Luo tunnus</button>
+            <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Luo tunnus</button>
           )}
 
           <div style={styles.small}>Järjestys: 1) lisää sähköposti allowed_users-listaan, 2) rekisteröidy tällä sähköpostilla, 3) kirjaudu sisään.</div>
-        </div>
+        </form>
       </div>
     </div>
   );
