@@ -2262,13 +2262,22 @@ export default function App() {
           console.log("Function results", data.results);
         }
 
-        if (error) {
+        const functionFailure = Array.isArray(data?.results)
+          ? data.results.find((result) => result?.ok === false)
+          : null;
+
+        if (error || functionFailure || data?.ok === false) {
           failed.push({
             company_name: recipient.company_name,
             contact_name: recipient.contact_name,
             email: recipient.email,
             channel: recipient.channel,
-            error: error?.context?.error || error?.message || "Tarjoussähköpostin lähetys epäonnistui",
+            error:
+              functionFailure?.error?.message ||
+              functionFailure?.error ||
+              error?.context?.error ||
+              error?.message ||
+              "Tarjoussähköpostin lähetys epäonnistui",
           });
         } else {
           sent.push({
@@ -2402,7 +2411,11 @@ export default function App() {
           }],
         },
       });
-      if (!error) {
+      const functionFailure = Array.isArray(data?.results)
+        ? data.results.find((result) => result?.ok === false)
+        : null;
+
+      if (!error && !functionFailure && data?.ok !== false) {
         console.log("send-catch-offer-email ok", recipient.email, data);
         sent.push({
           buyer_id: recipient.buyer_id,
@@ -2415,13 +2428,18 @@ export default function App() {
           data,
         });
       } else {
-        console.error("send-catch-offer-email error", recipient.email, error);
+        console.error("send-catch-offer-email error", recipient.email, error || functionFailure || data);
         failed.push({
           company_name: recipient.company_name,
           contact_name: recipient.contact_name,
           email: recipient.email,
           channel: recipient.channel,
-          error: error?.context?.error || error?.message || "Tarjoussähköpostin lähetys epäonnistui",
+          error:
+            functionFailure?.error?.message ||
+            functionFailure?.error ||
+            error?.context?.error ||
+            error?.message ||
+            "Tarjoussähköpostin lähetys epäonnistui",
         });
       }
     }
