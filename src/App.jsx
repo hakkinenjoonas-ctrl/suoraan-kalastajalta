@@ -861,8 +861,67 @@ function WholesaleOffersView({
     };
   });
 
+  const buyerResponsePriority = {
+    reserved: 0,
+    countered: 1,
+    accepted: 2,
+    rejected: 3,
+  };
+
+  const prioritizedBuyerResponses = (buyerOffers || [])
+    .filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status))
+    .sort((a, b) => {
+      const priorityDiff = (buyerResponsePriority[a.status] ?? 99) - (buyerResponsePriority[b.status] ?? 99);
+      if (priorityDiff !== 0) return priorityDiff;
+      return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+    });
+
   return (
-    <div style={styles.grid2}>
+    <div style={styles.stack}>
+      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+        <strong>Ostajien vastaukset ja varaukset</strong>
+        <div style={styles.noticeInfo}>Tässä näkyvät ensin ostajien varaukset ja vastatarjoukset. Näin näet heti, mihin eriin pitää reagoida. Hyväksytyt ja hylätyt näkyvät niiden jälkeen.</div>
+        {prioritizedBuyerResponses.length === 0 ? (
+          <div style={styles.muted}>Ei vielä ostajien vastauksia.</div>
+        ) : (
+          prioritizedBuyerResponses.slice(0, 20).map((offer) => {
+            const isAccepted = offer.status === "accepted";
+            const isReserved = offer.status === "reserved";
+            const isCountered = offer.status === "countered";
+            const revealIdentity = shouldRevealBuyerIdentity(offer.status);
+            return (
+              <div
+                key={offer.id}
+                style={{
+                  ...styles.entry,
+                  background: isAccepted ? "#ecfeff" : isReserved ? "#eff6ff" : isCountered ? "#f8fbff" : "#fff",
+                  borderLeft: `4px solid ${isAccepted ? "#0891b2" : isReserved ? "#2563eb" : isCountered ? "#0ea5e9" : "#0f172a"}`,
+                }}
+              >
+                <div style={{ ...styles.rowBetween, marginBottom: 8 }}>
+                  <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
+                  <div style={styles.entryBadges}>
+                    <span style={buyerStatusBadgeStyle(offer.status, styles.badge)}>{buyerStatusLabel(offer.status)}</span>
+                    <span style={styles.badge}>{revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type)}</span>
+                  </div>
+                </div>
+                <div>
+                  <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                  {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
+                  {offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                  <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
+                  {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous:</strong> {euro(offer.counter_price_per_kg)} / kg</div> : null}
+                  {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
+                  {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
+                  {revealIdentity ? <div style={styles.muted}><strong>Yhteystiedot:</strong> {offer.buyer_contact_name || "-"} · {offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div> : null}
+                  {offer.status === "accepted" ? <div style={styles.muted}><strong>Laskutus:</strong> tämä kauppa siirtyy ownerin laskutusnäkymään kuukausikohtaisesti.</div> : null}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Myyntiin merkityt erät</strong>
 
@@ -1016,52 +1075,6 @@ function WholesaleOffersView({
               </div>
             </div>
           ))
-        )}
-      </div>
-
-      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-        <strong>Ostajien viimeisimmät vastaukset</strong>
-        <div style={styles.noticeInfo}>Tässä listassa näytetään vain ostajien tekemät vastaukset: vastatarjoukset, varaukset, hyväksytyt ja hylätyt. Pelkkiä lähetettyjä tarjousrivejä ei näytetä tässä, jotta näkymä pysyy selkeänä.</div>
-        {!buyerOffers || buyerOffers.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length === 0 ? (
-          <div style={styles.muted}>Ei vielä ostajien vastauksia.</div>
-        ) : (
-          buyerOffers
-            .filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status))
-            .slice(0, 20)
-            .map((offer) => {
-            const isAccepted = offer.status === "accepted";
-            const isReserved = offer.status === "reserved";
-            const revealIdentity = shouldRevealBuyerIdentity(offer.status);
-            return (
-              <div
-                key={offer.id}
-                style={{
-                  ...styles.entry,
-                  background: isAccepted ? "#ecfdf5" : isReserved ? "#fffbeb" : "#fff",
-                  borderLeft: `4px solid ${isAccepted ? "#16a34a" : isReserved ? "#f59e0b" : "#0f172a"}`,
-                }}
-              >
-                <div style={{ ...styles.rowBetween, marginBottom: 8 }}>
-                  <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
-                  <div style={styles.entryBadges}>
-                    <span style={buyerStatusBadgeStyle(offer.status, styles.badge)}>{buyerStatusLabel(offer.status)}</span>
-                    <span style={styles.badge}>{revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type)}</span>
-                  </div>
-                </div>
-                <div>
-                  <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
-                  {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
-                  {offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
-                  <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
-                  {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous:</strong> {euro(offer.counter_price_per_kg)} / kg</div> : null}
-                  {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
-                  {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
-                  {revealIdentity ? <div style={styles.muted}><strong>Yhteystiedot:</strong> {offer.buyer_contact_name || "-"} · {offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div> : null}
-                  {offer.status === "accepted" ? <div style={styles.muted}><strong>Laskutus:</strong> tämä kauppa siirtyy ownerin laskutusnäkymään kuukausikohtaisesti.</div> : null}
-                </div>
-              </div>
-            );
-          })
         )}
       </div>
     </div>
