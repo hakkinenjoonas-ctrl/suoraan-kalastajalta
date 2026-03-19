@@ -196,6 +196,18 @@ function euro(value) {
   }).format(value || 0);
 }
 
+function describeOfferEmailError(error) {
+  if (!error) return "Tarjoussähköpostin lähetys epäonnistui";
+  if (typeof error === "string") return error;
+  if (typeof error?.message === "string" && error.message.trim()) return error.message;
+  if (typeof error?.error === "string" && error.error.trim()) return error.error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
 function calculateCommissionDetails(offer, commissionRate = 0.03) {
   const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
   const pricePerKg = Number(
@@ -2281,11 +2293,9 @@ export default function App() {
             email: recipient.email,
             channel: recipient.channel,
             error:
-              functionFailure?.error?.message ||
-              functionFailure?.error ||
-              error?.context?.error ||
-              error?.message ||
-              "Tarjoussähköpostin lähetys epäonnistui",
+              describeOfferEmailError(functionFailure?.error) ||
+              describeOfferEmailError(error?.context?.error) ||
+              describeOfferEmailError(error),
           });
         } else {
           sent.push({
@@ -2443,11 +2453,9 @@ export default function App() {
           email: recipient.email,
           channel: recipient.channel,
           error:
-            functionFailure?.error?.message ||
-            functionFailure?.error ||
-            error?.context?.error ||
-            error?.message ||
-            "Tarjoussähköpostin lähetys epäonnistui",
+            describeOfferEmailError(functionFailure?.error) ||
+            describeOfferEmailError(error?.context?.error) ||
+            describeOfferEmailError(error),
         });
       }
     }
@@ -2977,6 +2985,7 @@ export default function App() {
       earliest_delivery_date: form.earliestDeliveryDate || null,
       cold_transport: form.coldTransport,
       commercial_fishing_id: profile.commercial_fishing_id || null,
+      price_per_kg: form.price_per_kg === "" || form.price_per_kg == null ? null : Number(form.price_per_kg),
       notes: form.notes,
       batch_id: batchId,
       owner_user_id: profile.id,
@@ -3242,6 +3251,15 @@ export default function App() {
       return getOfferSpeciesHeadline(offer?.species_summary);
     };
 
+    const getVisibleOfferPrice = (offer) => {
+      if (offer?.counter_price_per_kg !== "" && offer?.counter_price_per_kg != null) return offer.counter_price_per_kg;
+      if (offer?.price_per_kg !== "" && offer?.price_per_kg != null) return offer.price_per_kg;
+      if (offer?.price_per_kg_fallback !== "" && offer?.price_per_kg_fallback != null) return offer.price_per_kg_fallback;
+      const parsedFromNotes = parsePricePerKgFromNotes(offer?.notes);
+      if (parsedFromNotes !== "" && parsedFromNotes != null) return parsedFromNotes;
+      return "";
+    };
+
     const filteredBuyerOffers = (buyerOffers || []).filter((offer) => {
       const q = buyerOffersSearch.trim().toLowerCase();
       const statusOk = buyerOffersFilter === "all"
@@ -3346,6 +3364,7 @@ export default function App() {
 
                   {offersForDay.map((o) => {
                     const isActive = buyerActiveOfferId === o.id;
+                    const visiblePrice = getVisibleOfferPrice(o);
                     return (
                       <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
                         <div style={{ marginBottom: 10 }}>
@@ -3355,9 +3374,9 @@ export default function App() {
                             <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
                               {o.total_kilos} kg
                             </div>
-                            {o.price_per_kg !== "" && o.price_per_kg != null ? (
+                            {visiblePrice !== "" && visiblePrice != null ? (
                               <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
-                                {euro(o.price_per_kg)} / kg
+                                {euro(visiblePrice)} / kg
                               </div>
                             ) : null}
                           </div>
@@ -3376,6 +3395,7 @@ export default function App() {
                           <div>
                             <div style={styles.muted}><strong>Erän tiedot</strong></div>
                             <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{o.species_summary || "-"}</div>
+                            {visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta: {euro(visiblePrice)} / kg</div> : null}
                             {o.spot ? <div style={styles.muted}>Paikka: {o.spot}</div> : null}
                           </div>
                           <div>

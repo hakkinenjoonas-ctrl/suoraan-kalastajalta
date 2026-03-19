@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: true }),
       supabase
         .from("buyer_offers")
-        .select("status, created_at, updated_at")
+        .select("*")
         .eq("batch_id", batchId),
     ]);
 
