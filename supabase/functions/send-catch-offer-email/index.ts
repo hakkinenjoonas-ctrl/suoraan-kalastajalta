@@ -176,6 +176,17 @@ Deno.serve(async (req) => {
 
     const results = [];
 
+    console.log("send-catch-offer-email:start", {
+      recipientCount: recipients.length,
+      recipientEmails: recipients.map((recipient: Record<string, unknown>) => safeString(recipient?.email).toLowerCase()).filter(Boolean),
+      fromEmail,
+      species,
+      kilos,
+      price,
+      batchId,
+      authenticatedUserId: userData.user.id,
+    });
+
     for (const recipient of recipients) {
       const recipientEmail = safeString(recipient?.email).toLowerCase();
       if (!recipientEmail) {
@@ -238,15 +249,29 @@ Deno.serve(async (req) => {
         resendData = resendBody;
       }
       if (!resendResponse.ok) {
+        console.error("send-catch-offer-email:resend-error", {
+          recipientEmail,
+          status: resendResponse.status,
+          resendData,
+        });
         results.push({
           ok: false,
           email: recipientEmail,
           error: `Resend ${resendResponse.status}: ${describeResendError(resendData)}`,
         });
       } else {
+        console.log("send-catch-offer-email:resend-ok", {
+          recipientEmail,
+          resendData,
+        });
         results.push({ ok: true, email: recipientEmail, resend: resendData });
       }
     }
+
+    console.log("send-catch-offer-email:finished", {
+      ok: results.every((result) => result.ok),
+      results,
+    });
 
     return jsonResponse(200, { ok: results.every((result) => result.ok), results });
   } catch (error) {
