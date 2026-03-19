@@ -1377,19 +1377,9 @@ export default function App() {
       .filter((buyer) => {
         const minKg = buyer.min_kg == null || buyer.min_kg === "" ? null : Number(buyer.min_kg);
         const maxKg = buyer.max_kg == null || buyer.max_kg === "" ? null : Number(buyer.max_kg);
-
-        if (buyer.buyer_type === "tukku") {
-          return minKg == null || totalKilos >= minKg;
-        }
-        if (buyer.buyer_type === "ravintola") {
-          return maxKg == null || totalKilos <= maxKg;
-        }
-        if (buyer.buyer_type === "kauppa") {
-          const minOk = minKg == null || totalKilos >= minKg;
-          const maxOk = maxKg == null || totalKilos <= maxKg;
-          return minOk && maxOk;
-        }
-        return false;
+        const minOk = minKg == null || totalKilos >= minKg;
+        const maxOk = maxKg == null || totalKilos <= maxKg;
+        return minOk && maxOk;
       })
       .map((buyer) => ({
         buyer_id: buyer.id,
