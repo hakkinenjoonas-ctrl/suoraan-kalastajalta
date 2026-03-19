@@ -73,6 +73,22 @@ function formatAdditionalNotes(notesValue: unknown) {
   return cleaned.join("\n");
 }
 
+function describeResendError(data: unknown) {
+  if (!data) return "Tuntematon sähköpostivirhe";
+  if (typeof data === "string") return data;
+  if (typeof data === "object") {
+    const candidate = data as Record<string, unknown>;
+    if (typeof candidate.message === "string" && candidate.message.trim()) return candidate.message;
+    if (typeof candidate.error === "string" && candidate.error.trim()) return candidate.error;
+    if (typeof candidate.name === "string" && candidate.name.trim()) return candidate.name;
+  }
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return String(data);
+  }
+}
+
 function buildFieldRow(label: string, value: string) {
   return `
     <tr>
@@ -89,7 +105,10 @@ Deno.serve(async (req) => {
 
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    const fromEmail = Deno.env.get("FROM_EMAIL") || "Suoraan Kalastajalta <noreply@suoraankalastajalta.fi>";
+    const fromEmail =
+      Deno.env.get("FROM_EMAIL") ||
+      Deno.env.get("RESEND_FROM_EMAIL") ||
+      "Suoraan Kalastajalta <noreply@suoraankalastajalta.fi>";
     if (!resendApiKey) {
       return jsonResponse(500, { error: "Missing RESEND_API_KEY" });
     }
@@ -182,9 +201,19 @@ Deno.serve(async (req) => {
         }),
       });
 
-      const resendData = await resendResponse.json();
+      const resendBody = await resendResponse.text();
+      let resendData: unknown = resendBody;
+      try {
+        resendData = resendBody ? JSON.parse(resendBody) : {};
+      } catch {
+        resendData = resendBody;
+      }
       if (!resendResponse.ok) {
-        results.push({ ok: false, email: recipientEmail, error: resendData });
+        results.push({
+          ok: false,
+          email: recipientEmail,
+          error: `Resend ${resendResponse.status}: ${describeResendError(resendData)}`,
+        });
       } else {
         results.push({ ok: true, email: recipientEmail, resend: resendData });
       }
