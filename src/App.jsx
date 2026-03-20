@@ -4067,10 +4067,10 @@ export default function App() {
   const formGrid = responsiveGridStyle(styles.formGrid);
   const speciesRow = responsiveGridStyle(styles.speciesRow);
   const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
-    ? 48
+    ? 104
     : typeof window !== "undefined" && window.innerWidth < 1024
-    ? 64
-    : 72;
+    ? 118
+    : 132;
 
   return (
     <div style={styles.app}>
@@ -4078,19 +4078,20 @@ export default function App() {
         <div style={{ ...styles.card, ...styles.headerCard }}>
           <div style={styles.rowBetween}>
             <div>
-              <img
-                src="/logo.png"
-                alt=""
-                style={{
-                  height: logoHeight,
-                  width: "auto",
-                  objectFit: "contain",
-                  marginTop: 12,
-                  marginBottom: 12,
-                  display: "block",
-                }}
-              />
-              <h1 style={styles.title}>Suoraan Kalastajalta</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "nowrap", marginTop: 12, marginBottom: 12 }}>
+                <h1 style={styles.title}>Suoraan Kalastajalta</h1>
+                <img
+                  src="/logo.png"
+                  alt=""
+                  style={{
+                    height: logoHeight,
+                    width: "auto",
+                    objectFit: "contain",
+                    display: "block",
+                    flexShrink: 0,
+                  }}
+                />
+              </div>
               <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · rooli: {profile.role === "owner" ? "omistaja" : profile.role === "buyer" ? "ostaja" : profile.role === "processor" ? "kalanjalostaja" : "käyttäjä"}</p>
               {profile.role === "processor" ? (
                 <p style={{ ...styles.subtitle, marginTop: 4 }}>
