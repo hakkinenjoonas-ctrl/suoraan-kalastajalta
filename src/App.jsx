@@ -4226,10 +4226,10 @@ export default function App() {
   const formGrid = responsiveGridStyle(styles.formGrid);
   const speciesRow = responsiveGridStyle(styles.speciesRow);
   const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
-    ? 136
+    ? 128
     : typeof window !== "undefined" && window.innerWidth < 1024
-    ? 150
-    : 164;
+    ? 156
+    : 172;
 
   return (
     <div style={styles.app}>
@@ -4237,14 +4237,15 @@ export default function App() {
         <div style={{ ...styles.card, ...styles.headerCard }}>
           <div style={styles.rowBetween}>
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "nowrap", marginTop: 12, marginBottom: 12 }}>
-                <h1 style={styles.title}>Suoraan Kalastajalta</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap", marginTop: 12, marginBottom: 12 }}>
+                <h1 style={{ ...styles.title, marginRight: -2 }}>Suoraan Kalastajalta</h1>
                 <img
                   src="/logo.png"
                   alt=""
                   style={{
                     height: logoHeight,
                     width: "auto",
+                    maxWidth: typeof window !== "undefined" && window.innerWidth < 768 ? "32vw" : "none",
                     objectFit: "contain",
                     display: "block",
                     flexShrink: 0,
