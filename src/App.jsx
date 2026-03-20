@@ -125,7 +125,7 @@ function safeId() {
 }
 
 function createSpeciesRow() {
-  return { id: safeId(), species: "Muikku", customSpecies: "", kilos: "", count: "" };
+  return { id: safeId(), species: "Muikku", customSpecies: "", kilos: "", count: "", price_per_kg: "" };
 }
 
 function getPublicAppBaseUrl() {
@@ -167,6 +167,18 @@ function formatSpeciesForSale(label) {
 
 function formatSpeciesSummaryLine(label, kilos, count) {
   return `${formatSpeciesForSale(label)}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
+}
+
+function formatSpeciesOfferSummaryLine(row) {
+  const kilos = Number(row?.kilos || 0);
+  const count = Number(row?.count || 0);
+  const price = row?.price_per_kg === "" || row?.price_per_kg == null ? "-" : `${Number(row.price_per_kg).toLocaleString("fi-FI")} € / kg`;
+  const batchId = String(row?.batch_id || "").trim();
+  return [
+    formatSpeciesSummaryLine(getSpeciesRowLabel(row), kilos, count),
+    `Hinta ${price}`,
+    batchId ? `Erätunnus ${batchId}` : "",
+  ].filter(Boolean).join(" · ");
 }
 
 function formatSpeciesSummaryText(value) {
@@ -2021,6 +2033,7 @@ export default function App() {
             coldTransport: Boolean(entry.cold_transport),
             ownerName: entry.owner_name,
             commercialFishingId: entry.commercial_fishing_id || "",
+            pricePerKg: entry.price_per_kg == null ? "" : Number(entry.price_per_kg),
             ownerUserId: entry.owner_user_id,
             offerToShops: Boolean(entry.offer_to_shops),
             offerToRestaurants: Boolean(entry.offer_to_restaurants),
@@ -2696,7 +2709,7 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
-  const sendCatchOfferEmail = async ({ formState, rows, profileState, batchId }) => {
+  const sendCatchOfferEmail = async ({ formState, rows, profileState }) => {
     const recipients = buildOfferRecipients(formState, rows).map((recipient) => ({
       ...recipient,
       email: (recipient.email || "").trim().toLowerCase(),
@@ -2706,17 +2719,12 @@ export default function App() {
     }
 
     const summaryLines = rows
-      .map((row) => {
-        const kilos = Number(row.kilos || 0);
-        const count = Number(row.count || 0);
-        return formatSpeciesSummaryLine(getSpeciesRowLabel(row), kilos, count);
-      })
+      .map((row) => formatSpeciesOfferSummaryLine(row))
       .join(String.fromCharCode(10));
 
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
     const offerUrlBase = getPublicAppBaseUrl();
     const logisticsLines = [
-      `Hinta: ${formState.price_per_kg !== "" && formState.price_per_kg != null ? `${formState.price_per_kg} € / kg` : "-"}`,
       `Toimitustapa: ${formState.deliveryMethod || "-"}`,
       `Toimitusalue: ${formState.deliveryArea || "-"}`,
       `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
@@ -2735,7 +2743,7 @@ export default function App() {
       municipality: formState.municipality || "",
       spot: formState.spot || "",
       gear: formState.gear || "",
-      price_per_kg: formState.price_per_kg === "" || formState.price_per_kg == null ? null : Number(formState.price_per_kg),
+      price_per_kg: rows.length === 1 && rows[0].price_per_kg !== "" && rows[0].price_per_kg != null ? Number(rows[0].price_per_kg) : null,
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
       commercialFishingId: profileState?.commercial_fishing_id || "",
       deliveryMethod: formState.deliveryMethod || "Nouto",
@@ -2760,7 +2768,7 @@ export default function App() {
       const insertedOffer = await supabase
         .from("buyer_offers")
         .insert({
-          batch_id: batchId,
+          batch_id: rows.length === 1 ? rows[0].batch_id : null,
           buyer_id: recipient.buyer_id || null,
           buyer_email: recipient.email,
           seller_user_id: profileState?.id || null,
@@ -3546,20 +3554,23 @@ export default function App() {
       setAuthError("Kirjoita kalalajin nimi kaikille riveille, joilla lajiksi on valittu Muu.");
       return;
     }
-    if (form.price_per_kg === "" || form.price_per_kg == null || Number.isNaN(Number(form.price_per_kg))) {
-      setAuthError("Täytä hinta (€/kg) ennen saaliin tallennusta.");
+    if (validRows.some((row) => row.price_per_kg === "" || row.price_per_kg == null || Number.isNaN(Number(row.price_per_kg)))) {
+      setAuthError("Täytä hinta (€/kg) jokaiselle kalalajille ennen saaliin tallennusta.");
       return;
     }
     setSaving(true);
-    let batchId;
+    let rowsWithBatchIds;
     try {
-      batchId = await generateBatchId({
-        sourceIdentifier: getPreferredBatchSourceIdentifier(profile),
-        date: form.date,
-        speciesLabels: validRows.map((row) => getSpeciesRowLabel(row)),
-        quantity: validRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0),
-        supabaseClient: supabase,
-      });
+      rowsWithBatchIds = await Promise.all(validRows.map(async (row) => ({
+        ...row,
+        batch_id: await generateBatchId({
+          sourceIdentifier: getPreferredBatchSourceIdentifier(profile),
+          date: form.date,
+          speciesLabels: [getSpeciesRowLabel(row)],
+          quantity: Number(row.kilos || 0),
+          supabaseClient: supabase,
+        }),
+      })));
     } catch (error) {
       setSaving(false);
       if (isMissingRefreshTokenError(error)) {
@@ -3569,7 +3580,7 @@ export default function App() {
       setAuthError(error.message || "Batch ID:n luonti epäonnistui.");
       return;
     }
-    const payload = validRows.map((row) => ({
+    const payload = rowsWithBatchIds.map((row) => ({
       offer_to_shops: form.offerToShops,
       offer_to_restaurants: form.offerToRestaurants,
       offer_to_wholesalers: form.offerToWholesalers,
@@ -3587,9 +3598,9 @@ export default function App() {
       earliest_delivery_date: form.earliestDeliveryDate || null,
       cold_transport: form.coldTransport,
       commercial_fishing_id: profile.commercial_fishing_id || null,
-      price_per_kg: form.price_per_kg === "" || form.price_per_kg == null ? null : Number(form.price_per_kg),
+      price_per_kg: Number(row.price_per_kg || 0),
       notes: form.notes,
-      batch_id: batchId,
+      batch_id: row.batch_id,
       owner_user_id: profile.id,
       owner_name: profile.display_name,
     }));
@@ -3608,9 +3619,8 @@ export default function App() {
     try {
       const emailResult = await sendCatchOfferEmail({
         formState: form,
-        rows: validRows,
+        rows: rowsWithBatchIds,
         profileState: profile,
-        batchId,
       });
 
       if (shouldSendOffer) {
@@ -4504,12 +4514,12 @@ export default function App() {
                         {row.species === "Muu" ? <input style={{ ...styles.input, marginTop: 8 }} placeholder="Kirjoita kalalaji" value={row.customSpecies} onChange={(e) => updateSpeciesRow(row.id, "customSpecies", e.target.value)} /> : null}
                       </div>
                       <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
+                      <div style={styles.field}><label>Hinta (€/kg)</label><input style={styles.input} type="number" step="0.01" placeholder="Esim. 5.50" value={row.price_per_kg} onChange={(e) => updateSpeciesRow(row.id, "price_per_kg", e.target.value)} /></div>
                       <div style={styles.field}><label>Kpl</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
                       <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
                     </div>
                   ))}
                 </div>
-                <div style={styles.field}><label>Hinta (€/kg)</label><input style={styles.input} type="number" step="0.01" value={form.price_per_kg || ""} onChange={(e) => setForm((prev) => ({ ...prev, price_per_kg: e.target.value }))} placeholder="Esim. 5.50" /></div>
               <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm({ ...form, gear: e.target.value })}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
                 <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={form.deliveryMethod} onChange={(e) => setForm({ ...form, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
                 <div style={styles.field}>
@@ -4619,6 +4629,7 @@ export default function App() {
                           <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                           {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                           {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                          {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>Hinta: {euro(entry.pricePerKg)} / kg</div> : null}
                           <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                           {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                         </div>
