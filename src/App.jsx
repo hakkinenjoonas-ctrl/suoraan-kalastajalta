@@ -13,28 +13,32 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   },
 });
 
-const fishSpecies = [
-  "Muikku",
-  "Muikku, perattu",
-  "Muikku, perattu päätön",
-  "Kuha",
-  "Kuha, avattu",
-  "Kuha filee",
-  "Ahven",
-  "Ahven, avattu",
-  "Ahven filee",
-  "Hauki",
-  "Hauki, avattu",
-  "Hauki filee",
-  "Lahna",
-  "Särki",
-  "Säyne",
-  "Siika",
-  "Made",
-  "Made, nyljetty",
-  "Silakka",
-  "Muu",
+const fishSpeciesCatalog = [
+  { name_fi: "Kuha", name_en: "Zander", scientific: "Sander lucioperca", fao: "FPP" },
+  { name_fi: "Ahven", name_en: "European perch", scientific: "Perca fluviatilis", fao: "FPE" },
+  { name_fi: "Hauki", name_en: "Pike", scientific: "Esox lucius", fao: "FPI" },
+  { name_fi: "Lahna", name_en: "Freshwater bream", scientific: "Abramis brama", fao: "FBM" },
+  { name_fi: "Särki", name_en: "Roach", scientific: "Rutilus rutilus", fao: "FRO" },
+  { name_fi: "Muikku", name_en: "Vendace", scientific: "Coregonus albula", fao: "FVE" },
+  { name_fi: "Siika", name_en: "Whitefish", scientific: "Coregonus lavaretus", fao: "WHF" },
+  { name_fi: "Made", name_en: "Burbot", scientific: "Lota lota", fao: "FBU" },
+  { name_fi: "Säyne", name_en: "Ide", scientific: "Leuciscus idus", fao: "FID" },
+  { name_fi: "Kiiski", name_en: "Ruffe", scientific: "Gymnocephalus cernua", fao: "FRF" },
+  { name_fi: "Kuore", name_en: "Smelt", scientific: "Osmerus eperlanus", fao: "SME" },
+  { name_fi: "Silakka", name_en: "Baltic herring", scientific: "Clupea harengus", fao: "HER" },
+  { name_fi: "Kilohaili", name_en: "Sprat", scientific: "Sprattus sprattus", fao: "SPR" },
+  { name_fi: "Lohi", name_en: "Atlantic salmon", scientific: "Salmo salar", fao: "SAL" },
+  { name_fi: "Kirjolohi", name_en: "Rainbow trout", scientific: "Oncorhynchus mykiss", fao: "TRR" },
+  { name_fi: "Taimen", name_en: "Brown trout", scientific: "Salmo trutta", fao: "TRU" },
+  { name_fi: "Ankerias", name_en: "Eel", scientific: "Anguilla anguilla", fao: "ELE" },
+  { name_fi: "Toutain", name_en: "Asp", scientific: "Aspius aspius", fao: "ASU" },
+  { name_fi: "Suutari", name_en: "Tench", scientific: "Tinca tinca", fao: "FTE" },
+  { name_fi: "Kampela", name_en: "Flounder", scientific: "Platichthys flesus", fao: "FLE" },
 ];
+const fishSpeciesByName = Object.fromEntries(
+  fishSpeciesCatalog.map((item) => [item.name_fi.toLowerCase(), item])
+);
+const fishSpecies = [...fishSpeciesCatalog.map((item) => item.name_fi), "Muu"];
 const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Nuotta", "Vapaväline", "Muu"];
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
@@ -128,6 +132,37 @@ function getSpeciesRowLabel(row) {
     return String(row?.customSpecies || "").trim() || "Muu";
   }
   return row?.species || "";
+}
+
+function getSpeciesMetadata(label) {
+  const normalized = String(label || "")
+    .split(",")[0]
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  return fishSpeciesByName[normalized] || null;
+}
+
+function formatSpeciesForSale(label) {
+  const metadata = getSpeciesMetadata(label);
+  if (!metadata?.scientific) return String(label || "").trim() || "Muu";
+  return `${metadata.name_fi} (${metadata.scientific})`;
+}
+
+function formatSpeciesSummaryLine(label, kilos, count) {
+  return `${formatSpeciesForSale(label)}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
+}
+
+function formatSpeciesSummaryText(value) {
+  return String(value || "")
+    .split("\n")
+    .map((line) => {
+      const [speciesPart, ...rest] = String(line).split(":");
+      if (!speciesPart) return line;
+      const formattedSpecies = formatSpeciesForSale(speciesPart.trim());
+      return rest.length > 0 ? `${formattedSpecies}:${rest.join(":")}` : formattedSpecies;
+    })
+    .join("\n");
 }
 
 function getOfferSpeciesHeadline(summary) {
@@ -238,25 +273,10 @@ function formatBatchDate(dateValue) {
 function normalizeFishSpeciesLabel(value) {
   return String(value || "")
     .split(",")[0]
-    .replace(/\b(filee|filet|avattu|perattu|päätön|nyljetty)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 }
-
-const speciesFaoCodeMap = {
-  ahven: "FPE",
-  hauki: "FIK",
-  kuha: "FPP",
-  lahna: "FBR",
-  made: "BUR",
-  muikku: "CCO",
-  siika: "WHF",
-  silakka: "HER",
-  särki: "FRO",
-  sayne: "IDE",
-  säyne: "IDE",
-};
 
 function getSpeciesFaoCode(speciesLabels) {
   const labels = Array.isArray(speciesLabels) ? speciesLabels : [speciesLabels];
@@ -268,7 +288,7 @@ function getSpeciesFaoCode(speciesLabels) {
   if (uniqueLabels.length === 0) return "MIX";
   if (uniqueLabels.length > 1) return "MIX";
 
-  const directMatch = speciesFaoCodeMap[uniqueLabels[0]];
+  const directMatch = fishSpeciesByName[uniqueLabels[0]]?.fao;
   if (directMatch) return directMatch;
 
   return uniqueLabels[0]
@@ -690,13 +710,13 @@ function responsiveGridStyle(base) {
 }
 
 function PublicBatchView({ batchId, data, loading, error }) {
-  const headerSummary = [data?.species, data?.quantity != null && data?.quantity !== "" ? `${data.quantity} ${data.unit || "kg"}` : ""]
+  const headerSummary = [formatSpeciesForSale(data?.species), data?.quantity != null && data?.quantity !== "" ? `${data.quantity} ${data.unit || "kg"}` : ""]
     .filter(Boolean)
     .join(" · ");
   const infoRows = [
     ["Erätunnus", data?.batch_id],
     ["Tila", data?.status],
-    ["Laji", data?.species],
+    ["Laji", formatSpeciesForSale(data?.species)],
     ["Tuote", data?.product_name],
     ["Käsittelymenetelmä", data?.processing_method],
     ["Pyyntipäivämäärä", data?.catch_date],
@@ -766,7 +786,7 @@ function PublicBatchView({ batchId, data, loading, error }) {
             {data?.species_summary || data?.notes ? (
               <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
                 <strong style={{ fontSize: 20 }}>Sisältö ja lisätiedot</strong>
-                {data?.species_summary ? <div style={{ whiteSpace: "pre-wrap", color: "#0f172a" }}>{data.species_summary}</div> : null}
+                {data?.species_summary ? <div style={{ whiteSpace: "pre-wrap", color: "#0f172a" }}>{formatSpeciesSummaryText(data.species_summary)}</div> : null}
                 {data?.notes ? <div style={{ whiteSpace: "pre-wrap", color: "#475569" }}>{data.notes}</div> : null}
               </div>
             ) : null}
@@ -986,7 +1006,7 @@ function WholesaleOffersView({
                   </div>
                 </div>
                 <div>
-                  <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                  <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary) || "-"}</div>
                   {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
                   {offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                   <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
@@ -1013,7 +1033,7 @@ function WholesaleOffersView({
               <div style={styles.entryHeader}>
                 <div>
                   <div style={styles.entryBadges}>
-                    <span style={styles.badge}>{entry.species}</span>
+                    <span style={styles.badge}>{formatSpeciesForSale(entry.species)}</span>
                     <span style={styles.badge}>{entry.kilos} kg</span>
                     <span style={styles.badge}>{entry.ownerName}</span>
                     {reservation?.status === "reserved" ? <span style={buyerStatusBadgeStyle("reserved", styles.badge)}>Varattu</span> : null}
@@ -1096,7 +1116,7 @@ function WholesaleOffersView({
 
                         <div style={{ ...styles.grid2, marginBottom: 10 }}>
                           <div>
-                            <div style={styles.muted}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                            <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary) || "-"}</div>
                             {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
                             {offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                             <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
@@ -1385,7 +1405,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
                   <span style={styles.badge}>{euro(offer.tradeValue)}</span>
                   <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{euro(offer.commissionValue)} komissio</span>
                 </div>
-                <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}><strong>Erä:</strong> {offer.species_summary || "-"}</div>
+                <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary) || "-"}</div>
                 <div style={styles.muted}><strong>Päivä:</strong> {offer.updated_at || offer.created_at || "-"}</div>
                 <div style={styles.muted}><strong>Laskutustila:</strong> {offer.billing_status === "paid" ? "Maksettu" : offer.billing_status === "invoiced" ? "Laskutettu" : "Laskuttamaton"}</div>
                 {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
@@ -2566,7 +2586,7 @@ export default function App() {
       .map((row) => {
         const kilos = Number(row.kilos || 0);
         const count = Number(row.count || 0);
-        return `${getSpeciesRowLabel(row)}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
+        return formatSpeciesSummaryLine(getSpeciesRowLabel(row), kilos, count);
       })
       .join(String.fromCharCode(10));
 
@@ -2584,7 +2604,7 @@ export default function App() {
     ];
 
     const entry = {
-      species: rows.map((row) => getSpeciesRowLabel(row)).join(", "),
+      species: rows.map((row) => formatSpeciesForSale(getSpeciesRowLabel(row))).join(", "),
       kilos: totalKilos,
       date: formState.date,
       dateLabel: "Pyyntipäivämäärä",
@@ -2734,7 +2754,7 @@ export default function App() {
       .map((row) => {
         const kilos = Number(row.kilos || 0);
         const count = Number(row.count || 0);
-        return `${row.species}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
+        return formatSpeciesSummaryLine(row.species, kilos, count);
       })
       .join(String.fromCharCode(10));
 
@@ -2752,7 +2772,7 @@ export default function App() {
     ];
 
     const entry = {
-      species: rows.map((row) => row.species).join(", "),
+      species: rows.map((row) => formatSpeciesForSale(row.species)).join(", "),
       kilos: totalKilos,
       date: formState.date,
       dateLabel: "Pyyntipäivämäärä",
@@ -3615,7 +3635,7 @@ export default function App() {
   };
 
   const handleDeleteEntry = async (entry) => {
-    const ok = window.confirm(`Poistetaanko saalistieto: ${entry.species} ${entry.kilos} kg / ${entry.date}?`);
+    const ok = window.confirm(`Poistetaanko saalistieto: ${formatSpeciesForSale(entry.species)} ${entry.kilos} kg / ${entry.date}?`);
     if (!ok) return;
 
     const { error } = await supabase.from("catch_entries").delete().eq("id", entry.id);
@@ -3921,7 +3941,7 @@ export default function App() {
                         <div style={{ ...styles.grid2, marginBottom: 10 }}>
                           <div>
                             <div style={styles.muted}><strong>Erän tiedot</strong></div>
-                            <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{o.species_summary || "-"}</div>
+                            <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{formatSpeciesSummaryText(o.species_summary) || "-"}</div>
                             {visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta: {euro(visiblePrice)} / kg</div> : null}
                             <div style={styles.muted}>Tarjoaja: {sellerInfo.sellerLabel}</div>
                             {sellerInfo.sellerCommercialFishingId && sellerInfo.revealIdentity ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
@@ -4335,7 +4355,7 @@ export default function App() {
                   <div style={styles.entryHeader}>
                     <div>
                       <div style={styles.entryBadges}>
-                        <span style={styles.badge}>{entry.species}</span>
+                        <span style={styles.badge}>{formatSpeciesForSale(entry.species)}</span>
                         <span style={styles.badge}>{entry.kilos} kg</span>
                         <span style={styles.badge}>{entry.gear}</span>
                         <span style={styles.badge}>{entry.ownerName}</span>
