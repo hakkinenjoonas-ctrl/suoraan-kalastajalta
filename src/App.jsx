@@ -4226,10 +4226,10 @@ export default function App() {
   const formGrid = responsiveGridStyle(styles.formGrid);
   const speciesRow = responsiveGridStyle(styles.speciesRow);
   const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
-    ? 104
+    ? 136
     : typeof window !== "undefined" && window.innerWidth < 1024
-    ? 118
-    : 132;
+    ? 150
+    : 164;
 
   return (
     <div style={styles.app}>
