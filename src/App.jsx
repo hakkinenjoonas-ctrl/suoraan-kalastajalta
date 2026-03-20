@@ -2158,6 +2158,37 @@ export default function App() {
     });
   }, [entries, search]);
 
+  const groupedFilteredEntries = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat("fi-FI", {
+      month: "long",
+      year: "numeric",
+    });
+
+    const groups = filteredEntries.reduce((acc, entry) => {
+      const monthKey = String(entry.date || "").slice(0, 7) || "unknown";
+      const existingGroup = acc.get(monthKey) || {
+        key: monthKey,
+        label: monthKey === "unknown"
+          ? "Päivämäärä puuttuu"
+          : formatter.format(new Date(`${monthKey}-01T00:00:00`)),
+        entries: [],
+        totalKilos: 0,
+        forSaleKilos: 0,
+      };
+
+      existingGroup.entries.push(entry);
+      existingGroup.totalKilos += Number(entry.kilos || 0);
+      if (entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers) {
+        existingGroup.forSaleKilos += Number(entry.kilos || 0);
+      }
+
+      acc.set(monthKey, existingGroup);
+      return acc;
+    }, new Map());
+
+    return Array.from(groups.values()).sort((a, b) => b.key.localeCompare(a.key));
+  }, [filteredEntries]);
+
   const saleEntries = useMemo(() => entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [entries]);
   const processedSaleEntries = useMemo(() => processedEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [processedEntries]);
 
@@ -4468,24 +4499,38 @@ export default function App() {
           ) : (
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <div style={styles.rowBetween}><strong>{profile.role === "owner" && entryScope === "all" ? "Kaikkien saaliit" : "Omat saaliit"}</strong><input style={{ ...styles.input, maxWidth: 360 }} placeholder="Hae lajilla, paikalla, pyydyksellä..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-              {filteredEntries.length === 0 ? <div style={styles.muted}>Ei hakutuloksia.</div> : filteredEntries.map((entry) => (
-                <div key={entry.id} style={styles.entry}>
-                  <div style={styles.entryHeader}>
-                    <div>
+              {groupedFilteredEntries.length === 0 ? <div style={styles.muted}>Ei hakutuloksia.</div> : groupedFilteredEntries.map((group) => (
+                <div key={group.key} style={{ ...styles.stack, gap: 12 }}>
+                  <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fbff" }}>
+                    <div style={styles.rowBetween}>
+                      <strong style={{ textTransform: "capitalize" }}>{group.label}</strong>
                       <div style={styles.entryBadges}>
-                        <span style={styles.badge}>{formatSpeciesForSale(entry.species)}</span>
-                        <span style={styles.badge}>{entry.kilos} kg</span>
-                        <span style={styles.badge}>{entry.gear}</span>
-                        <span style={styles.badge}>{entry.ownerName}</span>
+                        <span style={styles.badge}>{group.entries.length} erää</span>
+                        <span style={styles.badge}>{group.totalKilos.toFixed(1)} kg yhteensä</span>
+                        <span style={styles.badge}>{group.forSaleKilos.toFixed(1)} kg myynnissä</span>
                       </div>
-                      <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
-                      {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
-                      {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
-                      <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
-                      {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                     </div>
-                    <button style={styles.button} onClick={() => handleDeleteEntry(entry)}>Poista saalistieto</button>
                   </div>
+                  {group.entries.map((entry) => (
+                    <div key={entry.id} style={styles.entry}>
+                      <div style={styles.entryHeader}>
+                        <div>
+                          <div style={styles.entryBadges}>
+                            <span style={styles.badge}>{formatSpeciesForSale(entry.species)}</span>
+                            <span style={styles.badge}>{entry.kilos} kg</span>
+                            <span style={styles.badge}>{entry.gear}</span>
+                            <span style={styles.badge}>{entry.ownerName}</span>
+                          </div>
+                          <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                          {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
+                          {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                          <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                          {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
+                        </div>
+                        <button style={styles.button} onClick={() => handleDeleteEntry(entry)}>Poista saalistieto</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
