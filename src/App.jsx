@@ -719,17 +719,37 @@ function getPublicPickupLocation({ municipality, deliveryArea, area }) {
   return String(area || "").trim() || "-";
 }
 
-async function findAllowedUserByEmail(supabase, email) {
+async function findAllowedUsersByEmail(supabase, email) {
   const normalizedEmail = normalizeEmail(email);
   const { data, error } = await supabase
     .from("allowed_users")
     .select("*")
     .ilike("email", normalizedEmail);
 
-  if (error) return { data: null, error };
+  if (error) return { data: [], error };
 
-  const match = (data || []).find((row) => normalizeEmail(row.email) === normalizedEmail) || null;
-  return { data: match, error: null };
+  const matches = (data || []).filter((row) => normalizeEmail(row.email) === normalizedEmail);
+  return { data: matches, error: null };
+}
+
+async function findAllowedUserByEmail(supabase, email) {
+  const { data, error } = await findAllowedUsersByEmail(supabase, email);
+  return { data: (data || [])[0] || null, error };
+}
+
+function roleLabel(role) {
+  if (role === "owner") return "Omistaja";
+  if (role === "buyer") return "Ostaja";
+  if (role === "processor") return "Kalanjalostaja";
+  return "Kalastaja";
+}
+
+function buildRoleOptionLabel(option, buyers = []) {
+  if (option.role === "buyer") {
+    const linkedBuyer = buyers.find((buyer) => buyer.id === option.buyer_id);
+    return linkedBuyer?.company_name ? `Ostaja · ${linkedBuyer.company_name}` : "Ostaja";
+  }
+  return roleLabel(option.role);
 }
 
 function responsiveGridStyle(base) {
@@ -899,6 +919,31 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
           )}
 
         </form>
+      </div>
+    </div>
+  );
+}
+
+function RoleSelectionView({ roleOptions, buyers, onSelectRole }) {
+  return (
+    <div style={styles.app}>
+      <div style={{ ...styles.container, maxWidth: 560 }}>
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <h1 style={styles.title}>Valitse rooli</h1>
+          <div style={styles.muted}>Tällä sähköpostilla on useita rooleja. Valitse millä roolilla haluat jatkaa.</div>
+          <div style={{ ...styles.stack, marginTop: 8 }}>
+            {roleOptions.map((option) => (
+              <button
+                key={option.id}
+                style={{ ...styles.button, ...styles.primaryButton, justifyContent: "space-between", width: "100%" }}
+                onClick={() => onSelectRole(option)}
+              >
+                <span>{buildRoleOptionLabel(option, buyers)}</span>
+                <span>{option.display_name || option.email}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1476,6 +1521,8 @@ export default function App() {
   const publicBatchId = getRequestedPublicBatchId();
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [availableRoleOptions, setAvailableRoleOptions] = useState([]);
+  const [roleSelectionOpen, setRoleSelectionOpen] = useState(false);
   const [entries, setEntries] = useState([]);
   const [processedEntries, setProcessedEntries] = useState([]);
   const [offers, setOffers] = useState([]);
@@ -1597,11 +1644,24 @@ export default function App() {
   const [publicBatchLoading, setPublicBatchLoading] = useState(Boolean(publicBatchId));
   const [publicBatchError, setPublicBatchError] = useState("");
 
+  const getMatchingAllowedRole = useCallback((allowedRows, currentProfile) => {
+    if (!currentProfile) return null;
+    return (allowedRows || []).find((row) => (
+      row.role === currentProfile.role &&
+      String(row.buyer_id || "") === String(currentProfile.buyer_id || "")
+    )) || null;
+  }, []);
+
   const linkedBuyerRecord = useMemo(() => {
     if (!profile || profile.role !== "buyer") return null;
     const normalizedProfileEmail = normalizeEmail(profile.email);
     return buyers.find((buyer) => buyer.id === profile.buyer_id || normalizeEmail(buyer.email) === normalizedProfileEmail) || null;
   }, [buyers, profile]);
+
+  const activeRoleOption = useMemo(
+    () => getMatchingAllowedRole(availableRoleOptions, profile),
+    [availableRoleOptions, getMatchingAllowedRole, profile],
+  );
 
   const calculateCommissionDetails = (offer) => {
     const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
@@ -1732,6 +1792,8 @@ export default function App() {
     await clearBrokenSession();
     setSession(null);
     setProfile(null);
+    setAvailableRoleOptions([]);
+    setRoleSelectionOpen(false);
     setEntries([]);
       setProcessedEntries([]);
       setOffers([]);
@@ -1835,16 +1897,18 @@ export default function App() {
   useEffect(() => {
     if (!session?.user) {
       setProfile(null);
-    setEntries([]);
-    setProcessedEntries([]);
-    setOffers([]);
+      setAvailableRoleOptions([]);
+      setRoleSelectionOpen(false);
+      setEntries([]);
+      setProcessedEntries([]);
+      setOffers([]);
       setAllowedUsers([]);
       return;
     }
 
     const ensureProfile = async () => {
       const email = (session.user.email || "").trim().toLowerCase();
-      const { data: allowed, error: allowedError } = await findAllowedUserByEmail(supabase, email);
+      const { data: allowedRows, error: allowedError } = await findAllowedUsersByEmail(supabase, email);
       if (allowedError && allowedError.code !== "PGRST116") {
         if (isMissingRefreshTokenError(allowedError)) {
           await invalidateSession();
@@ -1853,6 +1917,7 @@ export default function App() {
         setAuthError(allowedError.message);
         return;
       }
+      const activeAllowedRows = (allowedRows || []).filter((row) => row.is_active);
 
       const { data: existingProfile, error: profileError } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
       if (profileError && profileError.code !== "PGRST116") {
@@ -1865,10 +1930,25 @@ export default function App() {
       }
       if (existingProfile) {
         let profileToUse = existingProfile;
-        if (!existingProfile.buyer_id && allowed?.buyer_id) {
+        const matchingAllowedRole = getMatchingAllowedRole(activeAllowedRows, existingProfile);
+        const selectedAllowedRole = matchingAllowedRole || activeAllowedRows[0] || null;
+        if (!selectedAllowedRole) {
+          setAuthError("Sähköpostia ei ole hyväksytty käyttöön.");
+          await clearBrokenSession();
+          setSession(null);
+          return;
+        }
+        if (
+          existingProfile.role !== selectedAllowedRole.role ||
+          String(existingProfile.buyer_id || "") !== String(selectedAllowedRole.buyer_id || "")
+        ) {
           const { data: updatedProfile, error: updateProfileError } = await supabase
             .from("profiles")
-            .update({ buyer_id: allowed.buyer_id })
+            .update({
+              role: selectedAllowedRole.role || "member",
+              buyer_id: selectedAllowedRole.buyer_id || null,
+              is_active: selectedAllowedRole.is_active,
+            })
             .eq("id", session.user.id)
             .select("*")
             .single();
@@ -1881,6 +1961,8 @@ export default function App() {
           email: (profileToUse.email || email || "").trim().toLowerCase(),
         };
         setProfile(normalizedProfile);
+        setAvailableRoleOptions(activeAllowedRows);
+        setRoleSelectionOpen(activeAllowedRows.length > 1);
         setFisherInfoForm({
           commercialFishingId: profileToUse.commercial_fishing_id || "",
           commercialFishingVesselId: profileToUse.commercial_fishing_vessel_id || "",
@@ -1888,7 +1970,8 @@ export default function App() {
         });
         return;
       }
-      if (!allowed || !allowed.is_active) {
+      const defaultAllowedRole = activeAllowedRows[0] || null;
+      if (!defaultAllowedRole) {
         setAuthError("Sähköpostia ei ole hyväksytty käyttöön.");
         await clearBrokenSession();
         setSession(null);
@@ -1899,10 +1982,10 @@ export default function App() {
         .insert({
           id: session.user.id,
           email,
-          display_name: allowed.display_name || session.user.user_metadata?.display_name || email,
-          role: allowed.role || "member",
-          is_active: allowed.is_active,
-          buyer_id: allowed.buyer_id || null,
+          display_name: defaultAllowedRole.display_name || session.user.user_metadata?.display_name || email,
+          role: defaultAllowedRole.role || "member",
+          is_active: defaultAllowedRole.is_active,
+          buyer_id: defaultAllowedRole.buyer_id || null,
         })
         .select("*")
         .single();
@@ -1919,6 +2002,8 @@ export default function App() {
         email: (insertedProfile.email || email || "").trim().toLowerCase(),
       };
       setProfile(normalizedInsertedProfile);
+      setAvailableRoleOptions(activeAllowedRows);
+      setRoleSelectionOpen(activeAllowedRows.length > 1);
       setFisherInfoForm({
         commercialFishingId: insertedProfile.commercial_fishing_id || "",
         commercialFishingVesselId: insertedProfile.commercial_fishing_vessel_id || "",
@@ -2293,7 +2378,7 @@ export default function App() {
       setAuthError("Täytä sähköposti, salasana ja nimi.");
       return;
     }
-    const { data: allowed, error: allowedError } = await findAllowedUserByEmail(supabase, email);
+    const { data: allowedRows, error: allowedError } = await findAllowedUsersByEmail(supabase, email);
     if (allowedError && allowedError.code !== "PGRST116") {
       if (isMissingRefreshTokenError(allowedError)) {
         await invalidateSession();
@@ -2302,7 +2387,8 @@ export default function App() {
       setAuthError(allowedError.message);
       return;
     }
-    if (!allowed || !allowed.is_active) {
+    const hasActiveAllowedRole = (allowedRows || []).some((row) => row.is_active);
+    if (!hasActiveAllowedRole) {
       setAuthError("Tätä sähköpostia ei ole vielä lisätty sallittuihin käyttäjiin.");
       return;
     }
@@ -2323,6 +2409,51 @@ export default function App() {
     await clearBrokenSession();
     setProfile(null);
     setSession(null);
+    setAvailableRoleOptions([]);
+    setRoleSelectionOpen(false);
+  };
+
+  const handleRoleSelect = async (selectedRole) => {
+    if (!profile || !selectedRole) return;
+    setAuthError("");
+    setAuthInfo("");
+
+    const currentRole = getMatchingAllowedRole(availableRoleOptions, profile);
+    if (currentRole?.id === selectedRole.id) {
+      setRoleSelectionOpen(false);
+      return;
+    }
+
+    const { data: updatedProfile, error } = await supabase
+      .from("profiles")
+      .update({
+        role: selectedRole.role,
+        buyer_id: selectedRole.buyer_id || null,
+        is_active: selectedRole.is_active,
+      })
+      .eq("id", profile.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message);
+      return;
+    }
+
+    const normalizedUpdatedProfile = {
+      ...updatedProfile,
+      email: normalizeEmail(updatedProfile.email || profile.email || ""),
+    };
+    setProfile(normalizedUpdatedProfile);
+    setRoleSelectionOpen(false);
+    setAccountPanelOpen(false);
+    setActiveTab("dashboard");
+    setRefreshTick((prev) => prev + 1);
+    setAuthInfo(`Rooli vaihdettu: ${buildRoleOptionLabel(selectedRole, buyers)}`);
   };
 
   const handleSaveOwnDetails = async () => {
@@ -2473,11 +2604,7 @@ export default function App() {
       buyer_id: role === "buyer" ? newAllowedForm.buyer_id : null,
     };
 
-    const { data: existingAllowedUser, error: existingAllowedUserError } = await supabase
-      .from("allowed_users")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
+    const { data: existingAllowedUsers, error: existingAllowedUserError } = await findAllowedUsersByEmail(supabase, email);
 
     if (existingAllowedUserError && existingAllowedUserError.code !== "PGRST116") {
       if (isMissingRefreshTokenError(existingAllowedUserError)) {
@@ -2488,16 +2615,12 @@ export default function App() {
       return;
     }
 
-    if (existingAllowedUser) {
-      const existingRoleRow = allowedUsers.find((item) => normalizeEmail(item.email) === email) || null;
-      if (existingRoleRow?.role === "owner" && role !== "owner") {
-        setUserMessage("Owner-käyttäjän sähköpostia ei voi käyttää toiseen rooliin. Luo jalostajalle oma sähköpostiosoite.");
-        return;
-      }
-    }
+    const exactRoleRow = (existingAllowedUsers || []).find((item) => (
+      item.role === role && String(item.buyer_id || "") === String(payload.buyer_id || "")
+    )) || null;
 
-    const { error } = existingAllowedUser
-      ? await supabase.from("allowed_users").update(payload).eq("id", existingAllowedUser.id)
+    const { error } = exactRoleRow
+      ? await supabase.from("allowed_users").update(payload).eq("id", exactRoleRow.id)
       : await supabase.from("allowed_users").insert(payload);
 
     if (error) {
@@ -2509,7 +2632,7 @@ export default function App() {
       return;
     }
     setNewAllowedForm({ email: "", displayName: "", role: "member", buyer_id: "" });
-    setUserMessage(existingAllowedUser ? `Sallitun käyttäjän ${displayName} tiedot päivitetty.` : `Sallittu käyttäjä ${displayName} lisätty.`);
+    setUserMessage(exactRoleRow ? `Rooli ${buildRoleOptionLabel(payload, buyers)} päivitetty käyttäjälle ${displayName}.` : `Uusi rooli ${buildRoleOptionLabel(payload, buyers)} lisätty käyttäjälle ${displayName}.`);
     setRefreshTick((prev) => prev + 1);
   };
 
@@ -3844,6 +3967,10 @@ export default function App() {
     return <AuthView authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} onSignIn={handleSignIn} onSignUp={handleSignUp} authError={authError} authInfo={authInfo} />;
   }
 
+  if (roleSelectionOpen && availableRoleOptions.length > 1) {
+    return <RoleSelectionView roleOptions={availableRoleOptions} buyers={buyers} onSelectRole={handleRoleSelect} />;
+  }
+
   if (profile.role === "buyer") {
     const formatOfferDate = (value) => {
       if (!value) return "-";
@@ -4275,6 +4402,24 @@ export default function App() {
               ) : null}
             </div>
             <div style={styles.toolbar}>
+              {availableRoleOptions.length > 1 ? (
+                <select
+                  style={styles.input}
+                  value={activeRoleOption?.id || ""}
+                  onChange={(e) => {
+                    const selectedRole = availableRoleOptions.find((option) => String(option.id) === String(e.target.value));
+                    if (selectedRole) {
+                      handleRoleSelect(selectedRole);
+                    }
+                  }}
+                >
+                  {availableRoleOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {buildRoleOptionLabel(option, buyers)}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
               {profile.role === "owner" ? (
                 <select style={styles.input} value={entryScope} onChange={(e) => setEntryScope(e.target.value)}>
                   <option value="own">Näytä vain omat</option>
