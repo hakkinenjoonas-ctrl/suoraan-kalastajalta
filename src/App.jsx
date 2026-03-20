@@ -2391,13 +2391,41 @@ export default function App() {
       setUserMessage("Valitse ostajakäyttäjälle ostajarekisterin yritys.");
       return;
     }
-    const { error } = await supabase.from("allowed_users").insert({
+    const payload = {
       email,
       display_name: displayName,
       role,
       is_active: true,
       buyer_id: role === "buyer" ? newAllowedForm.buyer_id : null,
-    });
+    };
+
+    const { data: existingAllowedUser, error: existingAllowedUserError } = await supabase
+      .from("allowed_users")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (existingAllowedUserError && existingAllowedUserError.code !== "PGRST116") {
+      if (isMissingRefreshTokenError(existingAllowedUserError)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(existingAllowedUserError.message);
+      return;
+    }
+
+    if (existingAllowedUser) {
+      const existingRoleRow = allowedUsers.find((item) => normalizeEmail(item.email) === email) || null;
+      if (existingRoleRow?.role === "owner" && role !== "owner") {
+        setUserMessage("Owner-käyttäjän sähköpostia ei voi käyttää toiseen rooliin. Luo jalostajalle oma sähköpostiosoite.");
+        return;
+      }
+    }
+
+    const { error } = existingAllowedUser
+      ? await supabase.from("allowed_users").update(payload).eq("id", existingAllowedUser.id)
+      : await supabase.from("allowed_users").insert(payload);
+
     if (error) {
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
@@ -2407,7 +2435,7 @@ export default function App() {
       return;
     }
     setNewAllowedForm({ email: "", displayName: "", role: "member", buyer_id: "" });
-    setUserMessage(`Sallittu käyttäjä ${displayName} lisätty.`);
+    setUserMessage(existingAllowedUser ? `Sallitun käyttäjän ${displayName} tiedot päivitetty.` : `Sallittu käyttäjä ${displayName} lisätty.`);
     setRefreshTick((prev) => prev + 1);
   };
 
