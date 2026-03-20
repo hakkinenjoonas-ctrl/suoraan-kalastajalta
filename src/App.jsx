@@ -886,7 +886,6 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
             <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Luo tunnus</button>
           )}
 
-          <div style={styles.small}>Järjestys: 1) lisää sähköposti allowed_users-listaan, 2) rekisteröidy tällä sähköpostilla, 3) kirjaudu sisään.</div>
         </form>
       </div>
     </div>
@@ -2174,10 +2173,16 @@ export default function App() {
         entries: [],
         totalKilos: 0,
         forSaleKilos: 0,
+        speciesSummary: new Map(),
       };
 
       existingGroup.entries.push(entry);
       existingGroup.totalKilos += Number(entry.kilos || 0);
+      const speciesKey = formatSpeciesForSale(entry.species);
+      existingGroup.speciesSummary.set(
+        speciesKey,
+        Number(existingGroup.speciesSummary.get(speciesKey) || 0) + Number(entry.kilos || 0)
+      );
       if (entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers) {
         existingGroup.forSaleKilos += Number(entry.kilos || 0);
       }
@@ -2186,7 +2191,14 @@ export default function App() {
       return acc;
     }, new Map());
 
-    return Array.from(groups.values()).sort((a, b) => b.key.localeCompare(a.key));
+    return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        speciesSummary: Array.from(group.speciesSummary.entries())
+          .map(([species, kilos]) => ({ species, kilos }))
+          .sort((a, b) => b.kilos - a.kilos),
+      }))
+      .sort((a, b) => b.key.localeCompare(a.key));
   }, [filteredEntries]);
 
   const saleEntries = useMemo(() => entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [entries]);
@@ -4510,6 +4522,17 @@ export default function App() {
                         <span style={styles.badge}>{group.forSaleKilos.toFixed(1)} kg myynnissä</span>
                       </div>
                     </div>
+                    {group.speciesSummary.length > 0 ? (
+                      <div style={{ ...styles.stack, gap: 8 }}>
+                        <div style={styles.muted}><strong>Kalalajit kuukaudelta</strong></div>
+                        {group.speciesSummary.map((item) => (
+                          <div key={item.species} style={styles.rowBetween}>
+                            <span>{item.species}</span>
+                            <span>{item.kilos.toFixed(1)} kg</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   {group.entries.map((entry) => (
                     <div key={entry.id} style={styles.entry}>
