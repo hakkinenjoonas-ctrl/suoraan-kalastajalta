@@ -4066,6 +4066,11 @@ export default function App() {
   const grid2 = responsiveGridStyle(styles.grid2);
   const formGrid = responsiveGridStyle(styles.formGrid);
   const speciesRow = responsiveGridStyle(styles.speciesRow);
+  const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
+    ? 48
+    : typeof window !== "undefined" && window.innerWidth < 1024
+    ? 64
+    : 72;
 
   return (
     <div style={styles.app}>
@@ -4073,6 +4078,18 @@ export default function App() {
         <div style={{ ...styles.card, ...styles.headerCard }}>
           <div style={styles.rowBetween}>
             <div>
+              <img
+                src="/logo.png"
+                alt=""
+                style={{
+                  height: logoHeight,
+                  width: "auto",
+                  objectFit: "contain",
+                  marginTop: 12,
+                  marginBottom: 12,
+                  display: "block",
+                }}
+              />
               <h1 style={styles.title}>Suoraan Kalastajalta</h1>
               <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · rooli: {profile.role === "owner" ? "omistaja" : profile.role === "buyer" ? "ostaja" : profile.role === "processor" ? "kalanjalostaja" : "käyttäjä"}</p>
               {profile.role === "processor" ? (
