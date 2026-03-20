@@ -977,6 +977,8 @@ function WholesaleOffersView({
       return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
     });
 
+  const canManageBuyerOffer = (offer) => profile?.role === "owner" || profile?.id === offer?.seller_user_id;
+
   return (
     <div style={styles.stack}>
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
@@ -1016,6 +1018,14 @@ function WholesaleOffersView({
                   {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
                   {revealIdentity ? <div style={styles.muted}><strong>Yhteystiedot:</strong> {offer.buyer_contact_name || "-"} · {offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div> : null}
                   {offer.status === "accepted" ? <div style={styles.muted}><strong>Laskutus:</strong> tämä kauppa siirtyy ownerin laskutusnäkymään kuukausikohtaisesti.</div> : null}
+                  {canManageBuyerOffer(offer) && offer.status !== "accepted" && offer.status !== "rejected" ? (
+                    <div style={{ ...styles.row, marginTop: 12 }}>
+                      <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBuyerOfferStatus(offer, "accepted")}>
+                        {offer.status === "reserved" ? "Hyväksy varaus" : offer.status === "countered" ? "Hyväksy vastatarjous" : "Hyväksy kauppa"}
+                      </button>
+                      <button style={styles.button} onClick={() => onUpdateBuyerOfferStatus(offer, "rejected")}>Hylkää</button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
@@ -1157,10 +1167,10 @@ function WholesaleOffersView({
                           </div>
                         ) : null}
 
-                        {!revealIdentity && (profile?.role === "owner" || profile?.id === entry.ownerUserId) ? (
+                        {!revealIdentity && canManageBuyerOffer(offer) ? (
                           <div style={styles.row}>
-                            {offer.status !== "accepted" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBuyerOfferStatus(offer, "accepted")}>Hyväksy kauppa</button> : null}
-                            {offer.status !== "rejected" ? <button style={styles.button} onClick={() => onUpdateOfferStatus(offer, "rejected")}>Hylkää</button> : null}
+                            {offer.status !== "accepted" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBuyerOfferStatus(offer, "accepted")}>{offer.status === "reserved" ? "Hyväksy varaus" : offer.status === "countered" ? "Hyväksy vastatarjous" : "Hyväksy kauppa"}</button> : null}
+                            {offer.status !== "rejected" ? <button style={styles.button} onClick={() => onUpdateBuyerOfferStatus(offer, "rejected")}>Hylkää</button> : null}
                           </div>
                         ) : null}
                       </div>
