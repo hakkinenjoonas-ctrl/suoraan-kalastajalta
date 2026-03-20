@@ -212,10 +212,90 @@ function formatBatchArea(area) {
     .toUpperCase() || "BATCH";
 }
 
-async function generateBatchId({ area, date, supabaseClient }) {
-  const batchArea = formatBatchArea(area);
-  const batchDate = String(date || today()).slice(0, 7);
-  const prefix = `${batchArea}-${batchDate}`;
+function formatBatchSourceIdentifier(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toUpperCase();
+}
+
+function getPreferredBatchSourceIdentifier(profileLike) {
+  return String(
+    profileLike?.commercial_fishing_vessel_id ||
+    profileLike?.commercial_fishing_id ||
+    ""
+  ).trim();
+}
+
+function formatBatchDate(dateValue) {
+  const normalized = String(dateValue || today()).slice(0, 10);
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return normalized.replace(/[^0-9]/g, "").slice(-6);
+  return `${match[1].slice(2)}${match[2]}${match[3]}`;
+}
+
+function normalizeFishSpeciesLabel(value) {
+  return String(value || "")
+    .split(",")[0]
+    .replace(/\b(filee|filet|avattu|perattu|päätön|nyljetty)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+const speciesFaoCodeMap = {
+  ahven: "FPE",
+  hauki: "FIK",
+  kuha: "FPP",
+  lahna: "FBR",
+  made: "BUR",
+  muikku: "CCO",
+  siika: "WHF",
+  silakka: "HER",
+  särki: "FRO",
+  sayne: "IDE",
+  säyne: "IDE",
+};
+
+function getSpeciesFaoCode(speciesLabels) {
+  const labels = Array.isArray(speciesLabels) ? speciesLabels : [speciesLabels];
+  const normalizedLabels = labels
+    .map((label) => normalizeFishSpeciesLabel(label))
+    .filter(Boolean);
+
+  const uniqueLabels = Array.from(new Set(normalizedLabels));
+  if (uniqueLabels.length === 0) return "MIX";
+  if (uniqueLabels.length > 1) return "MIX";
+
+  const directMatch = speciesFaoCodeMap[uniqueLabels[0]];
+  if (directMatch) return directMatch;
+
+  return uniqueLabels[0]
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z]/g, "")
+    .slice(0, 3)
+    .toUpperCase() || "MIX";
+}
+
+function formatBatchQuantity(value) {
+  const quantity = Number(value || 0);
+  if (!Number.isFinite(quantity) || quantity <= 0) return "0";
+  if (Number.isInteger(quantity)) return String(quantity);
+  return quantity.toFixed(3).replace(/\.?0+$/, "").replace(/[^0-9]/g, "");
+}
+
+async function generateBatchId({ sourceIdentifier, date, speciesLabels, quantity, supabaseClient }) {
+  const batchSourceIdentifier = formatBatchSourceIdentifier(sourceIdentifier);
+  if (!batchSourceIdentifier) {
+    throw new Error("Aseta kaupallisen kalastusaluksen tunnus tai kaupallisen kalastajan tunnus ennen eräkoodin luontia.");
+  }
+
+  const batchDate = formatBatchDate(date);
+  const speciesCode = getSpeciesFaoCode(speciesLabels);
+  const quantityCode = formatBatchQuantity(quantity);
+  const prefix = `${batchSourceIdentifier}${batchDate}${speciesCode}${quantityCode}`;
 
   const [{ count: catchCount, error: catchError }, { count: processedCount, error: processedError }] = await Promise.all([
     supabaseClient
@@ -231,8 +311,8 @@ async function generateBatchId({ area, date, supabaseClient }) {
   if (catchError) throw catchError;
   if (processedError && processedError.code !== "PGRST116") throw processedError;
 
-  const sequence = String((Number(catchCount || 0) + Number(processedCount || 0) + 1)).padStart(3, "0");
-  return `${prefix}-${sequence}`;
+  const sequence = String(Number(catchCount || 0) + Number(processedCount || 0) + 1);
+  return `${prefix}${sequence}`;
 }
 
 function euro(value) {
@@ -1420,12 +1500,13 @@ export default function App() {
     billing_email: "",
     business_id: "",
   });
-  const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "" });
+  const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "", commercialFishingVesselId: "" });
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [accountSaving, setAccountSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [accountForm, setAccountForm] = useState({
     displayName: "",
+    commercialFishingVesselId: "",
     commercialFishingId: "",
     companyName: "",
     contactName: "",
@@ -1723,7 +1804,10 @@ export default function App() {
           email: (profileToUse.email || email || "").trim().toLowerCase(),
         };
         setProfile(normalizedProfile);
-        setFisherInfoForm({ commercialFishingId: profileToUse.commercial_fishing_id || "" });
+        setFisherInfoForm({
+          commercialFishingId: profileToUse.commercial_fishing_id || "",
+          commercialFishingVesselId: profileToUse.commercial_fishing_vessel_id || "",
+        });
         return;
       }
       if (!allowed || !allowed.is_active) {
@@ -1757,7 +1841,10 @@ export default function App() {
         email: (insertedProfile.email || email || "").trim().toLowerCase(),
       };
       setProfile(normalizedInsertedProfile);
-      setFisherInfoForm({ commercialFishingId: insertedProfile.commercial_fishing_id || "" });
+      setFisherInfoForm({
+        commercialFishingId: insertedProfile.commercial_fishing_id || "",
+        commercialFishingVesselId: insertedProfile.commercial_fishing_vessel_id || "",
+      });
     };
 
     ensureProfile();
@@ -1993,6 +2080,7 @@ export default function App() {
     if (!profile) return;
     setAccountForm({
       displayName: profile.display_name || "",
+      commercialFishingVesselId: profile.commercial_fishing_vessel_id || "",
       commercialFishingId: profile.commercial_fishing_id || "",
       companyName: linkedBuyerRecord?.company_name || "",
       contactName: linkedBuyerRecord?.contact_name || "",
@@ -2127,7 +2215,10 @@ export default function App() {
       const profilePayload = {
         display_name: displayName,
         ...(profile.role !== "buyer"
-          ? { commercial_fishing_id: accountForm.commercialFishingId.trim() || null }
+          ? {
+              commercial_fishing_vessel_id: accountForm.commercialFishingVesselId.trim() || null,
+              commercial_fishing_id: accountForm.commercialFishingId.trim() || null,
+            }
           : {}),
       };
 
@@ -2181,7 +2272,10 @@ export default function App() {
         email: normalizeEmail(updatedProfile.email || profile.email || ""),
       };
       setProfile(normalizedUpdatedProfile);
-      setFisherInfoForm({ commercialFishingId: normalizedUpdatedProfile.commercial_fishing_id || "" });
+      setFisherInfoForm({
+        commercialFishingId: normalizedUpdatedProfile.commercial_fishing_id || "",
+        commercialFishingVesselId: normalizedUpdatedProfile.commercial_fishing_vessel_id || "",
+      });
       setRefreshTick((prev) => prev + 1);
       setAuthInfo("Omat tiedot tallennettu.");
     } catch (error) {
@@ -3269,7 +3363,13 @@ export default function App() {
     setSaving(true);
     let batchId;
     try {
-      batchId = await generateBatchId({ area: form.area, date: form.date, supabaseClient: supabase });
+      batchId = await generateBatchId({
+        sourceIdentifier: getPreferredBatchSourceIdentifier(profile),
+        date: form.date,
+        speciesLabels: validRows.map((row) => getSpeciesRowLabel(row)),
+        quantity: validRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0),
+        supabaseClient: supabase,
+      });
     } catch (error) {
       setSaving(false);
       if (isMissingRefreshTokenError(error)) {
@@ -3379,7 +3479,21 @@ export default function App() {
     setSaving(true);
     let batchId;
     try {
-      batchId = await generateBatchId({ area: processedForm.area, date: processedForm.productionDate, supabaseClient: supabase });
+      batchId = await generateBatchId({
+        sourceIdentifier: getPreferredBatchSourceIdentifier(profile),
+        date: processedForm.productionDate,
+        speciesLabels: (processedForm.speciesSummary
+          .split("\n")
+          .map((row) => String(row).split(":")[0].trim())
+          .filter(Boolean).length > 0
+          ? processedForm.speciesSummary
+              .split("\n")
+              .map((row) => String(row).split(":")[0].trim())
+              .filter(Boolean)
+          : [processedForm.productName]),
+        quantity: processedForm.kilos,
+        supabaseClient: supabase,
+      });
     } catch (error) {
       setSaving(false);
       if (isMissingRefreshTokenError(error)) {
@@ -3924,7 +4038,7 @@ export default function App() {
             <div>
               <h1 style={styles.title}>Suoraan Kalastajalta</h1>
               <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · rooli: {profile.role === "owner" ? "omistaja" : profile.role === "buyer" ? "ostaja" : profile.role === "processor" ? "kalanjalostaja" : "käyttäjä"}</p>
-              {profile.role !== "buyer" ? <p style={{ ...styles.subtitle, marginTop: 4 }}>Kaupallisen kalastajan tunnus: <strong>{profile.commercial_fishing_id || "ei asetettu"}</strong></p> : null}
+              {profile.role !== "buyer" ? <p style={{ ...styles.subtitle, marginTop: 4 }}>Kaupallisen kalastusaluksen tunnus: <strong>{profile.commercial_fishing_vessel_id || "ei asetettu"}</strong>{profile.commercial_fishing_id ? ` · Kalastajan tunnus: ${profile.commercial_fishing_id}` : ""}</p> : null}
             </div>
             <div style={styles.toolbar}>
               {profile.role === "owner" ? (
@@ -3946,7 +4060,7 @@ export default function App() {
             <div style={styles.rowBetween}>
               <div>
                 <strong>Omat tiedot</strong>
-                <div style={styles.muted}>Päivitä oma nimi, kalastajatunnus ja salasana.</div>
+                <div style={styles.muted}>Päivitä oma nimi, aluksen tunnus, kalastajatunnus ja salasana.</div>
               </div>
               <span style={styles.badge}>{profile.email}</span>
             </div>
@@ -3959,6 +4073,10 @@ export default function App() {
               <div style={styles.field}>
                 <label>Kirjautumissähköposti</label>
                 <input style={styles.input} value={profile.email || ""} disabled />
+              </div>
+              <div style={styles.field}>
+                <label>Kaupallisen kalastusaluksen tunnus</label>
+                <input style={styles.input} value={accountForm.commercialFishingVesselId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselId: e.target.value }))} placeholder="Esim. FIN1234A" />
               </div>
               <div style={styles.field}>
                 <label>Kaupallisen kalastajan tunnus</label>
@@ -4006,11 +4124,20 @@ export default function App() {
               <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
                 <strong>Kalastajan tiedot</strong>
                 <div style={styles.field}>
+                  <label>Kaupallisen kalastusaluksen tunnus</label>
+                  <input
+                    style={styles.input}
+                    value={fisherInfoForm.commercialFishingVesselId}
+                    onChange={(e) => setFisherInfoForm((prev) => ({ ...prev, commercialFishingVesselId: e.target.value }))}
+                    placeholder="Esim. FIN1234A"
+                  />
+                </div>
+                <div style={styles.field}>
                   <label>Kaupallisen kalastajan tunnus</label>
                   <input
                     style={styles.input}
                     value={fisherInfoForm.commercialFishingId}
-                    onChange={(e) => setFisherInfoForm({ commercialFishingId: e.target.value })}
+                    onChange={(e) => setFisherInfoForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))}
                     placeholder="Esim. 123456"
                   />
                 </div>
@@ -4020,7 +4147,10 @@ export default function App() {
                     onClick={async () => {
                       const { data, error } = await supabase
                         .from("profiles")
-                        .update({ commercial_fishing_id: fisherInfoForm.commercialFishingId.trim() || null })
+                        .update({
+                          commercial_fishing_vessel_id: fisherInfoForm.commercialFishingVesselId.trim() || null,
+                          commercial_fishing_id: fisherInfoForm.commercialFishingId.trim() || null,
+                        })
                         .eq("id", profile.id)
                         .select("*")
                         .single();
@@ -4029,12 +4159,15 @@ export default function App() {
                         return;
                       }
                       setProfile(data);
-                      setFisherInfoForm({ commercialFishingId: data.commercial_fishing_id || "" });
-                      setAuthInfo("Kaupallisen kalastajan tunnus tallennettu.");
+                      setFisherInfoForm({
+                        commercialFishingId: data.commercial_fishing_id || "",
+                        commercialFishingVesselId: data.commercial_fishing_vessel_id || "",
+                      });
+                      setAuthInfo("Kalastajan tunnukset tallennettu.");
                       setRefreshTick((prev) => prev + 1);
                     }}
                   >
-                    Tallenna tunnus
+                    Tallenna tunnukset
                   </button>
                 </div>
               </div>
