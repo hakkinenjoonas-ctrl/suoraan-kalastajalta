@@ -257,6 +257,7 @@ function formatBatchSourceIdentifier(value) {
 
 function getPreferredBatchSourceIdentifier(profileLike) {
   return String(
+    profileLike?.evira_facility_id ||
     profileLike?.commercial_fishing_vessel_id ||
     profileLike?.commercial_fishing_id ||
     ""
@@ -1520,12 +1521,13 @@ export default function App() {
     billing_email: "",
     business_id: "",
   });
-  const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "", commercialFishingVesselId: "" });
+  const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "", commercialFishingVesselId: "", eviraFacilityId: "" });
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [accountSaving, setAccountSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [accountForm, setAccountForm] = useState({
     displayName: "",
+    eviraFacilityId: "",
     commercialFishingVesselId: "",
     commercialFishingId: "",
     companyName: "",
@@ -1827,6 +1829,7 @@ export default function App() {
         setFisherInfoForm({
           commercialFishingId: profileToUse.commercial_fishing_id || "",
           commercialFishingVesselId: profileToUse.commercial_fishing_vessel_id || "",
+          eviraFacilityId: profileToUse.evira_facility_id || "",
         });
         return;
       }
@@ -1864,6 +1867,7 @@ export default function App() {
       setFisherInfoForm({
         commercialFishingId: insertedProfile.commercial_fishing_id || "",
         commercialFishingVesselId: insertedProfile.commercial_fishing_vessel_id || "",
+        eviraFacilityId: insertedProfile.evira_facility_id || "",
       });
     };
 
@@ -2100,6 +2104,7 @@ export default function App() {
     if (!profile) return;
     setAccountForm({
       displayName: profile.display_name || "",
+      eviraFacilityId: profile.evira_facility_id || "",
       commercialFishingVesselId: profile.commercial_fishing_vessel_id || "",
       commercialFishingId: profile.commercial_fishing_id || "",
       companyName: linkedBuyerRecord?.company_name || "",
@@ -2236,6 +2241,7 @@ export default function App() {
         display_name: displayName,
         ...(profile.role !== "buyer"
           ? {
+              evira_facility_id: accountForm.eviraFacilityId.trim() || null,
               commercial_fishing_vessel_id: accountForm.commercialFishingVesselId.trim() || null,
               commercial_fishing_id: accountForm.commercialFishingId.trim() || null,
             }
@@ -2295,6 +2301,7 @@ export default function App() {
       setFisherInfoForm({
         commercialFishingId: normalizedUpdatedProfile.commercial_fishing_id || "",
         commercialFishingVesselId: normalizedUpdatedProfile.commercial_fishing_vessel_id || "",
+        eviraFacilityId: normalizedUpdatedProfile.evira_facility_id || "",
       });
       setRefreshTick((prev) => prev + 1);
       setAuthInfo("Omat tiedot tallennettu.");
@@ -4058,7 +4065,16 @@ export default function App() {
             <div>
               <h1 style={styles.title}>Suoraan Kalastajalta</h1>
               <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · rooli: {profile.role === "owner" ? "omistaja" : profile.role === "buyer" ? "ostaja" : profile.role === "processor" ? "kalanjalostaja" : "käyttäjä"}</p>
-              {profile.role !== "buyer" ? <p style={{ ...styles.subtitle, marginTop: 4 }}>Kaupallisen kalastusaluksen tunnus: <strong>{profile.commercial_fishing_vessel_id || "ei asetettu"}</strong>{profile.commercial_fishing_id ? ` · Kalastajan tunnus: ${profile.commercial_fishing_id}` : ""}</p> : null}
+              {profile.role === "processor" ? (
+                <p style={{ ...styles.subtitle, marginTop: 4 }}>
+                  Vesiviljelylaitoksen laitosnumero: <strong>{profile.evira_facility_id || "ei asetettu"}</strong>
+                </p>
+              ) : profile.role !== "buyer" ? (
+                <p style={{ ...styles.subtitle, marginTop: 4 }}>
+                  Kaupallisen kalastusaluksen tunnus: <strong>{profile.commercial_fishing_vessel_id || "ei asetettu"}</strong>
+                  {profile.commercial_fishing_id ? ` · Kalastajan tunnus: ${profile.commercial_fishing_id}` : ""}
+                </p>
+              ) : null}
             </div>
             <div style={styles.toolbar}>
               {profile.role === "owner" ? (
@@ -4080,7 +4096,11 @@ export default function App() {
             <div style={styles.rowBetween}>
               <div>
                 <strong>Omat tiedot</strong>
-                <div style={styles.muted}>Päivitä oma nimi, aluksen tunnus, kalastajatunnus ja salasana.</div>
+                <div style={styles.muted}>
+                  {profile.role === "processor"
+                    ? "Päivitä oma nimi, vesiviljelylaitoksen laitosnumero ja salasana."
+                    : "Päivitä oma nimi, aluksen tunnus, kalastajatunnus ja salasana."}
+                </div>
               </div>
               <span style={styles.badge}>{profile.email}</span>
             </div>
@@ -4094,14 +4114,23 @@ export default function App() {
                 <label>Kirjautumissähköposti</label>
                 <input style={styles.input} value={profile.email || ""} disabled />
               </div>
-              <div style={styles.field}>
-                <label>Kaupallisen kalastusaluksen tunnus</label>
-                <input style={styles.input} value={accountForm.commercialFishingVesselId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselId: e.target.value }))} placeholder="Esim. FIN1234A" />
-              </div>
-              <div style={styles.field}>
-                <label>Kaupallisen kalastajan tunnus</label>
-                <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 123456" />
-              </div>
+              {profile.role === "processor" ? (
+                <div style={styles.field}>
+                  <label>Eviran hyväksymän vesiviljelylaitoksen laitosnumero / laitosnumero</label>
+                  <input style={styles.input} value={accountForm.eviraFacilityId} onChange={(e) => setAccountForm((prev) => ({ ...prev, eviraFacilityId: e.target.value }))} placeholder="Esim. F12345" />
+                </div>
+              ) : (
+                <>
+                  <div style={styles.field}>
+                    <label>Kaupallisen kalastusaluksen tunnus</label>
+                    <input style={styles.input} value={accountForm.commercialFishingVesselId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselId: e.target.value }))} placeholder="Esim. FIN1234A" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Kaupallisen kalastajan tunnus</label>
+                    <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 123456" />
+                  </div>
+                </>
+              )}
               <div style={{ ...styles.row, justifyContent: "flex-end" }}>
                 <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveOwnDetails} disabled={accountSaving}>{accountSaving ? "Tallennetaan..." : "Tallenna tiedot"}</button>
               </div>
@@ -4142,25 +4171,39 @@ export default function App() {
           <div style={styles.stack}>
             {profile.role !== "buyer" ? (
               <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-                <strong>Kalastajan tiedot</strong>
-                <div style={styles.field}>
-                  <label>Kaupallisen kalastusaluksen tunnus</label>
-                  <input
-                    style={styles.input}
-                    value={fisherInfoForm.commercialFishingVesselId}
-                    onChange={(e) => setFisherInfoForm((prev) => ({ ...prev, commercialFishingVesselId: e.target.value }))}
-                    placeholder="Esim. FIN1234A"
-                  />
-                </div>
-                <div style={styles.field}>
-                  <label>Kaupallisen kalastajan tunnus</label>
-                  <input
-                    style={styles.input}
-                    value={fisherInfoForm.commercialFishingId}
-                    onChange={(e) => setFisherInfoForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))}
-                    placeholder="Esim. 123456"
-                  />
-                </div>
+                <strong>{profile.role === "processor" ? "Jalostajan tiedot" : "Kalastajan tiedot"}</strong>
+                {profile.role === "processor" ? (
+                  <div style={styles.field}>
+                    <label>Eviran hyväksymän vesiviljelylaitoksen laitosnumero / laitosnumero</label>
+                    <input
+                      style={styles.input}
+                      value={fisherInfoForm.eviraFacilityId}
+                      onChange={(e) => setFisherInfoForm((prev) => ({ ...prev, eviraFacilityId: e.target.value }))}
+                      placeholder="Esim. F12345"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div style={styles.field}>
+                      <label>Kaupallisen kalastusaluksen tunnus</label>
+                      <input
+                        style={styles.input}
+                        value={fisherInfoForm.commercialFishingVesselId}
+                        onChange={(e) => setFisherInfoForm((prev) => ({ ...prev, commercialFishingVesselId: e.target.value }))}
+                        placeholder="Esim. FIN1234A"
+                      />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Kaupallisen kalastajan tunnus</label>
+                      <input
+                        style={styles.input}
+                        value={fisherInfoForm.commercialFishingId}
+                        onChange={(e) => setFisherInfoForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))}
+                        placeholder="Esim. 123456"
+                      />
+                    </div>
+                  </>
+                )}
                 <div>
                   <button
                     style={{ ...styles.button, ...styles.primaryButton }}
@@ -4168,6 +4211,7 @@ export default function App() {
                       const { data, error } = await supabase
                         .from("profiles")
                         .update({
+                          evira_facility_id: fisherInfoForm.eviraFacilityId.trim() || null,
                           commercial_fishing_vessel_id: fisherInfoForm.commercialFishingVesselId.trim() || null,
                           commercial_fishing_id: fisherInfoForm.commercialFishingId.trim() || null,
                         })
@@ -4182,8 +4226,9 @@ export default function App() {
                       setFisherInfoForm({
                         commercialFishingId: data.commercial_fishing_id || "",
                         commercialFishingVesselId: data.commercial_fishing_vessel_id || "",
+                        eviraFacilityId: data.evira_facility_id || "",
                       });
-                      setAuthInfo("Kalastajan tunnukset tallennettu.");
+                      setAuthInfo(profile.role === "processor" ? "Jalostajan tunnukset tallennettu." : "Kalastajan tunnukset tallennettu.");
                       setRefreshTick((prev) => prev + 1);
                     }}
                   >
