@@ -35,10 +35,25 @@ const fishSpeciesCatalog = [
   { name_fi: "Suutari", name_en: "Tench", scientific: "Tinca tinca", fao: "FTE" },
   { name_fi: "Kampela", name_en: "Flounder", scientific: "Platichthys flesus", fao: "FLE" },
 ];
+const fishSpeciesVariants = [
+  "Muikku, perattu",
+  "Muikku, perattu päätön",
+  "Kuha, avattu",
+  "Kuha filee",
+  "Ahven, avattu",
+  "Ahven filee",
+  "Hauki, avattu",
+  "Hauki filee",
+  "Made, nyljetty",
+  "Kirjolohi filee",
+  "Lohi filee",
+  "Siika filee",
+  "Taimen filee",
+];
 const fishSpeciesByName = Object.fromEntries(
   fishSpeciesCatalog.map((item) => [item.name_fi.toLowerCase(), item])
 );
-const fishSpecies = [...fishSpeciesCatalog.map((item) => item.name_fi), "Muu"];
+const fishSpecies = [...fishSpeciesCatalog.map((item) => item.name_fi), ...fishSpeciesVariants, "Muu"];
 const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Nuotta", "Vapaväline", "Muu"];
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
@@ -137,6 +152,7 @@ function getSpeciesRowLabel(row) {
 function getSpeciesMetadata(label) {
   const normalized = String(label || "")
     .split(",")[0]
+    .replace(/\b(filee|filet|avattu|perattu|päätön|nyljetty)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -274,6 +290,7 @@ function formatBatchDate(dateValue) {
 function normalizeFishSpeciesLabel(value) {
   return String(value || "")
     .split(",")[0]
+    .replace(/\b(filee|filet|avattu|perattu|päätön|nyljetty)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
