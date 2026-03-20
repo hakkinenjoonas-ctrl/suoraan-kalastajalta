@@ -23,6 +23,34 @@ function buildDeliveryAddress(offer: Record<string, unknown>) {
     .join(", ");
 }
 
+function buildBillingAddress(offer: Record<string, unknown>) {
+  return [
+    String(offer.buyer_billing_address || "").trim(),
+    String(offer.buyer_billing_postcode || "").trim(),
+    String(offer.buyer_billing_city || "").trim(),
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function fulfillmentStatusLabel(status: unknown) {
+  if (status === "delivery_agreed") return "Toimitus sovittu";
+  if (status === "delivered") return "Toimitettu";
+  return "Yhteydenotto kesken";
+}
+
+function extractScientificNames(...values: unknown[]) {
+  const names = values
+    .flatMap((value) =>
+      String(value || "")
+        .split("\n")
+        .flatMap((line) => Array.from(line.matchAll(/\(([^()]+)\)/g)).map((match) => String(match[1] || "").trim()))
+    )
+    .filter(Boolean);
+
+  return Array.from(new Set(names)).join(", ");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -45,8 +73,10 @@ Deno.serve(async (req) => {
     }
 
     const sellerName = String(offer.sellerName || "Myyja");
+    const sellerEmail = String(offer.sellerEmail || "").trim();
     const sellerCommercialFishingId = String(offer.sellerCommercialFishingId || "").trim();
     const speciesSummary = String(offer.species_summary || "Kalaera");
+    const scientificNames = extractScientificNames(speciesSummary);
     const area = String(offer.area || "-");
     const spot = String(offer.spot || "");
     const deliveryMethod = String(offer.delivery_method || "").trim();
@@ -59,7 +89,9 @@ Deno.serve(async (req) => {
     const batchId = String(offer.batch_id || "").trim();
     const qrImageUrl = String(offer.qr_image_url || "").trim();
     const deliveryAddress = buildDeliveryAddress(offer);
+    const billingAddress = buildBillingAddress(offer);
     const billingEmail = String(offer.buyer_billing_email || "").trim();
+    const fulfillmentStatus = fulfillmentStatusLabel(offer.fulfillment_status);
 
     const textLines = [
       "Kauppa hyväksytty.",
@@ -67,15 +99,19 @@ Deno.serve(async (req) => {
       `${sellerName} on hyväksynyt tarjouksesi tai varauksesi.`,
       "",
       `Erä: ${speciesSummary}`,
+      scientificNames ? `Tieteellinen nimi: ${scientificNames}` : null,
       `Määrä: ${kilos} kg`,
       batchId ? `Erätunnus: ${batchId}` : null,
       `Alue: ${area}${spot ? ` / ${spot}` : ""}`,
+      sellerEmail ? `Kalastajan sähköposti: ${sellerEmail}` : null,
       sellerCommercialFishingId ? `Kaupallisen kalastajan tunnus: ${sellerCommercialFishingId}` : null,
+      `Toimituksen tila: ${fulfillmentStatus}`,
       deliveryMethod ? `Toimitustapa: ${deliveryMethod}` : null,
       deliveryArea ? `${deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}: ${deliveryArea}` : null,
       `Hinta: ${pricePerKg}`,
       `Kaupan arvo: ${tradeValue}`,
       deliveryAddress ? `Toimitusosoite: ${deliveryAddress}` : null,
+      billingAddress ? `Laskutusosoite: ${billingAddress}` : null,
       billingEmail ? `Laskutussähköposti: ${billingEmail}` : null,
       offerLink ? `Katso tarkemmat tiedot: ${offerLink}` : null,
     ].filter(Boolean);
@@ -85,11 +121,14 @@ Deno.serve(async (req) => {
         <h2 style="color: #166534;">Kauppa hyväksytty</h2>
         <p><strong>${sellerName}</strong> on hyväksynyt tarjouksesi tai varauksesi.</p>
         <p><strong>Erä:</strong><br />${speciesSummary.replaceAll("\n", "<br />")}</p>
+        ${scientificNames ? `<p><strong>Tieteellinen nimi:</strong><br />${scientificNames}</p>` : ""}
         <p>
           <strong>Määrä:</strong> ${kilos} kg<br />
           ${batchId ? `<strong>Erätunnus:</strong> ${batchId}<br />` : ""}
           <strong>Alue:</strong> ${area}${spot ? ` / ${spot}` : ""}<br />
+          ${sellerEmail ? `<strong>Kalastajan sähköposti:</strong> ${sellerEmail}<br />` : ""}
           ${sellerCommercialFishingId ? `<strong>Kaupallisen kalastajan tunnus:</strong> ${sellerCommercialFishingId}<br />` : ""}
+          <strong>Toimituksen tila:</strong> ${fulfillmentStatus}<br />
           ${deliveryMethod ? `<strong>Toimitustapa:</strong> ${deliveryMethod}<br />` : ""}
           ${deliveryArea ? `<strong>${deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}:</strong> ${deliveryArea}<br />` : ""}
           <strong>Hinta:</strong> ${pricePerKg}<br />
@@ -97,6 +136,7 @@ Deno.serve(async (req) => {
         </p>
         ${qrImageUrl ? `<p><strong>QR-koodi erälle</strong><br /><img src="${qrImageUrl}" alt="QR ${batchId || "era"}" style="width:160px;height:160px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;padding:8px;" /></p>` : ""}
         ${deliveryAddress ? `<p><strong>Toimitusosoite:</strong> ${deliveryAddress}</p>` : ""}
+        ${billingAddress ? `<p><strong>Laskutusosoite:</strong> ${billingAddress}</p>` : ""}
         ${billingEmail ? `<p><strong>Laskutussähköposti:</strong> ${billingEmail}</p>` : ""}
         ${offerLink ? `<p><a href="${offerLink}" style="display:inline-block;padding:10px 14px;background:#166534;color:#fff;text-decoration:none;border-radius:8px;">Avaa kaupan tiedot</a></p>` : ""}
       </div>

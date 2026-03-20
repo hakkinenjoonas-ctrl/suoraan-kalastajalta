@@ -1180,6 +1180,10 @@ function WholesaleOffersView({
                             <div>{offer.buyer_company_name || "-"}</div>
                             <div>{offer.buyer_contact_name || "-"}</div>
                             <div>{offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div>
+                            {(offer.buyer_delivery_address || offer.buyer_delivery_postcode || offer.buyer_delivery_city) ? <div style={styles.muted}>Toimitusosoite: {[offer.buyer_delivery_address, offer.buyer_delivery_postcode, offer.buyer_delivery_city].filter(Boolean).join(", ")}</div> : null}
+                            {(offer.buyer_billing_address || offer.buyer_billing_postcode || offer.buyer_billing_city || offer.buyer_billing_email) ? <div style={styles.muted}>Laskutus: {[offer.buyer_billing_address, offer.buyer_billing_postcode, offer.buyer_billing_city].filter(Boolean).join(", ")}{offer.buyer_billing_email ? ` · ${offer.buyer_billing_email}` : ""}</div> : null}
+                            {offer.buyer_business_id ? <div style={styles.muted}>Y-tunnus: {offer.buyer_business_id}</div> : null}
+                            <div style={styles.muted}>Toimituksen tila: {fulfillmentStatusLabel(offer.fulfillment_status)}</div>
                           </div>
                         ) : null}
 
@@ -1187,6 +1191,12 @@ function WholesaleOffersView({
                           <div style={styles.row}>
                             {offer.status !== "accepted" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBuyerOfferStatus(offer, "accepted")}>{offer.status === "reserved" ? "Hyväksy varaus" : offer.status === "countered" ? "Hyväksy vastatarjous" : "Hyväksy kauppa"}</button> : null}
                             {offer.status !== "rejected" ? <button style={styles.button} onClick={() => onUpdateBuyerOfferStatus(offer, "rejected")}>Hylkää</button> : null}
+                          </div>
+                        ) : null}
+                        {revealIdentity && canManageBuyerOffer(offer) ? (
+                          <div style={styles.row}>
+                            {offer.fulfillment_status !== "delivery_agreed" ? <button style={styles.button} onClick={() => updateFulfillmentStatus(offer, "delivery_agreed")}>Merkitse toimitus sovituksi</button> : null}
+                            {offer.fulfillment_status !== "delivered" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => updateFulfillmentStatus(offer, "delivered")}>Merkitse toimitetuksi</button> : null}
                           </div>
                         ) : null}
                       </div>
@@ -1606,6 +1616,13 @@ export default function App() {
     if (status === "rejected") return "Hylätty";
     if (status === "cancelled") return "Peruttu";
     return status || "-";
+  };
+
+  const fulfillmentStatusLabel = (status) => {
+    if (status === "awaiting_contact") return "Yhteydenotto kesken";
+    if (status === "delivery_agreed") return "Toimitus sovittu";
+    if (status === "delivered") return "Toimitettu";
+    return "Yhteydenotto kesken";
   };
 
   const shouldRevealBuyerIdentity = (status) => status === "accepted";
@@ -2111,6 +2128,7 @@ export default function App() {
               buyer_phone: buyer?.phone || "",
               billing_status: offer.billing_status || "unbilled",
               billing_month: offer.billing_month || "",
+              fulfillment_status: offer.fulfillment_status || (offer.status === "accepted" ? "awaiting_contact" : ""),
             };
           }));
         }
@@ -3021,6 +3039,7 @@ export default function App() {
         buyer_company_name: buyer?.company_name || "",
         buyer_contact_name: buyer?.contact_name || "",
         buyer_phone: buyer?.phone || "",
+        fulfillment_status: offer.fulfillment_status || (offer.status === "accepted" ? "awaiting_contact" : ""),
       };
     }));
   };
@@ -3060,6 +3079,32 @@ export default function App() {
         ? "Kauppa merkitty laskutetuksi."
         : "Kauppa palautettu laskuttamattomaksi."
     );
+    setRefreshTick((prev) => prev + 1);
+  };
+
+  const updateFulfillmentStatus = async (offer, fulfillmentStatus) => {
+    const { error } = await supabase
+      .from("buyer_offers")
+      .update({ fulfillment_status: fulfillmentStatus })
+      .eq("id", offer.id);
+
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message);
+      return;
+    }
+
+    setAuthInfo(
+      fulfillmentStatus === "delivery_agreed"
+        ? "Toimitus merkitty sovituksi."
+        : fulfillmentStatus === "delivered"
+        ? "Kauppa merkitty toimitetuksi."
+        : "Toimituksen tila päivitetty."
+    );
+    await refreshBuyerOffers();
     setRefreshTick((prev) => prev + 1);
   };
 
@@ -3131,6 +3176,16 @@ export default function App() {
     const buyerEmail = (offer?.buyer_email || "").trim().toLowerCase();
     if (!buyerEmail) return;
 
+    let sellerEmail = "";
+    if (offer?.seller_user_id) {
+      const { data: sellerProfile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", offer.seller_user_id)
+        .maybeSingle();
+      sellerEmail = sellerProfile?.email || "";
+    }
+
     const sellerInfo = getBuyerVisibleSellerInfo({ ...offer, status: "accepted" });
     const sellerName = sellerInfo.sellerName || profile?.display_name || profile?.email || offer?.seller_name || "Myyja";
     const tradeValue = euro(calculateCommissionDetails(offer).tradeValue);
@@ -3143,6 +3198,7 @@ export default function App() {
         offerLink: `${getPublicAppBaseUrl()}?offer=${offer.id}`,
         offer: {
           sellerName,
+          sellerEmail,
           sellerCommercialFishingId: sellerInfo.sellerCommercialFishingId,
           species_summary: offer?.species_summary,
           total_kilos: offer?.total_kilos,
@@ -3160,7 +3216,11 @@ export default function App() {
           buyer_delivery_address: offer?.buyer_delivery_address,
           buyer_delivery_postcode: offer?.buyer_delivery_postcode,
           buyer_delivery_city: offer?.buyer_delivery_city,
+          buyer_billing_address: offer?.buyer_billing_address,
+          buyer_billing_postcode: offer?.buyer_billing_postcode,
+          buyer_billing_city: offer?.buyer_billing_city,
           buyer_billing_email: offer?.buyer_billing_email,
+          fulfillment_status: offer?.fulfillment_status || "awaiting_contact",
           status: "accepted",
         },
       },
@@ -3258,6 +3318,11 @@ export default function App() {
 
     if (status === "accepted") {
       const buyerRecord = buyers.find((buyer) => buyer.id === offer.buyer_id || buyer.email === (offer.buyer_email || "").toLowerCase());
+
+      updatePayload = {
+        ...updatePayload,
+        fulfillment_status: offer.fulfillment_status || "awaiting_contact",
+      };
 
       if (buyerRecord) {
         updatePayload = {
@@ -4101,6 +4166,7 @@ export default function App() {
                           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
                             <strong>Kalastajan tiedot</strong>
                             <div style={styles.muted}>Nimi: {sellerInfo.sellerName || "-"}</div>
+                            {o.sellerEmail ? <div style={styles.muted}>Sähköposti: {o.sellerEmail}</div> : null}
                             {sellerInfo.sellerCommercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
                             <div style={styles.muted}>Vesialue: {sellerInfo.sellerArea || "-"}</div>
                             {sellerInfo.sellerSpot ? <div style={styles.muted}>Pyyntipaikka: {sellerInfo.sellerSpot}</div> : null}
@@ -4111,6 +4177,11 @@ export default function App() {
                             <div style={styles.muted}>Toimituskulu: {sellerInfo.deliveryCost !== "" && sellerInfo.deliveryCost != null ? `${sellerInfo.deliveryCost} €` : "-"}</div>
                             <div style={styles.muted}>Aikaisin toimitus: {sellerInfo.earliestDeliveryDate || "-"}</div>
                             <div style={styles.muted}>Kylmäkuljetus: {sellerInfo.coldTransport ? "kyllä" : "ei"}</div>
+                            <div style={styles.muted}>Toimituksen tila: {fulfillmentStatusLabel(o.fulfillment_status)}</div>
+                            <div style={styles.row}>
+                              {o.fulfillment_status !== "delivery_agreed" ? <button style={styles.button} onClick={() => updateFulfillmentStatus(o, "delivery_agreed")}>Merkitse toimitus sovituksi</button> : null}
+                              {o.fulfillment_status !== "delivered" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => updateFulfillmentStatus(o, "delivered")}>Merkitse toimitetuksi</button> : null}
+                            </div>
                           </div>
                         ) : null}
                         {o.status === "sold" ? null : (
