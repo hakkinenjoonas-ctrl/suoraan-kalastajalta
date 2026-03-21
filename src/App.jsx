@@ -2992,7 +2992,7 @@ export default function App() {
       const insertedOffer = await supabase
         .from("buyer_offers")
         .insert({
-          batch_id: rows.length === 1 ? rows[0].batch_id : null,
+          batch_id: rows[0]?.batch_id || null,
           buyer_id: recipient.buyer_id || null,
           buyer_email: recipient.email,
           seller_user_id: profileState?.id || null,
