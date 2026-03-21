@@ -181,6 +181,13 @@ function formatSpeciesOfferSummaryLine(row) {
   ].filter(Boolean).join(" · ");
 }
 
+function getOfferSummaryLines(summary) {
+  return String(summary || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function formatSpeciesSummaryText(value) {
   return String(value || "")
     .split("\n")
@@ -205,6 +212,10 @@ function getOfferSpeciesHeadline(summary) {
   return firstLine
     .replace(/:\s*\d+(?:[.,]\d+)?\s*kg(?:\s*\([^)]*\))?$/i, "")
     .trim() || "Kalaerä";
+}
+
+function isMixedOffer(offer) {
+  return getOfferSummaryLines(offer?.species_summary).length > 1;
 }
 
 function parsePricePerKgFromNotes(notes) {
@@ -2961,6 +2972,13 @@ export default function App() {
     const entry = {
       species: rows.map((row) => formatSpeciesForSale(getSpeciesRowLabel(row))).join(", "),
       kilos: totalKilos,
+      line_items: rows.map((row) => ({
+        species: formatSpeciesForSale(getSpeciesRowLabel(row)),
+        kilos: Number(row.kilos || 0),
+        count: Number(row.count || 0),
+        price_per_kg: row.price_per_kg === "" || row.price_per_kg == null ? null : Number(row.price_per_kg),
+        batch_id: row.batch_id || "",
+      })),
       date: formState.date,
       dateLabel: "Pyyntipäivämäärä",
       area: formState.area,
@@ -3477,7 +3495,11 @@ export default function App() {
   };
 
   const onReserve = async (offer) => {
-    const reserved = buyerAction.reserved_kilos === "" ? Number(offer.total_kilos || 0) : Number(buyerAction.reserved_kilos);
+    const reserved = isMixedOffer(offer)
+      ? Number(offer.total_kilos || 0)
+      : buyerAction.reserved_kilos === ""
+      ? Number(offer.total_kilos || 0)
+      : Number(buyerAction.reserved_kilos);
     const msg = buyerAction.buyer_message?.trim() || null;
     const ok = await buyerUpdateOffer(offer.id, {
       status: "reserved",
@@ -4134,6 +4156,7 @@ export default function App() {
     };
 
     const buildOfferHeadline = (offer) => {
+      if (isMixedOffer(offer)) return "Monilajinen erä";
       return getOfferSpeciesHeadline(offer?.species_summary);
     };
 
@@ -4352,23 +4375,30 @@ export default function App() {
                     const isActive = buyerActiveOfferId === o.id;
                     const visiblePrice = getVisibleOfferPrice(o);
                     const sellerInfo = getBuyerVisibleSellerInfo(o);
+                    const mixedOffer = isMixedOffer(o);
                     return (
                       <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
                         <div style={{ marginBottom: 10 }}>
                           <div style={{ fontSize: 13, color: "#64748b", marginBottom: 6 }}>{formatOfferDate(o.updated_at || o.created_at)}</div>
                           <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, marginBottom: 8 }}>{buildOfferHeadline(o)}</div>
                           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
-                              {o.total_kilos} kg
-                            </div>
-                            {visiblePrice !== "" && visiblePrice != null ? (
+                            {mixedOffer ? (
+                              <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
+                                {getOfferSummaryLines(o.species_summary).length} lajia samassa erässä
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
+                                {o.total_kilos} kg
+                              </div>
+                            )}
+                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? (
                               <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
                                 {euro(visiblePrice)} / kg
                               </div>
                             ) : null}
                           </div>
-                          {o.batch_id ? <div style={{ ...styles.muted, marginBottom: 8 }}><strong>Erätunnus:</strong> {o.batch_id}</div> : null}
-                          {o.batch_id ? <div style={{ ...styles.qrBlock, marginBottom: 8 }}><img src={getBatchQrImageUrl(o.batch_id)} alt={`QR ${o.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                          {o.batch_id && !mixedOffer ? <div style={{ ...styles.muted, marginBottom: 8 }}><strong>Erätunnus:</strong> {o.batch_id}</div> : null}
+                          {o.batch_id && !mixedOffer ? <div style={{ ...styles.qrBlock, marginBottom: 8 }}><img src={getBatchQrImageUrl(o.batch_id)} alt={`QR ${o.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                           <div style={styles.entryBadges}>
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
                             <span style={styles.badge}>{o.area || "-"}</span>
@@ -4381,8 +4411,9 @@ export default function App() {
                         <div style={{ ...styles.grid2, marginBottom: 10 }}>
                           <div>
                             <div style={styles.muted}><strong>Erän tiedot</strong></div>
+                            {mixedOffer ? <div style={{ ...styles.noticeInfo, marginBottom: 8 }}>Tämä monilajinen erä myydään kokonaisuutena. Kalalajit, hinnat ja erätunnukset näkyvät alla riveittäin.</div> : null}
                             <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{formatSpeciesSummaryText(o.species_summary) || "-"}</div>
-                            {visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta: {euro(visiblePrice)} / kg</div> : null}
+                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta: {euro(visiblePrice)} / kg</div> : null}
                             <div style={styles.muted}>Tarjoaja: {sellerInfo.sellerLabel}</div>
                             {sellerInfo.sellerCommercialFishingId && sellerInfo.revealIdentity ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
                             <div style={styles.muted}>
@@ -4456,20 +4487,26 @@ export default function App() {
                         ) : null}
                         {o.status === "sold" ? null : (
                         <>
-                        <div style={styles.field}>
-                          <label>Vastatarjous €/kg</label>
-                              <input style={styles.input} type="number" value={buyerAction.counter_price_per_kg} onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))} placeholder="Esim. 5.80" />
-                            </div>
-                            <div style={styles.field}>
-                              <label>Varaa kg (tyhjä = koko erä)</label>
-                              <input style={styles.input} type="number" value={buyerAction.reserved_kilos} onChange={(e) => setBuyerAction((p) => ({ ...p, reserved_kilos: e.target.value }))} placeholder={`Max ${o.total_kilos}`} />
-                            </div>
+                        {!mixedOffer ? (
+                          <div style={styles.field}>
+                            <label>Vastatarjous €/kg</label>
+                                <input style={styles.input} type="number" value={buyerAction.counter_price_per_kg} onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))} placeholder="Esim. 5.80" />
+                              </div>
+                        ) : null}
+                            {mixedOffer ? (
+                              <div style={styles.noticeInfo}>Monilajinen erä varataan aina kokonaisuutena. Yksittäisiä kalalajeja ei voi varata erikseen tästä tarjouksesta.</div>
+                            ) : (
+                              <div style={styles.field}>
+                                <label>Varaa kg (tyhjä = koko erä)</label>
+                                <input style={styles.input} type="number" value={buyerAction.reserved_kilos} onChange={(e) => setBuyerAction((p) => ({ ...p, reserved_kilos: e.target.value }))} placeholder={`Max ${o.total_kilos}`} />
+                              </div>
+                            )}
                             <div style={styles.field}>
                               <label>Viesti myyjälle</label>
                               <textarea style={styles.textarea} value={buyerAction.buyer_message} onChange={(e) => setBuyerAction((p) => ({ ...p, buyer_message: e.target.value }))} placeholder="Toimitus, nouto, aikataulu..." />
                             </div>
                             <div style={styles.row}>
-                              <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onSubmitCounter(o)}>Lähetä vastatarjous</button>
+                              {!mixedOffer ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onSubmitCounter(o)}>Lähetä vastatarjous</button> : null}
                               <button style={styles.button} onClick={() => onReserve(o)}>{o.status === "reserved" ? "Päivitä varaus" : "Varaa erä"}</button>
                             </div>
                             </>

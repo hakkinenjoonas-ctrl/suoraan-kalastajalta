@@ -48,6 +48,27 @@ function formatKilos(value: unknown) {
   return `${number.toLocaleString("fi-FI")} kg`;
 }
 
+function getLineItems(entry: Record<string, unknown>) {
+  const rawItems = Array.isArray(entry.line_items) ? entry.line_items : [];
+  return rawItems
+    .map((item) => {
+      const row = (item || {}) as Record<string, unknown>;
+      const species = safeString(row.species);
+      const kilos = formatKilos(row.kilos);
+      const price = formatPrice(row.price_per_kg);
+      const batchId = safeString(row.batch_id);
+      const count = Number(row.count || 0);
+      return {
+        species,
+        kilos,
+        price,
+        batchId,
+        count: Number.isFinite(count) && count > 0 ? `${count} kpl` : "",
+      };
+    })
+    .filter((item) => item.species || item.batchId);
+}
+
 function formatAdditionalNotes(notesValue: unknown) {
   const lines = safeString(notesValue)
     .split("\n")
@@ -114,6 +135,18 @@ function buildFieldRow(label: string, value: string) {
   `;
 }
 
+function extractScientificNames(...values: unknown[]) {
+  const names = values
+    .flatMap((value) =>
+      safeString(value)
+        .split("\n")
+        .flatMap((line) => Array.from(line.matchAll(/\(([^()]+)\)/g)).map((match) => safeString(match[1])))
+    )
+    .filter(Boolean);
+
+  return Array.from(new Set(names)).join(", ");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -149,6 +182,8 @@ Deno.serve(async (req) => {
 
     const species = safeString(entry.species || "Kalaerä");
     const kilos = formatKilos(entry.kilos);
+    const lineItems = getLineItems(entry as Record<string, unknown>);
+    const mixedOffer = lineItems.length > 1;
     const dateLabel = safeString(entry.dateLabel || "Pyyntipäivämäärä");
     const date = safeString(entry.date);
     const area = safeString(entry.area);
@@ -157,20 +192,33 @@ Deno.serve(async (req) => {
     const sellerName = "Anonyymi kalastaja";
     const batchId = safeString(entry.batch_id);
     const extraNotes = formatAdditionalNotes(entry.notes);
+    const scientificNames = extractScientificNames(entry.species, entry.notes);
     const deliveryMethod = safeString(entry.deliveryMethod || "Nouto");
     const publicDeliveryLocation = deliveryMethod === "Nouto"
       ? getPublicPickupLocation(entry as Record<string, unknown>)
       : safeString(entry.deliveryArea || entry.area || "-");
 
+    const lineItemRows = lineItems
+      .map((item) => `
+        <tr>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;font-weight:700;background:#eff6ff;">${escapeHtml(item.species || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.kilos || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.price || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.batchId || "-")}</td>
+        </tr>
+      `)
+      .join("");
+
     const tableRows = [
-      buildFieldRow("Laji / erä", species),
-      buildFieldRow("Määrä", kilos),
+      buildFieldRow("Laji / erä", mixedOffer ? "Monilajinen erä" : species),
+      scientificNames ? buildFieldRow("Tieteellinen nimi", scientificNames) : "",
+      !mixedOffer ? buildFieldRow("Määrä", kilos) : "",
       buildFieldRow(dateLabel, date),
       buildFieldRow("Vesialue", area),
       buildFieldRow(deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue", publicDeliveryLocation || "-"),
       buildFieldRow("Pyydys", gear || "-"),
-      buildFieldRow("Hinta", price),
-      batchId ? buildFieldRow("Erätunnus", batchId) : "",
+      !mixedOffer ? buildFieldRow("Hinta", price) : "",
+      batchId && !mixedOffer ? buildFieldRow("Erätunnus", batchId) : "",
       buildFieldRow("Tarjoaja", sellerName),
       extraNotes ? buildFieldRow("Lisätiedot", extraNotes) : "",
     ]
@@ -197,19 +245,22 @@ Deno.serve(async (req) => {
       }
 
       const offerLink = safeString(recipient?.offer_link);
-      const subject = `Uusi kalaerä tarjolla – ${species} ${kilos}`;
+      const subject = mixedOffer ? "Uusi monilajinen kalaerä tarjolla" : `Uusi kalaerä tarjolla – ${species} ${kilos}`;
 
       const textLines = [
         "Uusi kalaerä tarjolla.",
         "",
-        `Laji / erä: ${species}`,
-        `Määrä: ${kilos}`,
+        `Laji / erä: ${mixedOffer ? "Monilajinen erä" : species}`,
+        scientificNames ? `Tieteellinen nimi: ${scientificNames}` : null,
+        !mixedOffer ? `Määrä: ${kilos}` : null,
         `${dateLabel}: ${date || "-"}`,
         `Vesialue: ${area || "-"}`,
         `${deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue"}: ${publicDeliveryLocation || "-"}`,
         `Pyydys: ${gear || "-"}`,
-        `Hinta: ${price}`,
-        batchId ? `Erätunnus: ${batchId}` : null,
+        !mixedOffer ? `Hinta: ${price}` : null,
+        batchId && !mixedOffer ? `Erätunnus: ${batchId}` : null,
+        mixedOffer ? "Erän lajit:" : null,
+        ...lineItems.map((item) => `- ${item.species}: ${item.kilos} · ${item.price}${item.batchId ? ` · Erätunnus ${item.batchId}` : ""}`),
         `Tarjoaja: ${sellerName}`,
         extraNotes ? `Lisätiedot: ${extraNotes}` : null,
         offerLink ? `Avaa tarjous apissa: ${offerLink}` : null,
@@ -224,6 +275,21 @@ Deno.serve(async (req) => {
           <table style="width:100%; border-collapse:collapse; background:#111827; color:#f8fafc; margin-bottom:20px;">
             ${tableRows}
           </table>
+          ${mixedOffer ? `
+            <table style="width:100%; border-collapse:collapse; background:#111827; color:#f8fafc; margin-bottom:20px;">
+              <thead>
+                <tr>
+                  <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Kalalaji</th>
+                  <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Määrä</th>
+                  <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Hinta</th>
+                  <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Erätunnus</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${lineItemRows}
+              </tbody>
+            </table>
+          ` : ""}
           ${offerLink ? `<p style="margin:0;"><a href="${escapeHtml(offerLink)}" style="display:inline-block;padding:12px 18px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;">Avaa tarjous apissa</a></p>` : ""}
         </div>
       `;
