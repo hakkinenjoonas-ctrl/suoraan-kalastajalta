@@ -48,6 +48,22 @@ function formatKilos(value: unknown) {
   return `${number.toLocaleString("fi-FI")} kg`;
 }
 
+function formatLineItemQuantity(row: Record<string, unknown>) {
+  const unit = safeString(row.price_unit || "kg");
+  const kilosValue = Number(row.kilos);
+  const countValue = Number(row.count);
+  const kilos = Number.isFinite(kilosValue) && kilosValue > 0 ? `${kilosValue.toLocaleString("fi-FI")} kg` : "";
+  const count = Number.isFinite(countValue) && countValue > 0 ? `${countValue.toLocaleString("fi-FI")} kpl` : "";
+
+  if (unit === "kpl") {
+    if (count && kilos) return `${count} (${kilos})`;
+    return count || kilos || "-";
+  }
+
+  if (kilos && count) return `${kilos} (${count})`;
+  return kilos || count || "-";
+}
+
 function getLineItems(entry: Record<string, unknown>) {
   const rawItems = Array.isArray(entry.line_items) ? entry.line_items : [];
   return rawItems
@@ -55,19 +71,17 @@ function getLineItems(entry: Record<string, unknown>) {
       const row = (item || {}) as Record<string, unknown>;
       const species = safeString(row.species);
       const scientificNames = Array.from(species.matchAll(/\(([^()]+)\)/g)).map((match) => safeString(match[1])).filter(Boolean).join(", ");
-      const kilos = formatKilos(row.kilos);
+      const quantity = formatLineItemQuantity(row);
       const price = formatPrice(row.price_per_kg, safeString(row.price_unit || "kg"));
       const batchId = safeString(row.batch_id);
       const catchDate = safeString(row.catch_date);
-      const count = Number(row.count || 0);
       return {
         species,
         scientificNames,
-        kilos,
+        quantity,
         price,
         batchId,
         catchDate,
-        count: Number.isFinite(count) && count > 0 ? `${count} kpl` : "",
       };
     })
     .filter((item) => item.species || item.batchId);
@@ -186,13 +200,18 @@ Deno.serve(async (req) => {
 
     const species = safeString(entry.species || "Kalaerä");
     const kilos = formatKilos(entry.kilos);
+    const rawLineItems = Array.isArray(entry.line_items) ? entry.line_items : [];
     const lineItems = getLineItems(entry as Record<string, unknown>);
     const mixedOffer = lineItems.length > 1;
     const dateLabel = safeString(entry.dateLabel || "Pyyntipäivämäärä");
     const date = safeString(entry.date);
     const area = safeString(entry.area);
     const gear = safeString(entry.gear);
-    const price = formatPrice(entry.price_per_kg === null || entry.price_per_kg === undefined || entry.price_per_kg === "" ? parsePriceFromNotes(entry.notes) : entry.price_per_kg);
+    const primaryUnit = safeString(((rawLineItems[0] || {}) as Record<string, unknown>).price_unit || "kg");
+    const price = formatPrice(
+      entry.price_per_kg === null || entry.price_per_kg === undefined || entry.price_per_kg === "" ? parsePriceFromNotes(entry.notes) : entry.price_per_kg,
+      primaryUnit,
+    );
     const sellerName = "Anonyymi kalastaja";
     const batchId = safeString(entry.batch_id);
     const extraNotes = formatAdditionalNotes(entry.notes);
@@ -207,7 +226,7 @@ Deno.serve(async (req) => {
         <tr>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;font-weight:700;background:#eff6ff;">${escapeHtml(item.species || "-")}</td>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.scientificNames || "-")}</td>
-          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.kilos || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.quantity || "-")}</td>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.price || "-")}</td>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.batchId || "-")}</td>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.catchDate || "-")}</td>

@@ -183,6 +183,29 @@ function formatSpeciesSummaryLine(label, kilos, count) {
   return `${formatSpeciesForSale(label)}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
 }
 
+function isCrayfishOfferSummary(summary) {
+  const text = String(summary || "").toLowerCase();
+  return text.includes("täplärapu") ||
+    text.includes("jokirapu") ||
+    text.includes("pacifastacus leniusculus") ||
+    text.includes("astacus astacus");
+}
+
+function getOfferDisplayUnit(offer) {
+  return isCrayfishOfferSummary(offer?.species_summary) ? "kpl" : "kg";
+}
+
+function getOfferQuantityDisplay(offer) {
+  const summary = String(offer?.species_summary || "");
+  if (isCrayfishOfferSummary(summary)) {
+    const countMatch = summary.match(/(\d+(?:[.,]\d+)?)\s*kpl/i);
+    if (countMatch) return `${String(countMatch[1]).replace(".", ",")} kpl`;
+  }
+  const kilos = Number(offer?.total_kilos || 0);
+  if (Number.isFinite(kilos) && kilos > 0) return `${kilos} kg`;
+  return "-";
+}
+
 function formatSpeciesOfferSummaryLine(row) {
   const kilos = Number(row?.kilos || 0);
   const count = Number(row?.count || 0);
@@ -4423,12 +4446,12 @@ export default function App() {
                               </div>
                             ) : (
                               <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
-                                {o.total_kilos} kg
+                                {getOfferQuantityDisplay(o)}
                               </div>
                             )}
                             {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? (
                               <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
-                                {euro(visiblePrice)} / kg
+                                {euro(visiblePrice)} / {getOfferDisplayUnit(o)}
                               </div>
                             ) : null}
                           </div>
@@ -4448,7 +4471,8 @@ export default function App() {
                             <div style={styles.muted}><strong>Erän tiedot</strong></div>
                             {mixedOffer ? <div style={{ ...styles.noticeInfo, marginBottom: 8 }}>Tämä monilajinen erä myydään kokonaisuutena. Kalalajit, hinnat ja erätunnukset näkyvät alla riveittäin.</div> : null}
                             <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{formatSpeciesSummaryText(o.species_summary) || "-"}</div>
-                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta: {euro(visiblePrice)} / kg</div> : null}
+                            {!mixedOffer ? <div style={styles.muted}>Määrä: {getOfferQuantityDisplay(o)}</div> : null}
+                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}</div> : null}
                             <div style={styles.muted}>Tarjoaja: {sellerInfo.sellerLabel}</div>
                             {sellerInfo.sellerCommercialFishingId && sellerInfo.revealIdentity ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
                             <div style={styles.muted}>
