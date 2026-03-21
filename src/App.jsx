@@ -34,6 +34,8 @@ const fishSpeciesCatalog = [
   { name_fi: "Toutain", name_en: "Asp", scientific: "Aspius aspius", fao: "ASU" },
   { name_fi: "Suutari", name_en: "Tench", scientific: "Tinca tinca", fao: "FTE" },
   { name_fi: "Kampela", name_en: "Flounder", scientific: "Platichthys flesus", fao: "FLE" },
+  { name_fi: "Täplärapu", name_en: "Signal crayfish", scientific: "Pacifastacus leniusculus", fao: "PCL" },
+  { name_fi: "Jokirapu", name_en: "Noble crayfish", scientific: "Astacus astacus", fao: "AAS" },
 ];
 const fishSpeciesVariants = [
   "Muikku, perattu",
