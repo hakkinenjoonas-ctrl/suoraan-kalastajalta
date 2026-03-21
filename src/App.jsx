@@ -3819,8 +3819,15 @@ export default function App() {
 
   const handleSave = async () => {
     if (!profile) return;
-    const validRows = speciesRows.filter((row) => Number(row.kilos || 0) > 0);
-    if (!validRows.length) return;
+    const validRows = speciesRows.filter((row) => {
+      const kilos = Number(row.kilos || 0);
+      const count = Number(row.count || 0);
+      return isCrayfishSpecies(getSpeciesRowLabel(row)) ? kilos > 0 || count > 0 : kilos > 0;
+    });
+    if (!validRows.length) {
+      setAuthError("Täytä saaliille määrä ennen tallennusta. Ravuille vähintään kappalemäärä, muille lajeille vähintään kilot.");
+      return;
+    }
     if (validRows.some((row) => row.species === "Muu" && !String(row.customSpecies || "").trim())) {
       setAuthError("Kirjoita kalalajin nimi kaikille riveille, joilla lajiksi on valittu Muu.");
       return;
@@ -3842,7 +3849,7 @@ export default function App() {
           sourceIdentifier: getPreferredBatchSourceIdentifier(profile),
           date: form.date,
           speciesLabels: [getSpeciesRowLabel(row)],
-          quantity: Number(row.kilos || 0),
+          quantity: Number(row.kilos || 0) > 0 ? Number(row.kilos || 0) : Number(row.count || 0),
           supabaseClient: supabase,
         }),
       })));
