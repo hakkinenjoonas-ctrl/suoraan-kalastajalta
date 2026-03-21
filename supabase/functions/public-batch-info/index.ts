@@ -19,6 +19,18 @@ function safeString(value: unknown) {
   return String(value || "").trim();
 }
 
+function getBatchPublicUrl(batchId: string) {
+  if (!batchId) return "";
+  return `https://suoraan-kalastajalta.vercel.app/batch/${encodeURIComponent(batchId)}`;
+}
+
+function getBatchQrImageUrl(batchId: string) {
+  const publicUrl = getBatchPublicUrl(batchId);
+  return publicUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(publicUrl)}`
+    : "";
+}
+
 function deriveSaleInfo(offers: Array<Record<string, unknown>>) {
   const statuses = offers.map((offer) => safeString(offer.status).toLowerCase()).filter(Boolean);
   const updatedAt = offers
@@ -105,7 +117,11 @@ function buildCatchPayloadFromRows(rows: Array<Record<string, unknown>>, offers:
   };
 }
 
-function buildProcessedPayload(entry: Record<string, unknown>, offers: Array<Record<string, unknown>>) {
+function buildProcessedPayload(
+  entry: Record<string, unknown>,
+  offers: Array<Record<string, unknown>>,
+  sourceBatches: Array<Record<string, unknown>>,
+) {
   const saleInfo = deriveSaleInfo(offers);
   return {
     batch_id: safeString(entry.batch_id),
@@ -131,6 +147,14 @@ function buildProcessedPayload(entry: Record<string, unknown>, offers: Array<Rec
       package_size_g: entry.package_size_g ?? "",
       package_count: entry.package_count ?? "",
     },
+    source_batches: sourceBatches.map((source) => ({
+      source_entry_id: safeString(source.source_entry_id),
+      batch_id: safeString(source.source_batch_id),
+      species: safeString(source.source_species),
+      kilos: source.source_kilos ?? "",
+      public_url: getBatchPublicUrl(safeString(source.source_batch_id)),
+      qr_image_url: getBatchQrImageUrl(safeString(source.source_batch_id)),
+    })),
     sale_info: saleInfo,
   };
 }
@@ -181,7 +205,15 @@ Deno.serve(async (req) => {
     }
 
     if (processedEntries && processedEntries.length > 0) {
-      return jsonResponse(200, buildProcessedPayload(processedEntries[0], offers || []));
+      let sourceBatches: Array<Record<string, unknown>> = [];
+      const { data: sourceData } = await supabase
+        .from("processed_batch_sources")
+        .select("*")
+        .eq("processed_batch_id", processedEntries[0].id)
+        .order("created_at", { ascending: true });
+      sourceBatches = sourceData || [];
+
+      return jsonResponse(200, buildProcessedPayload(processedEntries[0], offers || [], sourceBatches));
     }
 
     return jsonResponse(404, { error: "Batch not found" });

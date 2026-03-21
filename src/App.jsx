@@ -193,6 +193,13 @@ function formatSpeciesSummaryText(value) {
     .join("\n");
 }
 
+function formatSourceBatchSummary(entry) {
+  if (!entry) return "";
+  const species = formatSpeciesForSale(entry.species);
+  const kilos = entry.kilos == null || entry.kilos === "" ? "" : `${Number(entry.kilos).toFixed(1)} kg`;
+  return [species, kilos, entry.batchId || ""].filter(Boolean).join(" · ");
+}
+
 function getOfferSpeciesHeadline(summary) {
   const firstLine = String(summary || "Kalaerä").split("\n")[0] || "Kalaerä";
   return firstLine
@@ -848,6 +855,29 @@ function PublicBatchView({ batchId, data, loading, error }) {
                   <div key={label} style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, borderBottom: "1px solid #e2e8f0", paddingBottom: 8 }}>
                     <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
                     <div style={{ color: "#0f172a" }}>{String(value)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {Array.isArray(data?.source_batches) && data.source_batches.length > 0 ? (
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
+                <strong style={{ fontSize: 20 }}>Raaka-aine-erät</strong>
+                {data.source_batches.map((source) => (
+                  <div key={`${source.batch_id}-${source.source_entry_id || source.species || Math.random()}`} style={{ ...styles.entry, background: "#f8fbff" }}>
+                    <div style={styles.rowBetween}>
+                      <div style={{ ...styles.stack, gap: 6 }}>
+                        <div><strong>Erätunnus:</strong> {source.batch_id || "-"}</div>
+                        <div style={styles.muted}><strong>Laji:</strong> {formatSpeciesForSale(source.species)}</div>
+                        <div style={styles.muted}><strong>Määrä:</strong> {source.kilos != null && source.kilos !== "" ? `${source.kilos} kg` : "-"}</div>
+                      </div>
+                      {source.qr_image_url ? (
+                        <div className="no-print" style={styles.qrBlock}>
+                          <img src={source.qr_image_url} alt={`QR ${source.batch_id || "source"}`} style={styles.qrImage} />
+                          <div style={styles.small}>QR-koodi lähde-erälle</div>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1583,6 +1613,7 @@ export default function App() {
     deliveryCost: "",
     earliestDeliveryDate: today(),
     coldTransport: true,
+    sourceEntryIds: [],
   });
   const [newAllowedForm, setNewAllowedForm] = useState({ email: "", displayName: "", role: "member", buyer_id: "" });
   const [buyerAction, setBuyerAction] = useState({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
@@ -2035,6 +2066,10 @@ export default function App() {
         const { error } = await supabase.from("processed_batches").select("id", { count: "exact", head: true });
         return !error;
       };
+      const processedBatchSourcesTableExists = async () => {
+        const { error } = await supabase.from("processed_batch_sources").select("id", { count: "exact", head: true });
+        return !error;
+      };
       const buyerOffersTableExists = async () => {
         const { error } = await supabase.from("buyer_offers").select("id", { count: "exact", head: true });
         return !error;
@@ -2044,6 +2079,7 @@ export default function App() {
         const hasOffersTable = await offerTableExists();
         const hasBuyersTable = await buyersTableExists();
         const hasProcessedBatchesTable = await processedBatchesTableExists();
+        const hasProcessedBatchSourcesTable = await processedBatchSourcesTableExists();
         const hasBuyerOffersTable = await buyerOffersTableExists();
 
         const normalizedProfileEmail = (profile.email || "").trim().toLowerCase();
@@ -2133,6 +2169,27 @@ export default function App() {
           }
           setAuthError(processedEntriesResult.error.message);
         } else {
+          let processedSourceRows = [];
+          if (hasProcessedBatchSourcesTable && (processedEntriesResult?.data || []).length > 0) {
+            const processedIds = (processedEntriesResult?.data || []).map((entry) => entry.id).filter(Boolean);
+            if (processedIds.length > 0) {
+              const { data: sourceData, error: sourceError } = await supabase
+                .from("processed_batch_sources")
+                .select("*")
+                .in("processed_batch_id", processedIds)
+                .order("created_at", { ascending: true });
+              if (sourceError && sourceError.code !== "PGRST116") {
+                if (isMissingRefreshTokenError(sourceError)) {
+                  await invalidateSession();
+                  return;
+                }
+                setAuthError(sourceError.message);
+              } else {
+                processedSourceRows = sourceData || [];
+              }
+            }
+          }
+
           setProcessedEntries((processedEntriesResult?.data || []).map((entry) => ({
             id: entry.id,
             batchId: entry.batch_id,
@@ -2161,6 +2218,15 @@ export default function App() {
             offerToRestaurants: Boolean(entry.offer_to_restaurants),
             offerToWholesalers: Boolean(entry.offer_to_wholesalers),
             kind: "processed",
+            sourceBatches: processedSourceRows
+              .filter((source) => source.processed_batch_id === entry.id)
+              .map((source) => ({
+                sourceEntryId: source.source_entry_id,
+                batchId: source.source_batch_id,
+                species: source.source_species || "",
+                kilos: source.source_kilos == null ? "" : Number(source.source_kilos),
+                qrImageUrl: getBatchQrImageUrl(source.source_batch_id),
+              })),
           })));
         }
 
@@ -2319,6 +2385,14 @@ export default function App() {
 
   const saleEntries = useMemo(() => entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [entries]);
   const processedSaleEntries = useMemo(() => processedEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [processedEntries]);
+  const availableSourceEntries = useMemo(
+    () => entries.filter((entry) => entry.batchId && Number(entry.kilos || 0) > 0).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()),
+    [entries],
+  );
+  const selectedProcessedSourceEntries = useMemo(
+    () => availableSourceEntries.filter((entry) => processedForm.sourceEntryIds.includes(entry.id)),
+    [availableSourceEntries, processedForm.sourceEntryIds],
+  );
 
   const totals = useMemo(() => {
     const totalKg = entries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
@@ -3854,7 +3928,7 @@ export default function App() {
       owner_name: profile.display_name,
     };
 
-    const { error } = await supabase.from("processed_batches").insert(payload);
+    const { data: insertedProcessedBatch, error } = await supabase.from("processed_batches").insert(payload).select("id").single();
     if (error) {
       setSaving(false);
       if (isMissingRefreshTokenError(error)) {
@@ -3863,6 +3937,26 @@ export default function App() {
       }
       setAuthError(error.message);
       return;
+    }
+
+    if (selectedProcessedSourceEntries.length > 0) {
+      const sourcePayload = selectedProcessedSourceEntries.map((entry) => ({
+        processed_batch_id: insertedProcessedBatch.id,
+        source_entry_id: entry.id,
+        source_batch_id: entry.batchId,
+        source_species: entry.species,
+        source_kilos: Number(entry.kilos || 0),
+      }));
+      const { error: sourceInsertError } = await supabase.from("processed_batch_sources").insert(sourcePayload);
+      if (sourceInsertError) {
+        setSaving(false);
+        if (isMissingRefreshTokenError(sourceInsertError)) {
+          await invalidateSession();
+          return;
+        }
+        setAuthError(sourceInsertError.message);
+        return;
+      }
     }
 
     try {
@@ -3914,6 +4008,7 @@ export default function App() {
       deliveryCost: "",
       earliestDeliveryDate: today(),
       coldTransport: true,
+      sourceEntryIds: [],
     });
     setRefreshTick((prev) => prev + 1);
     setActiveTab("entries");
@@ -4620,6 +4715,56 @@ export default function App() {
                 <div style={styles.field}><label>Tuotetyyppi</label><select style={styles.input} value={processedForm.productType} onChange={(e) => setProcessedForm({ ...processedForm, productType: e.target.value })}>{processedProductTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
                 <div style={styles.field}><label>Käsittelytapa</label><select style={styles.input} value={processedForm.processingMethod} onChange={(e) => setProcessedForm({ ...processedForm, processingMethod: e.target.value })}>{processingMethods.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
                 <div style={styles.field}><label>Käsittelypaikka</label><input style={styles.input} value={processedForm.spot} onChange={(e) => setProcessedForm({ ...processedForm, spot: e.target.value })} placeholder="Esim. jalostuskontti / Forelli" /></div>
+                <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
+                  <label>Liitä kalastajan YKP-raaka-aine-erät</label>
+                  {availableSourceEntries.length === 0 ? (
+                    <div style={styles.noticeInfo}>Ei vielä batch-tunnuksella tallennettuja saaliseriä linkitettäväksi.</div>
+                  ) : (
+                    <div style={{ ...styles.stack, gap: 10 }}>
+                      {availableSourceEntries.map((entry) => {
+                        const checked = processedForm.sourceEntryIds.includes(entry.id);
+                        return (
+                          <label key={entry.id} style={{ ...styles.checkboxCard, justifyContent: "space-between", width: "100%", borderRadius: 18 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  setProcessedForm((prev) => ({
+                                    ...prev,
+                                    sourceEntryIds: e.target.checked
+                                      ? [...prev.sourceEntryIds, entry.id]
+                                      : prev.sourceEntryIds.filter((id) => id !== entry.id),
+                                  }));
+                                }}
+                              />
+                              <span>{formatSourceBatchSummary(entry)}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {selectedProcessedSourceEntries.length > 0 ? (
+                    <div style={{ ...styles.stack, gap: 8 }}>
+                      <div style={styles.small}>Valitut lähde-erät kulkevat jaloste-erän mukana jäljitettävyysketjussa.</div>
+                      {selectedProcessedSourceEntries.map((entry) => (
+                        <div key={entry.id} style={{ ...styles.entry, background: "#f8fbff" }}>
+                          <div style={styles.rowBetween}>
+                            <div style={{ ...styles.stack, gap: 6 }}>
+                              <div><strong>{formatSpeciesForSale(entry.species)}</strong></div>
+                              <div style={styles.muted}>{entry.kilos} kg · {entry.date} · {entry.batchId}</div>
+                            </div>
+                            <div style={styles.qrBlock}>
+                              <img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} />
+                              <div style={styles.small}>Lähde-erän QR</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}><label>Raaka-aine / lajiyhteenveto</label><textarea style={styles.textarea} value={processedForm.speciesSummary} onChange={(e) => setProcessedForm({ ...processedForm, speciesSummary: e.target.value })} placeholder="Esim. lohi fileenä, kuha fileenä, muikkumassa" /></div>
                 <div style={styles.field}><label>Määrä kg</label><input style={styles.input} type="number" value={processedForm.kilos} onChange={(e) => setProcessedForm({ ...processedForm, kilos: e.target.value })} placeholder="0" /></div>
                 <div style={styles.field}><label>Pakkauskoko g</label><input style={styles.input} type="number" value={processedForm.packageSizeG} onChange={(e) => setProcessedForm({ ...processedForm, packageSizeG: e.target.value })} placeholder="Esim. 500" /></div>
@@ -4726,6 +4871,28 @@ export default function App() {
                       {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                       {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                       <div style={styles.muted}>Käsittely: {entry.processingMethod || "-"} · Raaka-aine: {entry.speciesSummary || "-"}</div>
+                      {Array.isArray(entry.sourceBatches) && entry.sourceBatches.length > 0 ? (
+                        <div style={{ ...styles.stack, gap: 8, marginTop: 8 }}>
+                          <div style={styles.muted}><strong>Linkitetyt lähde-erät</strong></div>
+                          {entry.sourceBatches.map((source) => (
+                            <div key={`${entry.id}-${source.batchId}-${source.sourceEntryId || source.species}`} style={{ ...styles.entry, background: "#f8fbff", padding: 12 }}>
+                              <div style={styles.rowBetween}>
+                                <div style={{ ...styles.stack, gap: 6 }}>
+                                  <div style={styles.muted}>Erätunnus: {source.batchId}</div>
+                                  <div style={styles.muted}>Laji: {formatSpeciesForSale(source.species)}</div>
+                                  <div style={styles.muted}>Määrä: {source.kilos !== "" && source.kilos != null ? `${source.kilos} kg` : "-"}</div>
+                                </div>
+                                {source.qrImageUrl ? (
+                                  <div style={styles.qrBlock}>
+                                    <img src={source.qrImageUrl} alt={`QR ${source.batchId}`} style={styles.qrImage} />
+                                    <div style={styles.small}>Lähde-erän QR</div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                       <div style={styles.muted}>Parasta ennen: {entry.bestBeforeDate || "-"}</div>
                       <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                       {entry.notes ? <div style={styles.muted}>{entry.notes}</div> : null}
