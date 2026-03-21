@@ -1792,31 +1792,57 @@ export default function App() {
   const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
   const shouldSendProcessedOffer = processedForm.offerToShops || processedForm.offerToRestaurants || processedForm.offerToWholesalers;
 
-  const buildOfferRecipients = (offerFormState, rows) => {
+  const analyzeOfferRecipients = (offerFormState, rows) => {
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
     const selectedTypes = [];
     if (offerFormState.offerToShops) selectedTypes.push("kauppa");
     if (offerFormState.offerToRestaurants) selectedTypes.push("ravintola");
     if (offerFormState.offerToWholesalers) selectedTypes.push("tukku");
 
-    return buyers
+    const matching = [];
+    const excluded = [];
+
+    (buyers || [])
       .filter((buyer) => buyer.is_active)
-      .filter((buyer) => selectedTypes.includes(buyer.buyer_type))
-      .filter((buyer) => {
+      .forEach((buyer) => {
+        if (!selectedTypes.includes(buyer.buyer_type)) return;
         const minKg = buyer.min_kg == null || buyer.min_kg === "" ? null : Number(buyer.min_kg);
         const maxKg = buyer.max_kg == null || buyer.max_kg === "" ? null : Number(buyer.max_kg);
         const minOk = minKg == null || totalKilos >= minKg;
         const maxOk = maxKg == null || totalKilos <= maxKg;
-        return minOk && maxOk;
-      })
-      .map((buyer) => ({
-        buyer_id: buyer.id,
-        email: buyer.email,
-        channel: buyer.buyer_type,
-        company_name: buyer.company_name,
-        contact_name: buyer.contact_name,
-      }))
-      .filter((recipient, index, array) => index === array.findIndex((item) => (item.email || "").trim().toLowerCase() === (recipient.email || "").trim().toLowerCase()));
+        const recipient = {
+          buyer_id: buyer.id,
+          email: buyer.email,
+          channel: buyer.buyer_type,
+          company_name: buyer.company_name,
+          contact_name: buyer.contact_name,
+        };
+
+        if (minOk && maxOk) {
+          matching.push(recipient);
+        } else {
+          excluded.push({
+            ...recipient,
+            minKg,
+            maxKg,
+            reason: !minOk
+              ? `erä ${totalKilos.toFixed(1)} kg on pienempi kuin ostajan minimi ${Number(minKg || 0).toFixed(1)} kg`
+              : `erä ${totalKilos.toFixed(1)} kg ylittää ostajan maksimin ${Number(maxKg || 0).toFixed(1)} kg`,
+          });
+        }
+      });
+
+    const dedupedMatching = matching.filter((recipient, index, array) => index === array.findIndex((item) => (item.email || "").trim().toLowerCase() === (recipient.email || "").trim().toLowerCase()));
+    return {
+      totalKilos,
+      selectedTypes,
+      matching: dedupedMatching,
+      excluded,
+    };
+  };
+
+  const buildOfferRecipients = (offerFormState, rows) => {
+    return analyzeOfferRecipients(offerFormState, rows).matching;
   };
 
   const invalidateSession = async (message = "Istunto on vanhentunut. Kirjaudu uudelleen sisään.") => {
@@ -2907,12 +2933,13 @@ export default function App() {
   };
 
   const sendCatchOfferEmail = async ({ formState, rows, profileState }) => {
-    const recipients = buildOfferRecipients(formState, rows).map((recipient) => ({
+    const recipientAnalysis = analyzeOfferRecipients(formState, rows);
+    const recipients = recipientAnalysis.matching.map((recipient) => ({
       ...recipient,
       email: (recipient.email || "").trim().toLowerCase(),
     }));
     if (recipients.length === 0) {
-      return { skipped: true, sent: [], failed: [] };
+      return { skipped: true, sent: [], failed: [], recipientAnalysis };
     }
 
     const summaryLines = rows
@@ -3066,7 +3093,7 @@ export default function App() {
       throw new Error(failed.map((item) => `${item.company_name}: ${item.error}`).join(" | "));
     }
 
-    return { skipped: false, sent, failed };
+    return { skipped: false, sent, failed, recipientAnalysis };
   };
 
   const sendCatchOfferEmail_OLD = async ({ formState, rows, profileState, batchId }) => {
@@ -3604,17 +3631,18 @@ export default function App() {
 
   const sendProcessedOfferEmail = async ({ formState, profileState, batchId }) => {
     const rows = [{ species: formState.productName || formState.productType || "Jaloste-erä", kilos: formState.kilos, count: formState.packageCount }];
-    const recipients = buildOfferRecipients({
+    const recipientAnalysis = analyzeOfferRecipients({
       offerToShops: formState.offerToShops,
       offerToRestaurants: formState.offerToRestaurants,
       offerToWholesalers: formState.offerToWholesalers,
-    }, rows).map((recipient) => ({
+    }, rows);
+    const recipients = recipientAnalysis.matching.map((recipient) => ({
       ...recipient,
       email: (recipient.email || "").trim().toLowerCase(),
     }));
 
     if (recipients.length === 0) {
-      return { skipped: true, sent: [], failed: [] };
+      return { skipped: true, sent: [], failed: [], recipientAnalysis };
     }
 
     const offerUrlBase = getPublicAppBaseUrl();
@@ -3740,7 +3768,7 @@ export default function App() {
       throw new Error(failed.map((item) => `${item.company_name}: ${item.error}`).join(" | "));
     }
 
-    return { skipped: false, sent, failed };
+    return { skipped: false, sent, failed, recipientAnalysis };
   };
 
   const handleSave = async () => {
@@ -3822,7 +3850,12 @@ export default function App() {
 
       if (shouldSendOffer) {
         if (emailResult.skipped) {
-          setAuthInfo("Saalis tallennettu, mutta yhtään ostajaa ei täyttänyt tarjousehtoja.");
+          const excludedLines = (emailResult.recipientAnalysis?.excluded || []).map((item) => `• ${item.company_name} (${item.email}) – ${item.reason}`);
+          const parts = ["Saalis tallennettu, mutta yhtään ostajaa ei täyttänyt tarjousehtoja."];
+          if (excludedLines.length > 0) {
+            parts.push("", "Pois rajatut ostajat:", ...excludedLines);
+          }
+          setAuthInfo(parts.join(String.fromCharCode(10)));
         } else {
           const sentLines = emailResult.sent.map((item) => `✔ ${item.company_name} (${item.email})`);
           const failedLines = emailResult.failed.map((item) => `✖ ${item.company_name} (${item.email}) – ${item.error}`);
@@ -3963,7 +3996,12 @@ export default function App() {
       const emailResult = await sendProcessedOfferEmail({ formState: processedForm, profileState: profile, batchId });
       if (shouldSendProcessedOffer) {
         if (emailResult.skipped) {
-          setAuthInfo("Jaloste-erä tallennettu, mutta yhtään ostajaa ei täyttänyt tarjousehtoja.");
+          const excludedLines = (emailResult.recipientAnalysis?.excluded || []).map((item) => `• ${item.company_name} (${item.email}) – ${item.reason}`);
+          const parts = ["Jaloste-erä tallennettu, mutta yhtään ostajaa ei täyttänyt tarjousehtoja."];
+          if (excludedLines.length > 0) {
+            parts.push("", "Pois rajatut ostajat:", ...excludedLines);
+          }
+          setAuthInfo(parts.join(String.fromCharCode(10)));
         } else {
           const sentLines = emailResult.sent.map((item) => `✔ ${item.company_name} (${item.email})`);
           const failedLines = emailResult.failed.map((item) => `✖ ${item.company_name} (${item.email}) – ${item.error}`);
