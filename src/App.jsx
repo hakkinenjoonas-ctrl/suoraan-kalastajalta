@@ -56,7 +56,7 @@ const fishSpeciesByName = Object.fromEntries(
   fishSpeciesCatalog.map((item) => [item.name_fi.toLowerCase(), item])
 );
 const fishSpecies = [...fishSpeciesCatalog.map((item) => item.name_fi), ...fishSpeciesVariants, "Muu"];
-const gearTypes = ["Rysä", "Verkko", "Katiska", "Trooli", "Nuotta", "Vapaväline", "Muu"];
+const gearTypes = ["Rysä", "Verkko", "Katiska", "Merta", "Trooli", "Nuotta", "Vapaväline", "Muu"];
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
 const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Jauhatus", "Kypsennys", "Muu"];
@@ -509,6 +509,7 @@ function runLocalTests() {
   const tests = [
     { name: "Kuha on kalalistassa", pass: fishSpecies.includes("Kuha") },
     { name: "Nuotta on pyydyslistassa", pass: gearTypes.includes("Nuotta") },
+    { name: "Merta on pyydyslistassa", pass: gearTypes.includes("Merta") },
     { name: "Muu on vesialuelistassa", pass: defaultAreas.includes("Muu") },
     { name: "Refresh token -virhe tunnistuu", pass: isMissingRefreshTokenError(new Error("Invalid Refresh Token: Refresh Token Not Found")) },
   ];
