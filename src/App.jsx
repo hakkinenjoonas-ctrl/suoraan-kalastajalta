@@ -161,6 +161,15 @@ function getSpeciesMetadata(label) {
   return fishSpeciesByName[normalized] || null;
 }
 
+function isCrayfishSpecies(label) {
+  const metadata = getSpeciesMetadata(label);
+  return metadata?.scientific === "Pacifastacus leniusculus" || metadata?.scientific === "Astacus astacus";
+}
+
+function getSpeciesPriceUnit(label) {
+  return isCrayfishSpecies(label) ? "kpl" : "kg";
+}
+
 function formatSpeciesForSale(label) {
   const metadata = getSpeciesMetadata(label);
   if (!metadata?.scientific) return String(label || "").trim() || "Muu";
@@ -168,13 +177,17 @@ function formatSpeciesForSale(label) {
 }
 
 function formatSpeciesSummaryLine(label, kilos, count) {
+  if (isCrayfishSpecies(label)) {
+    return `${formatSpeciesForSale(label)}: ${count > 0 ? `${count} kpl` : "-"}${kilos > 0 ? ` (${kilos} kg)` : ""}`;
+  }
   return `${formatSpeciesForSale(label)}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
 }
 
 function formatSpeciesOfferSummaryLine(row) {
   const kilos = Number(row?.kilos || 0);
   const count = Number(row?.count || 0);
-  const price = row?.price_per_kg === "" || row?.price_per_kg == null ? "-" : `${Number(row.price_per_kg).toLocaleString("fi-FI")} € / kg`;
+  const unit = getSpeciesPriceUnit(getSpeciesRowLabel(row));
+  const price = row?.price_per_kg === "" || row?.price_per_kg == null ? "-" : `${Number(row.price_per_kg).toLocaleString("fi-FI")} € / ${unit}`;
   const batchId = String(row?.batch_id || "").trim();
   return [
     formatSpeciesSummaryLine(getSpeciesRowLabel(row), kilos, count),
@@ -206,7 +219,8 @@ function formatSourceBatchSummary(entry) {
   if (!entry) return "";
   const species = formatSpeciesForSale(entry.species);
   const kilos = entry.kilos == null || entry.kilos === "" ? "" : `${Number(entry.kilos).toFixed(1)} kg`;
-  return [species, kilos, entry.batchId || ""].filter(Boolean).join(" · ");
+  const count = entry.count == null || entry.count === "" ? "" : `${Number(entry.count)} kpl`;
+  return [species, isCrayfishSpecies(entry.species) ? count : kilos, isCrayfishSpecies(entry.species) && kilos ? kilos : "", entry.batchId || ""].filter(Boolean).join(" · ");
 }
 
 function getOfferSpeciesHeadline(summary) {
@@ -218,6 +232,12 @@ function getOfferSpeciesHeadline(summary) {
 
 function isMixedOffer(offer) {
   return getOfferSummaryLines(offer?.species_summary).length > 1;
+}
+
+function formatEntryPrice(rowOrSpecies, value) {
+  const unit = getSpeciesPriceUnit(typeof rowOrSpecies === "string" ? rowOrSpecies : getSpeciesRowLabel(rowOrSpecies));
+  if (value === "" || value == null) return "";
+  return `${euro(value)} / ${unit}`;
 }
 
 function parsePricePerKgFromNotes(notes) {
@@ -2979,6 +2999,7 @@ export default function App() {
         kilos: Number(row.kilos || 0),
         count: Number(row.count || 0),
         price_per_kg: row.price_per_kg === "" || row.price_per_kg == null ? null : Number(row.price_per_kg),
+        price_unit: getSpeciesPriceUnit(getSpeciesRowLabel(row)),
         batch_id: row.batch_id || "",
         catch_date: formState.date || "",
       })),
@@ -3805,7 +3826,11 @@ export default function App() {
       return;
     }
     if (validRows.some((row) => row.price_per_kg === "" || row.price_per_kg == null || Number.isNaN(Number(row.price_per_kg)))) {
-      setAuthError("Täytä hinta (€/kg) jokaiselle kalalajille ennen saaliin tallennusta.");
+      setAuthError("Täytä hinta jokaiselle kalalajille ennen saaliin tallennusta.");
+      return;
+    }
+    if (validRows.some((row) => isCrayfishSpecies(getSpeciesRowLabel(row)) && Number(row.count || 0) <= 0)) {
+      setAuthError("Täytä kappalemäärä kaikille täplärapu- ja jokirapuerille ennen saaliin tallennusta.");
       return;
     }
     setSaving(true);
@@ -4882,8 +4907,8 @@ export default function App() {
                         {row.species === "Muu" ? <input style={{ ...styles.input, marginTop: 8 }} placeholder="Kirjoita kalalaji" value={row.customSpecies} onChange={(e) => updateSpeciesRow(row.id, "customSpecies", e.target.value)} /> : null}
                       </div>
                       <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
-                      <div style={styles.field}><label>Hinta (€/kg)</label><input style={styles.input} type="number" step="0.01" placeholder="Esim. 5.50" value={row.price_per_kg} onChange={(e) => updateSpeciesRow(row.id, "price_per_kg", e.target.value)} /></div>
-                      <div style={styles.field}><label>Kpl</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
+                      <div style={styles.field}><label>{`Hinta (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label><input style={styles.input} type="number" step="0.01" placeholder={isCrayfishSpecies(getSpeciesRowLabel(row)) ? "Esim. 2.00" : "Esim. 5.50"} value={row.price_per_kg} onChange={(e) => updateSpeciesRow(row.id, "price_per_kg", e.target.value)} /></div>
+                      <div style={styles.field}><label>{isCrayfishSpecies(getSpeciesRowLabel(row)) ? "Kpl (pakollinen)" : "Kpl"}</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
                       <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
                     </div>
                   ))}
@@ -5019,7 +5044,7 @@ export default function App() {
                           <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                           {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                           {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
-                          {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>Hinta: {euro(entry.pricePerKg)} / kg</div> : null}
+                          {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>Hinta: {formatEntryPrice(entry.species, entry.pricePerKg)}</div> : null}
                           <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                           {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                         </div>

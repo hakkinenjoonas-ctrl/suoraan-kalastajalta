@@ -28,11 +28,11 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-function formatPrice(value: unknown) {
+function formatPrice(value: unknown, unit = "kg") {
   if (value === null || value === undefined || value === "") return "-";
   const number = Number(value);
   if (Number.isNaN(number)) return safeString(value);
-  return `${number.toLocaleString("fi-FI")} €/kg`;
+  return `${number.toLocaleString("fi-FI")} €/${unit}`;
 }
 
 function parsePriceFromNotes(notesValue: unknown) {
@@ -56,7 +56,7 @@ function getLineItems(entry: Record<string, unknown>) {
       const species = safeString(row.species);
       const scientificNames = Array.from(species.matchAll(/\(([^()]+)\)/g)).map((match) => safeString(match[1])).filter(Boolean).join(", ");
       const kilos = formatKilos(row.kilos);
-      const price = formatPrice(row.price_per_kg);
+      const price = formatPrice(row.price_per_kg, safeString(row.price_unit || "kg"));
       const batchId = safeString(row.batch_id);
       const catchDate = safeString(row.catch_date);
       const count = Number(row.count || 0);

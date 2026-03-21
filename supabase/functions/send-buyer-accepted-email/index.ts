@@ -51,6 +51,14 @@ function extractScientificNames(...values: unknown[]) {
   return Array.from(new Set(names)).join(", ");
 }
 
+function isCrayfishOffer(...values: unknown[]) {
+  const haystack = values.map((value) => String(value || "").toLowerCase()).join(" ");
+  return haystack.includes("täplärapu") ||
+    haystack.includes("jokirapu") ||
+    haystack.includes("pacifastacus leniusculus") ||
+    haystack.includes("astacus astacus");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -76,6 +84,7 @@ Deno.serve(async (req) => {
     const sellerEmail = String(offer.sellerEmail || "").trim();
     const sellerCommercialFishingId = String(offer.sellerCommercialFishingId || "").trim();
     const speciesSummary = String(offer.species_summary || "Kalaera");
+    const priceUnit = isCrayfishOffer(speciesSummary) ? "EUR/kpl" : "EUR/kg";
     const scientificNames = extractScientificNames(speciesSummary);
     const area = String(offer.area || "-");
     const spot = String(offer.spot || "");
@@ -84,7 +93,7 @@ Deno.serve(async (req) => {
     const kilos = String(offer.accepted_kilos || offer.reserved_kilos || offer.total_kilos || "-");
     const pricePerKg = offer.counter_price_per_kg == null || offer.counter_price_per_kg === ""
       ? "-"
-      : `${offer.counter_price_per_kg} EUR/kg`;
+      : `${offer.counter_price_per_kg} ${priceUnit}`;
     const tradeValue = String(offer.trade_value || "-");
     const batchId = String(offer.batch_id || "").trim();
     const qrImageUrl = String(offer.qr_image_url || "").trim();
