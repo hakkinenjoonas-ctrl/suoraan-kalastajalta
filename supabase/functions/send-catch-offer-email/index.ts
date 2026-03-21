@@ -58,6 +58,7 @@ function getLineItems(entry: Record<string, unknown>) {
       const kilos = formatKilos(row.kilos);
       const price = formatPrice(row.price_per_kg);
       const batchId = safeString(row.batch_id);
+      const catchDate = safeString(row.catch_date);
       const count = Number(row.count || 0);
       return {
         species,
@@ -65,6 +66,7 @@ function getLineItems(entry: Record<string, unknown>) {
         kilos,
         price,
         batchId,
+        catchDate,
         count: Number.isFinite(count) && count > 0 ? `${count} kpl` : "",
       };
     })
@@ -208,6 +210,7 @@ Deno.serve(async (req) => {
           <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.kilos || "-")}</td>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.price || "-")}</td>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.batchId || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.catchDate || "-")}</td>
         </tr>
       `)
       .join("");
@@ -269,7 +272,7 @@ Deno.serve(async (req) => {
         !mixedOffer ? `Hinta: ${price}` : null,
         batchId && !mixedOffer ? `Erätunnus: ${batchId}` : null,
         mixedOffer ? "Erän lajit:" : null,
-        ...lineItems.map((item) => `- ${item.species}: ${item.scientificNames || "-"} · ${item.kilos} · ${item.price}${item.batchId ? ` · Erätunnus ${item.batchId}` : ""}`),
+        ...lineItems.map((item) => `- ${item.species}: ${item.scientificNames || "-"} · ${item.kilos} · ${item.price}${item.batchId ? ` · Erätunnus ${item.batchId}` : ""}${item.catchDate ? ` · Pyyntipäivämäärä ${item.catchDate}` : ""}`),
         `Tarjoaja: ${sellerName}`,
         extraNotes ? `Lisätiedot: ${extraNotes}` : null,
         offerLink ? `Avaa tarjous apissa: ${offerLink}` : null,
@@ -293,6 +296,7 @@ Deno.serve(async (req) => {
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Määrä</th>
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Hinta</th>
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Erätunnus</th>
+                  <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Pyyntipäivämäärä</th>
                 </tr>
               </thead>
               <tbody>

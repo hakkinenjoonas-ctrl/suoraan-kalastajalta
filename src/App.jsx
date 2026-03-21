@@ -2978,6 +2978,7 @@ export default function App() {
         count: Number(row.count || 0),
         price_per_kg: row.price_per_kg === "" || row.price_per_kg == null ? null : Number(row.price_per_kg),
         batch_id: row.batch_id || "",
+        catch_date: formState.date || "",
       })),
       date: formState.date,
       dateLabel: "Pyyntipäivämäärä",
