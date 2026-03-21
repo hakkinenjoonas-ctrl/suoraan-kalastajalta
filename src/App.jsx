@@ -270,6 +270,45 @@ function parsePricePerKgFromNotes(notes) {
   return Number.isNaN(parsed) ? "" : parsed;
 }
 
+function extractVisibleAdditionalNotes(notes) {
+  const lines = String(notes || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return "";
+
+  const cleaned = [];
+  let inSpeciesBlock = false;
+  for (const line of lines) {
+    if (line === "Erän lajit:") {
+      inSpeciesBlock = true;
+      continue;
+    }
+    if (line === "Toimitus:") {
+      inSpeciesBlock = false;
+      continue;
+    }
+    if (inSpeciesBlock) continue;
+    if (
+      line.startsWith("Hinta:") ||
+      line.startsWith("Toimitustapa:") ||
+      line.startsWith("Toimitusalue:") ||
+      line.startsWith("Noutopaikka:") ||
+      line.startsWith("Toimituskustannus:") ||
+      line.startsWith("Aikaisin toimitus:") ||
+      line.startsWith("Kylmäkuljetus:") ||
+      line.startsWith("Kaupallisen kalastajan tunnus:") ||
+      line.startsWith("Paikkakunta:")
+    ) {
+      continue;
+    }
+    cleaned.push(line);
+  }
+
+  return cleaned.join("\n");
+}
+
 function getBatchPublicUrl(batchId) {
   if (!batchId) return "";
   return `${getPublicAppBaseUrl()}/batch/${encodeURIComponent(batchId)}`;
@@ -4435,6 +4474,7 @@ export default function App() {
                     const visiblePrice = getVisibleOfferPrice(o);
                     const sellerInfo = getBuyerVisibleSellerInfo(o);
                     const mixedOffer = isMixedOffer(o);
+                    const visibleAdditionalNotes = extractVisibleAdditionalNotes(o.notes);
                     return (
                       <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
                         <div style={{ marginBottom: 10 }}>
@@ -4487,7 +4527,7 @@ export default function App() {
                             <div style={styles.muted}>Kulu: {sellerInfo.deliveryCost !== "" && sellerInfo.deliveryCost != null ? `${sellerInfo.deliveryCost} €` : "-"}</div>
                             <div style={styles.muted}>Aikaisin toimitus: {sellerInfo.earliestDeliveryDate || "-"}</div>
                             <div style={styles.muted}>Kylmäkuljetus: {sellerInfo.coldTransport ? "kyllä" : "ei"}</div>
-                            {o.notes ? <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{o.notes}</div> : <div style={styles.muted}>Ei lisätietoja</div>}
+                            {visibleAdditionalNotes ? <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{visibleAdditionalNotes}</div> : <div style={styles.muted}>Ei lisätietoja</div>}
                           </div>
                         </div>
 
