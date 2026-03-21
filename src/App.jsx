@@ -1085,6 +1085,7 @@ function WholesaleOffersView({
   onCreateOffer,
   onUpdateOfferStatus,
   onUpdateBuyerOfferStatus,
+  updateFulfillmentStatus,
   buyerTypeLabel,
   buyerStatusLabel,
   shouldRevealBuyerIdentity,
@@ -5141,6 +5142,7 @@ export default function App() {
             onCreateOffer={handleCreateOffer}
             onUpdateOfferStatus={onUpdateOfferStatus}
             onUpdateBuyerOfferStatus={onUpdateBuyerOfferStatus}
+            updateFulfillmentStatus={updateFulfillmentStatus}
             buyerTypeLabel={buyerTypeLabel}
             buyerStatusLabel={buyerStatusLabel}
             shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
