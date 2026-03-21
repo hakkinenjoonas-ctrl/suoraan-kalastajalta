@@ -54,12 +54,14 @@ function getLineItems(entry: Record<string, unknown>) {
     .map((item) => {
       const row = (item || {}) as Record<string, unknown>;
       const species = safeString(row.species);
+      const scientificNames = Array.from(species.matchAll(/\(([^()]+)\)/g)).map((match) => safeString(match[1])).filter(Boolean).join(", ");
       const kilos = formatKilos(row.kilos);
       const price = formatPrice(row.price_per_kg);
       const batchId = safeString(row.batch_id);
       const count = Number(row.count || 0);
       return {
         species,
+        scientificNames,
         kilos,
         price,
         batchId,
@@ -202,12 +204,17 @@ Deno.serve(async (req) => {
       .map((item) => `
         <tr>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;font-weight:700;background:#eff6ff;">${escapeHtml(item.species || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.scientificNames || "-")}</td>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.kilos || "-")}</td>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.price || "-")}</td>
           <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.batchId || "-")}</td>
         </tr>
       `)
       .join("");
+
+    const subjectSpecies = mixedOffer
+      ? lineItems.map((item) => item.species.replace(/\s*\([^()]+\)\s*/g, "").trim()).filter(Boolean).join(", ")
+      : species;
 
     const tableRows = [
       buildFieldRow("Laji / erä", mixedOffer ? "Monilajinen erä" : species),
@@ -245,7 +252,9 @@ Deno.serve(async (req) => {
       }
 
       const offerLink = safeString(recipient?.offer_link);
-      const subject = mixedOffer ? "Uusi monilajinen kalaerä tarjolla" : `Uusi kalaerä tarjolla – ${species} ${kilos}`;
+      const subject = mixedOffer
+        ? `Uusi kalaerä tarjolla – ${subjectSpecies} yhteensä ${kilos}`
+        : `Uusi kalaerä tarjolla – ${species} ${kilos}`;
 
       const textLines = [
         "Uusi kalaerä tarjolla.",
@@ -260,7 +269,7 @@ Deno.serve(async (req) => {
         !mixedOffer ? `Hinta: ${price}` : null,
         batchId && !mixedOffer ? `Erätunnus: ${batchId}` : null,
         mixedOffer ? "Erän lajit:" : null,
-        ...lineItems.map((item) => `- ${item.species}: ${item.kilos} · ${item.price}${item.batchId ? ` · Erätunnus ${item.batchId}` : ""}`),
+        ...lineItems.map((item) => `- ${item.species}: ${item.scientificNames || "-"} · ${item.kilos} · ${item.price}${item.batchId ? ` · Erätunnus ${item.batchId}` : ""}`),
         `Tarjoaja: ${sellerName}`,
         extraNotes ? `Lisätiedot: ${extraNotes}` : null,
         offerLink ? `Avaa tarjous apissa: ${offerLink}` : null,
@@ -280,6 +289,7 @@ Deno.serve(async (req) => {
               <thead>
                 <tr>
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Kalalaji</th>
+                  <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Tieteellinen nimi</th>
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Määrä</th>
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Hinta</th>
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Erätunnus</th>
