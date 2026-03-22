@@ -3545,7 +3545,7 @@ export default function App() {
     const acceptedKilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
     const batchId = offer?.batch_id || "";
 
-    await supabase.functions.invoke("send-buyer-accepted-email", {
+    const { error } = await supabase.functions.invoke("send-buyer-accepted-email", {
       body: {
         buyerEmail,
         offerLink: `${getPublicAppBaseUrl()}?offer=${offer.id}`,
@@ -3580,7 +3580,11 @@ export default function App() {
           status: "accepted",
         },
       },
-    }).catch(() => null);
+    });
+
+    if (error) {
+      throw new Error(error.message || "Hyväksyntäsähköpostin lähetys epäonnistui.");
+    }
   };
 
   const onSubmitCounter = async (offer) => {
@@ -3750,7 +3754,11 @@ export default function App() {
     );
 
     if (status === "accepted") {
-      await sendBuyerAcceptedEmail({ ...offer, ...updatePayload, status: "accepted" });
+      try {
+        await sendBuyerAcceptedEmail({ ...offer, ...updatePayload, status: "accepted" });
+      } catch (emailError) {
+        setAuthError(`Kauppa hyväksyttiin, mutta vahvistussähköpostin lähetys epäonnistui: ${String(emailError?.message || emailError)}`);
+      }
     }
 
     await refreshBuyerOffers();
