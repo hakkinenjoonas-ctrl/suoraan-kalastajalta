@@ -1125,6 +1125,7 @@ function WholesaleOffersView({
   onUpdateOfferStatus,
   onUpdateBuyerOfferStatus,
   updateFulfillmentStatus,
+  requestedOfferId,
   buyerTypeLabel,
   buyerStatusLabel,
   shouldRevealBuyerIdentity,
@@ -1211,6 +1212,10 @@ function WholesaleOffersView({
   const prioritizedBuyerResponses = (buyerOffers || [])
     .filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status))
     .sort((a, b) => {
+      if (requestedOfferId) {
+        if (a.id === requestedOfferId && b.id !== requestedOfferId) return -1;
+        if (b.id === requestedOfferId && a.id !== requestedOfferId) return 1;
+      }
       const priorityDiff = (buyerResponsePriority[a.status] ?? 99) - (buyerResponsePriority[b.status] ?? 99);
       if (priorityDiff !== 0) return priorityDiff;
       return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
@@ -1231,18 +1236,20 @@ function WholesaleOffersView({
             const isReserved = offer.status === "reserved";
             const isCountered = offer.status === "countered";
             const revealIdentity = shouldRevealBuyerIdentity(offer.status);
+            const isLinkedOffer = requestedOfferId && offer.id === requestedOfferId;
             return (
               <div
                 key={offer.id}
                 style={{
                   ...styles.entry,
-                  background: isAccepted ? "#ecfeff" : isReserved ? "#eff6ff" : isCountered ? "#f8fbff" : "#fff",
-                  borderLeft: `4px solid ${isAccepted ? "#0891b2" : isReserved ? "#2563eb" : isCountered ? "#0ea5e9" : "#0f172a"}`,
+                  background: isLinkedOffer ? "#eff6ff" : isAccepted ? "#ecfeff" : isReserved ? "#eff6ff" : isCountered ? "#f8fbff" : "#fff",
+                  borderLeft: `4px solid ${isLinkedOffer ? "#1d4ed8" : isAccepted ? "#0891b2" : isReserved ? "#2563eb" : isCountered ? "#0ea5e9" : "#0f172a"}`,
                 }}
               >
                 <div style={{ ...styles.rowBetween, marginBottom: 8 }}>
                   <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
                   <div style={styles.entryBadges}>
+                    {isLinkedOffer ? <span style={{ ...styles.badge, background: "#dbeafe", borderColor: "#93c5fd", color: "#1d4ed8" }}>Avattu linkistä</span> : null}
                     <span style={buyerStatusBadgeStyle(offer.status, styles.badge)}>{buyerStatusLabel(offer.status)}</span>
                     <span style={styles.badge}>{revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type)}</span>
                   </div>
@@ -1340,23 +1347,34 @@ function WholesaleOffersView({
                 {buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length === 0 ? (
                   <div style={styles.muted}>Ei vielä ostajien vastauksia.</div>
                 ) : (
-                  buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).map((offer) => {
+                  buyerMatches
+                    .filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status))
+                    .sort((a, b) => {
+                      if (requestedOfferId) {
+                        if (a.id === requestedOfferId && b.id !== requestedOfferId) return -1;
+                        if (b.id === requestedOfferId && a.id !== requestedOfferId) return 1;
+                      }
+                      return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+                    })
+                    .map((offer) => {
                     const isAccepted = offer.status === "accepted";
                     const revealIdentity = shouldRevealBuyerIdentity(offer.status);
                     const buyerIdentity = revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type);
+                    const isLinkedOffer = requestedOfferId && offer.id === requestedOfferId;
 
                     return (
                       <div
                         key={offer.id}
                         style={{
                           ...styles.entry,
-                          background: isAccepted ? "#ecfdf5" : "#f8fafc",
-                          borderLeft: `4px solid ${isAccepted ? "#16a34a" : "#0f172a"}`,
+                          background: isLinkedOffer ? "#eff6ff" : isAccepted ? "#ecfdf5" : "#f8fafc",
+                          borderLeft: `4px solid ${isLinkedOffer ? "#1d4ed8" : isAccepted ? "#16a34a" : "#0f172a"}`,
                         }}
                       >
                         <div style={{ ...styles.rowBetween, marginBottom: 10 }}>
                           <strong>{formatOfferDate(offer.updated_at || offer.created_at)}</strong>
                           <div style={styles.entryBadges}>
+                            {isLinkedOffer ? <span style={{ ...styles.badge, background: "#dbeafe", borderColor: "#93c5fd", color: "#1d4ed8" }}>Avattu linkistä</span> : null}
                             <span style={buyerStatusBadgeStyle(offer.status, styles.badge)}>
                               {buyerStatusLabel(offer.status)}
                             </span>
@@ -4641,7 +4659,7 @@ export default function App() {
                               buyerUpdateOffer(o.id, { status: "viewed" });
                             }
                             setBuyerActiveOfferId(isActive ? null : o.id);
-                          }}>{isActive ? "Sulje" : o.status === "reserved" ? "Muokkaa varausta" : o.status === "sold" ? "Näytä tiedot" : "Tee vastatarjous / varaa"}</button>
+                          }}>{isActive ? "Sulje" : o.status === "accepted" || o.status === "sold" ? "Näytä tiedot" : o.status === "reserved" ? "Muokkaa varausta" : "Tee vastatarjous / varaa"}</button>
                           {o.status !== "accepted" && o.status !== "sold" ? <button style={styles.button} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button> : null}
                         </div>
 
@@ -5246,6 +5264,7 @@ export default function App() {
             onUpdateOfferStatus={onUpdateOfferStatus}
             onUpdateBuyerOfferStatus={onUpdateBuyerOfferStatus}
             updateFulfillmentStatus={updateFulfillmentStatus}
+            requestedOfferId={requestedOfferId}
             buyerTypeLabel={buyerTypeLabel}
             buyerStatusLabel={buyerStatusLabel}
             shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
