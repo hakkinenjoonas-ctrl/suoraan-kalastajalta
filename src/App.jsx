@@ -337,6 +337,12 @@ function getRequestedPublicBatchId() {
   return "";
 }
 
+function getRequestedOfferId() {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  return String(params.get("offer") || "").trim();
+}
+
 function getPublicBatchInfoUrl(batchId) {
   if (!batchId) return "";
   return `${SUPABASE_URL}/functions/v1/public-batch-info?batchId=${encodeURIComponent(batchId)}`;
@@ -1646,6 +1652,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
 
 export default function App() {
   const publicBatchId = getRequestedPublicBatchId();
+  const requestedOfferId = getRequestedOfferId();
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [availableRoleOptions, setAvailableRoleOptions] = useState([]);
@@ -2004,6 +2011,26 @@ export default function App() {
       setActiveTab("offers");
     }
   }, []);
+
+  useEffect(() => {
+    if (!requestedOfferId || profile?.role !== "buyer" || buyerOffers.length === 0) return;
+    const linkedOffer = buyerOffers.find((offer) => offer.id === requestedOfferId);
+    if (!linkedOffer) return;
+
+    setBuyerActiveOfferId(linkedOffer.id);
+
+    if (["accepted", "sold"].includes(linkedOffer.status)) {
+      setBuyerOffersFilter("accepted");
+    } else if (linkedOffer.status === "reserved") {
+      setBuyerOffersFilter("reserved");
+    } else if (linkedOffer.status === "countered") {
+      setBuyerOffersFilter("countered");
+    } else if (linkedOffer.status === "rejected") {
+      setBuyerOffersFilter("rejected");
+    } else {
+      setBuyerOffersFilter("open");
+    }
+  }, [requestedOfferId, profile?.role, buyerOffers]);
 
   useEffect(() => {
     if (!publicBatchId) {
