@@ -271,6 +271,25 @@ function formatSpeciesSummaryText(value) {
     .join("\n");
 }
 
+function getOfferSummaryBatchItems(summary) {
+  return String(summary || "")
+    .split("\n")
+    .map((line) => String(line || "").trim())
+    .filter(Boolean)
+    .map((line) => {
+      const batchMatch = line.match(/Erätunnus\s+([A-Z0-9-]+)/i);
+      const label = line
+        .replace(/\s*·\s*Hinta\s+.*$/i, "")
+        .replace(/\s*·\s*Erätunnus\s+.*$/i, "")
+        .trim();
+      return {
+        label,
+        batchId: batchMatch ? String(batchMatch[1] || "").trim() : "",
+      };
+    })
+    .filter((item) => item.label || item.batchId);
+}
+
 function formatSourceBatchSummary(entry) {
   if (!entry) return "";
   const species = formatSpeciesForSale(entry.species);
@@ -1242,7 +1261,15 @@ function WholesaleOffersView({
             <span style={{ ...styles.badge, background: "#dbeafe", borderColor: "#93c5fd", color: "#1d4ed8" }}>{buyerStatusLabel(linkedBuyerOffer.status)}</span>
           </div>
           <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(linkedBuyerOffer.species_summary) || "-"}</div>
-          {linkedBuyerOffer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {linkedBuyerOffer.batch_id}</div> : null}
+          {isMixedOffer(linkedBuyerOffer)
+            ? getOfferSummaryBatchItems(linkedBuyerOffer.species_summary).map((item) => (
+              <div key={`${linkedBuyerOffer.id}-${item.batchId || item.label}`} style={{ ...styles.entry, background: "#fff", padding: 12 }}>
+                <div style={styles.muted}><strong>{item.label || "Erä"}</strong></div>
+                {item.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> {item.batchId}</div> : null}
+                {item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+              </div>
+            ))
+            : linkedBuyerOffer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {linkedBuyerOffer.batch_id}</div> : null}
           <div style={styles.muted}><strong>Ostaja:</strong> {shouldRevealBuyerIdentity(linkedBuyerOffer.status) ? (linkedBuyerOffer.buyer_company_name || linkedBuyerOffer.buyer_email || "Ostaja") : buyerTypeLabel(linkedBuyerOffer.buyer_type)}</div>
           {linkedBuyerOffer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {linkedBuyerOffer.buyer_message}</div> : null}
           <div style={styles.muted}>Tarjous näkyy myös alempana ostajien vastauksissa ja erän omassa tarjouslistassa.</div>
@@ -1280,8 +1307,16 @@ function WholesaleOffersView({
                 </div>
                 <div>
                   <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary) || "-"}</div>
-                  {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
-                  {offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                  {isMixedOffer(offer)
+                    ? getOfferSummaryBatchItems(offer.species_summary).map((item) => (
+                      <div key={`${offer.id}-${item.batchId || item.label}`} style={{ ...styles.entry, background: "#fff", padding: 12, marginTop: 8, marginBottom: 8 }}>
+                        <div style={styles.muted}><strong>{item.label || "Erä"}</strong></div>
+                        {item.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> {item.batchId}</div> : null}
+                        {item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                      </div>
+                    ))
+                    : offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
+                  {!isMixedOffer(offer) && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                   <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
                   {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous:</strong> {euro(offer.counter_price_per_kg)} / kg</div> : null}
                   {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
@@ -1409,8 +1444,16 @@ function WholesaleOffersView({
                         <div style={{ ...styles.grid2, marginBottom: 10 }}>
                           <div>
                             <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary) || "-"}</div>
-                            {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
-                            {offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                            {isMixedOffer(offer)
+                              ? getOfferSummaryBatchItems(offer.species_summary).map((item) => (
+                                <div key={`${offer.id}-${item.batchId || item.label}`} style={{ ...styles.entry, background: "#fff", padding: 12, marginTop: 8, marginBottom: 8 }}>
+                                  <div style={styles.muted}><strong>{item.label || "Erä"}</strong></div>
+                                  {item.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> {item.batchId}</div> : null}
+                                  {item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                                </div>
+                              ))
+                              : offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
+                            {!isMixedOffer(offer) && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                             <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
                             <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{entry.municipality ? ` · ${entry.municipality}` : ""}{offer.spot ? ` / ${offer.spot}` : ""}</div>
                           </div>
