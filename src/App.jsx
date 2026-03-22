@@ -1844,11 +1844,11 @@ export default function App() {
       sellerArea: matchingEntry?.area || offer.area || "",
       municipality: matchingEntry?.municipality || "",
       sellerSpot: matchingEntry?.spot || offer.spot || "",
-      deliveryMethod: matchingEntry?.deliveryMethod || "",
-      deliveryArea: matchingEntry?.deliveryArea || "",
-      deliveryCost: matchingEntry?.deliveryCost,
-      earliestDeliveryDate: matchingEntry?.earliestDeliveryDate || "",
-      coldTransport: matchingEntry?.coldTransport,
+      deliveryMethod: matchingEntry?.deliveryMethod || offer?.delivery_method || "",
+      deliveryArea: matchingEntry?.deliveryArea || offer?.delivery_area || "",
+      deliveryCost: matchingEntry?.deliveryCost ?? offer?.delivery_cost ?? "",
+      earliestDeliveryDate: matchingEntry?.earliestDeliveryDate || offer?.earliest_delivery_date || "",
+      coldTransport: matchingEntry?.coldTransport ?? Boolean(offer?.cold_transport),
     };
   };
 
@@ -2409,6 +2409,11 @@ export default function App() {
               price_per_kg: offer.price_per_kg == null || offer.price_per_kg === "" ? parsePricePerKgFromNotes(offer.notes) : Number(offer.price_per_kg),
               counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
               reserved_kilos: offer.reserved_kilos == null ? "" : Number(offer.reserved_kilos),
+              delivery_method: offer.delivery_method || "Nouto",
+              delivery_area: offer.delivery_area || "",
+              delivery_cost: offer.delivery_cost == null ? "" : Number(offer.delivery_cost),
+              earliest_delivery_date: offer.earliest_delivery_date || "",
+              cold_transport: Boolean(offer.cold_transport),
               buyer_type: buyer?.buyer_type || "",
               buyer_company_name: buyer?.company_name || "",
               buyer_contact_name: buyer?.contact_name || "",
@@ -3097,7 +3102,7 @@ export default function App() {
     for (const recipient of recipients) {
       const insertedOffer = await supabase
         .from("buyer_offers")
-        .insert({
+      .insert({
           batch_id: rows[0]?.batch_id || null,
           buyer_id: recipient.buyer_id || null,
           buyer_email: recipient.email,
@@ -3109,6 +3114,11 @@ export default function App() {
           area: entry.area,
           spot: entry.spot,
           gear: entry.gear,
+          delivery_method: entry.deliveryMethod || "Nouto",
+          delivery_area: entry.deliveryArea || null,
+          delivery_cost: entry.deliveryCost == null || entry.deliveryCost === "" ? null : Number(entry.deliveryCost),
+          earliest_delivery_date: entry.earliestDeliveryDate || null,
+          cold_transport: Boolean(entry.coldTransport),
           notes: entry.notes || null,
           status: "sent",
           billing_status: "unbilled",
@@ -3261,7 +3271,7 @@ export default function App() {
     for (const recipient of recipients) {
       const insertedOffer = await supabase
         .from("buyer_offers")
-        .insert({
+      .insert({
           batch_id: batchId,
           buyer_id: recipient.buyer_id || null,
           buyer_email: recipient.email,
@@ -3373,6 +3383,11 @@ export default function App() {
         price_per_kg: offer.price_per_kg == null ? "" : Number(offer.price_per_kg),
         counter_price_per_kg: offer.counter_price_per_kg == null ? "" : Number(offer.counter_price_per_kg),
         reserved_kilos: offer.reserved_kilos == null ? "" : Number(offer.reserved_kilos),
+        delivery_method: offer.delivery_method || "Nouto",
+        delivery_area: offer.delivery_area || "",
+        delivery_cost: offer.delivery_cost == null ? "" : Number(offer.delivery_cost),
+        earliest_delivery_date: offer.earliest_delivery_date || "",
+        cold_transport: Boolean(offer.cold_transport),
         buyer_type: buyer?.buyer_type || "",
         buyer_company_name: buyer?.company_name || "",
         buyer_contact_name: buyer?.contact_name || "",
@@ -3545,6 +3560,9 @@ export default function App() {
           spot: sellerInfo.sellerSpot || offer?.spot,
           delivery_method: sellerInfo.deliveryMethod,
           delivery_area: sellerInfo.deliveryArea,
+          delivery_cost: sellerInfo.deliveryCost,
+          earliest_delivery_date: sellerInfo.earliestDeliveryDate,
+          cold_transport: sellerInfo.coldTransport,
           public_location: sellerInfo.publicLocation,
           counter_price_per_kg: offer?.counter_price_per_kg,
           reserved_kilos: offer?.reserved_kilos,
@@ -3800,6 +3818,11 @@ export default function App() {
           area: formState.area,
           spot: formState.spot,
           gear: `Jaloste / ${formState.processingMethod || formState.productType || "-"}`,
+          delivery_method: formState.deliveryMethod || "Nouto",
+          delivery_area: formState.deliveryArea || null,
+          delivery_cost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
+          earliest_delivery_date: formState.earliestDeliveryDate || null,
+          cold_transport: Boolean(formState.coldTransport),
           notes,
           status: "sent",
           billing_status: "unbilled",

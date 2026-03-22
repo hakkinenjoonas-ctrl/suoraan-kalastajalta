@@ -90,6 +90,9 @@ Deno.serve(async (req) => {
     const spot = String(offer.spot || "");
     const deliveryMethod = String(offer.delivery_method || "").trim();
     const deliveryArea = String(offer.delivery_area || "").trim();
+    const deliveryCost = offer.delivery_cost == null || offer.delivery_cost === "" ? "-" : `${offer.delivery_cost} €`;
+    const earliestDeliveryDate = String(offer.earliest_delivery_date || "").trim();
+    const coldTransport = offer.cold_transport ? "Kyllä" : "Ei";
     const kilos = String(offer.accepted_kilos || offer.reserved_kilos || offer.total_kilos || "-");
     const pricePerKg = offer.counter_price_per_kg == null || offer.counter_price_per_kg === ""
       ? "-"
@@ -117,6 +120,9 @@ Deno.serve(async (req) => {
       `Toimituksen tila: ${fulfillmentStatus}`,
       deliveryMethod ? `Toimitustapa: ${deliveryMethod}` : null,
       deliveryArea ? `${deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}: ${deliveryArea}` : null,
+      `Toimituskulu: ${deliveryCost}`,
+      `Aikaisin toimitus: ${earliestDeliveryDate || "-"}`,
+      `Kylmäkuljetus: ${coldTransport}`,
       `Hinta: ${pricePerKg}`,
       `Kaupan arvo: ${tradeValue}`,
       deliveryAddress ? `Toimitusosoite: ${deliveryAddress}` : null,
@@ -140,6 +146,9 @@ Deno.serve(async (req) => {
           <strong>Toimituksen tila:</strong> ${fulfillmentStatus}<br />
           ${deliveryMethod ? `<strong>Toimitustapa:</strong> ${deliveryMethod}<br />` : ""}
           ${deliveryArea ? `<strong>${deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}:</strong> ${deliveryArea}<br />` : ""}
+          <strong>Toimituskulu:</strong> ${deliveryCost}<br />
+          <strong>Aikaisin toimitus:</strong> ${earliestDeliveryDate || "-"}<br />
+          <strong>Kylmäkuljetus:</strong> ${coldTransport}<br />
           <strong>Hinta:</strong> ${pricePerKg}<br />
           <strong>Kaupan arvo:</strong> ${tradeValue}
         </p>
