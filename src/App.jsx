@@ -376,6 +376,13 @@ function getRequestedOfferId() {
   return String(params.get("offer") || "").trim();
 }
 
+function fulfillmentStatusLabel(status) {
+  if (status === "awaiting_contact") return "Yhteydenotto kesken";
+  if (status === "delivery_agreed") return "Toimitus sovittu";
+  if (status === "delivered") return "Toimitettu";
+  return "Yhteydenotto kesken";
+}
+
 function getPublicBatchInfoUrl(batchId) {
   if (!batchId) return "";
   return `${SUPABASE_URL}/functions/v1/public-batch-info?batchId=${encodeURIComponent(batchId)}`;
@@ -1891,13 +1898,6 @@ export default function App() {
     if (status === "rejected") return "Hylätty";
     if (status === "cancelled") return "Peruttu";
     return status || "-";
-  };
-
-  const fulfillmentStatusLabel = (status) => {
-    if (status === "awaiting_contact") return "Yhteydenotto kesken";
-    if (status === "delivery_agreed") return "Toimitus sovittu";
-    if (status === "delivered") return "Toimitettu";
-    return "Yhteydenotto kesken";
   };
 
   const shouldRevealBuyerIdentity = (status) => status === "accepted";
