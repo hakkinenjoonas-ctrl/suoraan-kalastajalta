@@ -1222,9 +1222,26 @@ function WholesaleOffersView({
     });
 
   const canManageBuyerOffer = (offer) => profile?.role === "owner" || profile?.id === offer?.seller_user_id;
+  const linkedBuyerOffer = requestedOfferId
+    ? (buyerOffers || []).find((offer) => offer.id === requestedOfferId)
+    : null;
 
   return (
     <div style={styles.stack}>
+      {linkedBuyerOffer ? (
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#eff6ff", borderColor: "#93c5fd" }}>
+          <div style={styles.rowBetween}>
+            <strong>Avattu linkistä</strong>
+            <span style={{ ...styles.badge, background: "#dbeafe", borderColor: "#93c5fd", color: "#1d4ed8" }}>{buyerStatusLabel(linkedBuyerOffer.status)}</span>
+          </div>
+          <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(linkedBuyerOffer.species_summary) || "-"}</div>
+          {linkedBuyerOffer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {linkedBuyerOffer.batch_id}</div> : null}
+          <div style={styles.muted}><strong>Ostaja:</strong> {shouldRevealBuyerIdentity(linkedBuyerOffer.status) ? (linkedBuyerOffer.buyer_company_name || linkedBuyerOffer.buyer_email || "Ostaja") : buyerTypeLabel(linkedBuyerOffer.buyer_type)}</div>
+          {linkedBuyerOffer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {linkedBuyerOffer.buyer_message}</div> : null}
+          <div style={styles.muted}>Tarjous näkyy myös alempana ostajien vastauksissa ja erän omassa tarjouslistassa.</div>
+        </div>
+      ) : null}
+
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Ostajien vastaukset ja varaukset</strong>
         <div style={styles.noticeInfo}>Tässä näkyvät ensin ostajien varaukset ja vastatarjoukset. Näin näet heti, mihin eriin pitää reagoida. Hyväksytyt ja hylätyt näkyvät niiden jälkeen.</div>
