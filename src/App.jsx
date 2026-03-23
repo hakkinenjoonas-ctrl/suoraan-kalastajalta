@@ -932,7 +932,7 @@ async function findAllowedUserByEmail(supabase, email) {
 function roleLabel(role) {
   if (role === "owner") return "Omistaja";
   if (role === "buyer") return "Ostaja";
-  if (role === "processor") return "Kalanjalostaja";
+  if (role === "processor") return "Jalostaja";
   return "Kalastaja";
 }
 
@@ -1809,6 +1809,7 @@ export default function App() {
   const [buyerActiveOfferId, setBuyerActiveOfferId] = useState(null);
   const [allowedUsers, setAllowedUsers] = useState([]);
   const [buyers, setBuyers] = useState([]);
+  const [processorSourceEntries, setProcessorSourceEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -2386,6 +2387,14 @@ export default function App() {
                 .select("*")
                 .order("created_at", { ascending: false })
           : Promise.resolve({ data: [], error: null });
+        const processorAcceptedOffersPromise = hasBuyerOffersTable && profile.role === "processor"
+          ? supabase
+              .from("buyer_offers")
+              .select("id, batch_id, species_summary, buyer_email, status")
+              .eq("buyer_email", normalizedProfileEmail)
+              .eq("status", "accepted")
+              .order("updated_at", { ascending: false })
+          : Promise.resolve({ data: [], error: null });
 
         const [
           { data: entryData, error: entryError },
@@ -2394,6 +2403,7 @@ export default function App() {
           offerResult,
           buyersResult,
           buyerOffersResult,
+          processorAcceptedOffersResult,
         ] = await Promise.all([
           finalEntriesQuery,
           hasProcessedBatchesTable
@@ -2411,6 +2421,7 @@ export default function App() {
             ? supabase.from("buyers").select("*").order("company_name", { ascending: true })
             : Promise.resolve({ data: [], error: null }),
           buyerOffersPromise,
+          processorAcceptedOffersPromise,
         ]);
 
         if (entryError) {
@@ -2445,6 +2456,75 @@ export default function App() {
             offerToRestaurants: Boolean(entry.offer_to_restaurants),
             offerToWholesalers: Boolean(entry.offer_to_wholesalers),
           })));
+        }
+
+        if (processorAcceptedOffersResult?.error && processorAcceptedOffersResult.error.code !== "PGRST116") {
+          if (isMissingRefreshTokenError(processorAcceptedOffersResult.error)) {
+            await invalidateSession();
+            return;
+          }
+          setAuthError(processorAcceptedOffersResult.error.message);
+          setProcessorSourceEntries([]);
+        } else if (profile.role === "processor") {
+          const purchasedBatchIds = Array.from(new Set(
+            (processorAcceptedOffersResult?.data || [])
+              .flatMap((offer) => {
+                const summaryBatchIds = getOfferSummaryBatchItems(offer.species_summary)
+                  .map((item) => item.batchId)
+                  .filter(Boolean);
+                const directBatchId = String(offer.batch_id || "").trim();
+                return directBatchId ? [directBatchId, ...summaryBatchIds] : summaryBatchIds;
+              })
+              .filter(Boolean),
+          ));
+
+          if (purchasedBatchIds.length === 0) {
+            setProcessorSourceEntries([]);
+          } else {
+            const { data: purchasedEntriesData, error: purchasedEntriesError } = await supabase
+              .from("catch_entries")
+              .select("*")
+              .in("batch_id", purchasedBatchIds)
+              .order("date", { ascending: false })
+              .order("created_at", { ascending: false });
+
+            if (purchasedEntriesError && purchasedEntriesError.code !== "PGRST116") {
+              if (isMissingRefreshTokenError(purchasedEntriesError)) {
+                await invalidateSession();
+                return;
+              }
+              setAuthError(purchasedEntriesError.message);
+              setProcessorSourceEntries([]);
+            } else {
+              setProcessorSourceEntries((purchasedEntriesData || []).map((entry) => ({
+                id: entry.id,
+                batchId: entry.batch_id,
+                date: entry.date,
+                area: entry.area,
+                municipality: entry.municipality || "",
+                spot: entry.spot || "",
+                species: entry.species,
+                kilos: Number(entry.kilos || 0),
+                count: Number(entry.count || 0),
+                gear: entry.gear,
+                notes: entry.notes || "",
+                deliveryMethod: entry.delivery_method || "Nouto",
+                deliveryArea: entry.delivery_area || "",
+                deliveryCost: entry.delivery_cost == null ? "" : Number(entry.delivery_cost),
+                earliestDeliveryDate: entry.earliest_delivery_date || "",
+                coldTransport: Boolean(entry.cold_transport),
+                ownerName: entry.owner_name,
+                commercialFishingId: entry.commercial_fishing_id || "",
+                pricePerKg: entry.price_per_kg == null ? "" : Number(entry.price_per_kg),
+                ownerUserId: entry.owner_user_id,
+                offerToShops: Boolean(entry.offer_to_shops),
+                offerToRestaurants: Boolean(entry.offer_to_restaurants),
+                offerToWholesalers: Boolean(entry.offer_to_wholesalers),
+              })));
+            }
+          }
+        } else {
+          setProcessorSourceEntries([]);
         }
 
         if (processedEntriesResult?.error && processedEntriesResult.error.code !== "PGRST116") {
@@ -2676,8 +2756,10 @@ export default function App() {
   const saleEntries = useMemo(() => entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [entries]);
   const processedSaleEntries = useMemo(() => processedEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [processedEntries]);
   const availableSourceEntries = useMemo(
-    () => entries.filter((entry) => entry.batchId && Number(entry.kilos || 0) > 0).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()),
-    [entries],
+    () => (profile?.role === "processor" ? processorSourceEntries : entries)
+      .filter((entry) => entry.batchId && (Number(entry.kilos || 0) > 0 || Number(entry.count || 0) > 0))
+      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()),
+    [entries, processorSourceEntries, profile?.role],
   );
   const selectedProcessedSourceEntries = useMemo(
     () => availableSourceEntries.filter((entry) => processedForm.sourceEntryIds.includes(entry.id)),
@@ -4860,7 +4942,7 @@ export default function App() {
                   }}
                 />
               </div>
-              <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · rooli: {profile.role === "owner" ? "omistaja" : profile.role === "buyer" ? "ostaja" : profile.role === "processor" ? "kalanjalostaja" : "käyttäjä"}</p>
+              <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · rooli: {profile.role === "owner" ? "omistaja" : profile.role === "buyer" ? "ostaja" : profile.role === "processor" ? "jalostaja" : "kalastaja"}</p>
               {profile.role === "processor" ? (
                 <p style={{ ...styles.subtitle, marginTop: 4 }}>
                   Vesiviljelylaitoksen laitosnumero: <strong>{profile.evira_facility_id || "ei asetettu"}</strong>
@@ -5092,9 +5174,9 @@ export default function App() {
                 <div style={styles.field}><label>Käsittelytapa</label><select style={styles.input} value={processedForm.processingMethod} onChange={(e) => setProcessedForm({ ...processedForm, processingMethod: e.target.value })}>{processingMethods.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
                 <div style={styles.field}><label>Käsittelypaikka</label><input style={styles.input} value={processedForm.spot} onChange={(e) => setProcessedForm({ ...processedForm, spot: e.target.value })} placeholder="Esim. jalostuskontti / Forelli" /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
-                  <label>Liitä kalastajan YKP-raaka-aine-erät</label>
+                  <label>{profile.role === "processor" ? "Liitä omat ostetut YKP-raaka-aine-erät" : "Liitä kalastajan YKP-raaka-aine-erät"}</label>
                   {availableSourceEntries.length === 0 ? (
-                    <div style={styles.noticeInfo}>Ei vielä batch-tunnuksella tallennettuja saaliseriä linkitettäväksi.</div>
+                    <div style={styles.noticeInfo}>{profile.role === "processor" ? "Ei vielä omia hyväksytysti ostettuja YKP-raaka-aine-eriä linkitettäväksi." : "Ei vielä batch-tunnuksella tallennettuja saaliseriä linkitettäväksi."}</div>
                   ) : (
                     <div style={{ ...styles.stack, gap: 10 }}>
                       {availableSourceEntries.map((entry) => {
@@ -5452,7 +5534,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               <div style={styles.noticeInfo}>Lisää tähän kollegan sähköposti. Sen jälkeen hän voi rekisteröityä itse omalla salasanallaan.</div>
               <div style={styles.field}><label>Nimi</label><input style={styles.input} value={newAllowedForm.displayName} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Antti Kalastaja" /></div>
               <div style={styles.field}><label>Sähköposti</label><input style={styles.input} type="email" value={newAllowedForm.email} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. antti@yritys.fi" /></div>
-              <div style={styles.field}><label>Rooli</label><select style={styles.input} value={newAllowedForm.role} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, role: e.target.value }))}><option value="member">Kalastaja</option><option value="processor">Kalanjalostaja</option><option value="buyer">Ostaja</option><option value="owner">Omistaja</option></select></div>
+              <div style={styles.field}><label>Rooli</label><select style={styles.input} value={newAllowedForm.role} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, role: e.target.value }))}><option value="member">Kalastaja</option><option value="processor">Jalostaja</option><option value="buyer">Ostaja</option><option value="owner">Omistaja</option></select></div>
               {newAllowedForm.role === "buyer" ? (
                 <div style={styles.field}>
                   <label>Liitetty ostaja</label>
@@ -5498,7 +5580,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                                   <div style={styles.entryBadges}>
                                     <span style={styles.badge}>{user.display_name}</span>
                                     <span style={styles.badge}>{user.email}</span>
-                                    <span style={styles.badge}>{user.role === "owner" ? "Omistaja" : user.role === "buyer" ? "Ostaja" : user.role === "processor" ? "Kalanjalostaja" : "Käyttäjä"}</span>
+                                    <span style={styles.badge}>{roleLabel(user.role)}</span>
                                     <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
                                     {linkedBuyer ? <span style={styles.badge}>Ostaja: {linkedBuyer.company_name}</span> : null}
                                   </div>
