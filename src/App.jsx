@@ -309,6 +309,30 @@ function isMixedOffer(offer) {
   return getOfferSummaryLines(offer?.species_summary).length > 1;
 }
 
+function normalizeOfferMatchValue(value) {
+  return String(value || "").trim();
+}
+
+function offersShareSameLot(left, right) {
+  if (!left || !right) return false;
+
+  const sameSeller = normalizeOfferMatchValue(left.seller_user_id) === normalizeOfferMatchValue(right.seller_user_id);
+  if (!sameSeller) return false;
+
+  const leftBatchId = normalizeOfferMatchValue(left.batch_id);
+  const rightBatchId = normalizeOfferMatchValue(right.batch_id);
+  if (leftBatchId && rightBatchId && leftBatchId === rightBatchId) {
+    return true;
+  }
+
+  return (
+    normalizeOfferMatchValue(left.species_summary) === normalizeOfferMatchValue(right.species_summary) &&
+    Number(left.total_kilos || 0) === Number(right.total_kilos || 0) &&
+    normalizeOfferMatchValue(left.area) === normalizeOfferMatchValue(right.area) &&
+    normalizeOfferMatchValue(left.spot) === normalizeOfferMatchValue(right.spot)
+  );
+}
+
 function formatEntryPrice(rowOrSpecies, value) {
   const unit = getSpeciesPriceUnit(typeof rowOrSpecies === "string" ? rowOrSpecies : getSpeciesRowLabel(rowOrSpecies));
   if (value === "" || value == null) return "";
@@ -3856,30 +3880,37 @@ export default function App() {
     }
 
     if (status === "accepted") {
-      let competingOffersQuery = supabase
+      const { data: openOffers, error: openOffersError } = await supabase
         .from("buyer_offers")
-        .update({ status: "sold" })
-        .neq("id", offer.id)
+        .select("id, batch_id, seller_user_id, species_summary, total_kilos, area, spot, status")
+        .eq("seller_user_id", offer.seller_user_id)
         .in("status", ["sent", "viewed", "countered", "reserved"]);
 
-      if (offer.batch_id) {
-        competingOffersQuery = competingOffersQuery.eq("batch_id", offer.batch_id);
-      } else {
-        competingOffersQuery = competingOffersQuery
-          .eq("seller_user_id", offer.seller_user_id)
-          .eq("area", offer.area)
-          .eq("spot", offer.spot || "")
-          .eq("total_kilos", offer.total_kilos);
-      }
-
-      const { error: competingOffersError } = await competingOffersQuery;
-      if (competingOffersError) {
-        if (isMissingRefreshTokenError(competingOffersError)) {
+      if (openOffersError) {
+        if (isMissingRefreshTokenError(openOffersError)) {
           await invalidateSession();
           return;
         }
-        setAuthError(competingOffersError.message);
-        return;
+        setAuthError(`Kauppa hyväksyttiin, mutta muiden saman erän tarjousten sulkeminen epäonnistui: ${openOffersError.message}`);
+      } else {
+        const competingOfferIds = (openOffers || [])
+          .filter((candidate) => candidate.id !== offer.id && offersShareSameLot(offer, candidate))
+          .map((candidate) => candidate.id);
+
+        if (competingOfferIds.length > 0) {
+          const { error: competingOffersError } = await supabase
+            .from("buyer_offers")
+            .update({ status: "sold" })
+            .in("id", competingOfferIds);
+
+          if (competingOffersError) {
+            if (isMissingRefreshTokenError(competingOffersError)) {
+              await invalidateSession();
+              return;
+            }
+            setAuthError(`Kauppa hyväksyttiin, mutta muiden saman erän tarjousten sulkeminen epäonnistui: ${competingOffersError.message}`);
+          }
+        }
       }
     }
 
