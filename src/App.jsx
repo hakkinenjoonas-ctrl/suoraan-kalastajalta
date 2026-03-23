@@ -333,6 +333,22 @@ function offersShareSameLot(left, right) {
   );
 }
 
+function billingMatchesDelivery(fields) {
+  return (
+    String(fields?.deliveryAddress || "") === String(fields?.billingAddress || "") &&
+    String(fields?.deliveryPostcode || "") === String(fields?.billingPostcode || "") &&
+    String(fields?.deliveryCity || "") === String(fields?.billingCity || "")
+  );
+}
+
+function buyerBillingMatchesDelivery(fields) {
+  return (
+    String(fields?.delivery_address || "") === String(fields?.billing_address || "") &&
+    String(fields?.delivery_postcode || "") === String(fields?.billing_postcode || "") &&
+    String(fields?.delivery_city || "") === String(fields?.billing_city || "")
+  );
+}
+
 function formatEntryPrice(rowOrSpecies, value) {
   const unit = getSpeciesPriceUnit(typeof rowOrSpecies === "string" ? rowOrSpecies : getSpeciesRowLabel(rowOrSpecies));
   if (value === "" || value == null) return "";
@@ -1894,6 +1910,7 @@ export default function App() {
     billing_email: "",
     business_id: "",
   });
+  const [buyerBillingSameAsDelivery, setBuyerBillingSameAsDelivery] = useState(false);
   const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "", commercialFishingVesselId: "", eviraFacilityId: "" });
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [accountSaving, setAccountSaving] = useState(false);
@@ -1917,6 +1934,7 @@ export default function App() {
     businessId: "",
     notes: "",
   });
+  const [accountBillingSameAsDelivery, setAccountBillingSameAsDelivery] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ newPassword: "", confirmPassword: "" });
   const [publicBatchData, setPublicBatchData] = useState(null);
   const [publicBatchLoading, setPublicBatchLoading] = useState(Boolean(publicBatchId));
@@ -2680,7 +2698,7 @@ export default function App() {
 
   useEffect(() => {
     if (!profile) return;
-    setAccountForm({
+    const nextForm = {
       displayName: profile.display_name || "",
       eviraFacilityId: profile.evira_facility_id || "",
       commercialFishingVesselId: profile.commercial_fishing_vessel_id || "",
@@ -2698,8 +2716,28 @@ export default function App() {
       billingEmail: linkedBuyerRecord?.billing_email || "",
       businessId: linkedBuyerRecord?.business_id || "",
       notes: linkedBuyerRecord?.notes || "",
-    });
+    };
+    setAccountForm(nextForm);
+    setAccountBillingSameAsDelivery(billingMatchesDelivery(nextForm));
   }, [profile, linkedBuyerRecord]);
+
+  const applyAccountDeliveryToBilling = useCallback(() => {
+    setAccountForm((prev) => ({
+      ...prev,
+      billingAddress: prev.deliveryAddress,
+      billingPostcode: prev.deliveryPostcode,
+      billingCity: prev.deliveryCity,
+    }));
+  }, []);
+
+  const applyBuyerDeliveryToBilling = useCallback(() => {
+    setBuyerForm((prev) => ({
+      ...prev,
+      billing_address: prev.delivery_address,
+      billing_postcode: prev.delivery_postcode,
+      billing_city: prev.delivery_city,
+    }));
+  }, []);
 
   const filteredEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -2976,6 +3014,7 @@ export default function App() {
         email: normalizeEmail(updatedProfile.email || profile.email || ""),
       };
       setProfile(normalizedUpdatedProfile);
+      setAccountBillingSameAsDelivery(billingMatchesDelivery(accountForm));
       setFisherInfoForm({
         commercialFishingId: normalizedUpdatedProfile.commercial_fishing_id || "",
         commercialFishingVesselId: normalizedUpdatedProfile.commercial_fishing_vessel_id || "",
@@ -3083,7 +3122,7 @@ export default function App() {
   };
 
   const resetBuyerForm = () => {
-    setBuyerForm({
+    const nextForm = {
       id: "",
       company_name: "",
       buyer_type: "ravintola",
@@ -3103,11 +3142,13 @@ export default function App() {
       billing_city: "",
       billing_email: "",
       business_id: "",
-    });
+    };
+    setBuyerForm(nextForm);
+    setBuyerBillingSameAsDelivery(buyerBillingMatchesDelivery(nextForm));
   };
 
   const startEditBuyer = (buyer) => {
-    setBuyerForm({
+    const nextForm = {
       id: buyer.id,
       company_name: buyer.company_name || "",
       buyer_type: buyer.buyer_type || "ravintola",
@@ -3127,7 +3168,9 @@ export default function App() {
       billing_city: buyer.billing_city || "",
       billing_email: buyer.billing_email || "",
       business_id: buyer.business_id || "",
-    });
+    };
+    setBuyerForm(nextForm);
+    setBuyerBillingSameAsDelivery(buyerBillingMatchesDelivery(nextForm));
     setUserMessage(`Muokataan ostajaa: ${buyer.company_name}`);
   };
 
@@ -4639,15 +4682,22 @@ export default function App() {
                     </div>
                     <div style={styles.field}>
                       <label>Toimitusosoite</label>
-                      <input style={styles.input} value={accountForm.deliveryAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryAddress: e.target.value }))} placeholder="Katuosoite" />
+                      <input style={styles.input} value={accountForm.deliveryAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryAddress: e.target.value, ...(accountBillingSameAsDelivery ? { billingAddress: e.target.value } : {}) }))} placeholder="Katuosoite" />
                     </div>
                     <div style={styles.field}>
                       <label>Toimitus postinumero</label>
-                      <input style={styles.input} value={accountForm.deliveryPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryPostcode: e.target.value }))} placeholder="00100" />
+                      <input style={styles.input} value={accountForm.deliveryPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryPostcode: e.target.value, ...(accountBillingSameAsDelivery ? { billingPostcode: e.target.value } : {}) }))} placeholder="00100" />
                     </div>
                     <div style={styles.field}>
                       <label>Toimitus kaupunki</label>
-                      <input style={styles.input} value={accountForm.deliveryCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryCity: e.target.value }))} placeholder="Helsinki" />
+                      <input style={styles.input} value={accountForm.deliveryCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryCity: e.target.value, ...(accountBillingSameAsDelivery ? { billingCity: e.target.value } : {}) }))} placeholder="Helsinki" />
+                    </div>
+                    <div style={{ ...styles.field, ...styles.fieldFull }}>
+                      <label><input type="checkbox" checked={accountBillingSameAsDelivery} onChange={(e) => {
+                        const checked = e.target.checked;
+                        setAccountBillingSameAsDelivery(checked);
+                        if (checked) applyAccountDeliveryToBilling();
+                      }} /> Laskutustiedot samat kuin toimitustiedot</label>
                     </div>
                     <div style={styles.field}>
                       <label>Laskutusosoite</label>
@@ -5477,9 +5527,14 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               <div style={styles.field}><label>Min kg</label><input style={styles.input} type="number" value={buyerForm.min_kg} onChange={(e) => setBuyerForm((prev) => ({ ...prev, min_kg: e.target.value }))} placeholder="Esim. tukkuille" /></div>
               <div style={styles.field}><label>Max kg</label><input style={styles.input} type="number" value={buyerForm.max_kg} onChange={(e) => setBuyerForm((prev) => ({ ...prev, max_kg: e.target.value }))} placeholder="Esim. ravintoloille" /></div>
               <div style={styles.field}><label><input type="checkbox" checked={buyerForm.is_active} onChange={(e) => setBuyerForm((prev) => ({ ...prev, is_active: e.target.checked }))} /> Aktiivinen</label></div>
-              <div style={styles.field}><label>Toimitusosoite</label><input style={styles.input} value={buyerForm.delivery_address} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_address: e.target.value }))} placeholder="Katuosoite" /></div>
-              <div style={styles.field}><label>Toimitus postinumero</label><input style={styles.input} value={buyerForm.delivery_postcode} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_postcode: e.target.value }))} placeholder="00100" /></div>
-              <div style={styles.field}><label>Toimitus kaupunki</label><input style={styles.input} value={buyerForm.delivery_city} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_city: e.target.value }))} placeholder="Helsinki" /></div>
+              <div style={styles.field}><label>Toimitusosoite</label><input style={styles.input} value={buyerForm.delivery_address} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_address: e.target.value, ...(buyerBillingSameAsDelivery ? { billing_address: e.target.value } : {}) }))} placeholder="Katuosoite" /></div>
+              <div style={styles.field}><label>Toimitus postinumero</label><input style={styles.input} value={buyerForm.delivery_postcode} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_postcode: e.target.value, ...(buyerBillingSameAsDelivery ? { billing_postcode: e.target.value } : {}) }))} placeholder="00100" /></div>
+              <div style={styles.field}><label>Toimitus kaupunki</label><input style={styles.input} value={buyerForm.delivery_city} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_city: e.target.value, ...(buyerBillingSameAsDelivery ? { billing_city: e.target.value } : {}) }))} placeholder="Helsinki" /></div>
+              <div style={{ ...styles.field, ...styles.fieldFull }}><label><input type="checkbox" checked={buyerBillingSameAsDelivery} onChange={(e) => {
+                const checked = e.target.checked;
+                setBuyerBillingSameAsDelivery(checked);
+                if (checked) applyBuyerDeliveryToBilling();
+              }} /> Laskutustiedot samat kuin toimitustiedot</label></div>
               <div style={styles.field}><label>Laskutusosoite</label><input style={styles.input} value={buyerForm.billing_address} onChange={(e) => setBuyerForm((prev) => ({ ...prev, billing_address: e.target.value }))} placeholder="Katuosoite" /></div>
               <div style={styles.field}><label>Laskutus postinumero</label><input style={styles.input} value={buyerForm.billing_postcode} onChange={(e) => setBuyerForm((prev) => ({ ...prev, billing_postcode: e.target.value }))} placeholder="00100" /></div>
               <div style={styles.field}><label>Laskutus kaupunki</label><input style={styles.input} value={buyerForm.billing_city} onChange={(e) => setBuyerForm((prev) => ({ ...prev, billing_city: e.target.value }))} placeholder="Helsinki" /></div>
