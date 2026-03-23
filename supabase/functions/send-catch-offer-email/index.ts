@@ -48,6 +48,13 @@ function formatKilos(value: unknown) {
   return `${number.toLocaleString("fi-FI")} kg`;
 }
 
+function formatMoney(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  const number = Number(value);
+  if (Number.isNaN(number)) return safeString(value) || "-";
+  return `${number.toLocaleString("fi-FI")} €`;
+}
+
 function formatLineItemQuantity(row: Record<string, unknown>) {
   const unit = safeString(row.price_unit || "kg");
   const kilosValue = Number(row.kilos);
@@ -274,6 +281,13 @@ Deno.serve(async (req) => {
       }
 
       const offerLink = safeString(recipient?.offer_link);
+      const destinationCity = safeString(recipient?.delivery_destination_city);
+      const routePrice = formatMoney(recipient?.route_price_eur);
+      const totalPrice = formatMoney(recipient?.total_price_eur);
+      const deliveredPricePerKg = recipient?.delivered_price_per_kg === null || recipient?.delivered_price_per_kg === undefined || recipient?.delivered_price_per_kg === ""
+        ? "-"
+        : formatPrice(recipient?.delivered_price_per_kg, "kg");
+      const carrierName = safeString(recipient?.carrier_name);
       const subject = mixedOffer
         ? `Uusi kalaerä tarjolla – ${subjectSpecies} yhteensä ${kilos}`
         : `Uusi kalaerä tarjolla – ${species} ${kilos}`;
@@ -289,9 +303,14 @@ Deno.serve(async (req) => {
         `${deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue"}: ${publicDeliveryLocation || "-"}`,
         `Pyydys: ${gear || "-"}`,
         !mixedOffer ? `Hinta: ${price}` : null,
+        destinationCity ? `Toimituskaupunki: ${destinationCity}` : null,
+        routePrice !== "-" ? `Toimitushinta: ${routePrice}` : null,
+        totalPrice !== "-" ? `Kokonaishinta: ${totalPrice}` : null,
+        deliveredPricePerKg !== "-" ? `Toimitettuna: ${deliveredPricePerKg}` : null,
+        carrierName ? `Kuljetusliike: ${carrierName}` : null,
         batchId && !mixedOffer ? `Erätunnus: ${batchId}` : null,
         mixedOffer ? "Erän lajit:" : null,
-        ...lineItems.map((item) => `- ${item.species}: ${item.scientificNames || "-"} · ${item.kilos} · ${item.price}${item.batchId ? ` · Erätunnus ${item.batchId}` : ""}${item.catchDate ? ` · Pyyntipäivämäärä ${item.catchDate}` : ""}`),
+        ...lineItems.map((item) => `- ${item.species}: ${item.scientificNames || "-"} · ${item.quantity} · ${item.price}${item.batchId ? ` · Erätunnus ${item.batchId}` : ""}${item.catchDate ? ` · Pyyntipäivämäärä ${item.catchDate}` : ""}`),
         `Tarjoaja: ${sellerName}`,
         extraNotes ? `Lisätiedot: ${extraNotes}` : null,
         offerLink ? `Avaa tarjous apissa: ${offerLink}` : null,
@@ -306,6 +325,15 @@ Deno.serve(async (req) => {
           <table style="width:100%; border-collapse:collapse; background:#111827; color:#f8fafc; margin-bottom:20px;">
             ${tableRows}
           </table>
+          ${(destinationCity || routePrice !== "-" || totalPrice !== "-" || deliveredPricePerKg !== "-" || carrierName) ? `
+            <table style="width:100%; border-collapse:collapse; background:#111827; color:#f8fafc; margin-bottom:20px;">
+              ${destinationCity ? buildFieldRow("Toimituskaupunki", destinationCity) : ""}
+              ${routePrice !== "-" ? buildFieldRow("Toimitushinta", routePrice) : ""}
+              ${totalPrice !== "-" ? buildFieldRow("Kokonaishinta", totalPrice) : ""}
+              ${deliveredPricePerKg !== "-" ? buildFieldRow("Toimitettuna", deliveredPricePerKg) : ""}
+              ${carrierName ? buildFieldRow("Kuljetusliike", carrierName) : ""}
+            </table>
+          ` : ""}
           ${mixedOffer ? `
             <table style="width:100%; border-collapse:collapse; background:#111827; color:#f8fafc; margin-bottom:20px;">
               <thead>
