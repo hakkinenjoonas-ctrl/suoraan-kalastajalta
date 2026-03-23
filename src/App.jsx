@@ -967,6 +967,19 @@ function responsiveGridStyle(base) {
   return base;
 }
 
+function MunicipalitySelect({ value, onChange, placeholder = "Valitse paikkakunta" }) {
+  return (
+    <select style={styles.input} value={value} onChange={onChange}>
+      <option value="">{placeholder}</option>
+      {finlandMunicipalities.map((municipality) => (
+        <option key={municipality} value={municipality}>
+          {municipality}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function PublicBatchView({ batchId, data, loading, error }) {
   const headerSummary = [formatSpeciesForSale(data?.species), data?.quantity != null && data?.quantity !== "" ? `${data.quantity} ${data.unit || "kg"}` : ""]
     .filter(Boolean)
@@ -4678,7 +4691,7 @@ export default function App() {
                     </div>
                     <div style={styles.field}>
                       <label>Paikkakunta</label>
-                      <input style={styles.input} value={accountForm.city} onChange={(e) => setAccountForm((prev) => ({ ...prev, city: e.target.value }))} placeholder="Paikkakunta" />
+                      <MunicipalitySelect value={accountForm.city} onChange={(e) => setAccountForm((prev) => ({ ...prev, city: e.target.value }))} />
                     </div>
                     <div style={styles.field}>
                       <label>Toimitusosoite</label>
@@ -4690,7 +4703,7 @@ export default function App() {
                     </div>
                     <div style={styles.field}>
                       <label>Toimitus kaupunki</label>
-                      <input style={styles.input} value={accountForm.deliveryCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryCity: e.target.value, ...(accountBillingSameAsDelivery ? { billingCity: e.target.value } : {}) }))} placeholder="Helsinki" />
+                      <MunicipalitySelect value={accountForm.deliveryCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryCity: e.target.value, ...(accountBillingSameAsDelivery ? { billingCity: e.target.value } : {}) }))} />
                     </div>
                     <div style={{ ...styles.field, ...styles.fieldFull }}>
                       <label><input type="checkbox" checked={accountBillingSameAsDelivery} onChange={(e) => {
@@ -4709,7 +4722,7 @@ export default function App() {
                     </div>
                     <div style={styles.field}>
                       <label>Laskutus kaupunki</label>
-                      <input style={styles.input} value={accountForm.billingCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingCity: e.target.value }))} placeholder="Helsinki" />
+                      <MunicipalitySelect value={accountForm.billingCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingCity: e.target.value }))} />
                     </div>
                     <div style={styles.field}>
                       <label>Laskutussähköposti</label>
@@ -5218,7 +5231,7 @@ export default function App() {
                 <div style={styles.field}><label>Tuotantopäivä</label><input style={styles.input} type="date" value={processedForm.productionDate} onChange={(e) => setProcessedForm({ ...processedForm, productionDate: e.target.value })} /></div>
                 <div style={styles.field}><label>Parasta ennen</label><input style={styles.input} type="date" value={processedForm.bestBeforeDate} onChange={(e) => setProcessedForm({ ...processedForm, bestBeforeDate: e.target.value })} /></div>
                 <div style={styles.field}><label>Vesialue / alkuperä</label><select style={styles.input} value={processedForm.area} onChange={(e) => setProcessedForm({ ...processedForm, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
-                <div style={styles.field}><label>Paikkakunta</label><input style={styles.input} value={processedForm.municipality} onChange={(e) => setProcessedForm({ ...processedForm, municipality: e.target.value })} placeholder="Esim. Lappeenranta" /></div>
+                <div style={styles.field}><label>Paikkakunta</label><MunicipalitySelect value={processedForm.municipality} onChange={(e) => setProcessedForm({ ...processedForm, municipality: e.target.value })} /></div>
                 <div style={styles.field}><label>Tuotenimi</label><input style={styles.input} value={processedForm.productName} onChange={(e) => setProcessedForm({ ...processedForm, productName: e.target.value })} placeholder="Esim. Kylmäsavulohi viipale" /></div>
                 <div style={styles.field}><label>Tuotetyyppi</label><select style={styles.input} value={processedForm.productType} onChange={(e) => setProcessedForm({ ...processedForm, productType: e.target.value })}>{processedProductTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
                 <div style={styles.field}><label>Käsittelytapa</label><select style={styles.input} value={processedForm.processingMethod} onChange={(e) => setProcessedForm({ ...processedForm, processingMethod: e.target.value })}>{processingMethods.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
@@ -5301,16 +5314,7 @@ export default function App() {
                 <div style={styles.field}><label>Vesialue</label><select style={styles.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
                 <div style={styles.field}>
                   <label>Paikkakunta</label>
-                  <input
-                    style={styles.input}
-                    list="municipality-options"
-                    value={form.municipality}
-                    onChange={(e) => setForm({ ...form, municipality: e.target.value })}
-                    placeholder="Valitse tai kirjoita paikkakunta"
-                  />
-                  <datalist id="municipality-options">
-                    {finlandMunicipalities.map((municipality) => <option key={municipality} value={municipality} />)}
-                  </datalist>
+                  <MunicipalitySelect value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} />
                 </div>
                 <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Isoselkä" /></div>
                 <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
