@@ -3524,6 +3524,13 @@ export default function App() {
         await invalidateSession();
         return;
       }
+      const message = String(error.message || "");
+      if (message.toLowerCase().includes("user already registered")) {
+        setAuthInfo("");
+        setAuthError("Tällä sähköpostilla on jo käyttäjätili. Kirjaudu sisään olemassa olevalla tunnuksella tai nollaa salasana Supabasen Auth-käyttäjälle, jos haluat ottaa sähköpostin uudelleen käyttöön.");
+        setAuthMode("signin");
+        return;
+      }
       setAuthError(error.message);
       return;
     }
