@@ -152,6 +152,7 @@ function buildProcessedPayload(
       batch_id: safeString(source.source_batch_id),
       species: safeString(source.source_species),
       kilos: source.source_kilos ?? "",
+      catch_date: safeString(source.catch_date),
       public_url: getBatchPublicUrl(safeString(source.source_batch_id)),
       qr_image_url: getBatchQrImageUrl(safeString(source.source_batch_id)),
     })),
@@ -212,6 +213,21 @@ Deno.serve(async (req) => {
         .eq("processed_batch_id", processedEntries[0].id)
         .order("created_at", { ascending: true });
       sourceBatches = sourceData || [];
+
+      if (sourceBatches.length > 0) {
+        const sourceEntryIds = sourceBatches.map((source) => safeString(source.source_entry_id)).filter(Boolean);
+        if (sourceEntryIds.length > 0) {
+          const { data: sourceEntries } = await supabase
+            .from("catch_entries")
+            .select("id, date")
+            .in("id", sourceEntryIds);
+          const sourceDateMap = Object.fromEntries((sourceEntries || []).map((row) => [safeString(row.id), safeString(row.date)]));
+          sourceBatches = sourceBatches.map((source) => ({
+            ...source,
+            catch_date: sourceDateMap[safeString(source.source_entry_id)] || "",
+          }));
+        }
+      }
 
       return jsonResponse(200, buildProcessedPayload(processedEntries[0], offers || [], sourceBatches));
     }

@@ -59,6 +59,13 @@ function isCrayfishOffer(...values: unknown[]) {
     haystack.includes("astacus astacus");
 }
 
+function extractCatchDates(value: unknown) {
+  const matches = Array.from(String(value || "").matchAll(/Pyyntipäivämäärä\s+([0-9]{4}-[0-9]{2}-[0-9]{2})/g))
+    .map((match) => String(match[1] || "").trim())
+    .filter(Boolean);
+  return Array.from(new Set(matches)).join(", ");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -86,6 +93,7 @@ Deno.serve(async (req) => {
     const speciesSummary = String(offer.species_summary || "Kalaera");
     const priceUnit = isCrayfishOffer(speciesSummary) ? "EUR/kpl" : "EUR/kg";
     const scientificNames = extractScientificNames(speciesSummary);
+    const catchDates = extractCatchDates(speciesSummary);
     const area = String(offer.area || "-");
     const spot = String(offer.spot || "");
     const deliveryMethod = String(offer.delivery_method || "").trim();
@@ -112,6 +120,7 @@ Deno.serve(async (req) => {
       "",
       `Erä: ${speciesSummary}`,
       scientificNames ? `Tieteellinen nimi: ${scientificNames}` : null,
+      catchDates ? `Pyyntipäivämäärä: ${catchDates}` : null,
       `Määrä: ${kilos} kg`,
       batchId ? `Erätunnus: ${batchId}` : null,
       `Alue: ${area}${spot ? ` / ${spot}` : ""}`,
@@ -137,6 +146,7 @@ Deno.serve(async (req) => {
         <p><strong>${sellerName}</strong> on hyväksynyt tarjouksesi tai varauksesi.</p>
         <p><strong>Erä:</strong><br />${speciesSummary.replaceAll("\n", "<br />")}</p>
         ${scientificNames ? `<p><strong>Tieteellinen nimi:</strong><br />${scientificNames}</p>` : ""}
+        ${catchDates ? `<p><strong>Pyyntipäivämäärä:</strong><br />${catchDates}</p>` : ""}
         <p>
           <strong>Määrä:</strong> ${kilos} kg<br />
           ${batchId ? `<strong>Erätunnus:</strong> ${batchId}<br />` : ""}
