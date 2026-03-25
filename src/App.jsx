@@ -3638,7 +3638,7 @@ export default function App() {
     const offerUrlBase = getPublicAppBaseUrl();
     const logisticsLines = [
       `Lähtöpaikka: ${formState.originCity || formState.municipality || "-"}`,
-      `Toimitus mahdollinen: ${formState.deliveryPossible ? "Kyllä" : "Ei"}`,
+      `Kilpailuta kuljetus: ${formState.deliveryPossible ? "Kyllä" : "Ei"}`,
       `Toimitustapa: ${formState.deliveryMethod || "-"}`,
       formState.transportMode ? `Kuljetus järjestetään: ${getTransportModeLabel(formState.transportMode)}` : "",
       selectedOriginPoint ? `Luovutuspiste: ${selectedOriginPoint.name} / ${selectedOriginPoint.address}` : "",
@@ -5708,7 +5708,7 @@ export default function App() {
                 </div>
                 <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm({ ...form, gear: e.target.value })}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
                 <div style={styles.field}><label>Lähtöpaikka / kalastajan sijainti</label><MunicipalitySelect value={currentOriginCity} onChange={(e) => setForm({ ...form, originCity: e.target.value, originPointId: "" })} /></div>
-                <div style={styles.field}><label><input type="checkbox" checked={form.deliveryPossible} onChange={(e) => setForm({ ...form, deliveryPossible: e.target.checked, deliveryMethod: e.target.checked ? "Kuljetus järjestetään" : "Nouto", transportMode: e.target.checked ? form.transportMode : "", originPointId: e.target.checked ? form.originPointId : "", deliveryDestinations: e.target.checked ? form.deliveryDestinations : [] })} /> Toimitus mahdollinen</label></div>
+                <div style={styles.field}><label><input type="checkbox" checked={form.deliveryPossible} onChange={(e) => setForm({ ...form, deliveryPossible: e.target.checked, deliveryMethod: e.target.checked ? "Kuljetus järjestetään" : "Nouto", transportMode: e.target.checked ? form.transportMode : "", originPointId: e.target.checked ? form.originPointId : "", deliveryDestinations: e.target.checked ? form.deliveryDestinations : [] })} /> Kilpailuta kuljetus</label></div>
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 {form.deliveryPossible ? (
