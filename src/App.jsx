@@ -5579,7 +5579,7 @@ export default function App() {
               </div>
               {profile.role === "processor" ? (
                 <div style={styles.field}>
-                  <label>Eviran hyväksymän vesiviljelylaitoksen laitosnumero / laitosnumero</label>
+                  <label>Laitosnumero</label>
                   <input style={styles.input} value={accountForm.eviraFacilityId} onChange={(e) => setAccountForm((prev) => ({ ...prev, eviraFacilityId: e.target.value }))} placeholder="Esim. F12345" />
                 </div>
               ) : (
@@ -5641,7 +5641,7 @@ export default function App() {
                 <strong>{profile.role === "processor" ? "Jalostajan tiedot" : "Kalastajan tiedot"}</strong>
                 {profile.role === "processor" ? (
                   <div style={styles.field}>
-                    <label>Eviran hyväksymän vesiviljelylaitoksen laitosnumero / laitosnumero</label>
+                    <label>Laitosnumero</label>
                     <input
                       style={styles.input}
                       value={fisherInfoForm.eviraFacilityId}
