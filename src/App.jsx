@@ -1610,10 +1610,20 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
           </div>
 
           {authMode === "signup" ? (
-            <div style={styles.field}>
-              <label>Nimi</label>
-              <input style={styles.input} value={authForm.displayName} onChange={(e) => setAuthForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Joonas Häkkinen" />
-            </div>
+            <>
+              <div style={styles.field}>
+                <label>Nimi</label>
+                <input style={styles.input} value={authForm.displayName} onChange={(e) => setAuthForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Joonas Häkkinen" />
+              </div>
+              <div style={styles.field}>
+                <label>Rooli</label>
+                <select style={styles.input} value={authForm.requestedRole} onChange={(e) => setAuthForm((prev) => ({ ...prev, requestedRole: e.target.value }))}>
+                  <option value="member">Kalastaja</option>
+                  <option value="processor">Jalostaja</option>
+                  <option value="buyer">Ostaja</option>
+                </select>
+              </div>
+            </>
           ) : null}
 
           {authMode === "recovery" ? (
@@ -1636,6 +1646,8 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
           ) : (
             <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Luo tunnus</button>
           )}
+
+          {authMode === "signup" ? <div style={styles.muted}>Rekisteröitymisen jälkeen owner hyväksyy käyttöoikeuden ennen kuin appi avautuu.</div> : null}
 
         </form>
       </div>
@@ -1661,6 +1673,27 @@ function RoleSelectionView({ roleOptions, buyers, onSelectRole }) {
                 <span>{option.display_name || option.email}</span>
               </button>
             ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PendingApprovalView({ profile, onLogout }) {
+  return (
+    <div style={styles.app}>
+      <div style={{ ...styles.container, maxWidth: 560 }}>
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <h1 style={styles.title}>Odottaa hyväksyntää</h1>
+          <div style={styles.muted}>
+            Tunnus on luotu sähköpostille <strong>{profile?.email || "-"}</strong>, mutta ownerin pitää vielä hyväksyä käyttöoikeus ennen kuin appi aukeaa.
+          </div>
+          <div style={styles.noticeInfo}>
+            Valittu rooli: <strong>{roleLabel(profile?.role || "member")}</strong>
+          </div>
+          <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+            <button style={styles.button} onClick={onLogout}>Kirjaudu ulos</button>
           </div>
         </div>
       </div>
@@ -2334,6 +2367,7 @@ export default function App() {
   const [buyerOffersSearch, setBuyerOffersSearch] = useState("");
   const [buyerActiveOfferId, setBuyerActiveOfferId] = useState(null);
   const [allowedUsers, setAllowedUsers] = useState([]);
+  const [pendingProfiles, setPendingProfiles] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [processorSourceEntries, setProcessorSourceEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2341,7 +2375,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [entryScope, setEntryScope] = useState("own");
   const [authMode, setAuthMode] = useState("signin");
-  const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "", displayName: "" });
+  const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "", displayName: "", requestedRole: "member" });
   const [authError, setAuthError] = useState("");
   const [authInfo, setAuthInfo] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
@@ -2872,6 +2906,7 @@ export default function App() {
       setProcessedEntries([]);
       setOffers([]);
       setAllowedUsers([]);
+      setPendingProfiles([]);
       return;
     }
 
@@ -2902,9 +2937,15 @@ export default function App() {
         const matchingAllowedRole = getMatchingAllowedRole(activeAllowedRows, existingProfile);
         const selectedAllowedRole = matchingAllowedRole || activeAllowedRows[0] || null;
         if (!selectedAllowedRole) {
-          setAuthError("Sähköpostia ei ole hyväksytty käyttöön.");
-          await clearBrokenSession();
-          setSession(null);
+          const normalizedProfile = {
+            ...profileToUse,
+            email: (profileToUse.email || email || "").trim().toLowerCase(),
+            is_active: false,
+          };
+          setProfile(normalizedProfile);
+          setAvailableRoleOptions([]);
+          setRoleSelectionOpen(false);
+          setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
           return;
         }
         if (
@@ -2940,21 +2981,20 @@ export default function App() {
         return;
       }
       const defaultAllowedRole = activeAllowedRows[0] || null;
-      if (!defaultAllowedRole) {
-        setAuthError("Sähköpostia ei ole hyväksytty käyttöön.");
-        await clearBrokenSession();
-        setSession(null);
-        return;
-      }
+      const requestedRole = session.user.user_metadata?.requested_role === "buyer"
+        ? "buyer"
+        : session.user.user_metadata?.requested_role === "processor"
+          ? "processor"
+          : "member";
       const { data: insertedProfile, error: insertError } = await supabase
         .from("profiles")
         .insert({
           id: session.user.id,
           email,
-          display_name: defaultAllowedRole.display_name || session.user.user_metadata?.display_name || email,
-          role: defaultAllowedRole.role || "member",
-          is_active: defaultAllowedRole.is_active,
-          buyer_id: defaultAllowedRole.buyer_id || null,
+          display_name: defaultAllowedRole?.display_name || session.user.user_metadata?.display_name || email,
+          role: defaultAllowedRole?.role || requestedRole,
+          is_active: defaultAllowedRole?.is_active || false,
+          buyer_id: defaultAllowedRole?.buyer_id || null,
         })
         .select("*")
         .single();
@@ -2973,6 +3013,9 @@ export default function App() {
       setProfile(normalizedInsertedProfile);
       setAvailableRoleOptions(activeAllowedRows);
       setRoleSelectionOpen(activeAllowedRows.length > 1);
+      if (!defaultAllowedRole) {
+        setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
+      }
       setFisherInfoForm({
         commercialFishingId: insertedProfile.commercial_fishing_id || "",
         commercialFishingVesselId: insertedProfile.commercial_fishing_vessel_id || "",
@@ -3052,6 +3095,7 @@ export default function App() {
           { data: entryData, error: entryError },
           processedEntriesResult,
           { data: allowedData, error: allowedError },
+          pendingProfilesResult,
           offerResult,
           buyersResult,
           buyerOffersResult,
@@ -3065,6 +3109,9 @@ export default function App() {
             : Promise.resolve({ data: [], error: null }),
           profile.role === "owner"
             ? supabase.from("allowed_users").select("*").order("created_at", { ascending: true })
+            : Promise.resolve({ data: [], error: null }),
+          profile.role === "owner"
+            ? supabase.from("profiles").select("*").eq("is_active", false).order("created_at", { ascending: false })
             : Promise.resolve({ data: [], error: null }),
           hasOffersTable
             ? supabase.from("wholesale_offers").select("*").order("created_at", { ascending: false })
@@ -3268,7 +3315,8 @@ export default function App() {
           }
           setAuthError(allowedError.message);
         } else {
-          setAllowedUsers(allowedData || []);
+        setAllowedUsers(allowedData || []);
+        setPendingProfiles((pendingProfilesResult?.data || []).filter((row) => row.id !== profile.id));
         }
 
         if (offerResult?.error && offerResult.error.code !== "PGRST116") {
@@ -3532,25 +3580,12 @@ export default function App() {
     const email = normalizeEmail(authForm.email);
     const password = authForm.password;
     const displayName = authForm.displayName.trim();
+    const requestedRole = authForm.requestedRole === "buyer" ? "buyer" : authForm.requestedRole === "processor" ? "processor" : "member";
     if (!email || !password || !displayName) {
       setAuthError("Täytä sähköposti, salasana ja nimi.");
       return;
     }
-    const { data: allowedRows, error: allowedError } = await findAllowedUsersByEmail(supabase, email);
-    if (allowedError && allowedError.code !== "PGRST116") {
-      if (isMissingRefreshTokenError(allowedError)) {
-        await invalidateSession();
-        return;
-      }
-      setAuthError(allowedError.message);
-      return;
-    }
-    const hasActiveAllowedRole = (allowedRows || []).some((row) => row.is_active);
-    if (!hasActiveAllowedRole) {
-      setAuthError("Tätä sähköpostia ei ole vielä lisätty sallittuihin käyttäjiin.");
-      return;
-    }
-    const { error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName } } });
+    const { error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName, requested_role: requestedRole } } });
     if (error) {
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
@@ -3566,7 +3601,7 @@ export default function App() {
       setAuthError(error.message);
       return;
     }
-    setAuthInfo("Tunnus luotu. Kirjaudu nyt sisään.");
+    setAuthInfo("Tunnus luotu ja lähetetty hyväksyttäväksi. Voit kirjautua sisään, mutta appi aukeaa vasta kun owner hyväksyy roolin.");
     setAuthMode("signin");
   };
 
@@ -3774,6 +3809,100 @@ export default function App() {
     } finally {
       setAccountSaving(false);
     }
+  };
+
+  const handleApprovePendingProfile = async (pendingProfile) => {
+    if (!profile || profile.role !== "owner" || !pendingProfile?.id) return;
+    setUserMessage("");
+    const normalizedEmail = normalizeEmail(pendingProfile.email || "");
+    const role = pendingProfile.role === "buyer" ? "buyer" : pendingProfile.role === "processor" ? "processor" : "member";
+    let buyerId = pendingProfile.buyer_id || null;
+
+    if (role === "buyer" && !buyerId) {
+      const existingBuyer = buyers.find((buyer) => normalizeEmail(buyer.email) === normalizedEmail);
+      if (existingBuyer) {
+        buyerId = existingBuyer.id;
+      } else {
+        const buyerPayload = {
+          company_name: pendingProfile.company_name || pendingProfile.display_name || normalizedEmail,
+          buyer_type: "ravintola",
+          contact_name: pendingProfile.display_name || "",
+          email: normalizedEmail,
+          phone: pendingProfile.phone || "",
+          city: pendingProfile.city || "",
+          is_active: true,
+          notes: "Luotu itsepalvelurekisteröinnin hyväksynnässä.",
+          delivery_address: pendingProfile.address || "",
+          delivery_postcode: pendingProfile.postcode || "",
+          delivery_city: pendingProfile.city || "",
+          billing_address: pendingProfile.billing_address || "",
+          billing_postcode: pendingProfile.billing_postcode || "",
+          billing_city: pendingProfile.billing_city || "",
+          billing_email: pendingProfile.billing_email || normalizedEmail,
+          business_id: pendingProfile.business_id || "",
+        };
+        const { data: insertedBuyer, error: buyerInsertError } = await supabase.from("buyers").insert(buyerPayload).select("id").single();
+        if (buyerInsertError) {
+          if (isMissingRefreshTokenError(buyerInsertError)) {
+            await invalidateSession();
+            return;
+          }
+          setUserMessage(buyerInsertError.message);
+          return;
+        }
+        buyerId = insertedBuyer?.id || null;
+      }
+    }
+
+    const allowedPayload = {
+      email: normalizedEmail,
+      display_name: pendingProfile.display_name || normalizedEmail,
+      role,
+      is_active: true,
+      buyer_id: role === "buyer" ? buyerId : null,
+    };
+
+    const { data: existingAllowedUsers, error: existingAllowedError } = await findAllowedUsersByEmail(supabase, normalizedEmail);
+    if (existingAllowedError && existingAllowedError.code !== "PGRST116") {
+      if (isMissingRefreshTokenError(existingAllowedError)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(existingAllowedError.message);
+      return;
+    }
+
+    const exactRoleRow = (existingAllowedUsers || []).find((item) => (
+      item.role === role && String(item.buyer_id || "") === String(allowedPayload.buyer_id || "")
+    )) || null;
+
+    const allowedResult = exactRoleRow
+      ? await supabase.from("allowed_users").update(allowedPayload).eq("id", exactRoleRow.id)
+      : await supabase.from("allowed_users").insert(allowedPayload);
+    if (allowedResult.error) {
+      if (isMissingRefreshTokenError(allowedResult.error)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(allowedResult.error.message);
+      return;
+    }
+
+    const { error: profileUpdateError } = await supabase
+      .from("profiles")
+      .update({ is_active: true, role, buyer_id: role === "buyer" ? buyerId : null })
+      .eq("id", pendingProfile.id);
+    if (profileUpdateError) {
+      if (isMissingRefreshTokenError(profileUpdateError)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(profileUpdateError.message);
+      return;
+    }
+
+    setUserMessage(`Käyttäjä ${pendingProfile.display_name || pendingProfile.email} hyväksytty roolille ${roleLabel(role)}.`);
+    setRefreshTick((prev) => prev + 1);
   };
 
   const handleChangePassword = async () => {
@@ -5484,6 +5613,10 @@ export default function App() {
     return <AuthView authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} onSignIn={handleSignIn} onSignUp={handleSignUp} onForgotPassword={handleForgotPassword} onResetRecoveredPassword={handleResetRecoveredPassword} authError={authError} authInfo={authInfo} />;
   }
 
+  if (!profile.is_active && availableRoleOptions.length === 0) {
+    return <PendingApprovalView profile={profile} onLogout={handleLogout} />;
+  }
+
   if (roleSelectionOpen && availableRoleOptions.length > 1) {
     return <RoleSelectionView roleOptions={availableRoleOptions} buyers={buyers} onSelectRole={handleRoleSelect} />;
   }
@@ -6946,6 +7079,35 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             </div>
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <strong>Käyttäjähallinta</strong>
+              {pendingProfiles.length > 0 ? (
+                <div style={{ ...styles.stack, marginBottom: 12 }}>
+                  <div style={{ ...styles.card, ...styles.sectionCard, padding: "12px 16px", background: "#fff7ed", borderColor: "#fdba74" }}>
+                    <strong>Odottaa hyväksyntää</strong>
+                  </div>
+                  {pendingProfiles.map((pendingProfile) => (
+                    <div key={pendingProfile.id} style={styles.entry}>
+                      <div style={styles.entryHeader}>
+                        <div>
+                          <div style={styles.entryBadges}>
+                            <span style={styles.badge}>{pendingProfile.display_name || "-"}</span>
+                            <span style={styles.badge}>{pendingProfile.email}</span>
+                            <span style={styles.badge}>{roleLabel(pendingProfile.role)}</span>
+                            <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74", color: "#9a3412" }}>Odottaa hyväksyntää</span>
+                          </div>
+                          {(pendingProfile.company_name || pendingProfile.phone || pendingProfile.city) ? (
+                            <div style={styles.muted}>
+                              {[pendingProfile.company_name, pendingProfile.phone, pendingProfile.city].filter(Boolean).join(" · ")}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div style={styles.row}>
+                          <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => handleApprovePendingProfile(pendingProfile)}>Hyväksy</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {allowedUsers.length === 0 ? <div style={styles.muted}>Ei vielä sallittuja käyttäjiä.</div> : (
                 (() => {
                   const userSections = [
