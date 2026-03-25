@@ -1569,7 +1569,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, onClo
   );
 }
 
-function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, authError, authInfo }) {
+function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, onForgotPassword, onResetRecoveredPassword, authError, authInfo }) {
   return (
     <div style={styles.app}>
       <div style={{ ...styles.container, maxWidth: 520 }}>
@@ -1579,25 +1579,34 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
             e.preventDefault();
             if (authMode === "signin") {
               onSignIn();
+            } else if (authMode === "recovery") {
+              onResetRecoveredPassword();
             } else {
               onSignUp();
             }
           }}
         >
           <h1 style={styles.title}>Suoraan Kalastajalta</h1>
-          <div style={{ ...styles.tabs6, gridTemplateColumns: "1fr 1fr", marginBottom: 0 }}>
-            <button type="button" style={{ ...styles.tab, ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
-            <button type="button" style={{ ...styles.tab, ...(authMode === "signup" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signup")}>Rekisteröidy</button>
-          </div>
+          {authMode !== "recovery" ? (
+            <div style={{ ...styles.tabs6, gridTemplateColumns: "1fr 1fr", marginBottom: 0 }}>
+              <button type="button" style={{ ...styles.tab, ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
+              <button type="button" style={{ ...styles.tab, ...(authMode === "signup" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signup")}>Rekisteröidy</button>
+            </div>
+          ) : (
+            <div style={{ ...styles.card, padding: "12px 16px", background: "#eff6ff", border: "1px solid #93c5fd" }}>
+              <strong>Aseta uusi salasana</strong>
+              <div style={styles.muted}>Avaa sähköpostista tullut palautuslinkki ja aseta tähän uusi salasana.</div>
+            </div>
+          )}
 
           <div style={styles.field}>
             <label>Sähköposti</label>
-            <input style={styles.input} type="email" value={authForm.email} onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. nimi@yritys.fi" />
+            <input style={styles.input} type="email" value={authForm.email} onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. nimi@yritys.fi" disabled={authMode === "recovery"} />
           </div>
 
           <div style={styles.field}>
-            <label>Salasana</label>
-            <input style={styles.input} type="password" value={authForm.password} onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))} placeholder="salasana" />
+            <label>{authMode === "recovery" ? "Uusi salasana" : "Salasana"}</label>
+            <input style={styles.input} type="password" value={authForm.password} onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))} placeholder={authMode === "recovery" ? "vähintään 8 merkkiä" : "salasana"} />
           </div>
 
           {authMode === "signup" ? (
@@ -1607,11 +1616,23 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
             </div>
           ) : null}
 
+          {authMode === "recovery" ? (
+            <div style={styles.field}>
+              <label>Uusi salasana uudelleen</label>
+              <input style={styles.input} type="password" value={authForm.confirmPassword} onChange={(e) => setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }))} placeholder="kirjoita uusi salasana uudelleen" />
+            </div>
+          ) : null}
+
           {authError ? <div style={styles.noticeError}>{authError}</div> : null}
           {authInfo ? <div style={styles.noticeSuccess}>{authInfo}</div> : null}
 
           {authMode === "signin" ? (
-            <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Kirjaudu sisään</button>
+            <>
+              <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Kirjaudu sisään</button>
+              <button type="button" style={styles.button} onClick={onForgotPassword}>Unohditko salasanan?</button>
+            </>
+          ) : authMode === "recovery" ? (
+            <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Tallenna uusi salasana</button>
           ) : (
             <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Luo tunnus</button>
           )}
@@ -2320,7 +2341,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [entryScope, setEntryScope] = useState("own");
   const [authMode, setAuthMode] = useState("signin");
-  const [authForm, setAuthForm] = useState({ email: "", password: "", displayName: "" });
+  const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "", displayName: "" });
   const [authError, setAuthError] = useState("");
   const [authInfo, setAuthInfo] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
@@ -2751,6 +2772,17 @@ export default function App() {
       if (event === "TOKEN_REFRESH_FAILED") {
         await invalidateSession();
         return;
+      }
+      if (event === "PASSWORD_RECOVERY") {
+        setAuthMode("recovery");
+        setAuthError("");
+        setAuthInfo("Aseta uusi salasana jatkaaksesi.");
+        setAuthForm((prev) => ({
+          ...prev,
+          email: (nextSession?.user?.email || prev.email || "").trim().toLowerCase(),
+          password: "",
+          confirmPassword: "",
+        }));
       }
       setSession(nextSession ?? null);
     });
@@ -3536,6 +3568,59 @@ export default function App() {
     }
     setAuthInfo("Tunnus luotu. Kirjaudu nyt sisään.");
     setAuthMode("signin");
+  };
+
+  const handleForgotPassword = async () => {
+    setAuthError("");
+    setAuthInfo("");
+    const email = normalizeEmail(authForm.email);
+    if (!email) {
+      setAuthError("Syötä sähköpostiosoite ennen salasanan palautusta.");
+      return;
+    }
+    const redirectTo = typeof window !== "undefined" ? window.location.origin : getPublicAppBaseUrl();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message);
+      return;
+    }
+    setAuthInfo("Salasanan palautuslinkki lähetettiin sähköpostiisi.");
+  };
+
+  const handleResetRecoveredPassword = async () => {
+    setAuthError("");
+    setAuthInfo("");
+    const password = authForm.password;
+    const confirmPassword = authForm.confirmPassword;
+    if (!password || password.length < 8) {
+      setAuthError("Uuden salasanan pitää olla vähintään 8 merkkiä.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setAuthError("Salasanat eivät täsmää.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message);
+      return;
+    }
+    await supabase.auth.signOut();
+    setSession(null);
+    setProfile(null);
+    setAvailableRoleOptions([]);
+    setRoleSelectionOpen(false);
+    setAuthForm((prev) => ({ ...prev, password: "", confirmPassword: "" }));
+    setAuthMode("signin");
+    setAuthInfo("Salasana vaihdettu. Kirjaudu nyt sisään uudella salasanalla.");
   };
 
   const handleLogout = async () => {
@@ -5395,8 +5480,8 @@ export default function App() {
     return <div style={styles.app}><div style={styles.container}><div style={{ ...styles.card, ...styles.sectionCard }}>Ladataan...</div></div></div>;
   }
 
-  if (!session || !profile) {
-    return <AuthView authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} onSignIn={handleSignIn} onSignUp={handleSignUp} authError={authError} authInfo={authInfo} />;
+  if (authMode === "recovery" || !session || !profile) {
+    return <AuthView authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} onSignIn={handleSignIn} onSignUp={handleSignUp} onForgotPassword={handleForgotPassword} onResetRecoveredPassword={handleResetRecoveredPassword} authError={authError} authInfo={authInfo} />;
   }
 
   if (roleSelectionOpen && availableRoleOptions.length > 1) {
