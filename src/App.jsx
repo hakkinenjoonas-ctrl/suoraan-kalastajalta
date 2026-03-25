@@ -1445,17 +1445,6 @@ function PublicBatchView({ batchId, data, loading, error }) {
           </div>
         ) : null}
 
-        {labelPrintEntry ? (
-          <CatchLabelPrintModal
-            entry={labelPrintEntry}
-            profile={profile}
-            labelCount={labelPrintCount}
-            setLabelCount={setLabelPrintCount}
-            onClose={() => setLabelPrintEntry(null)}
-            onGeneratePdf={() => openCatchLabelPrintDialog(labelPrintEntry, "pdf")}
-            onPrint={() => openCatchLabelPrintDialog(labelPrintEntry, "print")}
-          />
-        ) : null}
       </div>
     </div>
   );
@@ -6747,6 +6736,18 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               )}
             </div>
           </div>
+        ) : null}
+
+        {labelPrintEntry ? (
+          <CatchLabelPrintModal
+            entry={labelPrintEntry}
+            profile={profile}
+            labelCount={labelPrintCount}
+            setLabelCount={setLabelPrintCount}
+            onClose={() => setLabelPrintEntry(null)}
+            onGeneratePdf={() => openCatchLabelPrintDialog(labelPrintEntry, "pdf")}
+            onPrint={() => openCatchLabelPrintDialog(labelPrintEntry, "print")}
+          />
         ) : null}
       </div>
     </div>
