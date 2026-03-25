@@ -440,6 +440,14 @@ function billingMatchesDelivery(fields) {
   );
 }
 
+function billingMatchesAddress(fields) {
+  return (
+    String(fields?.address || "") === String(fields?.billingAddress || "") &&
+    String(fields?.postcode || "") === String(fields?.billingPostcode || "") &&
+    String(fields?.city || "") === String(fields?.billingCity || "")
+  );
+}
+
 function buyerBillingMatchesDelivery(fields) {
   return (
     String(fields?.delivery_address || "") === String(fields?.billing_address || "") &&
@@ -647,11 +655,20 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
   const species = formatSpeciesForSale(entry?.species || "");
   const scientificName = getCatchLabelScientificName(entry?.species);
   const productForm = getCatchLabelProductForm(entry?.species);
-  const supplierParts = [
+  const supplierNameParts = [
     String(profileLike?.company_name || profileLike?.companyName || "").trim(),
     String(entry?.ownerName || profileLike?.display_name || "").trim(),
   ].filter(Boolean);
-  const supplier = supplierParts.join(" / ") || String(entry?.ownerName || profileLike?.display_name || "").trim() || "-";
+  const supplier = supplierNameParts.join(" / ") || String(entry?.ownerName || profileLike?.display_name || "").trim() || "-";
+  const supplierAddress = [
+    String(profileLike?.address || "").trim(),
+    String(profileLike?.postcode || "").trim(),
+    String(profileLike?.city || "").trim(),
+  ].filter(Boolean).join(", ");
+  const supplierContact = [
+    String(profileLike?.contact_email || profileLike?.email || "").trim(),
+    String(profileLike?.phone || "").trim(),
+  ].filter(Boolean).join(" · ");
   const boxLabel = `${boxNumber}/${totalBoxes}`;
 
   return {
@@ -663,6 +680,8 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
     gearType: String(entry?.gear || "").trim(),
     productForm,
     supplier,
+    supplierAddress,
+    supplierContact,
     boxLabel,
     qrPayload: {
       batchId: String(entry?.batchId || "").trim(),
@@ -673,6 +692,8 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
       gearType: String(entry?.gear || "").trim(),
       productForm,
       supplier,
+      supplierAddress,
+      supplierContact,
       box: boxLabel,
     },
   };
@@ -711,6 +732,8 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           <div class="line">Paino: ______ kg</div>
           <div class="line">Säilytys: 0–2 °C</div>
           <div class="line">Toimittaja: ${label.supplier || "-"}</div>
+          ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
+          ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
           <div class="line">Laatikko ${label.boxLabel}</div>
         </div>
         <div class="label-qr">
@@ -2406,17 +2429,21 @@ export default function App() {
     commercialFishingId: "",
     pickupAddress: "",
     companyName: "",
-    contactName: "",
-    phone: "",
+    businessId: "",
+    address: "",
+    postcode: "",
     city: "",
-    deliveryAddress: "",
-    deliveryPostcode: "",
-    deliveryCity: "",
     billingAddress: "",
     billingPostcode: "",
     billingCity: "",
     billingEmail: "",
-    businessId: "",
+    einvoiceAddress: "",
+    contactEmail: "",
+    phone: "",
+    contactName: "",
+    deliveryAddress: "",
+    deliveryPostcode: "",
+    deliveryCity: "",
     notes: "",
   });
   const [accountBillingSameAsDelivery, setAccountBillingSameAsDelivery] = useState(false);
@@ -3303,22 +3330,28 @@ export default function App() {
       commercialFishingVesselId: profile.commercial_fishing_vessel_id || "",
       commercialFishingId: profile.commercial_fishing_id || "",
       pickupAddress: profile.pickup_address || "",
-      companyName: linkedBuyerRecord?.company_name || "",
+      companyName: profile.company_name || linkedBuyerRecord?.company_name || "",
+      businessId: profile.business_id || linkedBuyerRecord?.business_id || "",
+      address: profile.address || "",
+      postcode: profile.postcode || "",
+      city: profile.city || linkedBuyerRecord?.city || "",
+      billingAddress: profile.billing_address || linkedBuyerRecord?.billing_address || "",
+      billingPostcode: profile.billing_postcode || linkedBuyerRecord?.billing_postcode || "",
+      billingCity: profile.billing_city || linkedBuyerRecord?.billing_city || "",
+      billingEmail: profile.billing_email || linkedBuyerRecord?.billing_email || "",
+      einvoiceAddress: profile.einvoice_address || "",
+      contactEmail: profile.contact_email || profile.email || "",
+      phone: profile.phone || linkedBuyerRecord?.phone || "",
       contactName: linkedBuyerRecord?.contact_name || "",
-      phone: linkedBuyerRecord?.phone || "",
-      city: linkedBuyerRecord?.city || "",
       deliveryAddress: linkedBuyerRecord?.delivery_address || "",
       deliveryPostcode: linkedBuyerRecord?.delivery_postcode || "",
       deliveryCity: linkedBuyerRecord?.delivery_city || "",
-      billingAddress: linkedBuyerRecord?.billing_address || "",
-      billingPostcode: linkedBuyerRecord?.billing_postcode || "",
-      billingCity: linkedBuyerRecord?.billing_city || "",
-      billingEmail: linkedBuyerRecord?.billing_email || "",
-      businessId: linkedBuyerRecord?.business_id || "",
       notes: linkedBuyerRecord?.notes || "",
     };
     setAccountForm(nextForm);
-    setAccountBillingSameAsDelivery(billingMatchesDelivery(nextForm));
+    setAccountBillingSameAsDelivery(
+      profile.role === "buyer" ? billingMatchesDelivery(nextForm) : billingMatchesAddress(nextForm)
+    );
   }, [profile, linkedBuyerRecord]);
 
   const applyAccountDeliveryToBilling = useCallback(() => {
@@ -3327,6 +3360,15 @@ export default function App() {
       billingAddress: prev.deliveryAddress,
       billingPostcode: prev.deliveryPostcode,
       billingCity: prev.deliveryCity,
+    }));
+  }, []);
+
+  const applyAccountAddressToBilling = useCallback(() => {
+    setAccountForm((prev) => ({
+      ...prev,
+      billingAddress: prev.address,
+      billingPostcode: prev.postcode,
+      billingCity: prev.city,
     }));
   }, []);
 
@@ -3561,6 +3603,18 @@ export default function App() {
               commercial_fishing_vessel_id: accountForm.commercialFishingVesselId.trim() || null,
               commercial_fishing_id: accountForm.commercialFishingId.trim() || null,
               pickup_address: accountForm.pickupAddress.trim() || null,
+              company_name: accountForm.companyName.trim() || null,
+              business_id: accountForm.businessId.trim() || null,
+              address: accountForm.address.trim() || null,
+              postcode: accountForm.postcode.trim() || null,
+              city: accountForm.city.trim() || null,
+              billing_address: accountForm.billingAddress.trim() || null,
+              billing_postcode: accountForm.billingPostcode.trim() || null,
+              billing_city: accountForm.billingCity.trim() || null,
+              billing_email: accountForm.billingEmail.trim().toLowerCase() || null,
+              einvoice_address: accountForm.einvoiceAddress.trim() || null,
+              contact_email: accountForm.contactEmail.trim().toLowerCase() || null,
+              phone: accountForm.phone.trim() || null,
             }
           : {}),
       };
@@ -5859,10 +5913,67 @@ export default function App() {
                 <input style={styles.input} value={profile.email || ""} disabled />
               </div>
               {profile.role === "processor" ? (
-                <div style={styles.field}>
-                  <label>Laitosnumero</label>
-                  <input style={styles.input} value={accountForm.eviraFacilityId} onChange={(e) => setAccountForm((prev) => ({ ...prev, eviraFacilityId: e.target.value }))} placeholder="Esim. F12345" />
-                </div>
+                <>
+                  <div style={styles.field}>
+                    <label>Laitosnumero</label>
+                    <input style={styles.input} value={accountForm.eviraFacilityId} onChange={(e) => setAccountForm((prev) => ({ ...prev, eviraFacilityId: e.target.value }))} placeholder="Esim. F12345" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Yrityksen nimi</label>
+                    <input style={styles.input} value={accountForm.companyName} onChange={(e) => setAccountForm((prev) => ({ ...prev, companyName: e.target.value }))} placeholder="Yrityksen nimi" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Y-tunnus</label>
+                    <input style={styles.input} value={accountForm.businessId} onChange={(e) => setAccountForm((prev) => ({ ...prev, businessId: e.target.value }))} placeholder="1234567-8" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Osoite</label>
+                    <input style={styles.input} value={accountForm.address} onChange={(e) => setAccountForm((prev) => ({ ...prev, address: e.target.value, ...(accountBillingSameAsDelivery ? { billingAddress: e.target.value } : {}) }))} placeholder="Katuosoite" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Postinumero</label>
+                    <input style={styles.input} value={accountForm.postcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, postcode: e.target.value, ...(accountBillingSameAsDelivery ? { billingPostcode: e.target.value } : {}) }))} placeholder="00100" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Paikkakunta</label>
+                    <MunicipalitySelect value={accountForm.city} onChange={(e) => setAccountForm((prev) => ({ ...prev, city: e.target.value, ...(accountBillingSameAsDelivery ? { billingCity: e.target.value } : {}) }))} />
+                  </div>
+                  <div style={{ ...styles.field, ...styles.fieldFull }}>
+                    <label><input type="checkbox" checked={accountBillingSameAsDelivery} onChange={(e) => {
+                      const checked = e.target.checked;
+                      setAccountBillingSameAsDelivery(checked);
+                      if (checked) applyAccountAddressToBilling();
+                    }} /> Laskutusosoite sama kuin osoite</label>
+                  </div>
+                  <div style={styles.field}>
+                    <label>Laskutusosoite</label>
+                    <input style={styles.input} value={accountForm.billingAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingAddress: e.target.value }))} placeholder="Katuosoite" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Laskutus postinumero</label>
+                    <input style={styles.input} value={accountForm.billingPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingPostcode: e.target.value }))} placeholder="00100" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Laskutus paikkakunta</label>
+                    <MunicipalitySelect value={accountForm.billingCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingCity: e.target.value }))} />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Laskutussähköposti</label>
+                    <input style={styles.input} type="email" value={accountForm.billingEmail} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingEmail: e.target.value }))} placeholder="laskutus@yritys.fi" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Verkkolaskuosoite</label>
+                    <input style={styles.input} value={accountForm.einvoiceAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, einvoiceAddress: e.target.value }))} placeholder="Verkkolaskuosoite" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Sähköposti</label>
+                    <input style={styles.input} type="email" value={accountForm.contactEmail} onChange={(e) => setAccountForm((prev) => ({ ...prev, contactEmail: e.target.value }))} placeholder="yritys@yritys.fi" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Puhelinnumero</label>
+                    <input style={styles.input} value={accountForm.phone} onChange={(e) => setAccountForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Puhelinnumero" />
+                  </div>
+                </>
               ) : (
                 <>
                   <div style={styles.field}>
@@ -5876,6 +5987,61 @@ export default function App() {
                   <div style={styles.field}>
                     <label>Nouto-osoite</label>
                     <input style={styles.input} value={accountForm.pickupAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, pickupAddress: e.target.value }))} placeholder="Katuosoite noutoa varten" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Yrityksen nimi</label>
+                    <input style={styles.input} value={accountForm.companyName} onChange={(e) => setAccountForm((prev) => ({ ...prev, companyName: e.target.value }))} placeholder="Yrityksen nimi" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Y-tunnus</label>
+                    <input style={styles.input} value={accountForm.businessId} onChange={(e) => setAccountForm((prev) => ({ ...prev, businessId: e.target.value }))} placeholder="1234567-8" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Osoite</label>
+                    <input style={styles.input} value={accountForm.address} onChange={(e) => setAccountForm((prev) => ({ ...prev, address: e.target.value, ...(accountBillingSameAsDelivery ? { billingAddress: e.target.value } : {}) }))} placeholder="Katuosoite" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Postinumero</label>
+                    <input style={styles.input} value={accountForm.postcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, postcode: e.target.value, ...(accountBillingSameAsDelivery ? { billingPostcode: e.target.value } : {}) }))} placeholder="00100" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Paikkakunta</label>
+                    <MunicipalitySelect value={accountForm.city} onChange={(e) => setAccountForm((prev) => ({ ...prev, city: e.target.value, ...(accountBillingSameAsDelivery ? { billingCity: e.target.value } : {}) }))} />
+                  </div>
+                  <div style={{ ...styles.field, ...styles.fieldFull }}>
+                    <label><input type="checkbox" checked={accountBillingSameAsDelivery} onChange={(e) => {
+                      const checked = e.target.checked;
+                      setAccountBillingSameAsDelivery(checked);
+                      if (checked) applyAccountAddressToBilling();
+                    }} /> Laskutusosoite sama kuin osoite</label>
+                  </div>
+                  <div style={styles.field}>
+                    <label>Laskutusosoite</label>
+                    <input style={styles.input} value={accountForm.billingAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingAddress: e.target.value }))} placeholder="Katuosoite" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Laskutus postinumero</label>
+                    <input style={styles.input} value={accountForm.billingPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingPostcode: e.target.value }))} placeholder="00100" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Laskutus paikkakunta</label>
+                    <MunicipalitySelect value={accountForm.billingCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingCity: e.target.value }))} />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Laskutussähköposti</label>
+                    <input style={styles.input} type="email" value={accountForm.billingEmail} onChange={(e) => setAccountForm((prev) => ({ ...prev, billingEmail: e.target.value }))} placeholder="laskutus@yritys.fi" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Verkkolaskuosoite</label>
+                    <input style={styles.input} value={accountForm.einvoiceAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, einvoiceAddress: e.target.value }))} placeholder="Verkkolaskuosoite" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Sähköposti</label>
+                    <input style={styles.input} type="email" value={accountForm.contactEmail} onChange={(e) => setAccountForm((prev) => ({ ...prev, contactEmail: e.target.value }))} placeholder="yritys@yritys.fi" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Puhelinnumero</label>
+                    <input style={styles.input} value={accountForm.phone} onChange={(e) => setAccountForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Puhelinnumero" />
                   </div>
                 </>
               )}
