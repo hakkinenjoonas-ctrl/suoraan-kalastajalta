@@ -2062,6 +2062,7 @@ export default function App() {
     transportMode: "",
     originPointId: "",
     transportCompanyId: "north-fresh-logistics",
+    pickupAddress: "",
     pickupSurcharge: "",
     estimatedPickupTime: "",
     deliveryDestinations: [],
@@ -2137,6 +2138,7 @@ export default function App() {
     eviraFacilityId: "",
     commercialFishingVesselId: "",
     commercialFishingId: "",
+    pickupAddress: "",
     companyName: "",
     contactName: "",
     phone: "",
@@ -2267,6 +2269,8 @@ export default function App() {
   const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
   const shouldSendProcessedOffer = processedForm.offerToShops || processedForm.offerToRestaurants || processedForm.offerToWholesalers;
   const currentOriginCity = form.originCity || form.municipality || "";
+  const savedPickupAddress = profile?.pickup_address || "";
+  const resolvedPickupAddress = (form.pickupAddress || savedPickupAddress || "").trim();
   const availableOriginPoints = useMemo(
     () => getAvailableOriginPoints(currentOriginCity, form.area, form.transportMode),
     [currentOriginCity, form.area, form.transportMode],
@@ -2748,6 +2752,7 @@ export default function App() {
             transportMode: entry.transport_mode || "",
             originPointId: entry.origin_point_id || "",
             transportCompanyId: entry.transport_company_id || "",
+            pickupAddress: entry.pickup_address || "",
             deliveryDestinations: Array.isArray(entry.delivery_destinations) ? entry.delivery_destinations : [],
             deliveryArea: entry.delivery_area || "",
             deliveryCost: entry.delivery_cost == null ? "" : Number(entry.delivery_cost),
@@ -3000,6 +3005,7 @@ export default function App() {
       eviraFacilityId: profile.evira_facility_id || "",
       commercialFishingVesselId: profile.commercial_fishing_vessel_id || "",
       commercialFishingId: profile.commercial_fishing_id || "",
+      pickupAddress: profile.pickup_address || "",
       companyName: linkedBuyerRecord?.company_name || "",
       contactName: linkedBuyerRecord?.contact_name || "",
       phone: linkedBuyerRecord?.phone || "",
@@ -3257,6 +3263,7 @@ export default function App() {
               evira_facility_id: accountForm.eviraFacilityId.trim() || null,
               commercial_fishing_vessel_id: accountForm.commercialFishingVesselId.trim() || null,
               commercial_fishing_id: accountForm.commercialFishingId.trim() || null,
+              pickup_address: accountForm.pickupAddress.trim() || null,
             }
           : {}),
       };
@@ -4580,6 +4587,10 @@ export default function App() {
         setAuthError("Valitse kuljetuksen luovutustapa ennen tarjouksen lähetystä.");
         return;
       }
+      if (form.transportMode === "pickup" && !resolvedPickupAddress) {
+        setAuthError("Täytä nouto-osoite ennen tarjouksen lähetystä.");
+        return;
+      }
       if ((form.transportMode === "terminal" || form.transportMode === "collection_point") && !form.originPointId) {
         setAuthError("Valitse terminaali tai keräilypiste ennen tarjouksen lähetystä.");
         return;
@@ -4634,6 +4645,7 @@ export default function App() {
       transport_mode: form.transportMode || null,
       origin_point_id: form.originPointId || null,
       transport_company_id: form.transportCompanyId || null,
+      pickup_address: resolvedPickupAddress || null,
       delivery_destinations: form.deliveryDestinations,
       delivery_area: form.deliveryArea,
       delivery_cost: form.deliveryCost === "" ? null : Number(form.deliveryCost),
@@ -4711,6 +4723,7 @@ export default function App() {
       transportMode: "",
       originPointId: "",
       transportCompanyId: "north-fresh-logistics",
+      pickupAddress: "",
       pickupSurcharge: "",
       estimatedPickupTime: "",
       deliveryDestinations: [],
@@ -5460,6 +5473,10 @@ export default function App() {
                     <label>Kaupallisen kalastajan tunnus</label>
                     <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 123456" />
                   </div>
+                  <div style={styles.field}>
+                    <label>Nouto-osoite</label>
+                    <input style={styles.input} value={accountForm.pickupAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, pickupAddress: e.target.value }))} placeholder="Katuosoite noutoa varten" />
+                  </div>
                 </>
               )}
               <div style={{ ...styles.row, justifyContent: "flex-end" }}>
@@ -5739,6 +5756,7 @@ export default function App() {
                               deliveryMethod: "Kuljetus järjestetään",
                               transportMode: option.value,
                               originPointId: option.value === "pickup" ? "" : prev.originPointId,
+                              pickupAddress: option.value === "pickup" ? (prev.pickupAddress || savedPickupAddress) : prev.pickupAddress,
                               pickupSurcharge: option.value === "pickup" ? "12" : "",
                               estimatedPickupTime: option.value === "pickup" ? "Arkipäivisin klo 12–16" : "",
                             }))}
@@ -5787,8 +5805,17 @@ export default function App() {
                     {form.transportMode === "pickup" ? (
                       <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
                         <label>Noutotiedot</label>
+                        <div style={styles.field}>
+                          <label>Nouto-osoite</label>
+                          <input
+                            style={styles.input}
+                            value={form.pickupAddress || savedPickupAddress}
+                            onChange={(e) => setForm((prev) => ({ ...prev, pickupAddress: e.target.value }))}
+                            placeholder="Kirjoita nouto-osoite, jos sitä ei ole tallennettu omiin tietoihin"
+                          />
+                        </div>
                         <div style={styles.noticeInfo}>
-                          Noutopaikka: {[currentOriginCity, form.spot].filter(Boolean).join(" / ") || "-"}<br />
+                          Noutopaikka: {[resolvedPickupAddress, currentOriginCity, form.spot].filter(Boolean).join(", ") || "-"}<br />
                           Noutolisä: {form.pickupSurcharge !== "" ? `${form.pickupSurcharge} €` : "-"}<br />
                           Arvioitu noutoaika: {form.estimatedPickupTime || "-"}
                         </div>
