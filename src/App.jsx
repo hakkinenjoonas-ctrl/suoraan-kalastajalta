@@ -627,6 +627,128 @@ function getBatchQrImageUrl(batchId) {
   return traceValue ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(traceValue)}` : "";
 }
 
+function canPrintCatchLabels(entry) {
+  return Boolean(entry?.batchId && entry?.species && entry?.date);
+}
+
+function getCatchLabelScientificName(speciesValue) {
+  const normalized = normalizeFishSpeciesLabel(speciesValue);
+  return fishSpeciesByName[normalized]?.scientific || "";
+}
+
+function getCatchLabelProductForm(speciesValue) {
+  const text = String(speciesValue || "").trim();
+  if (!text) return "";
+  const parts = text.split(",");
+  return parts.length > 1 ? parts.slice(1).join(",").trim() : "";
+}
+
+function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
+  const species = formatSpeciesForSale(entry?.species || "");
+  const scientificName = getCatchLabelScientificName(entry?.species);
+  const productForm = getCatchLabelProductForm(entry?.species);
+  const supplierParts = [
+    String(profileLike?.company_name || profileLike?.companyName || "").trim(),
+    String(entry?.ownerName || profileLike?.display_name || "").trim(),
+  ].filter(Boolean);
+  const supplier = supplierParts.join(" / ") || String(entry?.ownerName || profileLike?.display_name || "").trim() || "-";
+  const boxLabel = `${boxNumber}/${totalBoxes}`;
+
+  return {
+    species,
+    scientificName,
+    batchId: String(entry?.batchId || "").trim(),
+    catchDate: String(entry?.date || "").trim(),
+    catchArea: [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / "),
+    gearType: String(entry?.gear || "").trim(),
+    productForm,
+    supplier,
+    boxLabel,
+    qrPayload: {
+      batchId: String(entry?.batchId || "").trim(),
+      species,
+      scientificName,
+      catchDate: String(entry?.date || "").trim(),
+      catchArea: [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / "),
+      gearType: String(entry?.gear || "").trim(),
+      productForm,
+      supplier,
+      box: boxLabel,
+    },
+  };
+}
+
+function getCatchLabelQrImageUrl(labelData) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(JSON.stringify(labelData.qrPayload))}`;
+}
+
+function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
+  const count = Math.max(1, Number(labelCount || 1));
+  const labels = Array.from({ length: count }, (_, index) => {
+    const labelData = buildCatchLabelData(entry, profileLike, index + 1, count);
+    return {
+      ...labelData,
+      qrImageUrl: getCatchLabelQrImageUrl(labelData),
+    };
+  });
+
+  const pages = [];
+  for (let index = 0; index < labels.length; index += 10) {
+    pages.push(labels.slice(index, index + 10));
+  }
+
+  const renderLabel = (label) => `
+    <div class="label">
+      <div class="label-inner">
+        <div class="label-main">
+          <div class="species">${label.species || "-"}</div>
+          ${label.scientificName ? `<div class="scientific">${label.scientificName}</div>` : ""}
+          <div class="batch">Erätunnus: ${label.batchId || "-"}</div>
+          ${label.catchArea ? `<div class="line">Pyyntialue: ${label.catchArea}</div>` : ""}
+          ${label.gearType ? `<div class="line">Pyyntimenetelmä: ${label.gearType}</div>` : ""}
+          ${label.catchDate ? `<div class="line">Pyyntipäivä: ${label.catchDate}</div>` : ""}
+          ${label.productForm ? `<div class="line">Tuote: ${label.productForm}</div>` : ""}
+          <div class="line">Paino: ______ kg</div>
+          <div class="line">Säilytys: 0–2 °C</div>
+          <div class="line">Toimittaja: ${label.supplier || "-"}</div>
+          <div class="line">Laatikko ${label.boxLabel}</div>
+        </div>
+        <div class="label-qr">
+          <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
+        </div>
+      </div>
+    </div>
+  `;
+
+  return `
+    <!doctype html>
+    <html lang="fi">
+      <head>
+        <meta charset="utf-8" />
+        <title>Kalaetiketit ${String(entry?.batchId || "")}</title>
+        <style>
+          @page { size: A4 portrait; margin: 6mm 0; }
+          * { box-sizing: border-box; }
+          body { margin: 0; font-family: Inter, Arial, sans-serif; background: #fff; color: #111827; }
+          .sheet { width: 210mm; margin: 0 auto; display: grid; grid-template-columns: 105mm 105mm; grid-auto-rows: 57mm; }
+          .page-break { page-break-after: always; }
+          .label { width: 105mm; height: 57mm; padding: 2.5mm 3.5mm; }
+          .label-inner { width: 100%; height: 100%; border: 0.3mm solid #cbd5e1; border-radius: 2mm; padding: 2.5mm; display: grid; grid-template-columns: 1fr 22mm; gap: 2.5mm; overflow: hidden; }
+          .species { font-size: 14pt; font-weight: 800; line-height: 1.05; margin-bottom: 0.8mm; }
+          .scientific { font-size: 7pt; line-height: 1.2; color: #475569; margin-bottom: 1mm; }
+          .batch { font-size: 8.2pt; font-weight: 800; background: #eff6ff; border: 0.25mm solid #93c5fd; border-radius: 1.5mm; padding: 1mm 1.2mm; margin-bottom: 1.2mm; }
+          .line { font-size: 7.1pt; line-height: 1.22; margin-bottom: 0.55mm; }
+          .label-qr { display: flex; align-items: flex-end; justify-content: center; }
+          .label-qr img { width: 20mm; height: 20mm; object-fit: contain; border: 0.25mm solid #cbd5e1; border-radius: 1.5mm; padding: 1mm; background: #fff; }
+        </style>
+      </head>
+      <body>
+        ${pages.map((page, pageIndex) => `<div class="sheet ${pageIndex < pages.length - 1 ? "page-break" : ""}">${page.map((label) => renderLabel(label)).join("")}</div>`).join("")}
+      </body>
+    </html>
+  `;
+}
+
 function getRequestedPublicBatchId() {
   if (typeof window === "undefined") return "";
   const pathname = String(window.location.pathname || "");
@@ -1322,6 +1444,114 @@ function PublicBatchView({ batchId, data, loading, error }) {
             ) : null}
           </div>
         ) : null}
+
+        {labelPrintEntry ? (
+          <CatchLabelPrintModal
+            entry={labelPrintEntry}
+            profile={profile}
+            labelCount={labelPrintCount}
+            setLabelCount={setLabelPrintCount}
+            onClose={() => setLabelPrintEntry(null)}
+            onGeneratePdf={() => openCatchLabelPrintDialog(labelPrintEntry, "pdf")}
+            onPrint={() => openCatchLabelPrintDialog(labelPrintEntry, "print")}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, onClose, onGeneratePdf, onPrint }) {
+  if (!entry) return null;
+
+  const previewLabel = buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)));
+  const previewQrImageUrl = getCatchLabelQrImageUrl(previewLabel);
+
+  return (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(15, 23, 42, 0.45)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20,
+      zIndex: 2000,
+    }}>
+      <div style={{ ...styles.card, width: "min(980px, 100%)", maxHeight: "90vh", overflow: "auto", padding: 24 }}>
+        <div style={styles.rowBetween}>
+          <div>
+            <strong style={{ fontSize: 22 }}>Tulosta etiketit</strong>
+            <div style={styles.muted}>Erätunnus: {entry.batchId}</div>
+          </div>
+          <button style={styles.button} onClick={onClose}>Sulje</button>
+        </div>
+
+        <div style={{ ...styles.grid2, marginTop: 16, alignItems: "start" }}>
+          <div style={{ ...styles.stack, gap: 14 }}>
+            <div style={styles.field}>
+              <label>Kalalaji</label>
+              <input style={styles.input} value={formatSpeciesForSale(entry.species)} disabled />
+            </div>
+            <div style={styles.field}>
+              <label>Pyyntipäivämäärä</label>
+              <input style={styles.input} value={entry.date || "-"} disabled />
+            </div>
+            <div style={styles.field}>
+              <label>Erätunnus</label>
+              <input style={styles.input} value={entry.batchId || "-"} disabled />
+            </div>
+            <div style={styles.field}>
+              <label>Laatikoiden määrä</label>
+              <input
+                style={styles.input}
+                type="number"
+                min="1"
+                step="1"
+                value={labelCount}
+                onChange={(e) => setLabelCount(Math.max(1, Number(e.target.value || 1)))}
+              />
+            </div>
+            <div style={styles.small}>APLI 1278 · 57 × 105 mm · 10 etikettiä / arkki. “Luo PDF” avaa tulostusikkunan, jossa voit tallentaa PDF:n.</div>
+            <div style={styles.row}>
+              <button style={{ ...styles.button, ...styles.primaryButton }} onClick={onGeneratePdf}>Luo PDF</button>
+              <button style={styles.button} onClick={onPrint}>Tulosta</button>
+            </div>
+          </div>
+
+          <div style={{ ...styles.card, background: "#f8fbff", padding: 18 }}>
+            <div style={{ ...styles.small, marginBottom: 10 }}>Esikatselu</div>
+            <div style={{
+              width: 420,
+              maxWidth: "100%",
+              aspectRatio: "105 / 57",
+              border: "1px solid #cbd5e1",
+              borderRadius: 12,
+              background: "#fff",
+              padding: 14,
+              display: "grid",
+              gridTemplateColumns: "1fr 86px",
+              gap: 12,
+            }}>
+              <div>
+                <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.05 }}>{previewLabel.species}</div>
+                {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
+                <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800, padding: "6px 8px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8 }}>Erätunnus: {previewLabel.batchId}</div>
+                {previewLabel.catchArea ? <div style={{ marginTop: 8, fontSize: 12 }}>Pyyntialue: {previewLabel.catchArea}</div> : null}
+                {previewLabel.gearType ? <div style={{ fontSize: 12 }}>Pyyntimenetelmä: {previewLabel.gearType}</div> : null}
+                {previewLabel.catchDate ? <div style={{ fontSize: 12 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
+                {previewLabel.productForm ? <div style={{ fontSize: 12 }}>Tuote: {previewLabel.productForm}</div> : null}
+                <div style={{ fontSize: 12 }}>Paino: ______ kg</div>
+                <div style={{ fontSize: 12 }}>Säilytys: 0–2 °C</div>
+                <div style={{ fontSize: 12 }}>Toimittaja: {previewLabel.supplier}</div>
+                <div style={{ fontSize: 12 }}>Laatikko {previewLabel.boxLabel}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+                <img src={previewQrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 82, height: 82, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff" }} />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -2205,6 +2435,8 @@ export default function App() {
   const [publicBatchData, setPublicBatchData] = useState(null);
   const [publicBatchLoading, setPublicBatchLoading] = useState(Boolean(publicBatchId));
   const [publicBatchError, setPublicBatchError] = useState("");
+  const [labelPrintEntry, setLabelPrintEntry] = useState(null);
+  const [labelPrintCount, setLabelPrintCount] = useState(10);
 
   const getMatchingAllowedRole = useCallback((allowedRows, currentProfile) => {
     if (!currentProfile) return null;
@@ -5083,6 +5315,28 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
+  const openCatchLabelPrintDialog = (entry, mode = "print") => {
+    if (!entry) return;
+    const html = buildCatchLabelPrintHtml(entry, profile, labelPrintCount);
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
+    if (!printWindow) {
+      setAuthError("Tulostusikkunan avaaminen estettiin selaimessa.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    window.setTimeout(() => {
+      try {
+        printWindow.print();
+      } catch (error) {
+        console.error("Etikettien tulostus epäonnistui:", error);
+      }
+    }, mode === "pdf" ? 350 : 250);
+  };
+
   if (publicBatchId) {
     return <PublicBatchView batchId={publicBatchId} data={publicBatchData} loading={publicBatchLoading} error={publicBatchError} />;
   }
@@ -6295,7 +6549,10 @@ export default function App() {
                           <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                           {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                         </div>
-                        <button style={styles.button} onClick={() => handleDeleteEntry(entry)}>Poista saalistieto</button>
+                        <div style={styles.row}>
+                          {canPrintCatchLabels(entry) ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(10); }}>Tulosta etiketit</button> : null}
+                          <button style={styles.button} onClick={() => handleDeleteEntry(entry)}>Poista saalistieto</button>
+                        </div>
                       </div>
                     </div>
                   ))}
