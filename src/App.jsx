@@ -2077,6 +2077,7 @@ export default function App() {
     bestBeforeDate: "",
     area: "Saimaa",
     municipality: "",
+    originCity: "",
     spot: "",
     productName: "",
     productType: "Filee",
@@ -2089,7 +2090,15 @@ export default function App() {
     offerToShops: false,
     offerToRestaurants: false,
     offerToWholesalers: false,
+    deliveryPossible: false,
     deliveryMethod: "Nouto",
+    transportMode: "",
+    originPointId: "",
+    transportCompanyId: "north-fresh-logistics",
+    pickupAddress: "",
+    pickupSurcharge: "",
+    estimatedPickupTime: "",
+    deliveryDestinations: [],
     deliveryArea: "",
     deliveryCost: "",
     earliestDeliveryDate: today(),
@@ -2269,19 +2278,33 @@ export default function App() {
   const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
   const shouldSendProcessedOffer = processedForm.offerToShops || processedForm.offerToRestaurants || processedForm.offerToWholesalers;
   const currentOriginCity = form.originCity || form.municipality || "";
+  const currentProcessedOriginCity = processedForm.originCity || processedForm.municipality || "";
   const savedPickupAddress = profile?.pickup_address || "";
   const resolvedPickupAddress = (form.pickupAddress || savedPickupAddress || "").trim();
+  const resolvedProcessedPickupAddress = (processedForm.pickupAddress || savedPickupAddress || "").trim();
   const availableOriginPoints = useMemo(
     () => getAvailableOriginPoints(currentOriginCity, form.area, form.transportMode),
     [currentOriginCity, form.area, form.transportMode],
+  );
+  const availableProcessedOriginPoints = useMemo(
+    () => getAvailableOriginPoints(currentProcessedOriginCity, processedForm.area, processedForm.transportMode),
+    [currentProcessedOriginCity, processedForm.area, processedForm.transportMode],
   );
   const availableRouteOptions = useMemo(
     () => (form.originPointId ? getRouteOptionsForPoint(form.originPointId, speciesRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0)) : []),
     [form.originPointId, speciesRows],
   );
+  const availableProcessedRouteOptions = useMemo(
+    () => (processedForm.originPointId ? getRouteOptionsForPoint(processedForm.originPointId, Number(processedForm.kilos || 0)) : []),
+    [processedForm.originPointId, processedForm.kilos],
+  );
   const suggestedDeliveryCities = useMemo(
     () => getSuggestedDestinationCities(currentOriginCity, form.area),
     [currentOriginCity, form.area],
+  );
+  const suggestedProcessedDeliveryCities = useMemo(
+    () => getSuggestedDestinationCities(currentProcessedOriginCity, processedForm.area),
+    [currentProcessedOriginCity, processedForm.area],
   );
   const availableDestinationCities = useMemo(
     () => Array.from(new Set([
@@ -2290,6 +2313,14 @@ export default function App() {
       ...(Array.isArray(form.deliveryDestinations) ? form.deliveryDestinations : []),
     ])).filter(Boolean),
     [availableRouteOptions, form.deliveryDestinations],
+  );
+  const availableProcessedDestinationCities = useMemo(
+    () => Array.from(new Set([
+      ...alwaysSuggestedDestinationCities,
+      ...availableProcessedRouteOptions.map((item) => item.destination_city),
+      ...(Array.isArray(processedForm.deliveryDestinations) ? processedForm.deliveryDestinations : []),
+    ])).filter(Boolean),
+    [availableProcessedRouteOptions, processedForm.deliveryDestinations],
   );
 
   const analyzeOfferRecipients = (offerFormState, rows) => {
@@ -2872,6 +2903,7 @@ export default function App() {
             bestBeforeDate: entry.best_before_date || "",
             area: entry.area,
             municipality: entry.municipality || "",
+            originCity: entry.origin_city || entry.municipality || "",
             spot: entry.spot || "",
             productName: entry.product_name || "",
             productType: entry.product_type || "",
@@ -2881,7 +2913,13 @@ export default function App() {
             packageSizeG: entry.package_size_g == null ? "" : Number(entry.package_size_g),
             packageCount: entry.package_count == null ? "" : Number(entry.package_count),
             notes: entry.notes || "",
+            deliveryPossible: Boolean(entry.delivery_possible),
             deliveryMethod: entry.delivery_method || "Nouto",
+            transportMode: entry.transport_mode || "",
+            originPointId: entry.origin_point_id || "",
+            transportCompanyId: entry.transport_company_id || "",
+            pickupAddress: entry.pickup_address || "",
+            deliveryDestinations: Array.isArray(entry.delivery_destinations) ? entry.delivery_destinations : [],
             deliveryArea: entry.delivery_area || "",
             deliveryCost: entry.delivery_cost == null ? "" : Number(entry.delivery_cost),
             earliestDeliveryDate: entry.earliest_delivery_date || "",
@@ -4413,7 +4451,13 @@ export default function App() {
       offerToShops: formState.offerToShops,
       offerToRestaurants: formState.offerToRestaurants,
       offerToWholesalers: formState.offerToWholesalers,
+      deliveryPossible: Boolean(formState.deliveryPossible),
+      deliveryMethod: formState.deliveryMethod || "Nouto",
+      originPointId: formState.originPointId || "",
+      deliveryDestinations: formState.deliveryDestinations || [],
     }, rows);
+    const productTotal = getOfferProductTotal(rows);
+    const selectedOriginPoint = getOriginPointById(formState.originPointId);
     const recipients = recipientAnalysis.matching.map((recipient) => ({
       ...recipient,
       email: (recipient.email || "").trim().toLowerCase(),
@@ -4439,15 +4483,23 @@ export default function App() {
     const notes = [
       formState.notes || "",
       "",
+      `Lähtöpaikka: ${formState.originCity || formState.municipality || "-"}`,
+      `Kilpailuta kuljetus: ${formState.deliveryPossible ? "Kyllä" : "Ei"}`,
       "Toimitus:",
       `Toimitustapa: ${formState.deliveryMethod || "-"}`,
+      formState.transportMode ? `Kuljetus järjestetään: ${getTransportModeLabel(formState.transportMode)}` : "",
+      selectedOriginPoint ? `Luovutuspiste: ${selectedOriginPoint.name} / ${selectedOriginPoint.address}` : "",
+      formState.transportMode === "pickup" ? `Nouto-osoite: ${resolvedProcessedPickupAddress || "-"}` : "",
+      formState.estimatedPickupTime ? `Arvioitu noutoaika: ${formState.estimatedPickupTime}` : "",
+      formState.pickupSurcharge !== "" ? `Noutolisä: ${formState.pickupSurcharge} €` : "",
+      Array.isArray(formState.deliveryDestinations) && formState.deliveryDestinations.length > 0 ? `Toimituskohteet: ${formState.deliveryDestinations.join(", ")}` : "",
       `Toimitusalue: ${formState.deliveryArea || "-"}`,
       `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
       `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
       `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
       `Paikkakunta: ${formState.municipality || "-"}`,
       `Käsittelypaikka: ${formState.spot || "-"}`,
-    ].join(String.fromCharCode(10)).trim();
+    ].filter(Boolean).join(String.fromCharCode(10)).trim();
 
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
@@ -4468,7 +4520,17 @@ export default function App() {
           area: formState.area,
           spot: formState.spot,
           gear: `Jaloste / ${formState.processingMethod || formState.productType || "-"}`,
+          seller_origin_city: formState.originCity || formState.municipality || null,
+          delivery_possible: Boolean(formState.deliveryPossible),
           delivery_method: formState.deliveryMethod || "Nouto",
+          transport_mode: formState.transportMode || null,
+          origin_point_id: formState.originPointId || null,
+          transport_company_id: recipient.carrier_id || formState.transportCompanyId || null,
+          delivery_destination_city: recipient.destination_city || null,
+          delivery_destinations: formState.deliveryDestinations || [],
+          route_price_eur: recipient.route_price_eur == null || recipient.route_price_eur === "" ? null : Number(recipient.route_price_eur),
+          total_price_eur: recipient.total_price_eur == null || recipient.total_price_eur === "" ? null : Number(recipient.total_price_eur),
+          delivered_price_per_kg: recipient.delivered_price_per_kg == null || recipient.delivered_price_per_kg === "" ? null : Number(recipient.delivered_price_per_kg),
           delivery_area: formState.deliveryArea || null,
           delivery_cost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
           earliest_delivery_date: formState.earliestDeliveryDate || null,
@@ -4506,7 +4568,16 @@ export default function App() {
             gear: `Jaloste / ${formState.processingMethod || formState.productType || "-"}`,
             ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
             commercialFishingId: profileState?.commercial_fishing_id || "",
+            originCity: formState.originCity || formState.municipality || "",
+            productTotal,
+            deliveryPossible: Boolean(formState.deliveryPossible),
             deliveryMethod: formState.deliveryMethod || "Nouto",
+            transportMode: formState.transportMode || "",
+            originPointId: formState.originPointId || "",
+            transportCompanyId: formState.transportCompanyId || "",
+            pickupSurcharge: formState.pickupSurcharge === "" ? null : Number(formState.pickupSurcharge),
+            estimatedPickupTime: formState.estimatedPickupTime || "",
+            deliveryDestinations: formState.deliveryDestinations || [],
             deliveryArea: formState.deliveryArea || "",
             deliveryCost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
             earliestDeliveryDate: formState.earliestDeliveryDate || "",
@@ -4519,6 +4590,11 @@ export default function App() {
             company_name: recipient.company_name,
             offer_id: offerId,
             offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+            delivery_destination_city: recipient.destination_city || "",
+            route_price_eur: recipient.route_price_eur,
+            total_price_eur: recipient.total_price_eur,
+            delivered_price_per_kg: recipient.delivered_price_per_kg,
+            carrier_name: recipient.carrier_name || "",
           }],
         },
         accessToken
@@ -4743,6 +4819,33 @@ export default function App() {
       setAuthError("Täytä jaloste-erälle vähintään tuotenimi ja määrä kiloina.");
       return;
     }
+    if (processedForm.deliveryPossible && processedForm.deliveryMethod === "Kuljetus järjestetään") {
+      if (!currentProcessedOriginCity) {
+        setAuthError("Valitse lähtöpaikka ennen toimitettavan jaloste-erän tallennusta.");
+        return;
+      }
+      if (!processedForm.transportMode) {
+        setAuthError("Valitse kuljetuksen luovutustapa ennen jaloste-erän tarjouksen lähetystä.");
+        return;
+      }
+      if (processedForm.transportMode === "pickup" && !resolvedProcessedPickupAddress) {
+        setAuthError("Täytä nouto-osoite ennen jaloste-erän tarjouksen lähetystä.");
+        return;
+      }
+      if ((processedForm.transportMode === "terminal" || processedForm.transportMode === "collection_point") && !processedForm.originPointId) {
+        setAuthError("Valitse terminaali tai keräilypiste ennen jaloste-erän tarjouksen lähetystä.");
+        return;
+      }
+      if (!Array.isArray(processedForm.deliveryDestinations) || processedForm.deliveryDestinations.length === 0) {
+        setAuthError("Valitse vähintään yksi toimituskohde jaloste-erälle tai käytä Ehdota kohteet -toimintoa.");
+        return;
+      }
+      const unsupportedDestinations = processedForm.deliveryDestinations.filter((city) => !getRoutePrice(processedForm.originPointId, city, Number(processedForm.kilos || 0)));
+      if (unsupportedDestinations.length > 0) {
+        setAuthError(`Toimitushinta puuttuu kohteille: ${unsupportedDestinations.join(", ")}`);
+        return;
+      }
+    }
 
     setSaving(true);
     let batchId;
@@ -4777,6 +4880,7 @@ export default function App() {
       best_before_date: processedForm.bestBeforeDate || null,
       area: processedForm.area,
       municipality: processedForm.municipality,
+      origin_city: processedForm.originCity || processedForm.municipality || null,
       spot: processedForm.spot,
       product_name: processedForm.productName.trim(),
       product_type: processedForm.productType,
@@ -4789,7 +4893,13 @@ export default function App() {
       offer_to_shops: processedForm.offerToShops,
       offer_to_restaurants: processedForm.offerToRestaurants,
       offer_to_wholesalers: processedForm.offerToWholesalers,
+      delivery_possible: Boolean(processedForm.deliveryPossible),
       delivery_method: processedForm.deliveryMethod,
+      transport_mode: processedForm.transportMode || null,
+      origin_point_id: processedForm.originPointId || null,
+      transport_company_id: processedForm.transportCompanyId || null,
+      pickup_address: resolvedProcessedPickupAddress || null,
+      delivery_destinations: processedForm.deliveryDestinations,
       delivery_area: processedForm.deliveryArea,
       delivery_cost: processedForm.deliveryCost === "" ? null : Number(processedForm.deliveryCost),
       earliest_delivery_date: processedForm.earliestDeliveryDate || null,
@@ -4867,6 +4977,7 @@ export default function App() {
       bestBeforeDate: "",
       area: "Saimaa",
       municipality: "",
+      originCity: "",
       spot: "",
       productName: "",
       productType: "Filee",
@@ -4879,7 +4990,15 @@ export default function App() {
       offerToShops: false,
       offerToRestaurants: false,
       offerToWholesalers: false,
+      deliveryPossible: false,
       deliveryMethod: "Nouto",
+      transportMode: "",
+      originPointId: "",
+      transportCompanyId: "north-fresh-logistics",
+      pickupAddress: "",
+      pickupSurcharge: "",
+      estimatedPickupTime: "",
+      deliveryDestinations: [],
       deliveryArea: "",
       deliveryCost: "",
       earliestDeliveryDate: today(),
@@ -5679,11 +5798,150 @@ export default function App() {
                 <div style={styles.field}><label>Määrä kg</label><input style={styles.input} type="number" value={processedForm.kilos} onChange={(e) => setProcessedForm({ ...processedForm, kilos: e.target.value })} placeholder="0" /></div>
                 <div style={styles.field}><label>Pakkauskoko g</label><input style={styles.input} type="number" value={processedForm.packageSizeG} onChange={(e) => setProcessedForm({ ...processedForm, packageSizeG: e.target.value })} placeholder="Esim. 500" /></div>
                 <div style={styles.field}><label>Pakkausten määrä</label><input style={styles.input} type="number" value={processedForm.packageCount} onChange={(e) => setProcessedForm({ ...processedForm, packageCount: e.target.value })} placeholder="Esim. 40" /></div>
-                <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={processedForm.deliveryMethod} onChange={(e) => setProcessedForm({ ...processedForm, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
-                <div style={styles.field}><label>Toimitusalue</label><input style={styles.input} value={processedForm.deliveryArea} onChange={(e) => setProcessedForm({ ...processedForm, deliveryArea: e.target.value })} placeholder="Esim. Etelä-Suomi" /></div>
-                <div style={styles.field}><label>Toimituskustannus €</label><input style={styles.input} type="number" value={processedForm.deliveryCost} onChange={(e) => setProcessedForm({ ...processedForm, deliveryCost: e.target.value })} placeholder="Esim. 65" /></div>
+                <div style={styles.field}><label>Lähtöpaikka / jalostajan sijainti</label><MunicipalitySelect value={currentProcessedOriginCity} onChange={(e) => setProcessedForm({ ...processedForm, originCity: e.target.value, originPointId: "" })} /></div>
+                <div style={styles.field}><label><input type="checkbox" checked={processedForm.deliveryPossible} onChange={(e) => setProcessedForm({ ...processedForm, deliveryPossible: e.target.checked, deliveryMethod: e.target.checked ? "Kuljetus järjestetään" : "Nouto", transportMode: e.target.checked ? processedForm.transportMode : "", originPointId: e.target.checked ? processedForm.originPointId : "", deliveryDestinations: e.target.checked ? processedForm.deliveryDestinations : [] })} /> Kilpailuta kuljetus</label></div>
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={processedForm.earliestDeliveryDate} onChange={(e) => setProcessedForm({ ...processedForm, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={processedForm.coldTransport} onChange={(e) => setProcessedForm({ ...processedForm, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
+                {processedForm.deliveryPossible ? (
+                  <>
+                    <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
+                      <label>Kuljetus järjestetään</label>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                        {[
+                          { value: "terminal", title: "Vie terminaaliin", detail: "Valitse terminaali ja viimeinen jättöaika." },
+                          { value: "pickup", title: "Kuljetusfirma noutaa", detail: "Nouto nykyisestä lähtöpaikasta ja mahdollinen noutolisä." },
+                          { value: "collection_point", title: "Vie keräilypisteeseen", detail: "Valitse lähialueen keräilypiste ja jättöaika." },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            style={{
+                              ...styles.button,
+                              textAlign: "left",
+                              justifyContent: "flex-start",
+                              padding: 16,
+                              minHeight: 110,
+                              background: processedForm.transportMode === option.value ? "linear-gradient(135deg, #2563eb, #0ea5e9)" : "#f8fbff",
+                              color: processedForm.transportMode === option.value ? "#fff" : "#0f172a",
+                              borderColor: processedForm.transportMode === option.value ? "#2563eb" : "#bfdbfe",
+                            }}
+                            onClick={() => setProcessedForm((prev) => ({
+                              ...prev,
+                              deliveryMethod: "Kuljetus järjestetään",
+                              transportMode: option.value,
+                              originPointId: option.value === "pickup" ? "" : prev.originPointId,
+                              pickupAddress: option.value === "pickup" ? (prev.pickupAddress || savedPickupAddress) : prev.pickupAddress,
+                              pickupSurcharge: option.value === "pickup" ? "12" : "",
+                              estimatedPickupTime: option.value === "pickup" ? "Arkipäivisin klo 12–16" : "",
+                            }))}
+                          >
+                            <span style={{ ...styles.stack, gap: 6 }}>
+                              <strong>{option.title}</strong>
+                              <span style={{ fontSize: 14, opacity: processedForm.transportMode === option.value ? 0.95 : 0.75 }}>{option.detail}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {processedForm.transportMode === "terminal" || processedForm.transportMode === "collection_point" ? (
+                      <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
+                        <label>{processedForm.transportMode === "terminal" ? "Valitse terminaali" : "Valitse keräilypiste"}</label>
+                        {availableProcessedOriginPoints.length === 0 ? (
+                          <div style={styles.noticeInfo}>Tälle alueelle ei löytynyt sopivaa luovutuspistettä. Vaihda lähtöpaikkaa tai kuljetustapaa.</div>
+                        ) : (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+                            {availableProcessedOriginPoints.map((point) => (
+                              <button
+                                key={point.id}
+                                type="button"
+                                style={{
+                                  ...styles.button,
+                                  textAlign: "left",
+                                  justifyContent: "flex-start",
+                                  padding: 16,
+                                  minHeight: 120,
+                                  background: processedForm.originPointId === point.id ? "#eff6ff" : "#fff",
+                                  borderColor: processedForm.originPointId === point.id ? "#2563eb" : "#cbd5e1",
+                                }}
+                                onClick={() => setProcessedForm((prev) => ({ ...prev, originPointId: point.id, deliveryArea: point.city }))}
+                              >
+                                <span style={{ ...styles.stack, gap: 6 }}>
+                                  <strong>{point.name}</strong>
+                                  <span style={styles.muted}>{point.address}</span>
+                                  <span style={styles.small}>Viimeinen jättöaika: {point.latest_dropoff_time || "-"}</span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                    {processedForm.transportMode === "pickup" ? (
+                      <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
+                        <label>Noutotiedot</label>
+                        <div style={styles.field}>
+                          <label>Nouto-osoite</label>
+                          <input
+                            style={styles.input}
+                            value={processedForm.pickupAddress || savedPickupAddress}
+                            onChange={(e) => setProcessedForm((prev) => ({ ...prev, pickupAddress: e.target.value }))}
+                            placeholder="Kirjoita nouto-osoite, jos sitä ei ole tallennettu omiin tietoihin"
+                          />
+                        </div>
+                        <div style={styles.noticeInfo}>
+                          Noutopaikka: {[resolvedProcessedPickupAddress, currentProcessedOriginCity, processedForm.spot].filter(Boolean).join(", ") || "-"}<br />
+                          Noutolisä: {processedForm.pickupSurcharge !== "" ? `${processedForm.pickupSurcharge} €` : "-"}<br />
+                          Arvioitu noutoaika: {processedForm.estimatedPickupTime || "-"}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
+                      <div style={styles.rowBetween}>
+                        <label>Toimituskohteet</label>
+                        <button
+                          type="button"
+                          style={styles.button}
+                          onClick={() => setProcessedForm((prev) => ({ ...prev, deliveryDestinations: suggestedProcessedDeliveryCities.filter((city) => !prev.originPointId || getRoutePrice(prev.originPointId, city, Number(prev.kilos || 0))).slice(0, 10) }))}
+                        >
+                          Ehdota kohteet
+                        </button>
+                      </div>
+                      <div style={styles.small}>Mukana aina Helsinki, Vantaa ja Espoo. Tarjous näkyy vain ostajille, joille löytyy reittihinta.</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                        {availableProcessedDestinationCities.map((city) => {
+                          const routePrice = processedForm.originPointId ? getRoutePrice(processedForm.originPointId, city, Number(processedForm.kilos || 0)) : null;
+                          const checked = processedForm.deliveryDestinations.includes(city);
+                          const disabled = Boolean(processedForm.originPointId) && !routePrice;
+                          return (
+                            <label key={city} style={{ ...styles.checkboxCard, opacity: disabled ? 0.55 : 1, justifyContent: "space-between", alignItems: "flex-start" }}>
+                              <span style={{ display: "flex", gap: 10 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={disabled}
+                                  onChange={(e) => setProcessedForm((prev) => ({
+                                    ...prev,
+                                    deliveryDestinations: e.target.checked
+                                      ? Array.from(new Set([...prev.deliveryDestinations, city]))
+                                      : prev.deliveryDestinations.filter((item) => item !== city),
+                                  }))}
+                                />
+                                <span>{city}</span>
+                              </span>
+                              <span style={styles.small}>{routePrice ? `${Number(routePrice.price_eur || 0).toLocaleString("fi-FI")} € · cutoff ${routePrice.cutoff_time || "-"}` : "Ei hinnastoa"}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={processedForm.deliveryMethod} onChange={(e) => setProcessedForm({ ...processedForm, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
+                    <div style={styles.field}><label>Toimitusalue</label><input style={styles.input} value={processedForm.deliveryArea} onChange={(e) => setProcessedForm({ ...processedForm, deliveryArea: e.target.value })} placeholder="Esim. Etelä-Suomi" /></div>
+                    <div style={styles.field}><label>Toimituskustannus €</label><input style={styles.input} type="number" value={processedForm.deliveryCost} onChange={(e) => setProcessedForm({ ...processedForm, deliveryCost: e.target.value })} placeholder="Esim. 65" /></div>
+                  </>
+                )}
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
                   <label>Tarjoa jaloste-erää myyntiin</label>
                   <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
