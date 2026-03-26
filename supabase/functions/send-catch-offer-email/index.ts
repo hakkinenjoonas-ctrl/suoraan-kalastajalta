@@ -154,8 +154,8 @@ function describeResendError(data: unknown) {
 function buildFieldRow(label: string, value: string) {
   return `
     <tr>
-      <td style="padding:14px 16px;border:1px solid #cbd5e1;font-weight:700;width:180px;background:#eff6ff;">${escapeHtml(label)}</td>
-      <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(value || "-")}</td>
+      <td style="padding:14px 16px;border:1px solid #cbd5e1;font-weight:700;width:180px;background:#eff6ff;color:#0f172a;">${escapeHtml(label)}</td>
+      <td style="padding:14px 16px;border:1px solid #cbd5e1;color:#f8fafc;">${escapeHtml(value || "-")}</td>
     </tr>
   `;
 }
@@ -231,12 +231,12 @@ Deno.serve(async (req) => {
     const lineItemRows = lineItems
       .map((item) => `
         <tr>
-          <td style="padding:14px 16px;border:1px solid #cbd5e1;font-weight:700;background:#eff6ff;">${escapeHtml(item.species || "-")}</td>
-          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.scientificNames || "-")}</td>
-          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.quantity || "-")}</td>
-          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.price || "-")}</td>
-          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.batchId || "-")}</td>
-          <td style="padding:14px 16px;border:1px solid #cbd5e1;">${escapeHtml(item.catchDate || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;font-weight:700;background:#eff6ff;color:#0f172a;">${escapeHtml(item.species || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;color:#f8fafc;">${escapeHtml(item.scientificNames || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;color:#f8fafc;">${escapeHtml(item.quantity || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;color:#f8fafc;">${escapeHtml(item.price || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;color:#f8fafc;">${escapeHtml(item.batchId || "-")}</td>
+          <td style="padding:14px 16px;border:1px solid #cbd5e1;color:#f8fafc;">${escapeHtml(item.catchDate || "-")}</td>
         </tr>
       `)
       .join("");
