@@ -849,9 +849,32 @@ function formatBatchSourceIdentifier(value) {
     .toUpperCase();
 }
 
-function getPreferredBatchSourceIdentifier(profileLike) {
+function parseCommercialFishingVesselIds(value) {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.map((item) => String(item || "").trim()).filter(Boolean)));
+  }
+
+  return Array.from(
+    new Set(
+      String(value || "")
+        .split(/[\n,;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function getCommercialFishingVesselIds(profileLike) {
+  const multiple = parseCommercialFishingVesselIds(profileLike?.commercial_fishing_vessel_ids);
+  if (multiple.length > 0) return multiple;
+  return parseCommercialFishingVesselIds(profileLike?.commercial_fishing_vessel_id);
+}
+
+function getPreferredBatchSourceIdentifier(profileLike, selectedVesselId = "") {
   return String(
     profileLike?.evira_facility_id ||
+    selectedVesselId ||
+    getCommercialFishingVesselIds(profileLike)[0] ||
     profileLike?.commercial_fishing_vessel_id ||
     profileLike?.commercial_fishing_id ||
     ""
@@ -2388,6 +2411,7 @@ export default function App() {
     area: "Saimaa",
     municipality: "",
     originCity: "",
+    selectedVesselId: "",
     spot: "",
     gear: "Rysä",
     price_per_kg: "",
@@ -2476,7 +2500,12 @@ export default function App() {
     business_id: "",
   });
   const [buyerBillingSameAsDelivery, setBuyerBillingSameAsDelivery] = useState(false);
-  const [fisherInfoForm, setFisherInfoForm] = useState({ commercialFishingId: "", commercialFishingVesselId: "", eviraFacilityId: "" });
+  const [fisherInfoForm, setFisherInfoForm] = useState({
+    commercialFishingId: "",
+    commercialFishingVesselId: "",
+    commercialFishingVesselIdsText: "",
+    eviraFacilityId: "",
+  });
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [accountSaving, setAccountSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
@@ -2484,6 +2513,7 @@ export default function App() {
     displayName: "",
     eviraFacilityId: "",
     commercialFishingVesselId: "",
+    commercialFishingVesselIdsText: "",
     commercialFishingId: "",
     pickupAddress: "",
     companyName: "",
@@ -2529,6 +2559,10 @@ export default function App() {
   const activeRoleOption = useMemo(
     () => getMatchingAllowedRole(availableRoleOptions, profile),
     [availableRoleOptions, getMatchingAllowedRole, profile],
+  );
+  const commercialFishingVesselOptions = useMemo(
+    () => getCommercialFishingVesselIds(profile),
+    [profile],
   );
 
   const calculateCommissionDetails = (offer) => {
@@ -2979,6 +3013,7 @@ export default function App() {
         setFisherInfoForm({
           commercialFishingId: profileToUse.commercial_fishing_id || "",
           commercialFishingVesselId: profileToUse.commercial_fishing_vessel_id || "",
+          commercialFishingVesselIdsText: getCommercialFishingVesselIds(profileToUse).join("\n"),
           eviraFacilityId: profileToUse.evira_facility_id || "",
         });
         return;
@@ -3022,6 +3057,7 @@ export default function App() {
       setFisherInfoForm({
         commercialFishingId: insertedProfile.commercial_fishing_id || "",
         commercialFishingVesselId: insertedProfile.commercial_fishing_vessel_id || "",
+        commercialFishingVesselIdsText: getCommercialFishingVesselIds(insertedProfile).join("\n"),
         eviraFacilityId: insertedProfile.evira_facility_id || "",
       });
     };
@@ -3159,6 +3195,7 @@ export default function App() {
             coldTransport: Boolean(entry.cold_transport),
             ownerName: entry.owner_name,
             commercialFishingId: entry.commercial_fishing_id || "",
+            commercialFishingVesselId: entry.commercial_fishing_vessel_id || "",
             pricePerKg: entry.price_per_kg == null ? "" : Number(entry.price_per_kg),
             ownerUserId: entry.owner_user_id,
             offerToShops: Boolean(entry.offer_to_shops),
@@ -3224,6 +3261,7 @@ export default function App() {
                 coldTransport: Boolean(entry.cold_transport),
                 ownerName: entry.owner_name,
                 commercialFishingId: entry.commercial_fishing_id || "",
+                commercialFishingVesselId: entry.commercial_fishing_vessel_id || "",
                 pricePerKg: entry.price_per_kg == null ? "" : Number(entry.price_per_kg),
                 ownerUserId: entry.owner_user_id,
                 offerToShops: Boolean(entry.offer_to_shops),
@@ -3407,10 +3445,12 @@ export default function App() {
 
   useEffect(() => {
     if (!profile) return;
+    const vesselIds = getCommercialFishingVesselIds(profile);
     const nextForm = {
       displayName: profile.display_name || "",
       eviraFacilityId: profile.evira_facility_id || "",
-      commercialFishingVesselId: profile.commercial_fishing_vessel_id || "",
+      commercialFishingVesselId: profile.commercial_fishing_vessel_id || vesselIds[0] || "",
+      commercialFishingVesselIdsText: vesselIds.join("\n"),
       commercialFishingId: profile.commercial_fishing_id || "",
       pickupAddress: profile.pickup_address || "",
       companyName: profile.company_name || linkedBuyerRecord?.company_name || "",
@@ -3436,6 +3476,16 @@ export default function App() {
       profile.role === "buyer" ? billingMatchesDelivery(nextForm) : billingMatchesAddress(nextForm)
     );
   }, [profile, linkedBuyerRecord]);
+
+  useEffect(() => {
+    if (commercialFishingVesselOptions.length === 0) return;
+    setForm((prev) => {
+      if (prev.selectedVesselId && commercialFishingVesselOptions.includes(prev.selectedVesselId)) {
+        return prev;
+      }
+      return { ...prev, selectedVesselId: commercialFishingVesselOptions[0] };
+    });
+  }, [commercialFishingVesselOptions]);
 
   const applyAccountDeliveryToBilling = useCallback(() => {
     setAccountForm((prev) => ({
@@ -3725,12 +3775,15 @@ export default function App() {
 
     setAccountSaving(true);
     try {
+      const vesselIds = parseCommercialFishingVesselIds(accountForm.commercialFishingVesselIdsText);
+      const primaryVesselId = vesselIds[0] || accountForm.commercialFishingVesselId.trim();
       const profilePayload = {
         display_name: displayName,
         ...(profile.role !== "buyer"
           ? {
               evira_facility_id: accountForm.eviraFacilityId.trim() || null,
-              commercial_fishing_vessel_id: accountForm.commercialFishingVesselId.trim() || null,
+              commercial_fishing_vessel_id: primaryVesselId || null,
+              commercial_fishing_vessel_ids: vesselIds,
               commercial_fishing_id: accountForm.commercialFishingId.trim() || null,
               pickup_address: accountForm.pickupAddress.trim() || null,
               company_name: accountForm.companyName.trim() || null,
@@ -3803,6 +3856,7 @@ export default function App() {
       setFisherInfoForm({
         commercialFishingId: normalizedUpdatedProfile.commercial_fishing_id || "",
         commercialFishingVesselId: normalizedUpdatedProfile.commercial_fishing_vessel_id || "",
+        commercialFishingVesselIdsText: getCommercialFishingVesselIds(normalizedUpdatedProfile).join("\n"),
         eviraFacilityId: normalizedUpdatedProfile.evira_facility_id || "",
       });
       setRefreshTick((prev) => prev + 1);
@@ -5170,6 +5224,7 @@ export default function App() {
   const handleSave = async () => {
     if (!profile) return;
     const totalKilosForOffer = speciesRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
+    const selectedVesselId = String(form.selectedVesselId || commercialFishingVesselOptions[0] || "").trim();
     const validRows = speciesRows.filter((row) => {
       const kilos = Number(row.kilos || 0);
       const count = Number(row.count || 0);
@@ -5218,13 +5273,17 @@ export default function App() {
         return;
       }
     }
+    if (commercialFishingVesselOptions.length > 0 && !selectedVesselId) {
+      setAuthError("Valitse käytetty kaupallinen kalastusalus ennen saaliin tallennusta.");
+      return;
+    }
     setSaving(true);
     let rowsWithBatchIds;
     try {
       rowsWithBatchIds = await Promise.all(validRows.map(async (row) => ({
         ...row,
         batch_id: await generateBatchId({
-          sourceIdentifier: getPreferredBatchSourceIdentifier(profile),
+          sourceIdentifier: getPreferredBatchSourceIdentifier(profile, selectedVesselId),
           date: form.date,
           speciesLabels: [getSpeciesRowLabel(row)],
           quantity: Number(row.kilos || 0) > 0 ? Number(row.kilos || 0) : Number(row.count || 0),
@@ -5265,6 +5324,7 @@ export default function App() {
       earliest_delivery_date: form.earliestDeliveryDate || null,
       cold_transport: form.coldTransport,
       commercial_fishing_id: profile.commercial_fishing_id || null,
+      commercial_fishing_vessel_id: selectedVesselId || null,
       price_per_kg: Number(row.price_per_kg || 0),
       notes: form.notes,
       batch_id: row.batch_id,
@@ -5325,6 +5385,7 @@ export default function App() {
       ...prev,
       municipality: "",
       originCity: "",
+      selectedVesselId: commercialFishingVesselOptions[0] || "",
       notes: "",
       price_per_kg: "",
       date: today(),
@@ -6100,7 +6161,7 @@ export default function App() {
                 </p>
               ) : profile.role !== "buyer" ? (
                 <p style={{ ...styles.subtitle, marginTop: 4 }}>
-                  Kaupallisen kalastusaluksen tunnus: <strong>{profile.commercial_fishing_vessel_id || "ei asetettu"}</strong>
+                  Kaupallisen kalastusaluksen tunnukset: <strong>{getCommercialFishingVesselIds(profile).join(", ") || profile.commercial_fishing_vessel_id || "ei asetettu"}</strong>
                   {profile.commercial_fishing_id ? ` · Kalastajan tunnus: ${profile.commercial_fishing_id}` : ""}
                 </p>
               ) : null}
@@ -6226,8 +6287,14 @@ export default function App() {
               ) : (
                 <>
                   <div style={styles.field}>
-                    <label>Kaupallisen kalastusaluksen tunnus</label>
-                    <input style={styles.input} value={accountForm.commercialFishingVesselId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselId: e.target.value }))} placeholder="Esim. FIN1234A" />
+                    <label>Kaupallisen kalastusaluksen tunnukset</label>
+                    <textarea
+                      style={styles.textarea}
+                      value={accountForm.commercialFishingVesselIdsText}
+                      onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselIdsText: e.target.value }))}
+                      placeholder={"Yksi tunnus per rivi\nEsim. FIN1234A"}
+                    />
+                    <div style={styles.small}>Ensimmäinen tunnus toimii oletuksena, mutta saalista syöttäessä voit valita käytetyn aluksen erikseen.</div>
                   </div>
                   <div style={styles.field}>
                     <label>Kaupallisen kalastajan tunnus</label>
@@ -6348,12 +6415,12 @@ export default function App() {
                 ) : (
                   <>
                     <div style={styles.field}>
-                      <label>Kaupallisen kalastusaluksen tunnus</label>
-                      <input
-                        style={styles.input}
-                        value={fisherInfoForm.commercialFishingVesselId}
-                        onChange={(e) => setFisherInfoForm((prev) => ({ ...prev, commercialFishingVesselId: e.target.value }))}
-                        placeholder="Esim. FIN1234A"
+                      <label>Kaupallisen kalastusaluksen tunnukset</label>
+                      <textarea
+                        style={styles.textarea}
+                        value={fisherInfoForm.commercialFishingVesselIdsText}
+                        onChange={(e) => setFisherInfoForm((prev) => ({ ...prev, commercialFishingVesselIdsText: e.target.value }))}
+                        placeholder={"Yksi tunnus per rivi\nEsim. FIN1234A"}
                       />
                     </div>
                     <div style={styles.field}>
@@ -6371,11 +6438,13 @@ export default function App() {
                   <button
                     style={{ ...styles.button, ...styles.primaryButton }}
                     onClick={async () => {
+                      const vesselIds = parseCommercialFishingVesselIds(fisherInfoForm.commercialFishingVesselIdsText);
                       const { data, error } = await supabase
                         .from("profiles")
                         .update({
                           evira_facility_id: fisherInfoForm.eviraFacilityId.trim() || null,
-                          commercial_fishing_vessel_id: fisherInfoForm.commercialFishingVesselId.trim() || null,
+                          commercial_fishing_vessel_id: vesselIds[0] || fisherInfoForm.commercialFishingVesselId.trim() || null,
+                          commercial_fishing_vessel_ids: vesselIds,
                           commercial_fishing_id: fisherInfoForm.commercialFishingId.trim() || null,
                         })
                         .eq("id", profile.id)
@@ -6389,6 +6458,7 @@ export default function App() {
                       setFisherInfoForm({
                         commercialFishingId: data.commercial_fishing_id || "",
                         commercialFishingVesselId: data.commercial_fishing_vessel_id || "",
+                        commercialFishingVesselIdsText: getCommercialFishingVesselIds(data).join("\n"),
                         eviraFacilityId: data.evira_facility_id || "",
                       });
                       setAuthInfo(profile.role === "processor" ? "Jalostajan tunnukset tallennettu." : "Kalastajan tunnukset tallennettu.");
@@ -6661,6 +6731,22 @@ export default function App() {
                 </div>
                 <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Isoselkä" /></div>
                 <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
+                {commercialFishingVesselOptions.length > 0 ? (
+                  <div style={styles.field}>
+                    <label>Käytetty kaupallinen kalastusalus</label>
+                    <select
+                      style={styles.input}
+                      value={form.selectedVesselId}
+                      onChange={(e) => setForm({ ...form, selectedVesselId: e.target.value })}
+                    >
+                      {commercialFishingVesselOptions.map((vesselId) => (
+                        <option key={vesselId} value={vesselId}>
+                          {vesselId}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
                   <div style={styles.rowBetween}><div><label>KALAERÄ</label></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
                   {speciesRows.map((row, index) => (
