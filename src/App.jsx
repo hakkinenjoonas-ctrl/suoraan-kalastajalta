@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://exuqgemipmaqdkficlfn.supabase.co";
@@ -2506,6 +2506,7 @@ export default function App() {
     commercialFishingVesselIdsText: "",
     eviraFacilityId: "",
   });
+  const [fisherInfoDirty, setFisherInfoDirty] = useState(false);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [accountSaving, setAccountSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
@@ -2534,6 +2535,7 @@ export default function App() {
     deliveryCity: "",
     notes: "",
   });
+  const [accountFormDirty, setAccountFormDirty] = useState(false);
   const [accountBillingSameAsDelivery, setAccountBillingSameAsDelivery] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ newPassword: "", confirmPassword: "" });
   const [publicBatchData, setPublicBatchData] = useState(null);
@@ -2541,6 +2543,10 @@ export default function App() {
   const [publicBatchError, setPublicBatchError] = useState("");
   const [labelPrintEntry, setLabelPrintEntry] = useState(null);
   const [labelPrintCount, setLabelPrintCount] = useState(10);
+  const accountFormSyncingRef = useRef(false);
+  const fisherInfoSyncingRef = useRef(false);
+  const accountFormInitializedRef = useRef(false);
+  const fisherInfoInitializedRef = useRef(false);
 
   const getMatchingAllowedRole = useCallback((allowedRows, currentProfile) => {
     if (!currentProfile) return null;
@@ -3010,12 +3016,14 @@ export default function App() {
         setProfile(normalizedProfile);
         setAvailableRoleOptions(activeAllowedRows);
         setRoleSelectionOpen(activeAllowedRows.length > 1);
+        fisherInfoSyncingRef.current = true;
         setFisherInfoForm({
           commercialFishingId: profileToUse.commercial_fishing_id || "",
           commercialFishingVesselId: profileToUse.commercial_fishing_vessel_id || "",
           commercialFishingVesselIdsText: getCommercialFishingVesselIds(profileToUse).join("\n"),
           eviraFacilityId: profileToUse.evira_facility_id || "",
         });
+        setFisherInfoDirty(false);
         return;
       }
       const defaultAllowedRole = activeAllowedRows[0] || null;
@@ -3054,12 +3062,14 @@ export default function App() {
       if (!defaultAllowedRole) {
         setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
       }
+      fisherInfoSyncingRef.current = true;
       setFisherInfoForm({
         commercialFishingId: insertedProfile.commercial_fishing_id || "",
         commercialFishingVesselId: insertedProfile.commercial_fishing_vessel_id || "",
         commercialFishingVesselIdsText: getCommercialFishingVesselIds(insertedProfile).join("\n"),
         eviraFacilityId: insertedProfile.evira_facility_id || "",
       });
+      setFisherInfoDirty(false);
     };
 
     ensureProfile();
@@ -3445,6 +3455,7 @@ export default function App() {
 
   useEffect(() => {
     if (!profile) return;
+    if (accountFormDirty) return;
     const vesselIds = getCommercialFishingVesselIds(profile);
     const nextForm = {
       displayName: profile.display_name || "",
@@ -3471,11 +3482,37 @@ export default function App() {
       deliveryCity: linkedBuyerRecord?.delivery_city || "",
       notes: linkedBuyerRecord?.notes || "",
     };
+    accountFormSyncingRef.current = true;
     setAccountForm(nextForm);
+    setAccountFormDirty(false);
     setAccountBillingSameAsDelivery(
       profile.role === "buyer" ? billingMatchesDelivery(nextForm) : billingMatchesAddress(nextForm)
     );
-  }, [profile, linkedBuyerRecord]);
+  }, [profile, linkedBuyerRecord, accountFormDirty]);
+
+  useEffect(() => {
+    if (!accountFormInitializedRef.current) {
+      accountFormInitializedRef.current = true;
+      return;
+    }
+    if (accountFormSyncingRef.current) {
+      accountFormSyncingRef.current = false;
+      return;
+    }
+    setAccountFormDirty(true);
+  }, [accountForm]);
+
+  useEffect(() => {
+    if (!fisherInfoInitializedRef.current) {
+      fisherInfoInitializedRef.current = true;
+      return;
+    }
+    if (fisherInfoSyncingRef.current) {
+      fisherInfoSyncingRef.current = false;
+      return;
+    }
+    setFisherInfoDirty(true);
+  }, [fisherInfoForm]);
 
   useEffect(() => {
     if (commercialFishingVesselOptions.length === 0) return;
@@ -3868,12 +3905,15 @@ export default function App() {
       };
       setProfile(normalizedUpdatedProfile);
       setAccountBillingSameAsDelivery(billingMatchesDelivery(accountForm));
+      fisherInfoSyncingRef.current = true;
       setFisherInfoForm({
         commercialFishingId: normalizedUpdatedProfile.commercial_fishing_id || "",
         commercialFishingVesselId: normalizedUpdatedProfile.commercial_fishing_vessel_id || "",
         commercialFishingVesselIdsText: getCommercialFishingVesselIds(normalizedUpdatedProfile).join("\n"),
         eviraFacilityId: normalizedUpdatedProfile.evira_facility_id || "",
       });
+      setAccountFormDirty(false);
+      setFisherInfoDirty(false);
       setRefreshTick((prev) => prev + 1);
       setAuthInfo("Omat tiedot tallennettu.");
     } catch (error) {
@@ -6474,12 +6514,15 @@ export default function App() {
                         return;
                       }
                       setProfile(data);
+                      fisherInfoSyncingRef.current = true;
                       setFisherInfoForm({
                         commercialFishingId: data.commercial_fishing_id || "",
                         commercialFishingVesselId: data.commercial_fishing_vessel_id || "",
                         commercialFishingVesselIdsText: getCommercialFishingVesselIds(data).join("\n"),
                         eviraFacilityId: data.evira_facility_id || "",
                       });
+                      setAccountFormDirty(false);
+                      setFisherInfoDirty(false);
                       setAuthInfo(profile.role === "processor" ? "Jalostajan tunnukset tallennettu." : "Kalastajan tunnukset tallennettu.");
                       setRefreshTick((prev) => prev + 1);
                     }}
