@@ -683,24 +683,25 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
     supplierAddress,
     supplierContact,
     boxLabel,
-    qrPayload: {
-      batchId: String(entry?.batchId || "").trim(),
-      species,
-      scientificName,
-      catchDate: String(entry?.date || "").trim(),
-      catchArea: [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / "),
-      gearType: String(entry?.gear || "").trim(),
-      productForm,
-      supplier,
-      supplierAddress,
-      supplierContact,
-      box: boxLabel,
-    },
   };
 }
 
 function getCatchLabelQrImageUrl(labelData) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(JSON.stringify(labelData.qrPayload))}`;
+  const qrLines = [
+    labelData.species || "-",
+    labelData.catchDate ? `Pyyntipäivä: ${labelData.catchDate}` : "",
+    labelData.batchId ? `Erätunnus: ${labelData.batchId}` : "",
+    labelData.scientificName ? `Tieteellinen nimi: ${labelData.scientificName}` : "",
+    labelData.catchArea ? `Pyyntialue: ${labelData.catchArea}` : "",
+    labelData.gearType ? `Pyyntimenetelmä: ${labelData.gearType}` : "",
+    labelData.productForm ? `Tuote: ${labelData.productForm}` : "",
+    `Toimittaja: ${labelData.supplier || "-"}`,
+    labelData.supplierAddress ? `Osoite: ${labelData.supplierAddress}` : "",
+    labelData.supplierContact ? `Yhteystiedot: ${labelData.supplierContact}` : "",
+    `Laatikko: ${labelData.boxLabel}`,
+  ].filter(Boolean);
+
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrLines.join("\n"))}`;
 }
 
 function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
