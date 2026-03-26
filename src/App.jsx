@@ -905,7 +905,7 @@ function formatBatchQuantity(value) {
 async function generateBatchId({ sourceIdentifier, date, speciesLabels, quantity, supabaseClient }) {
   const batchSourceIdentifier = formatBatchSourceIdentifier(sourceIdentifier);
   if (!batchSourceIdentifier) {
-    throw new Error("Aseta kaupallisen kalastusaluksen tunnus tai kaupallisen kalastajan tunnus ennen eräkoodin luontia.");
+    throw new Error("Aseta kaupallisen kalastusaluksen tunnus tai kaupallisen kalastajan tunnus kohdassa Omat tiedot ennen eräkoodin luontia.");
   }
 
   const batchDate = formatBatchDate(date);
