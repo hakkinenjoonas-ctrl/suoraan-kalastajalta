@@ -5394,6 +5394,10 @@ export default function App() {
         await invalidateSession();
         return;
       }
+      if (String(error.message || "").includes("commercial_fishing_vessel_id")) {
+        setAuthError("Tietokannasta puuttuu saaliserän aluskenttä. Lisää SQL Editorissa catch_entries-tauluun commercial_fishing_vessel_id ennen tallennusta.");
+        return;
+      }
       setAuthError(error.message);
       return;
     }
