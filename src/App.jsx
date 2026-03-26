@@ -5582,23 +5582,44 @@ export default function App() {
   const openCatchLabelPrintDialog = (entry, mode = "print") => {
     if (!entry) return;
     const html = buildCatchLabelPrintHtml(entry, profile, labelPrintCount);
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
+    const printWindow = window.open("", "_blank", "width=1200,height=900");
     if (!printWindow) {
       setAuthError("Tulostusikkunan avaaminen estettiin selaimessa.");
       return;
     }
 
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-    window.setTimeout(() => {
-      try {
-        printWindow.print();
-      } catch (error) {
-        console.error("Etikettien tulostus epäonnistui:", error);
-      }
-    }, mode === "pdf" ? 350 : 250);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const blobUrl = window.URL.createObjectURL(blob);
+    let cleanedUp = false;
+
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(blobUrl);
+      }, 2000);
+    };
+
+    printWindow.onload = () => {
+      window.setTimeout(() => {
+        try {
+          printWindow.focus();
+          printWindow.print();
+        } catch (error) {
+          console.error("Etikettien tulostus epäonnistui:", error);
+        } finally {
+          cleanup();
+        }
+      }, mode === "pdf" ? 450 : 300);
+    };
+
+    try {
+      printWindow.location.replace(blobUrl);
+    } catch (error) {
+      cleanup();
+      console.error("Etikettinäkymän avaaminen epäonnistui:", error);
+      setAuthError("Etikettinäkymän avaaminen epäonnistui.");
+    }
   };
 
   if (publicBatchId) {
