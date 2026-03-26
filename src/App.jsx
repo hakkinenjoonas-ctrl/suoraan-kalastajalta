@@ -729,7 +729,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           ${label.gearType ? `<div class="line">Pyyntimenetelmä: ${label.gearType}</div>` : ""}
           ${label.catchDate ? `<div class="line">Pyyntipäivä: ${label.catchDate}</div>` : ""}
           ${label.productForm ? `<div class="line">Tuote: ${label.productForm}</div>` : ""}
-          <div class="line">Paino: ______ kg</div>
+          <div class="weight-line"><span class="weight-label">Paino:</span><span class="weight-write"></span><span class="weight-unit">kg</span></div>
           <div class="line">Säilytys: 0–2 °C</div>
           <div class="line">Toimittaja: ${label.supplier || "-"}</div>
           ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
@@ -760,6 +760,10 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           .scientific { font-size: 7pt; line-height: 1.2; color: #475569; margin-bottom: 1mm; }
           .batch { font-size: 8.2pt; font-weight: 800; background: #eff6ff; border: 0.25mm solid #93c5fd; border-radius: 1.5mm; padding: 1mm 1.2mm; margin-bottom: 1.2mm; }
           .line { font-size: 7.1pt; line-height: 1.22; margin-bottom: 0.55mm; }
+          .weight-line { display: flex; align-items: flex-end; gap: 1.5mm; font-size: 7.4pt; margin: 1.1mm 0 1.2mm; min-height: 5.5mm; }
+          .weight-label { font-weight: 700; white-space: nowrap; }
+          .weight-write { flex: 1; min-width: 0; border-bottom: 0.35mm solid #0f172a; height: 4.4mm; }
+          .weight-unit { font-weight: 700; white-space: nowrap; }
           .label-qr { display: flex; align-items: flex-end; justify-content: center; }
           .label-qr img { width: 20mm; height: 20mm; object-fit: contain; border: 0.25mm solid #cbd5e1; border-radius: 1.5mm; padding: 1mm; background: #fff; }
         </style>
