@@ -750,23 +750,23 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
         <meta charset="utf-8" />
         <title>Kalaetiketit ${String(entry?.batchId || "")}</title>
         <style>
-          @page { size: A4 portrait; margin: 6mm 0 6mm 0; }
+          @page { size: A4 portrait; margin: 4mm 0 4mm 0; }
           * { box-sizing: border-box; }
           body { margin: 0; font-family: Inter, Arial, sans-serif; background: #fff; color: #111827; }
-          .sheet { width: 210mm; height: 285mm; margin: 0 auto; display: grid; grid-template-columns: 105mm 105mm; grid-template-rows: repeat(5, 57mm); gap: 0; align-content: start; }
+          .sheet { width: 210mm; height: 289mm; margin: 0 auto; display: grid; grid-template-columns: 105mm 105mm; grid-template-rows: repeat(5, 56.4mm); gap: 0; align-content: start; }
           .page-break { page-break-after: always; }
-          .label { width: 105mm; height: 57mm; padding: 2.5mm 3.5mm; }
-          .label-inner { width: 100%; height: 100%; border: 0.3mm solid #cbd5e1; border-radius: 2mm; padding: 2.5mm; display: grid; grid-template-columns: 1fr 22mm; gap: 2.5mm; overflow: hidden; }
-          .species { font-size: 14pt; font-weight: 800; line-height: 1.05; margin-bottom: 0.8mm; }
-          .scientific { font-size: 7pt; line-height: 1.2; color: #475569; margin-bottom: 1mm; }
-          .batch { font-size: 8.2pt; font-weight: 800; background: #eff6ff; border: 0.25mm solid #93c5fd; border-radius: 1.5mm; padding: 1mm 1.2mm; margin-bottom: 1.2mm; }
-          .line { font-size: 7.1pt; line-height: 1.22; margin-bottom: 0.55mm; }
-          .weight-line { display: flex; align-items: flex-end; gap: 1.5mm; font-size: 7.4pt; margin: 1.1mm 0 1.2mm; min-height: 5.5mm; }
+          .label { width: 105mm; height: 56.4mm; padding: 1.8mm 2.6mm; }
+          .label-inner { width: 100%; height: 100%; border: 0.25mm solid #cbd5e1; border-radius: 1.6mm; padding: 1.8mm; display: grid; grid-template-columns: 1fr 20mm; gap: 1.8mm; overflow: hidden; }
+          .species { font-size: 12.6pt; font-weight: 800; line-height: 1.03; margin-bottom: 0.45mm; }
+          .scientific { font-size: 6.2pt; line-height: 1.12; color: #475569; margin-bottom: 0.7mm; }
+          .batch { font-size: 7.2pt; font-weight: 800; background: #eff6ff; border: 0.22mm solid #93c5fd; border-radius: 1.2mm; padding: 0.7mm 0.9mm; margin-bottom: 0.7mm; }
+          .line { font-size: 6.25pt; line-height: 1.12; margin-bottom: 0.3mm; }
+          .weight-line { display: flex; align-items: flex-end; gap: 1.1mm; font-size: 6.5pt; margin: 0.7mm 0 0.7mm; min-height: 4.2mm; }
           .weight-label { font-weight: 700; white-space: nowrap; }
-          .weight-write { flex: 1; min-width: 0; border-bottom: 0.35mm solid #0f172a; height: 4.4mm; }
+          .weight-write { flex: 1; min-width: 0; border-bottom: 0.3mm solid #0f172a; height: 3.6mm; }
           .weight-unit { font-weight: 700; white-space: nowrap; }
           .label-qr { display: flex; align-items: flex-end; justify-content: center; }
-          .label-qr img { width: 20mm; height: 20mm; object-fit: contain; border: 0.25mm solid #cbd5e1; border-radius: 1.5mm; padding: 1mm; background: #fff; }
+          .label-qr img { width: 18mm; height: 18mm; object-fit: contain; border: 0.22mm solid #cbd5e1; border-radius: 1.2mm; padding: 0.8mm; background: #fff; }
         </style>
       </head>
       <body>
