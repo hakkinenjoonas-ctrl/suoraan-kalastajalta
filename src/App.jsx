@@ -698,7 +698,6 @@ function getCatchLabelQrImageUrl(labelData) {
     `Toimittaja: ${labelData.supplier || "-"}`,
     labelData.supplierAddress ? `Osoite: ${labelData.supplierAddress}` : "",
     labelData.supplierContact ? `Yhteystiedot: ${labelData.supplierContact}` : "",
-    `Laatikko: ${labelData.boxLabel}`,
   ].filter(Boolean);
 
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrLines.join("\n"))}`;
@@ -735,7 +734,6 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           <div class="line">Toimittaja: ${label.supplier || "-"}</div>
           ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
           ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
-          <div class="line">Laatikko ${label.boxLabel}</div>
         </div>
         <div class="label-qr">
           <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
