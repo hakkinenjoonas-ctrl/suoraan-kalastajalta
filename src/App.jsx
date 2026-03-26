@@ -749,10 +749,10 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
         <meta charset="utf-8" />
         <title>Kalaetiketit ${String(entry?.batchId || "")}</title>
         <style>
-          @page { size: A4 portrait; margin: 6mm 0; }
+          @page { size: A4 portrait; margin: 6mm 0 6mm 0; }
           * { box-sizing: border-box; }
           body { margin: 0; font-family: Inter, Arial, sans-serif; background: #fff; color: #111827; }
-          .sheet { width: 210mm; margin: 0 auto; display: grid; grid-template-columns: 105mm 105mm; grid-auto-rows: 57mm; }
+          .sheet { width: 210mm; height: 285mm; margin: 0 auto; display: grid; grid-template-columns: 105mm 105mm; grid-template-rows: repeat(5, 57mm); gap: 0; align-content: start; }
           .page-break { page-break-after: always; }
           .label { width: 105mm; height: 57mm; padding: 2.5mm 3.5mm; }
           .label-inner { width: 100%; height: 100%; border: 0.3mm solid #cbd5e1; border-radius: 2mm; padding: 2.5mm; display: grid; grid-template-columns: 1fr 22mm; gap: 2.5mm; overflow: hidden; }
@@ -5442,7 +5442,6 @@ export default function App() {
     setSaving(false);
     setForm((prev) => ({
       ...prev,
-      municipality: "",
       originCity: "",
       selectedVesselId: commercialFishingVesselOptions[0] || "",
       notes: "",
