@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { jsPDF } from "jspdf";
 
 const SUPABASE_URL = "https://exuqgemipmaqdkficlfn.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_6OpTn3AxVjMnpei8Bpsy7A_Y8kOXaZP";
@@ -774,6 +775,147 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
       </body>
     </html>
   `;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Tiedoston muunto data-URL:ksi epäonnistui."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function fetchImageDataUrl(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Kuvan haku epäonnistui (HTTP ${response.status}).`);
+  }
+  const blob = await response.blob();
+  return blobToDataUrl(blob);
+}
+
+function buildCatchLabelPdfFileName(entry) {
+  return `kalaetiketit-${String(entry?.batchId || "era").replace(/[^a-zA-Z0-9-_]+/g, "_")}.pdf`;
+}
+
+async function buildCatchLabelPdf(entry, profileLike, labelCount) {
+  const count = Math.max(1, Number(labelCount || 1));
+  const labels = Array.from({ length: count }, (_, index) => buildCatchLabelData(entry, profileLike, index + 1, count));
+  const qrDataUrls = await Promise.all(labels.map((label) => fetchImageDataUrl(getCatchLabelQrImageUrl(label))));
+
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+    compress: true,
+  });
+
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const labelWidth = 105;
+  const labelHeight = 57;
+  const topMargin = 6;
+  const rowGap = 0;
+  const qrSize = 18;
+  const labelPaddingX = 3.2;
+  const labelPaddingY = 2.4;
+  const qrColumnWidth = 22;
+  const contentWidth = labelWidth - (labelPaddingX * 2) - qrColumnWidth - 2.4;
+
+  const drawLabel = (label, qrDataUrl, x, y) => {
+    const left = x + labelPaddingX;
+    const top = y + labelPaddingY;
+    const qrX = x + labelWidth - labelPaddingX - qrSize;
+    const qrY = y + labelHeight - labelPaddingY - qrSize;
+    const textWidth = qrX - left - 2.4;
+    let currentY = top + 4.2;
+
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(x + 0.6, y + 0.4, labelWidth - 1.2, labelHeight - 0.8, 1.5, 1.5);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13.5);
+    const speciesLines = doc.splitTextToSize(label.species || "-", textWidth);
+    doc.text(speciesLines, left, currentY);
+    currentY += speciesLines.length * 4.8;
+
+    if (label.scientificName) {
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.setFontSize(7);
+      const scientificLines = doc.splitTextToSize(label.scientificName, textWidth);
+      doc.text(scientificLines, left, currentY);
+      currentY += scientificLines.length * 3;
+      doc.setTextColor(17, 24, 39);
+    }
+
+    currentY += 0.5;
+    doc.setFillColor(239, 246, 255);
+    doc.setDrawColor(147, 197, 253);
+    doc.roundedRect(left, currentY - 2.6, textWidth, 6.2, 1.1, 1.1, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.6);
+    doc.text(`Erätunnus: ${label.batchId || "-"}`, left + 1.2, currentY + 1.6);
+    currentY += 5.6;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.4);
+    const lines = [
+      label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
+      label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
+      label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+      label.productForm ? `Tuote: ${label.productForm}` : "",
+    ].filter(Boolean);
+
+    lines.forEach((line) => {
+      const wrapped = doc.splitTextToSize(line, textWidth);
+      doc.text(wrapped, left, currentY);
+      currentY += wrapped.length * 2.8;
+    });
+
+    currentY += 0.8;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.8);
+    doc.text("Paino:", left, currentY);
+    doc.setLineWidth(0.25);
+    doc.line(left + 11, currentY + 0.2, qrX - 5, currentY + 0.2);
+    doc.text("kg", qrX - 3.8, currentY);
+    currentY += 3.8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.2);
+    doc.text("Säilytys: 0–2 °C", left, currentY);
+    currentY += 3;
+
+    const supplierLines = [
+      `Toimittaja: ${label.supplier || "-"}`,
+      label.supplierAddress || "",
+      label.supplierContact || "",
+    ].filter(Boolean);
+    supplierLines.forEach((line) => {
+      const wrapped = doc.splitTextToSize(line, textWidth);
+      doc.text(wrapped, left, currentY);
+      currentY += wrapped.length * 2.6;
+    });
+
+    doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
+  };
+
+  labels.forEach((label, index) => {
+    if (index > 0 && index % 10 === 0) {
+      doc.addPage("a4", "portrait");
+    }
+    const pageIndex = index % 10;
+    const row = Math.floor(pageIndex / 2);
+    const col = pageIndex % 2;
+    const x = col * labelWidth;
+    const y = topMargin + row * (labelHeight + rowGap);
+    drawLabel(label, qrDataUrls[index], x, y);
+  });
+
+  return doc;
 }
 
 function getRequestedPublicBatchId() {
@@ -5716,6 +5858,30 @@ export default function App() {
 
   const openCatchLabelPrintDialog = (entry, mode = "print") => {
     if (!entry) return;
+    if (mode === "pdf") {
+      void (async () => {
+        try {
+          const doc = await buildCatchLabelPdf(entry, profile, labelPrintCount);
+          const blobUrl = doc.output("bloburl");
+          const pdfWindow = window.open(blobUrl, "_blank");
+          if (!pdfWindow) {
+            doc.save(buildCatchLabelPdfFileName(entry));
+            return;
+          }
+          window.setTimeout(() => {
+            try {
+              window.URL.revokeObjectURL(blobUrl);
+            } catch {
+              // ignore
+            }
+          }, 60000);
+        } catch (error) {
+          console.error("Etiketti-PDF:n luonti epäonnistui:", error);
+          setAuthError(`Etiketti-PDF:n luonti epäonnistui: ${String(error?.message || error)}`);
+        }
+      })();
+      return;
+    }
     const html = buildCatchLabelPrintHtml(entry, profile, labelPrintCount);
     const printWindow = window.open("", "_blank", "width=1200,height=900");
     if (!printWindow) {
