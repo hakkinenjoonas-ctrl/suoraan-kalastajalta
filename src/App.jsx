@@ -3776,14 +3776,29 @@ export default function App() {
     setAccountSaving(true);
     try {
       const vesselIds = parseCommercialFishingVesselIds(accountForm.commercialFishingVesselIdsText);
-      const primaryVesselId = vesselIds[0] || accountForm.commercialFishingVesselId.trim();
+      const vesselIdsText = vesselIds.join("\n");
       const profilePayload = {
         display_name: displayName,
-        ...(profile.role !== "buyer"
+        ...(profile.role === "processor"
           ? {
               evira_facility_id: accountForm.eviraFacilityId.trim() || null,
-              commercial_fishing_vessel_id: primaryVesselId || null,
-              commercial_fishing_vessel_ids: vesselIds,
+              pickup_address: accountForm.pickupAddress.trim() || null,
+              company_name: accountForm.companyName.trim() || null,
+              business_id: accountForm.businessId.trim() || null,
+              address: accountForm.address.trim() || null,
+              postcode: accountForm.postcode.trim() || null,
+              city: accountForm.city.trim() || null,
+              billing_address: accountForm.billingAddress.trim() || null,
+              billing_postcode: accountForm.billingPostcode.trim() || null,
+              billing_city: accountForm.billingCity.trim() || null,
+              billing_email: accountForm.billingEmail.trim().toLowerCase() || null,
+              einvoice_address: accountForm.einvoiceAddress.trim() || null,
+              contact_email: accountForm.contactEmail.trim().toLowerCase() || null,
+              phone: accountForm.phone.trim() || null,
+            }
+          : profile.role !== "buyer"
+            ? {
+              commercial_fishing_vessel_id: vesselIdsText || null,
               commercial_fishing_id: accountForm.commercialFishingId.trim() || null,
               pickup_address: accountForm.pickupAddress.trim() || null,
               company_name: accountForm.companyName.trim() || null,
@@ -6439,14 +6454,18 @@ export default function App() {
                     style={{ ...styles.button, ...styles.primaryButton }}
                     onClick={async () => {
                       const vesselIds = parseCommercialFishingVesselIds(fisherInfoForm.commercialFishingVesselIdsText);
+                      const vesselIdsText = vesselIds.join("\n");
+                      const profileUpdatePayload = profile.role === "processor"
+                        ? {
+                            evira_facility_id: fisherInfoForm.eviraFacilityId.trim() || null,
+                          }
+                        : {
+                            commercial_fishing_vessel_id: vesselIdsText || null,
+                            commercial_fishing_id: fisherInfoForm.commercialFishingId.trim() || null,
+                          };
                       const { data, error } = await supabase
                         .from("profiles")
-                        .update({
-                          evira_facility_id: fisherInfoForm.eviraFacilityId.trim() || null,
-                          commercial_fishing_vessel_id: vesselIds[0] || fisherInfoForm.commercialFishingVesselId.trim() || null,
-                          commercial_fishing_vessel_ids: vesselIds,
-                          commercial_fishing_id: fisherInfoForm.commercialFishingId.trim() || null,
-                        })
+                        .update(profileUpdatePayload)
                         .eq("id", profile.id)
                         .select("*")
                         .single();
