@@ -327,7 +327,8 @@ function formatSpeciesOfferSummaryLine(row) {
   const kilos = Number(row?.kilos || 0);
   const count = Number(row?.count || 0);
   const unit = getSpeciesPriceUnit(getSpeciesRowLabel(row));
-  const price = row?.price_per_kg === "" || row?.price_per_kg == null ? "-" : `${Number(row.price_per_kg).toLocaleString("fi-FI")} € / ${unit}`;
+  const parsedPrice = parseLocaleNumber(row?.price_per_kg);
+  const price = parsedPrice == null ? "-" : `${parsedPrice.toLocaleString("fi-FI")} € / ${unit}`;
   const batchId = String(row?.batch_id || "").trim();
   const catchDate = String(row?.catch_date || row?.date || "").trim();
   return [
@@ -960,6 +961,18 @@ function euro(value) {
     currency: "EUR",
     maximumFractionDigits: 2,
   }).format(value || 0);
+}
+
+function parseLocaleNumber(value) {
+  if (value === "" || value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const normalized = String(value)
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(",", ".");
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function describeOfferEmailError(error) {
@@ -4352,7 +4365,7 @@ export default function App() {
         species: formatSpeciesForSale(getSpeciesRowLabel(row)),
         kilos: Number(row.kilos || 0),
         count: Number(row.count || 0),
-        price_per_kg: row.price_per_kg === "" || row.price_per_kg == null ? null : Number(row.price_per_kg),
+        price_per_kg: parseLocaleNumber(row.price_per_kg),
         price_unit: getSpeciesPriceUnit(getSpeciesRowLabel(row)),
         batch_id: row.batch_id || "",
         catch_date: formState.date || "",
@@ -4364,7 +4377,7 @@ export default function App() {
       originCity: formState.originCity || formState.municipality || "",
       spot: formState.spot || "",
       gear: formState.gear || "",
-      price_per_kg: rows.length === 1 && rows[0].price_per_kg !== "" && rows[0].price_per_kg != null ? Number(rows[0].price_per_kg) : null,
+      price_per_kg: rows.length === 1 ? parseLocaleNumber(rows[0].price_per_kg) : null,
       productTotal,
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
       commercialFishingId: profileState?.commercial_fishing_id || "",
@@ -4377,7 +4390,7 @@ export default function App() {
       estimatedPickupTime: formState.estimatedPickupTime || "",
       deliveryDestinations: Array.isArray(formState.deliveryDestinations) ? formState.deliveryDestinations : [],
       deliveryArea: formState.deliveryArea || "",
-      deliveryCost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
+      deliveryCost: parseLocaleNumber(formState.deliveryCost),
       earliestDeliveryDate: formState.earliestDeliveryDate || "",
       coldTransport: Boolean(formState.coldTransport),
       notes: [formState.notes || "", "", "Erän lajit:", summaryLines, "", "Toimitus:", ...logisticsLines].join(String.fromCharCode(10)).trim(),
@@ -4560,12 +4573,12 @@ export default function App() {
       municipality: formState.municipality || "",
       spot: formState.spot || "",
       gear: formState.gear || "",
-      price_per_kg: formState.price_per_kg === "" || formState.price_per_kg == null ? null : Number(formState.price_per_kg),
+      price_per_kg: parseLocaleNumber(formState.price_per_kg),
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
       commercialFishingId: profileState?.commercial_fishing_id || "",
       deliveryMethod: formState.deliveryMethod || "Nouto",
       deliveryArea: formState.deliveryArea || "",
-      deliveryCost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
+      deliveryCost: parseLocaleNumber(formState.deliveryCost),
       earliestDeliveryDate: formState.earliestDeliveryDate || "",
       coldTransport: Boolean(formState.coldTransport),
       notes: [formState.notes || "", "", "Erän lajit:", summaryLines, "", "Toimitus:", ...logisticsLines].join(String.fromCharCode(10)).trim(),
@@ -4907,7 +4920,7 @@ export default function App() {
   };
 
   const onSubmitCounter = async (offer) => {
-    const price = buyerAction.counter_price_per_kg === "" ? null : Number(buyerAction.counter_price_per_kg);
+    const price = parseLocaleNumber(buyerAction.counter_price_per_kg);
     const msg = buyerAction.buyer_message?.trim() || null;
     const ok = await buyerUpdateOffer(offer.id, {
       status: "countered",
@@ -4965,7 +4978,7 @@ export default function App() {
       contact_name: offerForm.contact_name,
       contact_email: offerForm.contact_email,
       contact_phone: offerForm.contact_phone,
-      offer_price_per_kg: Number(offerForm.offer_price_per_kg || 0),
+      offer_price_per_kg: parseLocaleNumber(offerForm.offer_price_per_kg) || 0,
       message: offerForm.message,
       created_by_user_id: profile?.id || null,
       status: "pending",
@@ -5221,11 +5234,11 @@ export default function App() {
             transportMode: formState.transportMode || "",
             originPointId: formState.originPointId || "",
             transportCompanyId: formState.transportCompanyId || "",
-            pickupSurcharge: formState.pickupSurcharge === "" ? null : Number(formState.pickupSurcharge),
+            pickupSurcharge: parseLocaleNumber(formState.pickupSurcharge),
             estimatedPickupTime: formState.estimatedPickupTime || "",
             deliveryDestinations: formState.deliveryDestinations || [],
             deliveryArea: formState.deliveryArea || "",
-            deliveryCost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
+            deliveryCost: parseLocaleNumber(formState.deliveryCost),
             earliestDeliveryDate: formState.earliestDeliveryDate || "",
             coldTransport: Boolean(formState.coldTransport),
             notes: [summaryLines, "", notes].join(String.fromCharCode(10)).trim(),
@@ -5293,7 +5306,7 @@ export default function App() {
       setAuthError("Kirjoita kalalajin nimi kaikille riveille, joilla lajiksi on valittu Muu.");
       return;
     }
-    if (validRows.some((row) => row.price_per_kg === "" || row.price_per_kg == null || Number.isNaN(Number(row.price_per_kg)))) {
+    if (validRows.some((row) => parseLocaleNumber(row.price_per_kg) == null)) {
       setAuthError("Täytä hinta jokaiselle kalalajille ennen saaliin tallennusta.");
       return;
     }
@@ -5375,12 +5388,12 @@ export default function App() {
       pickup_address: resolvedPickupAddress || null,
       delivery_destinations: form.deliveryDestinations,
       delivery_area: form.deliveryArea,
-      delivery_cost: form.deliveryCost === "" ? null : Number(form.deliveryCost),
+      delivery_cost: parseLocaleNumber(form.deliveryCost),
       earliest_delivery_date: form.earliestDeliveryDate || null,
       cold_transport: form.coldTransport,
       commercial_fishing_id: profile.commercial_fishing_id || null,
       commercial_fishing_vessel_id: selectedVesselId || null,
-      price_per_kg: Number(row.price_per_kg || 0),
+      price_per_kg: parseLocaleNumber(row.price_per_kg) || 0,
       notes: form.notes,
       batch_id: row.batch_id,
       owner_user_id: profile.id,
