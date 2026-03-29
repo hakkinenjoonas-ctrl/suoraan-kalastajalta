@@ -790,7 +790,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           .weight-unit { font-weight: 700; white-space: nowrap; }
           .label-side { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; min-width: 0; }
           .label-brand { display: flex; flex-direction: column; align-items: center; width: 100%; padding-top: 0.6mm; }
-          .label-brand img { width: 10mm; height: 10mm; object-fit: contain; margin-bottom: 0.6mm; }
+          .label-brand img { width: 12mm; height: 12mm; object-fit: contain; margin-bottom: 0.6mm; }
           .label-brand-text { font-size: 5.2pt; line-height: 1.05; font-weight: 700; text-align: center; color: #0f172a; }
           .label-qr { display: flex; align-items: flex-end; justify-content: flex-start; width: 100%; }
           .label-qr img { width: 18mm; height: 18mm; object-fit: contain; border: 0.22mm solid #cbd5e1; border-radius: 1.2mm; padding: 0.8mm; background: #fff; }
@@ -846,7 +846,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
   const labelHeight = 57;
   const topMargin = 6;
   const rowGap = 0;
-  const logoSize = 10;
+  const logoSize = 12;
   const qrSize = 18;
   const labelPaddingX = 6.2;
   const labelPaddingY = 2.4;
