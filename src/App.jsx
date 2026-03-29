@@ -1000,7 +1000,19 @@ function getRequestedOfferId() {
 }
 
 function getStoredCatchFormDefaults() {
-  if (typeof window === "undefined") return { area: "Saimaa", municipality: "", landingPlace: "" };
+  if (typeof window === "undefined") {
+    return {
+      area: "Saimaa",
+      municipality: "",
+      landingPlace: "",
+      gear: "Rysä",
+      gearCount: "",
+      fishingDurationDays: "",
+      netHeight: "",
+      netMeshSize: "",
+      fykeHeight: "",
+    };
+  }
   try {
     const raw = window.localStorage.getItem(CATCH_FORM_DEFAULTS_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
@@ -1008,9 +1020,25 @@ function getStoredCatchFormDefaults() {
       area: String(parsed?.area || "Saimaa"),
       municipality: String(parsed?.municipality || ""),
       landingPlace: String(parsed?.landingPlace || ""),
+      gear: String(parsed?.gear || "Rysä"),
+      gearCount: String(parsed?.gearCount || ""),
+      fishingDurationDays: String(parsed?.fishingDurationDays || ""),
+      netHeight: String(parsed?.netHeight || ""),
+      netMeshSize: String(parsed?.netMeshSize || ""),
+      fykeHeight: String(parsed?.fykeHeight || ""),
     };
   } catch {
-    return { area: "Saimaa", municipality: "", landingPlace: "" };
+    return {
+      area: "Saimaa",
+      municipality: "",
+      landingPlace: "",
+      gear: "Rysä",
+      gearCount: "",
+      fishingDurationDays: "",
+      netHeight: "",
+      netMeshSize: "",
+      fykeHeight: "",
+    };
   }
 }
 
@@ -2880,16 +2908,16 @@ export default function App() {
       area: defaults.area,
       municipality: defaults.municipality,
       landingPlace: defaults.landingPlace,
-      gearCount: "",
-      fishingDurationDays: "",
+      gearCount: defaults.gearCount,
+      fishingDurationDays: defaults.fishingDurationDays,
       originCity: "",
       selectedVesselId: "",
       fishingWithoutVessel: false,
       spot: "",
-      gear: "Rysä",
-      netHeight: "",
-      netMeshSize: "",
-      fykeHeight: "",
+      gear: defaults.gear,
+      netHeight: defaults.netHeight,
+      netMeshSize: defaults.netMeshSize,
+      fykeHeight: defaults.fykeHeight,
       price_per_kg: "",
       notes: "",
       offerToShops: false,
@@ -4015,11 +4043,27 @@ export default function App() {
         area: form.area || "Saimaa",
         municipality: form.municipality || "",
         landingPlace: form.landingPlace || "",
+        gear: form.gear || "Rysä",
+        gearCount: form.gearCount || "",
+        fishingDurationDays: form.fishingDurationDays || "",
+        netHeight: form.netHeight || "",
+        netMeshSize: form.netMeshSize || "",
+        fykeHeight: form.fykeHeight || "",
       }));
     } catch {
       // ignore storage errors
     }
-  }, [form.area, form.municipality, form.landingPlace]);
+  }, [
+    form.area,
+    form.municipality,
+    form.landingPlace,
+    form.gear,
+    form.gearCount,
+    form.fishingDurationDays,
+    form.netHeight,
+    form.netMeshSize,
+    form.fykeHeight,
+  ]);
 
   const applyAccountDeliveryToBilling = useCallback(() => {
     setAccountForm((prev) => ({
@@ -5954,13 +5998,13 @@ export default function App() {
       ...prev,
       originCity: prev.originCity || prev.municipality || "",
       landingPlace: prev.landingPlace || "",
-      gearCount: "",
-      fishingDurationDays: "",
+      gearCount: prev.gearCount || "",
+      fishingDurationDays: prev.fishingDurationDays || "",
       selectedVesselId: commercialFishingVesselOptions[0] || "",
       fishingWithoutVessel: false,
-      netHeight: "",
-      netMeshSize: "",
-      fykeHeight: "",
+      netHeight: prev.netHeight || "",
+      netMeshSize: prev.netMeshSize || "",
+      fykeHeight: prev.fykeHeight || "",
       notes: "",
       price_per_kg: "",
       date: today(),
