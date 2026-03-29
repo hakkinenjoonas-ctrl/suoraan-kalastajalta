@@ -340,6 +340,28 @@ function formatSpeciesOfferSummaryLine(row) {
   ].filter(Boolean).join(" · ");
 }
 
+function parseTradeValueFromSpeciesSummary(summary) {
+  return getOfferSummaryLines(summary).reduce((sum, line) => {
+    const priceMatch = String(line).match(/Hinta\s+([0-9]+(?:[.,][0-9]+)?)/i);
+    if (!priceMatch) return sum;
+
+    const parsedPrice = parseLocaleNumber(priceMatch[1]);
+    if (parsedPrice == null || !Number.isFinite(parsedPrice) || parsedPrice <= 0) return sum;
+
+    const countMatch = String(line).match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
+    if (countMatch) {
+      const parsedCount = parseLocaleNumber(countMatch[1]);
+      if (parsedCount == null || !Number.isFinite(parsedCount) || parsedCount <= 0) return sum;
+      return sum + (parsedCount * parsedPrice);
+    }
+
+    const kiloMatch = String(line).match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kg/i);
+    const parsedKilos = kiloMatch ? parseLocaleNumber(kiloMatch[1]) : null;
+    if (parsedKilos == null || !Number.isFinite(parsedKilos) || parsedKilos <= 0) return sum;
+    return sum + (parsedKilos * parsedPrice);
+  }, 0);
+}
+
 function getOfferSummaryLines(summary) {
   return String(summary || "")
     .split("\n")
@@ -1187,7 +1209,9 @@ function calculateCommissionDetails(offer, commissionRate = 0.03) {
   const pricePerKg = Number(
     offer?.counter_price_per_kg || offer?.price_per_kg || offer?.offer_price_per_kg || 0
   );
-  const tradeValue = kilos * pricePerKg;
+  const directTradeValue = kilos * pricePerKg;
+  const summaryTradeValue = parseTradeValueFromSpeciesSummary(offer?.species_summary);
+  const tradeValue = directTradeValue > 0 ? directTradeValue : summaryTradeValue;
   const commissionValue = tradeValue * commissionRate;
 
   return {
@@ -2799,7 +2823,9 @@ export default function App() {
   const calculateCommissionDetails = (offer) => {
     const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
     const pricePerKg = Number(offer?.counter_price_per_kg || offer?.price_per_kg || 0);
-    const tradeValue = kilos * pricePerKg;
+    const directTradeValue = kilos * pricePerKg;
+    const summaryTradeValue = parseTradeValueFromSpeciesSummary(offer?.species_summary);
+    const tradeValue = directTradeValue > 0 ? directTradeValue : summaryTradeValue;
     const commissionValue = tradeValue * COMMISSION_RATE;
     return { kilos, pricePerKg, tradeValue, commissionValue };
   };
