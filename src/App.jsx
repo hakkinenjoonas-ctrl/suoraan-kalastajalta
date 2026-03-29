@@ -705,6 +705,11 @@ function getCatchLabelQrImageUrl(labelData) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrLines.join("\n"))}`;
 }
 
+function getAppLogoUrl() {
+  if (typeof window === "undefined") return "/logo.png";
+  return new URL("/logo.png", window.location.origin).toString();
+}
+
 function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
   const count = Math.max(1, Number(labelCount || 1));
   const labels = Array.from({ length: count }, (_, index) => {
@@ -712,6 +717,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
     return {
       ...labelData,
       qrImageUrl: getCatchLabelQrImageUrl(labelData),
+      logoUrl: getAppLogoUrl(),
     };
   });
 
@@ -741,8 +747,17 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
             ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
           </div>
         </div>
-        <div class="label-qr">
-          <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
+        <div class="label-side">
+          <div class="label-brand">
+            <img src="${label.logoUrl}" alt="Suoraan Kalastajalta" />
+            <div class="label-brand-text">
+              <div>Suoraan</div>
+              <div>Kalastajalta</div>
+            </div>
+          </div>
+          <div class="label-qr">
+            <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
+          </div>
         </div>
       </div>
     </div>
@@ -761,7 +776,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           .sheet { width: 210mm; height: 289mm; margin: 0 auto; display: grid; grid-template-columns: 105mm 105mm; grid-template-rows: repeat(5, 56.4mm); gap: 0; align-content: start; }
           .page-break { page-break-after: always; }
           .label { width: 105mm; height: 56.4mm; padding: 1.8mm 2.6mm; }
-          .label-inner { width: 100%; height: 100%; padding: 1.8mm; display: grid; grid-template-columns: 1fr 25mm; gap: 1.8mm; overflow: hidden; }
+          .label-inner { width: 100%; height: 100%; padding: 1.8mm; display: grid; grid-template-columns: 1fr 27mm; gap: 1.8mm; overflow: hidden; }
           .label-main { height: 100%; padding-left: 3mm; display: flex; flex-direction: column; min-width: 0; }
           .label-main-top { min-width: 0; }
           .supplier-block { margin-top: auto; min-width: 0; }
@@ -773,7 +788,11 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           .weight-label { font-weight: 700; white-space: nowrap; }
           .weight-write { flex: 1; min-width: 0; border-bottom: 0.3mm solid #0f172a; height: 3.6mm; }
           .weight-unit { font-weight: 700; white-space: nowrap; }
-          .label-qr { display: flex; align-items: flex-end; justify-content: flex-start; }
+          .label-side { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; min-width: 0; }
+          .label-brand { display: flex; flex-direction: column; align-items: center; width: 100%; padding-top: 0.6mm; }
+          .label-brand img { width: 10mm; height: 10mm; object-fit: contain; margin-bottom: 0.6mm; }
+          .label-brand-text { font-size: 5.2pt; line-height: 1.05; font-weight: 700; text-align: center; color: #0f172a; }
+          .label-qr { display: flex; align-items: flex-end; justify-content: flex-start; width: 100%; }
           .label-qr img { width: 18mm; height: 18mm; object-fit: contain; border: 0.22mm solid #cbd5e1; border-radius: 1.2mm; padding: 0.8mm; background: #fff; }
         </style>
       </head>
@@ -809,7 +828,10 @@ function buildCatchLabelPdfFileName(entry) {
 async function buildCatchLabelPdf(entry, profileLike, labelCount) {
   const count = Math.max(1, Number(labelCount || 1));
   const labels = Array.from({ length: count }, (_, index) => buildCatchLabelData(entry, profileLike, index + 1, count));
-  const qrDataUrls = await Promise.all(labels.map((label) => fetchImageDataUrl(getCatchLabelQrImageUrl(label))));
+  const [qrDataUrls, logoDataUrl] = await Promise.all([
+    Promise.all(labels.map((label) => fetchImageDataUrl(getCatchLabelQrImageUrl(label)))),
+    fetchImageDataUrl(getAppLogoUrl()).catch(() => ""),
+  ]);
 
   const doc = new jsPDF({
     orientation: "portrait",
@@ -824,6 +846,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
   const labelHeight = 57;
   const topMargin = 6;
   const rowGap = 0;
+  const logoSize = 10;
   const qrSize = 18;
   const labelPaddingX = 6.2;
   const labelPaddingY = 2.4;
@@ -836,8 +859,18 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
     const top = y + labelPaddingY;
     const qrX = x + labelWidth - labelPaddingX - qrSize - qrRightInset;
     const qrY = y + labelHeight - labelPaddingY - qrSize;
+    const brandX = qrX + ((qrSize - logoSize) / 2);
+    const brandY = top + 0.2;
     const textWidth = qrX - left - 2.4;
     let currentY = top + 4.2;
+
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, "PNG", brandX, brandY, logoSize, logoSize);
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(5.2);
+    doc.text("Suoraan", qrX + (qrSize / 2), brandY + logoSize + 2.4, { align: "center" });
+    doc.text("Kalastajalta", qrX + (qrSize / 2), brandY + logoSize + 4.7, { align: "center" });
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13.5);
