@@ -1192,6 +1192,51 @@ function parseLocaleNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function getCatchGearDetailLines(source) {
+  const gear = String(source?.gear || "").trim();
+  const lines = [];
+
+  if (gear === "Verkko") {
+    const netHeight = String(source?.netHeight || source?.gear_net_height || "").trim();
+    const netMeshSize = String(source?.netMeshSize || source?.gear_mesh_size || "").trim();
+    if (netHeight) lines.push(`Verkon korkeus: ${netHeight}`);
+    if (netMeshSize) lines.push(`Verkon solmuväli: ${netMeshSize}`);
+  }
+
+  if (gear === "Rysä") {
+    const fykeHeight = String(source?.fykeHeight || source?.gear_fyke_height || "").trim();
+    if (fykeHeight) lines.push(`Rysän korkeus: ${fykeHeight}`);
+  }
+
+  return lines;
+}
+
+function appendCatchGearDetailsToNotes(notes, source) {
+  const detailLines = getCatchGearDetailLines(source);
+  const baseNotes = String(notes || "").trim();
+  if (detailLines.length === 0) return baseNotes;
+  return [baseNotes, "Pyydyksen lisätiedot:", ...detailLines].filter(Boolean).join("\n");
+}
+
+function extractCatchGearDetailsFromNotes(notes) {
+  const text = String(notes || "");
+  return {
+    netHeight: (text.match(/Verkon korkeus:\s*(.+)/i)?.[1] || "").trim(),
+    netMeshSize: (text.match(/Verkon solmuväli:\s*(.+)/i)?.[1] || "").trim(),
+    fykeHeight: (text.match(/Rysän korkeus:\s*(.+)/i)?.[1] || "").trim(),
+  };
+}
+
+function formatCatchGearDisplay(source) {
+  const gear = String(source?.gear || "").trim();
+  if (!gear) return "-";
+  const details = getCatchGearDetailLines({
+    ...extractCatchGearDetailsFromNotes(source?.notes),
+    ...source,
+  });
+  return details.length > 0 ? `${gear} · ${details.join(" · ")}` : gear;
+}
+
 function describeOfferEmailError(error) {
   if (!error) return "Tarjoussähköpostin lähetys epäonnistui";
   if (typeof error === "string") return error;
@@ -2211,7 +2256,7 @@ function WholesaleOffersView({
                   <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                   {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                   {entry.batchId ? <div style={styles.qrBlock}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
-                  <div style={styles.muted}>Pyydys: {entry.gear || "-"}</div>
+                  <div style={styles.muted}>Pyydys: {formatCatchGearDisplay(entry)}</div>
                   {reservation ? (
                     <div style={styles.muted}>
                       {reservation.status === "reserved"
@@ -2319,7 +2364,7 @@ function WholesaleOffersView({
                             {offer.status === "accepted" ? <div style={styles.muted}><strong>Kaupan arvo:</strong> {euro(calculateCommissionDetails(offer).tradeValue)}</div> : null}
                             {offer.status === "accepted" ? <div style={styles.muted}><strong>Komissio ({(COMMISSION_RATE * 100).toFixed(1)} %):</strong> {euro(calculateCommissionDetails(offer).commissionValue)}</div> : null}
                             <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? `${offer.reserved_kilos} kg` : "-"}</div>
-                            <div style={styles.muted}><strong>Pyydys:</strong> {entry.gear || "-"}</div>
+                            <div style={styles.muted}><strong>Pyydys:</strong> {formatCatchGearDisplay(entry)}</div>
                           </div>
                         </div>
 
@@ -2664,6 +2709,9 @@ export default function App() {
     fishingWithoutVessel: false,
     spot: "",
     gear: "Rysä",
+    netHeight: "",
+    netMeshSize: "",
+    fykeHeight: "",
     price_per_kg: "",
     notes: "",
     offerToShops: false,
@@ -5645,7 +5693,7 @@ export default function App() {
       commercial_fishing_id: profile.commercial_fishing_id || null,
       commercial_fishing_vessel_id: selectedVesselId || null,
       price_per_kg: parseLocaleNumber(row.price_per_kg),
-      notes: form.notes,
+      notes: appendCatchGearDetailsToNotes(form.notes, form),
       batch_id: row.batch_id,
       owner_user_id: profile.id,
       owner_name: profile.display_name,
@@ -5713,6 +5761,9 @@ export default function App() {
       originCity: prev.originCity || prev.municipality || "",
       selectedVesselId: commercialFishingVesselOptions[0] || "",
       fishingWithoutVessel: false,
+      netHeight: "",
+      netMeshSize: "",
+      fykeHeight: "",
       notes: "",
       price_per_kg: "",
       date: today(),
@@ -7148,7 +7199,16 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-                <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm({ ...form, gear: e.target.value })}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
+                <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm((prev) => ({ ...prev, gear: e.target.value, netHeight: e.target.value === "Verkko" ? prev.netHeight : "", netMeshSize: e.target.value === "Verkko" ? prev.netMeshSize : "", fykeHeight: e.target.value === "Rysä" ? prev.fykeHeight : "" }))}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
+                {form.gear === "Verkko" ? (
+                  <>
+                    <div style={styles.field}><label>Verkon korkeus</label><input style={styles.input} value={form.netHeight} onChange={(e) => setForm({ ...form, netHeight: e.target.value })} placeholder="Esim. 3 m" /></div>
+                    <div style={styles.field}><label>Verkon solmuväli</label><input style={styles.input} value={form.netMeshSize} onChange={(e) => setForm({ ...form, netMeshSize: e.target.value })} placeholder="Esim. 55 mm" /></div>
+                  </>
+                ) : null}
+                {form.gear === "Rysä" ? (
+                  <div style={styles.field}><label>Rysän korkeus</label><input style={styles.input} value={form.fykeHeight} onChange={(e) => setForm({ ...form, fykeHeight: e.target.value })} placeholder="Esim. 2,5 m" /></div>
+                ) : null}
                 <div style={styles.field}><label>Lähtöpaikka / kalastajan sijainti</label><MunicipalitySelect value={currentOriginCity} onChange={(e) => setForm({ ...form, originCity: e.target.value, originPointId: "" })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={form.deliveryPossible} onChange={(e) => setForm({ ...form, deliveryPossible: e.target.checked, deliveryMethod: e.target.checked ? "Kuljetus järjestetään" : "Nouto", transportMode: e.target.checked ? form.transportMode : "", originPointId: e.target.checked ? form.originPointId : "", deliveryDestinations: e.target.checked ? form.deliveryDestinations : [] })} /> Kilpailuta kuljetus</label></div>
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
@@ -7414,7 +7474,7 @@ export default function App() {
                           <div style={styles.entryBadges}>
                             <span style={styles.badge}>{formatSpeciesForSale(entry.species)}</span>
                             <span style={styles.badge}>{entry.kilos} kg</span>
-                            <span style={styles.badge}>{entry.gear}</span>
+                            <span style={styles.badge}>{formatCatchGearDisplay(entry)}</span>
                             <span style={styles.badge}>{entry.ownerName}</span>
                           </div>
                           <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
