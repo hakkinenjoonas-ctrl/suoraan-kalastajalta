@@ -757,7 +757,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           .sheet { width: 210mm; height: 289mm; margin: 0 auto; display: grid; grid-template-columns: 105mm 105mm; grid-template-rows: repeat(5, 56.4mm); gap: 0; align-content: start; }
           .page-break { page-break-after: always; }
           .label { width: 105mm; height: 56.4mm; padding: 1.8mm 2.6mm; }
-          .label-inner { width: 100%; height: 100%; border: 0.25mm solid #cbd5e1; border-radius: 1.6mm; padding: 1.8mm; display: grid; grid-template-columns: 1fr 25mm; gap: 1.8mm; overflow: hidden; }
+          .label-inner { width: 100%; height: 100%; padding: 1.8mm; display: grid; grid-template-columns: 1fr 25mm; gap: 1.8mm; overflow: hidden; }
           .species { font-size: 12.6pt; font-weight: 800; line-height: 1.03; margin-bottom: 0.45mm; }
           .scientific { font-size: 6.2pt; line-height: 1.12; color: #475569; margin-bottom: 0.7mm; }
           .batch { font-size: 7.2pt; font-weight: 800; background: #eff6ff; border: 0.22mm solid #93c5fd; border-radius: 1.2mm; padding: 0.7mm 0.9mm; margin-bottom: 0.7mm; }
@@ -831,10 +831,6 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
     const qrY = y + labelHeight - labelPaddingY - qrSize;
     const textWidth = qrX - left - 2.4;
     let currentY = top + 4.2;
-
-    doc.setDrawColor(203, 213, 225);
-    doc.setLineWidth(0.2);
-    doc.roundedRect(x + 0.6, y + 0.4, labelWidth - 1.2, labelHeight - 0.8, 1.5, 1.5);
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13.5);
