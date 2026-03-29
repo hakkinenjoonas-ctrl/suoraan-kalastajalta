@@ -1712,6 +1712,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, onClo
 
   const previewLabel = buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)));
   const previewQrImageUrl = getCatchLabelQrImageUrl(previewLabel);
+  const previewLogoUrl = getAppLogoUrl();
 
   return (
     <div style={{
@@ -1771,29 +1772,45 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, onClo
               width: 420,
               maxWidth: "100%",
               aspectRatio: "105 / 57",
-              border: "1px solid #cbd5e1",
-              borderRadius: 12,
               background: "#fff",
               padding: 14,
               display: "grid",
-              gridTemplateColumns: "1fr 86px",
+              gridTemplateColumns: "1fr 96px",
               gap: 12,
             }}>
-              <div>
-                <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.05 }}>{previewLabel.species}</div>
-                {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
-                <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800, padding: "6px 8px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8 }}>Erätunnus: {previewLabel.batchId}</div>
-                {previewLabel.catchArea ? <div style={{ marginTop: 8, fontSize: 12 }}>Pyyntialue: {previewLabel.catchArea}</div> : null}
-                {previewLabel.gearType ? <div style={{ fontSize: 12 }}>Pyyntimenetelmä: {previewLabel.gearType}</div> : null}
-                {previewLabel.catchDate ? <div style={{ fontSize: 12 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
-                {previewLabel.productForm ? <div style={{ fontSize: 12 }}>Tuote: {previewLabel.productForm}</div> : null}
-                <div style={{ fontSize: 12 }}>Paino: ______ kg</div>
-                <div style={{ fontSize: 12 }}>Säilytys: 0–2 °C</div>
-                <div style={{ fontSize: 12 }}>Toimittaja: {previewLabel.supplier}</div>
-                <div style={{ fontSize: 12 }}>Laatikko {previewLabel.boxLabel}</div>
+              <div style={{ display: "flex", flexDirection: "column", paddingLeft: 12, minWidth: 0 }}>
+                <div>
+                  <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.03 }}>{previewLabel.species}</div>
+                  {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
+                  <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800, padding: "6px 8px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8 }}>Erätunnus: {previewLabel.batchId}</div>
+                  {previewLabel.catchArea ? <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.12 }}>Pyyntialue: {previewLabel.catchArea}</div> : null}
+                  {previewLabel.gearType ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntimenetelmä: {previewLabel.gearType}</div> : null}
+                  {previewLabel.catchDate ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
+                  {previewLabel.productForm ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Tuote: {previewLabel.productForm}</div> : null}
+                  <div style={{ fontSize: 12, lineHeight: 1.12 }}>Säilytys: 0–2 °C</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginTop: 12, minHeight: 24 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>Paino:</span>
+                  <span style={{ flex: 1, borderBottom: "2px solid #0f172a", height: 18 }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>kg</span>
+                </div>
+                <div style={{ marginTop: "auto", fontSize: 12, lineHeight: 1.12 }}>
+                  <div>Toimittaja: {previewLabel.supplier}</div>
+                  {previewLabel.supplierAddress ? <div>{previewLabel.supplierAddress}</div> : null}
+                  {previewLabel.supplierContact ? <div>{previewLabel.supplierContact}</div> : null}
+                </div>
               </div>
-              <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-                <img src={previewQrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 82, height: 82, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff" }} />
+              <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4 }}>
+                  <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 48, height: 48, objectFit: "contain", marginBottom: 4 }} />
+                  <div style={{ fontSize: 10, lineHeight: 1.05, fontWeight: 700, textAlign: "center", color: "#0f172a" }}>
+                    <div>Suoraan</div>
+                    <div>Kalastajalta</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-start", width: "100%" }}>
+                  <img src={previewQrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 82, height: 82, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff" }} />
+                </div>
               </div>
             </div>
           </div>
@@ -5601,6 +5618,10 @@ export default function App() {
       setSaving(false);
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
+        return;
+      }
+      if (String(error.message || "").includes("price_per_kg")) {
+        setAuthError("Tietokanta vaatii vielä hinnan saaliserälle. Aja SQL Editorissa muutos, joka sallii tyhjän hinnan saaliskirjanpidossa: alter table public.catch_entries alter column price_per_kg drop not null;");
         return;
       }
       if (String(error.message || "").includes("commercial_fishing_vessel_id")) {
