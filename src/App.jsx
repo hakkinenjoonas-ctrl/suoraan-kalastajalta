@@ -5710,7 +5710,7 @@ export default function App() {
     setSaving(false);
     setForm((prev) => ({
       ...prev,
-      originCity: "",
+      originCity: prev.originCity || prev.municipality || "",
       selectedVesselId: commercialFishingVesselOptions[0] || "",
       fishingWithoutVessel: false,
       notes: "",
@@ -7083,7 +7083,7 @@ export default function App() {
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <div style={formGrid}>
                 <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
-                <div style={styles.field}><label>Vesialue</label><select style={styles.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
+                <div style={styles.field}><label>Kalastamisalue</label><select style={styles.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
                 <div style={styles.field}>
                   <label>Paikkakunta</label>
                   <MunicipalitySelect value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} />
