@@ -5454,7 +5454,7 @@ export default function App() {
       setAuthError("Kirjoita kalalajin nimi kaikille riveille, joilla lajiksi on valittu Muu.");
       return;
     }
-    if (validRows.some((row) => parseLocaleNumber(row.price_per_kg) == null)) {
+    if (shouldSendOffer && validRows.some((row) => parseLocaleNumber(row.price_per_kg) == null)) {
       setAuthError("Täytä hinta jokaiselle kalalajille ennen saaliin tallennusta.");
       return;
     }
@@ -5541,7 +5541,7 @@ export default function App() {
       cold_transport: form.coldTransport,
       commercial_fishing_id: profile.commercial_fishing_id || null,
       commercial_fishing_vessel_id: selectedVesselId || null,
-      price_per_kg: parseLocaleNumber(row.price_per_kg) || 0,
+      price_per_kg: parseLocaleNumber(row.price_per_kg),
       notes: form.notes,
       batch_id: row.batch_id,
       owner_user_id: profile.id,
