@@ -1135,7 +1135,7 @@ function getBatchSequenceNumber(batchId) {
   return Number(match[1] || 0);
 }
 
-async function generateBatchId({ sourceIdentifier, date, speciesLabels, quantity, supabaseClient, ownerUserId }) {
+async function generateBatchId({ sourceIdentifier, date, speciesLabels, quantity, supabaseClient, ownerUserId, insertSeparatorAfterSource = false }) {
   const batchSourceIdentifier = formatBatchSourceIdentifier(sourceIdentifier);
   if (!batchSourceIdentifier) {
     throw new Error("Aseta kaupallisen kalastusaluksen tunnus tai kaupallisen kalastajan tunnus kohdassa Omat tiedot ennen eräkoodin luontia.");
@@ -1144,7 +1144,7 @@ async function generateBatchId({ sourceIdentifier, date, speciesLabels, quantity
   const batchDate = formatBatchDate(date);
   const speciesCode = getSpeciesFaoCode(speciesLabels);
   const quantityCode = formatBatchQuantity(quantity);
-  const prefix = `${batchSourceIdentifier}${batchDate}${speciesCode}${quantityCode}`;
+  const prefix = `${batchSourceIdentifier}${insertSeparatorAfterSource ? "-" : ""}${batchDate}${speciesCode}${quantityCode}`;
 
   if (!ownerUserId) {
     throw new Error("Käyttäjän tunniste puuttuu eräkoodin luontia varten.");
@@ -2661,6 +2661,7 @@ export default function App() {
     municipality: "",
     originCity: "",
     selectedVesselId: "",
+    fishingWithoutVessel: false,
     spot: "",
     gear: "Rysä",
     price_per_kg: "",
@@ -3768,6 +3769,9 @@ export default function App() {
   useEffect(() => {
     if (commercialFishingVesselOptions.length === 0) return;
     setForm((prev) => {
+      if (prev.fishingWithoutVessel) {
+        return prev;
+      }
       if (prev.selectedVesselId && commercialFishingVesselOptions.includes(prev.selectedVesselId)) {
         return prev;
       }
@@ -5530,7 +5534,10 @@ export default function App() {
   const handleSave = async () => {
     if (!profile) return;
     const totalKilosForOffer = speciesRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
-    const selectedVesselId = String(form.selectedVesselId || commercialFishingVesselOptions[0] || "").trim();
+    const selectedVesselId = form.fishingWithoutVessel ? "" : String(form.selectedVesselId || commercialFishingVesselOptions[0] || "").trim();
+    const batchSourceIdentifier = form.fishingWithoutVessel
+      ? String(profile.commercial_fishing_id || "").trim()
+      : getPreferredBatchSourceIdentifier(profile, selectedVesselId);
     const validRows = speciesRows.filter((row) => {
       const kilos = Number(row.kilos || 0);
       const count = Number(row.count || 0);
@@ -5579,7 +5586,11 @@ export default function App() {
         return;
       }
     }
-    if (commercialFishingVesselOptions.length > 0 && !selectedVesselId) {
+    if (form.fishingWithoutVessel && !String(profile.commercial_fishing_id || "").trim()) {
+      setAuthError("Aseta kaupallisen kalastajan tunnus kohdassa Omat tiedot ennen eräkoodin luontia, kun kalastat ilman alusta.");
+      return;
+    }
+    if (!form.fishingWithoutVessel && commercialFishingVesselOptions.length > 0 && !selectedVesselId) {
       setAuthError("Valitse käytetty kaupallinen kalastusalus ennen saaliin tallennusta.");
       return;
     }
@@ -5589,12 +5600,13 @@ export default function App() {
       rowsWithBatchIds = await Promise.all(validRows.map(async (row) => ({
         ...row,
         batch_id: await generateBatchId({
-          sourceIdentifier: getPreferredBatchSourceIdentifier(profile, selectedVesselId),
+          sourceIdentifier: batchSourceIdentifier,
           date: form.date,
           speciesLabels: [getSpeciesRowLabel(row)],
           quantity: Number(row.kilos || 0) > 0 ? Number(row.kilos || 0) : Number(row.count || 0),
           supabaseClient: supabase,
           ownerUserId: profile.id,
+          insertSeparatorAfterSource: Boolean(form.fishingWithoutVessel),
         }),
       })));
     } catch (error) {
@@ -5700,6 +5712,7 @@ export default function App() {
       ...prev,
       originCity: "",
       selectedVesselId: commercialFishingVesselOptions[0] || "",
+      fishingWithoutVessel: false,
       notes: "",
       price_per_kg: "",
       date: today(),
@@ -7080,9 +7093,23 @@ export default function App() {
                 {commercialFishingVesselOptions.length > 0 ? (
                   <div style={styles.field}>
                     <label>Käytetty kaupallinen kalastusalus</label>
+                    <label style={{ ...styles.row, gap: 8, marginBottom: 8, fontWeight: 500, color: "#334155" }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(form.fishingWithoutVessel)}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            fishingWithoutVessel: e.target.checked,
+                            selectedVesselId: e.target.checked ? "" : (prev.selectedVesselId || commercialFishingVesselOptions[0] || ""),
+                          }))}
+                      />
+                      <span>Kalastus ilman alusta</span>
+                    </label>
                     <select
                       style={styles.input}
                       value={form.selectedVesselId}
+                      disabled={Boolean(form.fishingWithoutVessel)}
                       onChange={(e) => setForm({ ...form, selectedVesselId: e.target.value })}
                     >
                       {commercialFishingVesselOptions.map((vesselId) => (
@@ -7092,7 +7119,19 @@ export default function App() {
                       ))}
                     </select>
                   </div>
-                ) : null}
+                ) : (
+                  <div style={styles.field}>
+                    <label>Käytetty kaupallinen kalastusalus</label>
+                    <label style={{ ...styles.row, gap: 8, marginTop: 8, fontWeight: 500, color: "#334155" }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(form.fishingWithoutVessel)}
+                        onChange={(e) => setForm((prev) => ({ ...prev, fishingWithoutVessel: e.target.checked }))}
+                      />
+                      <span>Kalastus ilman alusta</span>
+                    </label>
+                  </div>
+                )}
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
                   <div style={styles.rowBetween}><div><label>KALAERÄ</label></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
                   {speciesRows.map((row, index) => (
