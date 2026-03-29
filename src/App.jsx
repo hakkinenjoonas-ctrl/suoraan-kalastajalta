@@ -1100,7 +1100,7 @@ async function generateBatchId({ sourceIdentifier, date, speciesLabels, quantity
   if (processedError && processedError.code !== "PGRST116") throw processedError;
 
   const sequence = String(Number(catchCount || 0) + Number(processedCount || 0) + 1);
-  return `${prefix}${sequence}`;
+  return `${prefix}-${sequence}`;
 }
 
 function euro(value) {
