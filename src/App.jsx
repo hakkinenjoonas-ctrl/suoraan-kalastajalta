@@ -1024,10 +1024,15 @@ function getStoredCatchFormDefaults() {
       landingPlaces: Array.isArray(parsed?.landingPlaces) ? parsed.landingPlaces.map((item) => String(item || "").trim()).filter(Boolean) : [],
       gear: String(parsed?.gear || "Rysä"),
       gearCount: String(parsed?.gearCount || ""),
+      gearCountOptions: Array.isArray(parsed?.gearCountOptions) ? parsed.gearCountOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
       fishingDurationDays: String(parsed?.fishingDurationDays || ""),
+      fishingDurationOptions: Array.isArray(parsed?.fishingDurationOptions) ? parsed.fishingDurationOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
       netHeight: String(parsed?.netHeight || ""),
+      netHeightOptions: Array.isArray(parsed?.netHeightOptions) ? parsed.netHeightOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
       netMeshSize: String(parsed?.netMeshSize || ""),
+      netMeshSizeOptions: Array.isArray(parsed?.netMeshSizeOptions) ? parsed.netMeshSizeOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
       fykeHeight: String(parsed?.fykeHeight || ""),
+      fykeHeightOptions: Array.isArray(parsed?.fykeHeightOptions) ? parsed.fykeHeightOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
     };
   } catch {
     return {
@@ -1037,10 +1042,15 @@ function getStoredCatchFormDefaults() {
       landingPlaces: [],
       gear: "Rysä",
       gearCount: "",
+      gearCountOptions: [],
       fishingDurationDays: "",
+      fishingDurationOptions: [],
       netHeight: "",
+      netHeightOptions: [],
       netMeshSize: "",
+      netMeshSizeOptions: [],
       fykeHeight: "",
+      fykeHeightOptions: [],
     };
   }
 }
@@ -1051,6 +1061,14 @@ function buildLandingPlaceHistory(currentLandingPlace, previousLandingPlaces = [
     ...previousLandingPlaces.map((item) => String(item || "").trim()),
   ].filter(Boolean);
   return Array.from(new Set(values)).slice(0, 20);
+}
+
+function buildRememberedOptions(currentValue, previousValues = [], limit = 20) {
+  const values = [
+    String(currentValue || "").trim(),
+    ...previousValues.map((item) => String(item || "").trim()),
+  ].filter(Boolean);
+  return Array.from(new Set(values)).slice(0, limit);
 }
 
 function fulfillmentStatusLabel(status) {
@@ -1728,6 +1746,25 @@ function LandingPlaceInput({ value, onChange, options, placeholder = "Esim. Kyl�
         list="landing-place-options"
       />
       <datalist id="landing-place-options">
+        {(options || []).map((option) => (
+          <option key={option} value={option} />
+        ))}
+      </datalist>
+    </>
+  );
+}
+
+function RememberedTextInput({ value, onChange, options, placeholder = "", listId }) {
+  return (
+    <>
+      <input
+        style={styles.input}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        list={listId}
+      />
+      <datalist id={listId}>
         {(options || []).map((option) => (
           <option key={option} value={option} />
         ))}
@@ -2969,6 +3006,11 @@ export default function App() {
     };
   });
   const [savedLandingPlaces, setSavedLandingPlaces] = useState(() => getStoredCatchFormDefaults().landingPlaces || []);
+  const [savedGearCountOptions, setSavedGearCountOptions] = useState(() => getStoredCatchFormDefaults().gearCountOptions || []);
+  const [savedFishingDurationOptions, setSavedFishingDurationOptions] = useState(() => getStoredCatchFormDefaults().fishingDurationOptions || []);
+  const [savedNetHeightOptions, setSavedNetHeightOptions] = useState(() => getStoredCatchFormDefaults().netHeightOptions || []);
+  const [savedNetMeshSizeOptions, setSavedNetMeshSizeOptions] = useState(() => getStoredCatchFormDefaults().netMeshSizeOptions || []);
+  const [savedFykeHeightOptions, setSavedFykeHeightOptions] = useState(() => getStoredCatchFormDefaults().fykeHeightOptions || []);
   const [speciesRows, setSpeciesRows] = useState([createSpeciesRow()]);
   const [processedForm, setProcessedForm] = useState({
     productionDate: today(),
@@ -4071,6 +4113,11 @@ export default function App() {
     if (typeof window === "undefined") return;
     try {
       const landingPlaces = buildLandingPlaceHistory(form.landingPlace, savedLandingPlaces);
+      const gearCountOptions = buildRememberedOptions(form.gearCount, savedGearCountOptions);
+      const fishingDurationOptions = buildRememberedOptions(form.fishingDurationDays, savedFishingDurationOptions);
+      const netHeightOptions = buildRememberedOptions(form.netHeight, savedNetHeightOptions);
+      const netMeshSizeOptions = buildRememberedOptions(form.netMeshSize, savedNetMeshSizeOptions);
+      const fykeHeightOptions = buildRememberedOptions(form.fykeHeight, savedFykeHeightOptions);
       window.localStorage.setItem(CATCH_FORM_DEFAULTS_KEY, JSON.stringify({
         area: form.area || "Saimaa",
         municipality: form.municipality || "",
@@ -4078,13 +4125,43 @@ export default function App() {
         landingPlaces,
         gear: form.gear || "Rysä",
         gearCount: form.gearCount || "",
+        gearCountOptions,
         fishingDurationDays: form.fishingDurationDays || "",
+        fishingDurationOptions,
         netHeight: form.netHeight || "",
+        netHeightOptions,
         netMeshSize: form.netMeshSize || "",
+        netMeshSizeOptions,
         fykeHeight: form.fykeHeight || "",
+        fykeHeightOptions,
       }));
       setSavedLandingPlaces((prev) => {
         const next = buildLandingPlaceHistory(form.landingPlace, prev);
+        if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
+        return next;
+      });
+      setSavedGearCountOptions((prev) => {
+        const next = buildRememberedOptions(form.gearCount, prev);
+        if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
+        return next;
+      });
+      setSavedFishingDurationOptions((prev) => {
+        const next = buildRememberedOptions(form.fishingDurationDays, prev);
+        if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
+        return next;
+      });
+      setSavedNetHeightOptions((prev) => {
+        const next = buildRememberedOptions(form.netHeight, prev);
+        if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
+        return next;
+      });
+      setSavedNetMeshSizeOptions((prev) => {
+        const next = buildRememberedOptions(form.netMeshSize, prev);
+        if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
+        return next;
+      });
+      setSavedFykeHeightOptions((prev) => {
+        const next = buildRememberedOptions(form.fykeHeight, prev);
         if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
         return next;
       });
@@ -4102,6 +4179,11 @@ export default function App() {
     form.netMeshSize,
     form.fykeHeight,
     savedLandingPlaces,
+    savedGearCountOptions,
+    savedFishingDurationOptions,
+    savedNetHeightOptions,
+    savedNetMeshSizeOptions,
+    savedFykeHeightOptions,
   ]);
 
   const applyAccountDeliveryToBilling = useCallback(() => {
@@ -7488,16 +7570,61 @@ export default function App() {
                   ))}
                 </div>
                 <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm((prev) => ({ ...prev, gear: e.target.value, netHeight: e.target.value === "Verkko" ? prev.netHeight : "", netMeshSize: e.target.value === "Verkko" ? prev.netMeshSize : "", fykeHeight: e.target.value === "Rysä" ? prev.fykeHeight : "" }))}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
-                <div style={styles.field}><label>Pyydysten määrä</label><input style={styles.input} type="number" min="1" step="1" value={form.gearCount} onChange={(e) => setForm({ ...form, gearCount: e.target.value })} placeholder="Esim. 30" /></div>
-                <div style={styles.field}><label>Pyyntiaika</label><input style={styles.input} value={form.fishingDurationDays} onChange={(e) => setForm({ ...form, fishingDurationDays: e.target.value })} placeholder="Esim. 6 pv" /></div>
+                <div style={styles.field}>
+                  <label>Pyydysten määrä</label>
+                  <RememberedTextInput
+                    value={form.gearCount}
+                    onChange={(e) => setForm({ ...form, gearCount: e.target.value })}
+                    options={savedGearCountOptions}
+                    placeholder="Esim. 30"
+                    listId="gear-count-options"
+                  />
+                </div>
+                <div style={styles.field}>
+                  <label>Pyyntiaika</label>
+                  <RememberedTextInput
+                    value={form.fishingDurationDays}
+                    onChange={(e) => setForm({ ...form, fishingDurationDays: e.target.value })}
+                    options={savedFishingDurationOptions}
+                    placeholder="Esim. 6 pv"
+                    listId="fishing-duration-options"
+                  />
+                </div>
                 {form.gear === "Verkko" ? (
                   <>
-                    <div style={styles.field}><label>Verkon korkeus</label><input style={styles.input} value={form.netHeight} onChange={(e) => setForm({ ...form, netHeight: e.target.value })} placeholder="Esim. 3 m" /></div>
-                    <div style={styles.field}><label>Verkon solmuväli</label><input style={styles.input} value={form.netMeshSize} onChange={(e) => setForm({ ...form, netMeshSize: e.target.value })} placeholder="Esim. 55 mm" /></div>
+                    <div style={styles.field}>
+                      <label>Verkon korkeus</label>
+                      <RememberedTextInput
+                        value={form.netHeight}
+                        onChange={(e) => setForm({ ...form, netHeight: e.target.value })}
+                        options={savedNetHeightOptions}
+                        placeholder="Esim. 3 m"
+                        listId="net-height-options"
+                      />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Verkon solmuväli</label>
+                      <RememberedTextInput
+                        value={form.netMeshSize}
+                        onChange={(e) => setForm({ ...form, netMeshSize: e.target.value })}
+                        options={savedNetMeshSizeOptions}
+                        placeholder="Esim. 55 mm"
+                        listId="net-mesh-options"
+                      />
+                    </div>
                   </>
                 ) : null}
                 {form.gear === "Rysä" ? (
-                  <div style={styles.field}><label>Rysän korkeus</label><input style={styles.input} value={form.fykeHeight} onChange={(e) => setForm({ ...form, fykeHeight: e.target.value })} placeholder="Esim. 2,5 m" /></div>
+                  <div style={styles.field}>
+                    <label>Rysän korkeus</label>
+                    <RememberedTextInput
+                      value={form.fykeHeight}
+                      onChange={(e) => setForm({ ...form, fykeHeight: e.target.value })}
+                      options={savedFykeHeightOptions}
+                      placeholder="Esim. 2,5 m"
+                      listId="fyke-height-options"
+                    />
+                  </div>
                 ) : null}
                 <div style={styles.field}><label>Lähtöpaikka / kalastajan sijainti</label><MunicipalitySelect value={currentOriginCity} onChange={(e) => setForm({ ...form, originCity: e.target.value, originPointId: "" })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={form.deliveryPossible} onChange={(e) => setForm({ ...form, deliveryPossible: e.target.checked, deliveryMethod: e.target.checked ? "Kuljetus järjestetään" : "Nouto", transportMode: e.target.checked ? form.transportMode : "", originPointId: e.target.checked ? form.originPointId : "", deliveryDestinations: e.target.checked ? form.deliveryDestinations : [] })} /> Kilpailuta kuljetus</label></div>
