@@ -1005,6 +1005,7 @@ function getStoredCatchFormDefaults() {
       area: "Saimaa",
       municipality: "",
       landingPlace: "",
+      landingPlaces: [],
       gear: "Rysä",
       gearCount: "",
       fishingDurationDays: "",
@@ -1020,6 +1021,7 @@ function getStoredCatchFormDefaults() {
       area: String(parsed?.area || "Saimaa"),
       municipality: String(parsed?.municipality || ""),
       landingPlace: String(parsed?.landingPlace || ""),
+      landingPlaces: Array.isArray(parsed?.landingPlaces) ? parsed.landingPlaces.map((item) => String(item || "").trim()).filter(Boolean) : [],
       gear: String(parsed?.gear || "Rysä"),
       gearCount: String(parsed?.gearCount || ""),
       fishingDurationDays: String(parsed?.fishingDurationDays || ""),
@@ -1032,6 +1034,7 @@ function getStoredCatchFormDefaults() {
       area: "Saimaa",
       municipality: "",
       landingPlace: "",
+      landingPlaces: [],
       gear: "Rysä",
       gearCount: "",
       fishingDurationDays: "",
@@ -1040,6 +1043,14 @@ function getStoredCatchFormDefaults() {
       fykeHeight: "",
     };
   }
+}
+
+function buildLandingPlaceHistory(currentLandingPlace, previousLandingPlaces = []) {
+  const values = [
+    String(currentLandingPlace || "").trim(),
+    ...previousLandingPlaces.map((item) => String(item || "").trim()),
+  ].filter(Boolean);
+  return Array.from(new Set(values)).slice(0, 20);
 }
 
 function fulfillmentStatusLabel(status) {
@@ -1703,6 +1714,25 @@ function MunicipalitySelect({ value, onChange, placeholder = "Valitse paikkakunt
         </option>
       ))}
     </select>
+  );
+}
+
+function LandingPlaceInput({ value, onChange, options, placeholder = "Esim. Kyläniemen kalasatama" }) {
+  return (
+    <>
+      <input
+        style={styles.input}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        list="landing-place-options"
+      />
+      <datalist id="landing-place-options">
+        {(options || []).map((option) => (
+          <option key={option} value={option} />
+        ))}
+      </datalist>
+    </>
   );
 }
 
@@ -2938,6 +2968,7 @@ export default function App() {
       coldTransport: false,
     };
   });
+  const [savedLandingPlaces, setSavedLandingPlaces] = useState(() => getStoredCatchFormDefaults().landingPlaces || []);
   const [speciesRows, setSpeciesRows] = useState([createSpeciesRow()]);
   const [processedForm, setProcessedForm] = useState({
     productionDate: today(),
@@ -4039,10 +4070,12 @@ export default function App() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
+      const landingPlaces = buildLandingPlaceHistory(form.landingPlace, savedLandingPlaces);
       window.localStorage.setItem(CATCH_FORM_DEFAULTS_KEY, JSON.stringify({
         area: form.area || "Saimaa",
         municipality: form.municipality || "",
         landingPlace: form.landingPlace || "",
+        landingPlaces,
         gear: form.gear || "Rysä",
         gearCount: form.gearCount || "",
         fishingDurationDays: form.fishingDurationDays || "",
@@ -4050,6 +4083,11 @@ export default function App() {
         netMeshSize: form.netMeshSize || "",
         fykeHeight: form.fykeHeight || "",
       }));
+      setSavedLandingPlaces((prev) => {
+        const next = buildLandingPlaceHistory(form.landingPlace, prev);
+        if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
+        return next;
+      });
     } catch {
       // ignore storage errors
     }
@@ -4063,6 +4101,7 @@ export default function App() {
     form.netHeight,
     form.netMeshSize,
     form.fykeHeight,
+    savedLandingPlaces,
   ]);
 
   const applyAccountDeliveryToBilling = useCallback(() => {
@@ -7380,7 +7419,14 @@ export default function App() {
                   <label>Paikkakunta</label>
                   <MunicipalitySelect value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} />
                 </div>
-                <div style={styles.field}><label>Purkamispaikka</label><input style={styles.input} value={form.landingPlace} onChange={(e) => setForm({ ...form, landingPlace: e.target.value })} placeholder="Esim. Kyläniemen kalasatama" /></div>
+                <div style={styles.field}>
+                  <label>Purkamispaikka</label>
+                  <LandingPlaceInput
+                    value={form.landingPlace}
+                    onChange={(e) => setForm({ ...form, landingPlace: e.target.value })}
+                    options={savedLandingPlaces}
+                  />
+                </div>
                 <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Isoselkä" /></div>
                 <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
                 {commercialFishingVesselOptions.length > 0 ? (
