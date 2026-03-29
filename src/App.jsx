@@ -58,6 +58,7 @@ const fishSpeciesByName = Object.fromEntries(
 );
 const fishSpecies = [...fishSpeciesCatalog.map((item) => item.name_fi), ...fishSpeciesVariants, "Muu"];
 const gearTypes = ["Rysä", "Paunetti/avorysä", "Verkko", "Katiska", "Merta", "Trooli", "Nuotta", "Vapaväline", "Muu"];
+const CATCH_FORM_DEFAULTS_KEY = "catch_form_defaults_v1";
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
 const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Jauhatus", "Kypsennys", "Muu"];
@@ -998,6 +999,21 @@ function getRequestedOfferId() {
   return String(params.get("offer") || "").trim();
 }
 
+function getStoredCatchFormDefaults() {
+  if (typeof window === "undefined") return { area: "Saimaa", municipality: "", landingPlace: "" };
+  try {
+    const raw = window.localStorage.getItem(CATCH_FORM_DEFAULTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return {
+      area: String(parsed?.area || "Saimaa"),
+      municipality: String(parsed?.municipality || ""),
+      landingPlace: String(parsed?.landingPlace || ""),
+    };
+  } catch {
+    return { area: "Saimaa", municipality: "", landingPlace: "" };
+  }
+}
+
 function fulfillmentStatusLabel(status) {
   if (status === "awaiting_contact") return "Yhteydenotto kesken";
   if (status === "delivery_agreed") return "Toimitus sovittu";
@@ -1235,6 +1251,29 @@ function formatCatchGearDisplay(source) {
     ...source,
   });
   return details.length > 0 ? `${gear} · ${details.join(" · ")}` : gear;
+}
+
+function extractCatchLogisticsDetailsFromNotes(notes) {
+  const text = String(notes || "");
+  return {
+    landingPlace: (text.match(/Purkamispaikka:\s*(.+)/i)?.[1] || "").trim(),
+    gearCount: (text.match(/Pyydysten määrä:\s*(.+)/i)?.[1] || "").trim(),
+    fishingDurationDays: (text.match(/Pyyntiaika:\s*(.+)/i)?.[1] || "").trim(),
+  };
+}
+
+function appendCatchDetailsToNotes(notes, source) {
+  const gearLines = getCatchGearDetailLines(source);
+  const detailLines = [
+    ...gearLines,
+    String(source?.landingPlace || "").trim() ? `Purkamispaikka: ${String(source.landingPlace).trim()}` : "",
+    String(source?.gearCount || "").trim() ? `Pyydysten määrä: ${String(source.gearCount).trim()}` : "",
+    String(source?.fishingDurationDays || "").trim() ? `Pyyntiaika: ${String(source.fishingDurationDays).trim()}` : "",
+  ].filter(Boolean);
+
+  const baseNotes = String(notes || "").trim();
+  if (detailLines.length === 0) return baseNotes;
+  return [baseNotes, "Pyydyksen ja saaliin lisätiedot:", ...detailLines].filter(Boolean).join("\n");
 }
 
 function describeOfferEmailError(error) {
@@ -2254,9 +2293,12 @@ function WholesaleOffersView({
                     {entry.offerToWholesalers ? <span style={styles.badge}>Tukkuihin</span> : null}
                   </div>
                   <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                  {entry.landingPlace ? <div style={styles.muted}>Purkamispaikka: {entry.landingPlace}</div> : null}
                   {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                   {entry.batchId ? <div style={styles.qrBlock}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                   <div style={styles.muted}>Pyydys: {formatCatchGearDisplay(entry)}</div>
+                  {entry.gearCount ? <div style={styles.muted}>Pyydysten määrä: {entry.gearCount}</div> : null}
+                  {entry.fishingDurationDays ? <div style={styles.muted}>Pyyntiaika: {entry.fishingDurationDays}</div> : null}
                   {reservation ? (
                     <div style={styles.muted}>
                       {reservation.status === "reserved"
@@ -2434,11 +2476,14 @@ function ReportsView({ entries, processedEntries, offers }) {
     entry.ownerName,
     entry.area,
     entry.municipality || "",
+    entry.landingPlace || "",
     entry.spot,
     entry.species,
     entry.kilos,
     entry.count,
-    entry.gear,
+    formatCatchGearDisplay(entry),
+    entry.gearCount || "",
+    entry.fishingDurationDays || "",
     entry.deliveryMethod,
     entry.deliveryArea,
     entry.deliveryCost,
@@ -2491,7 +2536,7 @@ function ReportsView({ entries, processedEntries, offers }) {
         <div style={styles.noticeInfo}>Raportit ladataan CSV-muodossa, joka aukeaa suoraan Excelissä.</div>
         <button
           style={{ ...styles.button, ...styles.primaryButton }}
-          onClick={() => exportCsv(`saaliit-${today()}.csv`, [["Pyyntipäivämäärä", "Kirjaaja", "Vesialue", "Paikkakunta", "Pyyntipaikka", "Laji", "Kg", "Kpl", "Pyydys", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...reportRows])}
+          onClick={() => exportCsv(`saaliit-${today()}.csv`, [["Pyyntipäivämäärä", "Kirjaaja", "Kalastamisalue", "Paikkakunta", "Purkamispaikka", "Pyyntipaikka", "Laji", "Kg", "Kpl", "Pyydys", "Pyydysten määrä", "Pyyntiaika", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...reportRows])}
         >
           Lataa saalisraportti Exceliin
         </button>
@@ -2700,36 +2745,42 @@ export default function App() {
   const [authInfo, setAuthInfo] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [form, setForm] = useState({
-    date: today(),
-    area: "Saimaa",
-    municipality: "",
-    originCity: "",
-    selectedVesselId: "",
-    fishingWithoutVessel: false,
-    spot: "",
-    gear: "Rysä",
-    netHeight: "",
-    netMeshSize: "",
-    fykeHeight: "",
-    price_per_kg: "",
-    notes: "",
-    offerToShops: false,
-    offerToRestaurants: false,
-    offerToWholesalers: false,
-    deliveryPossible: false,
-    deliveryMethod: "Nouto",
-    transportMode: "",
-    originPointId: "",
-    transportCompanyId: "north-fresh-logistics",
-    pickupAddress: "",
-    pickupSurcharge: "",
-    estimatedPickupTime: "",
-    deliveryDestinations: [],
-    deliveryArea: "",
-    deliveryCost: "",
-    earliestDeliveryDate: today(),
-    coldTransport: false,
+  const [form, setForm] = useState(() => {
+    const defaults = getStoredCatchFormDefaults();
+    return {
+      date: today(),
+      area: defaults.area,
+      municipality: defaults.municipality,
+      landingPlace: defaults.landingPlace,
+      gearCount: "",
+      fishingDurationDays: "",
+      originCity: "",
+      selectedVesselId: "",
+      fishingWithoutVessel: false,
+      spot: "",
+      gear: "Rysä",
+      netHeight: "",
+      netMeshSize: "",
+      fykeHeight: "",
+      price_per_kg: "",
+      notes: "",
+      offerToShops: false,
+      offerToRestaurants: false,
+      offerToWholesalers: false,
+      deliveryPossible: false,
+      deliveryMethod: "Nouto",
+      transportMode: "",
+      originPointId: "",
+      transportCompanyId: "north-fresh-logistics",
+      pickupAddress: "",
+      pickupSurcharge: "",
+      estimatedPickupTime: "",
+      deliveryDestinations: [],
+      deliveryArea: "",
+      deliveryCost: "",
+      earliestDeliveryDate: today(),
+      coldTransport: false,
+    };
   });
   const [speciesRows, setSpeciesRows] = useState([createSpeciesRow()]);
   const [processedForm, setProcessedForm] = useState({
@@ -3480,6 +3531,7 @@ export default function App() {
           setAuthError(entryError.message);
         } else {
           setEntries((entryData || []).map((entry) => ({
+            ...extractCatchLogisticsDetailsFromNotes(entry.notes),
             id: entry.id,
             batchId: entry.batch_id,
             date: entry.date,
@@ -3553,6 +3605,7 @@ export default function App() {
               setProcessorSourceEntries([]);
             } else {
               setProcessorSourceEntries((purchasedEntriesData || []).map((entry) => ({
+                ...extractCatchLogisticsDetailsFromNotes(entry.notes),
                 id: entry.id,
                 batchId: entry.batch_id,
                 date: entry.date,
@@ -3826,6 +3879,19 @@ export default function App() {
       return { ...prev, selectedVesselId: commercialFishingVesselOptions[0] };
     });
   }, [commercialFishingVesselOptions]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(CATCH_FORM_DEFAULTS_KEY, JSON.stringify({
+        area: form.area || "Saimaa",
+        municipality: form.municipality || "",
+        landingPlace: form.landingPlace || "",
+      }));
+    } catch {
+      // ignore storage errors
+    }
+  }, [form.area, form.municipality, form.landingPlace]);
 
   const applyAccountDeliveryToBilling = useCallback(() => {
     setAccountForm((prev) => ({
@@ -5693,7 +5759,7 @@ export default function App() {
       commercial_fishing_id: profile.commercial_fishing_id || null,
       commercial_fishing_vessel_id: selectedVesselId || null,
       price_per_kg: parseLocaleNumber(row.price_per_kg),
-      notes: appendCatchGearDetailsToNotes(form.notes, form),
+      notes: appendCatchDetailsToNotes(form.notes, form),
       batch_id: row.batch_id,
       owner_user_id: profile.id,
       owner_name: profile.display_name,
@@ -5759,6 +5825,9 @@ export default function App() {
     setForm((prev) => ({
       ...prev,
       originCity: prev.originCity || prev.municipality || "",
+      landingPlace: prev.landingPlace || "",
+      gearCount: "",
+      fishingDurationDays: "",
       selectedVesselId: commercialFishingVesselOptions[0] || "",
       fishingWithoutVessel: false,
       netHeight: "",
@@ -7139,6 +7208,7 @@ export default function App() {
                   <label>Paikkakunta</label>
                   <MunicipalitySelect value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} />
                 </div>
+                <div style={styles.field}><label>Purkamispaikka</label><input style={styles.input} value={form.landingPlace} onChange={(e) => setForm({ ...form, landingPlace: e.target.value })} placeholder="Esim. Kyläniemen kalasatama" /></div>
                 <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Isoselkä" /></div>
                 <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
                 {commercialFishingVesselOptions.length > 0 ? (
@@ -7200,6 +7270,8 @@ export default function App() {
                   ))}
                 </div>
                 <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm((prev) => ({ ...prev, gear: e.target.value, netHeight: e.target.value === "Verkko" ? prev.netHeight : "", netMeshSize: e.target.value === "Verkko" ? prev.netMeshSize : "", fykeHeight: e.target.value === "Rysä" ? prev.fykeHeight : "" }))}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
+                <div style={styles.field}><label>Pyydysten määrä</label><input style={styles.input} type="number" min="1" step="1" value={form.gearCount} onChange={(e) => setForm({ ...form, gearCount: e.target.value })} placeholder="Esim. 30" /></div>
+                <div style={styles.field}><label>Pyyntiaika</label><input style={styles.input} value={form.fishingDurationDays} onChange={(e) => setForm({ ...form, fishingDurationDays: e.target.value })} placeholder="Esim. 6 pv" /></div>
                 {form.gear === "Verkko" ? (
                   <>
                     <div style={styles.field}><label>Verkon korkeus</label><input style={styles.input} value={form.netHeight} onChange={(e) => setForm({ ...form, netHeight: e.target.value })} placeholder="Esim. 3 m" /></div>
@@ -7478,9 +7550,12 @@ export default function App() {
                             <span style={styles.badge}>{entry.ownerName}</span>
                           </div>
                           <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                          {entry.landingPlace ? <div style={styles.muted}>Purkamispaikka: {entry.landingPlace}</div> : null}
                           {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                           {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                           {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>Hinta: {formatEntryPrice(entry.species, entry.pricePerKg)}</div> : null}
+                          {entry.gearCount ? <div style={styles.muted}>Pyydysten määrä: {entry.gearCount}</div> : null}
+                          {entry.fishingDurationDays ? <div style={styles.muted}>Pyyntiaika: {entry.fishingDurationDays}</div> : null}
                           <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                           {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                         </div>
