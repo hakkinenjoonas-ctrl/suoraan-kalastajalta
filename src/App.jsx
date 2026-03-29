@@ -1074,7 +1074,13 @@ function formatBatchQuantity(value) {
   return quantity.toFixed(3).replace(/\.?0+$/, "").replace(/[^0-9]/g, "");
 }
 
-async function generateBatchId({ sourceIdentifier, date, speciesLabels, quantity, supabaseClient }) {
+function getBatchSequenceNumber(batchId) {
+  const match = String(batchId || "").match(/-(\d+)$/);
+  if (!match) return 0;
+  return Number(match[1] || 0);
+}
+
+async function generateBatchId({ sourceIdentifier, date, speciesLabels, quantity, supabaseClient, ownerUserId }) {
   const batchSourceIdentifier = formatBatchSourceIdentifier(sourceIdentifier);
   if (!batchSourceIdentifier) {
     throw new Error("Aseta kaupallisen kalastusaluksen tunnus tai kaupallisen kalastajan tunnus kohdassa Omat tiedot ennen eräkoodin luontia.");
@@ -1085,21 +1091,29 @@ async function generateBatchId({ sourceIdentifier, date, speciesLabels, quantity
   const quantityCode = formatBatchQuantity(quantity);
   const prefix = `${batchSourceIdentifier}${batchDate}${speciesCode}${quantityCode}`;
 
-  const [{ count: catchCount, error: catchError }, { count: processedCount, error: processedError }] = await Promise.all([
+  if (!ownerUserId) {
+    throw new Error("Käyttäjän tunniste puuttuu eräkoodin luontia varten.");
+  }
+
+  const [catchResult, processedResult] = await Promise.all([
     supabaseClient
       .from("catch_entries")
-      .select("id", { count: "exact", head: true })
-      .like("batch_id", `${prefix}-%`),
+      .select("batch_id")
+      .eq("owner_user_id", ownerUserId),
     supabaseClient
       .from("processed_batches")
-      .select("id", { count: "exact", head: true })
-      .like("batch_id", `${prefix}-%`),
+      .select("batch_id")
+      .eq("owner_user_id", ownerUserId),
   ]);
 
-  if (catchError) throw catchError;
-  if (processedError && processedError.code !== "PGRST116") throw processedError;
+  if (catchResult.error) throw catchResult.error;
+  if (processedResult.error && processedResult.error.code !== "PGRST116") throw processedResult.error;
 
-  const sequence = String(Number(catchCount || 0) + Number(processedCount || 0) + 1);
+  const highestSequence = [...(catchResult.data || []), ...(processedResult.data || [])].reduce((maxValue, row) => {
+    return Math.max(maxValue, getBatchSequenceNumber(row?.batch_id));
+  }, 0);
+
+  const sequence = String(highestSequence + 1);
   return `${prefix}-${sequence}`;
 }
 
@@ -5504,6 +5518,7 @@ export default function App() {
           speciesLabels: [getSpeciesRowLabel(row)],
           quantity: Number(row.kilos || 0) > 0 ? Number(row.kilos || 0) : Number(row.count || 0),
           supabaseClient: supabase,
+          ownerUserId: profile.id,
         }),
       })));
     } catch (error) {
@@ -5681,6 +5696,7 @@ export default function App() {
           : [processedForm.productName]),
         quantity: processedForm.kilos,
         supabaseClient: supabase,
+        ownerUserId: profile.id,
       });
     } catch (error) {
       setSaving(false);
