@@ -757,7 +757,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           .sheet { width: 210mm; height: 289mm; margin: 0 auto; display: grid; grid-template-columns: 105mm 105mm; grid-template-rows: repeat(5, 56.4mm); gap: 0; align-content: start; }
           .page-break { page-break-after: always; }
           .label { width: 105mm; height: 56.4mm; padding: 1.8mm 2.6mm; }
-          .label-inner { width: 100%; height: 100%; border: 0.25mm solid #cbd5e1; border-radius: 1.6mm; padding: 1.8mm; display: grid; grid-template-columns: 1fr 20mm; gap: 1.8mm; overflow: hidden; }
+          .label-inner { width: 100%; height: 100%; border: 0.25mm solid #cbd5e1; border-radius: 1.6mm; padding: 1.8mm; display: grid; grid-template-columns: 1fr 25mm; gap: 1.8mm; overflow: hidden; }
           .species { font-size: 12.6pt; font-weight: 800; line-height: 1.03; margin-bottom: 0.45mm; }
           .scientific { font-size: 6.2pt; line-height: 1.12; color: #475569; margin-bottom: 0.7mm; }
           .batch { font-size: 7.2pt; font-weight: 800; background: #eff6ff; border: 0.22mm solid #93c5fd; border-radius: 1.2mm; padding: 0.7mm 0.9mm; margin-bottom: 0.7mm; }
@@ -766,7 +766,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           .weight-label { font-weight: 700; white-space: nowrap; }
           .weight-write { flex: 1; min-width: 0; border-bottom: 0.3mm solid #0f172a; height: 3.6mm; }
           .weight-unit { font-weight: 700; white-space: nowrap; }
-          .label-qr { display: flex; align-items: flex-end; justify-content: center; }
+          .label-qr { display: flex; align-items: flex-end; justify-content: flex-start; }
           .label-qr img { width: 18mm; height: 18mm; object-fit: contain; border: 0.22mm solid #cbd5e1; border-radius: 1.2mm; padding: 0.8mm; background: #fff; }
         </style>
       </head>
@@ -820,13 +820,14 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
   const qrSize = 18;
   const labelPaddingX = 3.2;
   const labelPaddingY = 2.4;
-  const qrColumnWidth = 22;
+  const qrRightInset = 5;
+  const qrColumnWidth = 27;
   const contentWidth = labelWidth - (labelPaddingX * 2) - qrColumnWidth - 2.4;
 
   const drawLabel = (label, qrDataUrl, x, y) => {
     const left = x + labelPaddingX;
     const top = y + labelPaddingY;
-    const qrX = x + labelWidth - labelPaddingX - qrSize;
+    const qrX = x + labelWidth - labelPaddingX - qrSize - qrRightInset;
     const qrY = y + labelHeight - labelPaddingY - qrSize;
     const textWidth = qrX - left - 2.4;
     let currentY = top + 4.2;
