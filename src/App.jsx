@@ -724,18 +724,22 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
     <div class="label">
       <div class="label-inner">
         <div class="label-main">
-          <div class="species">${label.species || "-"}</div>
-          ${label.scientificName ? `<div class="scientific">${label.scientificName}</div>` : ""}
-          <div class="batch">Erätunnus: ${label.batchId || "-"}</div>
-          ${label.catchArea ? `<div class="line">Pyyntialue: ${label.catchArea}</div>` : ""}
-          ${label.gearType ? `<div class="line">Pyyntimenetelmä: ${label.gearType}</div>` : ""}
-          ${label.catchDate ? `<div class="line">Pyyntipäivä: ${label.catchDate}</div>` : ""}
-          ${label.productForm ? `<div class="line">Tuote: ${label.productForm}</div>` : ""}
-          <div class="weight-line"><span class="weight-label">Paino:</span><span class="weight-write"></span><span class="weight-unit">kg</span></div>
-          <div class="line">Säilytys: 0–2 °C</div>
-          <div class="line">Toimittaja: ${label.supplier || "-"}</div>
-          ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
-          ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
+          <div class="label-main-top">
+            <div class="species">${label.species || "-"}</div>
+            ${label.scientificName ? `<div class="scientific">${label.scientificName}</div>` : ""}
+            <div class="batch">Erätunnus: ${label.batchId || "-"}</div>
+            ${label.catchArea ? `<div class="line">Pyyntialue: ${label.catchArea}</div>` : ""}
+            ${label.gearType ? `<div class="line">Pyyntimenetelmä: ${label.gearType}</div>` : ""}
+            ${label.catchDate ? `<div class="line">Pyyntipäivä: ${label.catchDate}</div>` : ""}
+            ${label.productForm ? `<div class="line">Tuote: ${label.productForm}</div>` : ""}
+            <div class="line">Säilytys: 0–2 °C</div>
+            <div class="weight-line"><span class="weight-label">Paino:</span><span class="weight-write"></span><span class="weight-unit">kg</span></div>
+          </div>
+          <div class="supplier-block">
+            <div class="line">Toimittaja: ${label.supplier || "-"}</div>
+            ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
+            ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
+          </div>
         </div>
         <div class="label-qr">
           <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
@@ -758,6 +762,9 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           .page-break { page-break-after: always; }
           .label { width: 105mm; height: 56.4mm; padding: 1.8mm 2.6mm; }
           .label-inner { width: 100%; height: 100%; padding: 1.8mm; display: grid; grid-template-columns: 1fr 25mm; gap: 1.8mm; overflow: hidden; }
+          .label-main { height: 100%; padding-left: 3mm; display: flex; flex-direction: column; min-width: 0; }
+          .label-main-top { min-width: 0; }
+          .supplier-block { margin-top: auto; min-width: 0; }
           .species { font-size: 12.6pt; font-weight: 800; line-height: 1.03; margin-bottom: 0.45mm; }
           .scientific { font-size: 6.2pt; line-height: 1.12; color: #475569; margin-bottom: 0.7mm; }
           .batch { font-size: 7.2pt; font-weight: 800; background: #eff6ff; border: 0.22mm solid #93c5fd; border-radius: 1.2mm; padding: 0.7mm 0.9mm; margin-bottom: 0.7mm; }
@@ -818,7 +825,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
   const topMargin = 6;
   const rowGap = 0;
   const qrSize = 18;
-  const labelPaddingX = 3.2;
+  const labelPaddingX = 6.2;
   const labelPaddingY = 2.4;
   const qrRightInset = 5;
   const qrColumnWidth = 27;
@@ -873,6 +880,11 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
     });
 
     currentY += 0.8;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.2);
+    doc.text("Säilytys: 0–2 °C", left, currentY);
+    currentY += 3;
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(6.8);
     doc.text("Paino:", left, currentY);
@@ -881,20 +893,17 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
     doc.text("kg", qrX - 3.8, currentY);
     currentY += 3.8;
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.2);
-    doc.text("Säilytys: 0–2 °C", left, currentY);
-    currentY += 3;
-
     const supplierLines = [
       `Toimittaja: ${label.supplier || "-"}`,
       label.supplierAddress || "",
       label.supplierContact || "",
     ].filter(Boolean);
-    supplierLines.forEach((line) => {
-      const wrapped = doc.splitTextToSize(line, textWidth);
-      doc.text(wrapped, left, currentY);
-      currentY += wrapped.length * 2.6;
+    const wrappedSupplierLines = supplierLines.flatMap((line) => doc.splitTextToSize(line, textWidth));
+    const supplierLineHeight = 2.6;
+    const supplierBlockHeight = wrappedSupplierLines.length * supplierLineHeight;
+    const supplierStartY = Math.max(currentY + 0.6, qrY + qrSize - supplierBlockHeight);
+    wrappedSupplierLines.forEach((line, index) => {
+      doc.text(line, left, supplierStartY + (index * supplierLineHeight));
     });
 
     doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
