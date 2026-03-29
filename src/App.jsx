@@ -2471,25 +2471,90 @@ function WholesaleOffersView({
 }
 
 function ReportsView({ entries, processedEntries, offers }) {
-  const reportRows = entries.map((entry) => [
-    entry.date,
-    entry.ownerName,
-    entry.area,
-    entry.municipality || "",
-    entry.landingPlace || "",
-    entry.spot,
-    entry.species,
-    entry.kilos,
-    entry.count,
-    formatCatchGearDisplay(entry),
-    entry.gearCount || "",
-    entry.fishingDurationDays || "",
-    entry.deliveryMethod,
-    entry.deliveryArea,
-    entry.deliveryCost,
-    entry.earliestDeliveryDate,
-    entry.coldTransport ? "Kyllä" : "Ei",
-    entry.notes,
+  const catchSpeciesColumns = Array.from(new Set(
+    entries
+      .map((entry) => {
+        const normalized = normalizeFishSpeciesLabel(entry.species);
+        return fishSpeciesByName[normalized]?.name_fi || String(entry.species || "").split(",")[0].trim();
+      })
+      .filter(Boolean),
+  )).sort((a, b) => {
+    const orderA = fishSpeciesCatalog.findIndex((item) => item.name_fi === a);
+    const orderB = fishSpeciesCatalog.findIndex((item) => item.name_fi === b);
+    if (orderA === -1 && orderB === -1) return a.localeCompare(b, "fi");
+    if (orderA === -1) return 1;
+    if (orderB === -1) return -1;
+    return orderA - orderB;
+  });
+
+  const catchSessions = Object.values(entries.reduce((acc, entry) => {
+    const vesselLabel = String(entry.commercialFishingVesselId || "").trim()
+      || (String(entry.commercialFishingId || "").trim() ? "Kalastus ilman alusta" : "");
+    const sessionKey = [
+      entry.date || "",
+      vesselLabel,
+      entry.area || "",
+      entry.municipality || "",
+      entry.landingPlace || "",
+      formatCatchGearDisplay(entry),
+      entry.gearCount || "",
+      entry.fishingDurationDays || "",
+      entry.ownerUserId || "",
+      entry.spot || "",
+    ].join("|");
+    const normalized = normalizeFishSpeciesLabel(entry.species);
+    const speciesLabel = fishSpeciesByName[normalized]?.name_fi || String(entry.species || "").split(",")[0].trim() || "Muu";
+    const kilos = Number(entry.kilos || 0);
+
+    if (!acc[sessionKey]) {
+      acc[sessionKey] = {
+        id: sessionKey,
+        date: entry.date || "",
+        vesselLabel,
+        fishingAreaLabel: [entry.area, entry.municipality].filter(Boolean).join(", "),
+        landingPlace: entry.landingPlace || "",
+        gearLabel: formatCatchGearDisplay(entry),
+        gearCount: entry.gearCount || "",
+        fishingDurationDays: entry.fishingDurationDays || "",
+        speciesTotals: {},
+        batchIds: [],
+      };
+    }
+
+    acc[sessionKey].speciesTotals[speciesLabel] = Number(acc[sessionKey].speciesTotals[speciesLabel] || 0) + kilos;
+    if (entry.batchId) acc[sessionKey].batchIds.push(entry.batchId);
+    return acc;
+  }, {})).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+
+  const formatReportMetric = (value) => {
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount)) return "0";
+    if (Number.isInteger(amount)) return String(amount);
+    return amount.toFixed(1).replace(".", ",");
+  };
+
+  const catchReportHeader = [
+    "Kalastuspvm",
+    "Alus",
+    "Kalastamisalue",
+    "Purkamispaikka",
+    "Pyydys",
+    "Pyydysten määrä",
+    "Pyyntiaika",
+    ...catchSpeciesColumns.map((species) => `${species} kg`),
+    "Jäljitettävyys",
+  ];
+
+  const reportRows = catchSessions.map((session) => [
+    session.date,
+    session.vesselLabel,
+    session.fishingAreaLabel,
+    session.landingPlace,
+    session.gearLabel,
+    session.gearCount,
+    session.fishingDurationDays,
+    ...catchSpeciesColumns.map((species) => formatReportMetric(session.speciesTotals[species] || 0)),
+    Array.from(new Set(session.batchIds)).join(", "),
   ]);
 
   const offerRows = offers.map((offer) => [
@@ -2530,13 +2595,14 @@ function ReportsView({ entries, processedEntries, offers }) {
   const processedSaleCount = processedEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers).length;
 
   return (
-    <div style={styles.grid2}>
-      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+    <div style={styles.stack}>
+      <div style={styles.grid2}>
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Excel-raportit</strong>
         <div style={styles.noticeInfo}>Raportit ladataan CSV-muodossa, joka aukeaa suoraan Excelissä.</div>
         <button
           style={{ ...styles.button, ...styles.primaryButton }}
-          onClick={() => exportCsv(`saaliit-${today()}.csv`, [["Pyyntipäivämäärä", "Kirjaaja", "Kalastamisalue", "Paikkakunta", "Purkamispaikka", "Pyyntipaikka", "Laji", "Kg", "Kpl", "Pyydys", "Pyydysten määrä", "Pyyntiaika", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...reportRows])}
+          onClick={() => exportCsv(`saaliit-${today()}.csv`, [catchReportHeader, ...reportRows])}
         >
           Lataa saalisraportti Exceliin
         </button>
@@ -2552,18 +2618,80 @@ function ReportsView({ entries, processedEntries, offers }) {
         >
           Lataa jaloste-erät Exceliin
         </button>
+        </div>
+
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <strong>Raporttiyhteenveto</strong>
+          <div style={styles.entryBadges}>
+            <span style={styles.badge}>{totalKg.toFixed(1)} kg raakasaalista</span>
+            <span style={styles.badge}>{totalProcessedKg.toFixed(1)} kg jalosteita</span>
+            <span style={styles.badge}>{saleCount} saaliserää myynnissä</span>
+            <span style={styles.badge}>{processedSaleCount} jaloste-erää myynnissä</span>
+            <span style={styles.badge}>{offers.length} tarjousta</span>
+          </div>
+          <div style={styles.muted}>Raportit sisältävät kaikki tällä hetkellä näkyvät erät ja tarjoukset.</div>
+        </div>
       </div>
 
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-        <strong>Raporttiyhteenveto</strong>
-        <div style={styles.entryBadges}>
-          <span style={styles.badge}>{totalKg.toFixed(1)} kg raakasaalista</span>
-          <span style={styles.badge}>{totalProcessedKg.toFixed(1)} kg jalosteita</span>
-          <span style={styles.badge}>{saleCount} saaliserää myynnissä</span>
-          <span style={styles.badge}>{processedSaleCount} jaloste-erää myynnissä</span>
-          <span style={styles.badge}>{offers.length} tarjousta</span>
+        <div style={styles.rowBetween}>
+          <strong>Saalisraportti</strong>
+          <div style={styles.muted}>Yksi rivi per saaliskerta. Puuttuvat kalalajit näytetään nollina.</div>
         </div>
-        <div style={styles.muted}>Raportit sisältävät kaikki tällä hetkellä näkyvät erät ja tarjoukset.</div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1040 }}>
+            <thead>
+              <tr>
+                {catchReportHeader.map((label) => (
+                  <th
+                    key={label}
+                    style={{
+                      textAlign: "left",
+                      padding: "12px 10px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "#0f172a",
+                      borderBottom: "1px solid #cbd5e1",
+                      background: "#eff6ff",
+                      whiteSpace: "nowrap",
+                      position: "sticky",
+                      top: 0,
+                    }}
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {catchSessions.length === 0 ? (
+                <tr>
+                  <td colSpan={catchReportHeader.length} style={{ padding: "16px 10px", color: "#64748b" }}>
+                    Ei vielä tallennettuja saaliskertoja raportille.
+                  </td>
+                </tr>
+              ) : catchSessions.map((session) => (
+                <tr key={session.id}>
+                  <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{session.date || "-"}</td>
+                  <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0" }}>{session.vesselLabel || "-"}</td>
+                  <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0" }}>{session.fishingAreaLabel || "-"}</td>
+                  <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0" }}>{session.landingPlace || "-"}</td>
+                  <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0" }}>{session.gearLabel || "-"}</td>
+                  <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{session.gearCount || "0"}</td>
+                  <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{session.fishingDurationDays || "-"}</td>
+                  {catchSpeciesColumns.map((species) => (
+                    <td key={`${session.id}-${species}`} style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>
+                      {formatReportMetric(session.speciesTotals[species] || 0)}
+                    </td>
+                  ))}
+                  <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0", minWidth: 180 }}>
+                    {Array.from(new Set(session.batchIds)).join(", ") || "-"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
