@@ -2507,6 +2507,7 @@ function WholesaleOffersView({
                     })
                     .map((offer) => {
                     const isAccepted = offer.status === "accepted";
+                    const showTraceability = isAccepted;
                     const revealIdentity = shouldRevealBuyerIdentity(offer.status);
                     const buyerIdentity = revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type);
                     const isLinkedOffer = requestedOfferId && offer.id === requestedOfferId;

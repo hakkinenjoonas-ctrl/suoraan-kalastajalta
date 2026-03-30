@@ -124,6 +124,27 @@ function formatAdditionalNotes(notesValue: unknown) {
   return cleaned.join("\n");
 }
 
+function getAdditionalNoteRows(notesValue: unknown) {
+  const cleanedNotes = formatAdditionalNotes(notesValue);
+  if (!cleanedNotes) return [];
+
+  return cleanedNotes
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const colonIndex = line.indexOf(":");
+      if (colonIndex === -1) {
+        return { label: "Lisätiedot", value: line };
+      }
+      return {
+        label: safeString(line.slice(0, colonIndex)),
+        value: safeString(line.slice(colonIndex + 1)),
+      };
+    })
+    .filter((item) => item.label && item.value);
+}
+
 function getPublicPickupLocation(entry: Record<string, unknown>) {
   const municipality = safeString(entry.municipality);
   if (municipality) return municipality;
@@ -225,6 +246,7 @@ Deno.serve(async (req) => {
     const sellerName = "Anonyymi kalastaja";
     const batchId = safeString(entry.batch_id);
     const extraNotes = formatAdditionalNotes(entry.notes);
+    const additionalNoteRows = getAdditionalNoteRows(entry.notes);
     const scientificNames = extractScientificNames(entry.species, entry.notes);
     const deliveryMethod = safeString(entry.deliveryMethod || "Nouto");
     const publicDeliveryLocation = deliveryMethod === "Nouto"
@@ -261,7 +283,7 @@ Deno.serve(async (req) => {
       !mixedOffer ? buildFieldRow("Hinta", price) : "",
       batchId && !mixedOffer ? buildFieldRow("Erätunnus", batchId) : "",
       buildFieldRow("Tarjoaja", sellerName),
-      extraNotes ? buildFieldRow("Lisätiedot", extraNotes) : "",
+      ...additionalNoteRows.map((item) => buildFieldRow(item.label, item.value)),
     ]
       .filter(Boolean)
       .join("");
@@ -315,7 +337,7 @@ Deno.serve(async (req) => {
         mixedOffer ? "Erän lajit:" : null,
         ...lineItems.map((item) => `- ${item.species}: ${item.scientificNames || "-"} · ${item.quantity} · ${item.price}${item.catchDate ? ` · Pyyntipäivämäärä ${item.catchDate}` : ""}`),
         `Tarjoaja: ${sellerName}`,
-        extraNotes ? `Lisätiedot: ${extraNotes}` : null,
+        ...additionalNoteRows.map((item) => `${item.label}: ${item.value}`),
         offerLink ? `Avaa tarjous apissa: ${offerLink}` : null,
       ].filter(Boolean);
 
