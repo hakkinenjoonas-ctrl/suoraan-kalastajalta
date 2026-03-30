@@ -59,6 +59,8 @@ const fishSpeciesByName = Object.fromEntries(
 const fishSpecies = [...fishSpeciesCatalog.map((item) => item.name_fi), ...fishSpeciesVariants, "Muu"];
 const gearTypes = ["Rysä", "Paunetti/avorysä", "Verkko", "Katiska", "Merta", "Trooli", "Nuotta", "Vapaväline", "Muu"];
 const CATCH_FORM_DEFAULTS_KEY = "catch_form_defaults_v1";
+const CUSTOM_LAKE_AREA_OPTION = "__custom_lake_area__";
+const CUSTOM_SEA_AREA_OPTION = "__custom_sea_area__";
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
 const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Jauhatus", "Kypsennys", "Muu"];
@@ -1003,6 +1005,8 @@ function getStoredCatchFormDefaults() {
   if (typeof window === "undefined") {
     return {
       area: "Saimaa",
+      customLakeAreas: [],
+      customSeaAreas: [],
       municipality: "",
       landingPlace: "",
       landingPlaces: [],
@@ -1019,6 +1023,8 @@ function getStoredCatchFormDefaults() {
     const parsed = raw ? JSON.parse(raw) : {};
     return {
       area: String(parsed?.area || "Saimaa"),
+      customLakeAreas: Array.isArray(parsed?.customLakeAreas) ? parsed.customLakeAreas.map((item) => String(item || "").trim()).filter(Boolean) : [],
+      customSeaAreas: Array.isArray(parsed?.customSeaAreas) ? parsed.customSeaAreas.map((item) => String(item || "").trim()).filter(Boolean) : [],
       municipality: String(parsed?.municipality || ""),
       landingPlace: String(parsed?.landingPlace || ""),
       landingPlaces: Array.isArray(parsed?.landingPlaces) ? parsed.landingPlaces.map((item) => String(item || "").trim()).filter(Boolean) : [],
@@ -1037,6 +1043,8 @@ function getStoredCatchFormDefaults() {
   } catch {
     return {
       area: "Saimaa",
+      customLakeAreas: [],
+      customSeaAreas: [],
       municipality: "",
       landingPlace: "",
       landingPlaces: [],
@@ -1053,6 +1061,22 @@ function getStoredCatchFormDefaults() {
       fykeHeightOptions: [],
     };
   }
+}
+
+function resolveAreaSelectorValue(area, customLakeAreas = [], customSeaAreas = []) {
+  const normalized = String(area || "").trim();
+  if (!normalized) return "Saimaa";
+  if (defaultAreas.includes(normalized)) return normalized;
+  if (customSeaAreas.includes(normalized)) return CUSTOM_SEA_AREA_OPTION;
+  if (customLakeAreas.includes(normalized)) return CUSTOM_LAKE_AREA_OPTION;
+  return CUSTOM_LAKE_AREA_OPTION;
+}
+
+function buildAreaHistory(currentValue, previousValues = []) {
+  return Array.from(new Set([
+    String(currentValue || "").trim(),
+    ...previousValues.map((item) => String(item || "").trim()),
+  ].filter(Boolean))).slice(0, 20);
 }
 
 function buildLandingPlaceHistory(currentLandingPlace, previousLandingPlaces = []) {
@@ -2942,6 +2966,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
 export default function App() {
   const publicBatchId = getRequestedPublicBatchId();
   const requestedOfferId = getRequestedOfferId();
+  const initialCatchDefaults = getStoredCatchFormDefaults();
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [availableRoleOptions, setAvailableRoleOptions] = useState([]);
@@ -2969,7 +2994,7 @@ export default function App() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [form, setForm] = useState(() => {
-    const defaults = getStoredCatchFormDefaults();
+    const defaults = initialCatchDefaults;
     return {
       date: today(),
       area: defaults.area,
@@ -3005,6 +3030,9 @@ export default function App() {
       coldTransport: false,
     };
   });
+  const [savedCustomLakeAreas, setSavedCustomLakeAreas] = useState(() => initialCatchDefaults.customLakeAreas || []);
+  const [savedCustomSeaAreas, setSavedCustomSeaAreas] = useState(() => initialCatchDefaults.customSeaAreas || []);
+  const [catchAreaSelector, setCatchAreaSelector] = useState(() => resolveAreaSelectorValue(initialCatchDefaults.area, initialCatchDefaults.customLakeAreas, initialCatchDefaults.customSeaAreas));
   const [savedLandingPlaces, setSavedLandingPlaces] = useState(() => getStoredCatchFormDefaults().landingPlaces || []);
   const [savedGearCountOptions, setSavedGearCountOptions] = useState(() => getStoredCatchFormDefaults().gearCountOptions || []);
   const [savedFishingDurationOptions, setSavedFishingDurationOptions] = useState(() => getStoredCatchFormDefaults().fishingDurationOptions || []);
@@ -3045,6 +3073,7 @@ export default function App() {
     coldTransport: true,
     sourceEntryIds: [],
   });
+  const [processedAreaSelector, setProcessedAreaSelector] = useState(() => resolveAreaSelectorValue("Saimaa", initialCatchDefaults.customLakeAreas, initialCatchDefaults.customSeaAreas));
   const [newAllowedForm, setNewAllowedForm] = useState({ email: "", displayName: "", role: "member", buyer_id: "" });
   const [buyerAction, setBuyerAction] = useState({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
   const [offerForm, setOfferForm] = useState({
@@ -4113,6 +4142,12 @@ export default function App() {
     if (typeof window === "undefined") return;
     try {
       const landingPlaces = buildLandingPlaceHistory(form.landingPlace, savedLandingPlaces);
+      const customLakeAreas = catchAreaSelector === CUSTOM_LAKE_AREA_OPTION
+        ? buildAreaHistory(form.area, savedCustomLakeAreas)
+        : savedCustomLakeAreas;
+      const customSeaAreas = catchAreaSelector === CUSTOM_SEA_AREA_OPTION
+        ? buildAreaHistory(form.area, savedCustomSeaAreas)
+        : savedCustomSeaAreas;
       const gearCountOptions = buildRememberedOptions(form.gearCount, savedGearCountOptions);
       const fishingDurationOptions = buildRememberedOptions(form.fishingDurationDays, savedFishingDurationOptions);
       const netHeightOptions = buildRememberedOptions(form.netHeight, savedNetHeightOptions);
@@ -4120,6 +4155,8 @@ export default function App() {
       const fykeHeightOptions = buildRememberedOptions(form.fykeHeight, savedFykeHeightOptions);
       window.localStorage.setItem(CATCH_FORM_DEFAULTS_KEY, JSON.stringify({
         area: form.area || "Saimaa",
+        customLakeAreas,
+        customSeaAreas,
         municipality: form.municipality || "",
         landingPlace: form.landingPlace || "",
         landingPlaces,
@@ -4135,6 +4172,14 @@ export default function App() {
         fykeHeight: form.fykeHeight || "",
         fykeHeightOptions,
       }));
+      setSavedCustomLakeAreas((prev) => {
+        if (customLakeAreas.length === prev.length && customLakeAreas.every((item, index) => item === prev[index])) return prev;
+        return customLakeAreas;
+      });
+      setSavedCustomSeaAreas((prev) => {
+        if (customSeaAreas.length === prev.length && customSeaAreas.every((item, index) => item === prev[index])) return prev;
+        return customSeaAreas;
+      });
       setSavedLandingPlaces((prev) => {
         const next = buildLandingPlaceHistory(form.landingPlace, prev);
         if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
@@ -4170,6 +4215,7 @@ export default function App() {
     }
   }, [
     form.area,
+    catchAreaSelector,
     form.municipality,
     form.landingPlace,
     form.gear,
@@ -4178,6 +4224,8 @@ export default function App() {
     form.netHeight,
     form.netMeshSize,
     form.fykeHeight,
+    savedCustomLakeAreas,
+    savedCustomSeaAreas,
     savedLandingPlaces,
     savedGearCountOptions,
     savedFishingDurationOptions,
@@ -6311,6 +6359,7 @@ export default function App() {
     }
 
     setSaving(false);
+    setProcessedAreaSelector("Saimaa");
     setProcessedForm({
       productionDate: today(),
       bestBeforeDate: "",
@@ -7283,7 +7332,39 @@ export default function App() {
               <div style={formGrid}>
                 <div style={styles.field}><label>Tuotantopäivä</label><input style={styles.input} type="date" value={processedForm.productionDate} onChange={(e) => setProcessedForm({ ...processedForm, productionDate: e.target.value })} /></div>
                 <div style={styles.field}><label>Parasta ennen</label><input style={styles.input} type="date" value={processedForm.bestBeforeDate} onChange={(e) => setProcessedForm({ ...processedForm, bestBeforeDate: e.target.value })} /></div>
-                <div style={styles.field}><label>Vesialue / alkuperä</label><select style={styles.input} value={processedForm.area} onChange={(e) => setProcessedForm({ ...processedForm, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
+                <div style={styles.field}>
+                  <label>Vesialue / alkuperä</label>
+                  <select
+                    style={styles.input}
+                    value={processedAreaSelector}
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setProcessedAreaSelector(nextValue);
+                      if (nextValue !== CUSTOM_LAKE_AREA_OPTION && nextValue !== CUSTOM_SEA_AREA_OPTION) {
+                        setProcessedForm({ ...processedForm, area: nextValue });
+                      }
+                    }}
+                  >
+                    {defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}
+                    {savedCustomLakeAreas.length > 0 ? <option disabled value="__custom_lake_separator__">-- Omat järvialueet --</option> : null}
+                    {savedCustomLakeAreas.map((area) => <option key={`lake-${area}`} value={area}>{area}</option>)}
+                    {savedCustomSeaAreas.length > 0 ? <option disabled value="__custom_sea_separator__">-- Omat merialueet --</option> : null}
+                    {savedCustomSeaAreas.map((area) => <option key={`sea-${area}`} value={area}>{area}</option>)}
+                    <option value={CUSTOM_LAKE_AREA_OPTION}>Muu järvi</option>
+                    <option value={CUSTOM_SEA_AREA_OPTION}>Merialue (muu)</option>
+                  </select>
+                </div>
+                {processedAreaSelector === CUSTOM_LAKE_AREA_OPTION || processedAreaSelector === CUSTOM_SEA_AREA_OPTION ? (
+                  <div style={styles.field}>
+                    <label>{processedAreaSelector === CUSTOM_SEA_AREA_OPTION ? "Kirjoita merialue" : "Kirjoita järven nimi"}</label>
+                    <input
+                      style={styles.input}
+                      value={processedForm.area}
+                      onChange={(e) => setProcessedForm({ ...processedForm, area: e.target.value })}
+                      placeholder={processedAreaSelector === CUSTOM_SEA_AREA_OPTION ? "Esim. Merenkurkku" : "Esim. Puumalan Lietvesi"}
+                    />
+                  </div>
+                ) : null}
                 <div style={styles.field}><label>Paikkakunta</label><MunicipalitySelect value={processedForm.municipality} onChange={(e) => setProcessedForm({ ...processedForm, municipality: e.target.value })} /></div>
                 <div style={styles.field}><label>Tuotenimi</label><input style={styles.input} value={processedForm.productName} onChange={(e) => setProcessedForm({ ...processedForm, productName: e.target.value })} placeholder="Esim. Kylmäsavulohi viipale" /></div>
                 <div style={styles.field}><label>Tuotetyyppi</label><select style={styles.input} value={processedForm.productType} onChange={(e) => setProcessedForm({ ...processedForm, productType: e.target.value })}>{processedProductTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
@@ -7513,7 +7594,39 @@ export default function App() {
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <div style={formGrid}>
                 <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
-                <div style={styles.field}><label>Kalastamisalue</label><select style={styles.input} value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>{defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}</select></div>
+                <div style={styles.field}>
+                  <label>Kalastamisalue</label>
+                  <select
+                    style={styles.input}
+                    value={catchAreaSelector}
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setCatchAreaSelector(nextValue);
+                      if (nextValue !== CUSTOM_LAKE_AREA_OPTION && nextValue !== CUSTOM_SEA_AREA_OPTION) {
+                        setForm({ ...form, area: nextValue });
+                      }
+                    }}
+                  >
+                    {defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}
+                    {savedCustomLakeAreas.length > 0 ? <option disabled value="__custom_lake_separator__">-- Omat järvialueet --</option> : null}
+                    {savedCustomLakeAreas.map((area) => <option key={`catch-lake-${area}`} value={area}>{area}</option>)}
+                    {savedCustomSeaAreas.length > 0 ? <option disabled value="__custom_sea_separator__">-- Omat merialueet --</option> : null}
+                    {savedCustomSeaAreas.map((area) => <option key={`catch-sea-${area}`} value={area}>{area}</option>)}
+                    <option value={CUSTOM_LAKE_AREA_OPTION}>Muu järvi</option>
+                    <option value={CUSTOM_SEA_AREA_OPTION}>Merialue (muu)</option>
+                  </select>
+                </div>
+                {catchAreaSelector === CUSTOM_LAKE_AREA_OPTION || catchAreaSelector === CUSTOM_SEA_AREA_OPTION ? (
+                  <div style={styles.field}>
+                    <label>{catchAreaSelector === CUSTOM_SEA_AREA_OPTION ? "Kirjoita merialue" : "Kirjoita järven nimi"}</label>
+                    <input
+                      style={styles.input}
+                      value={form.area}
+                      onChange={(e) => setForm({ ...form, area: e.target.value })}
+                      placeholder={catchAreaSelector === CUSTOM_SEA_AREA_OPTION ? "Esim. Merenkurkku" : "Esim. Puumalan Lietvesi"}
+                    />
+                  </div>
+                ) : null}
                 <div style={styles.field}>
                   <label>Paikkakunta</label>
                   <MunicipalitySelect value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} />
