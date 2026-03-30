@@ -6850,7 +6850,14 @@ export default function App() {
                         {!mixedOffer ? (
                           <div style={styles.field}>
                             <label>Vastatarjous €/kg</label>
-                                <input style={styles.input} type="number" value={buyerAction.counter_price_per_kg} onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))} placeholder="Esim. 5.80" />
+                                <input
+                                  style={styles.input}
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={buyerAction.counter_price_per_kg}
+                                  onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))}
+                                  placeholder="Esim. 5,80"
+                                />
                               </div>
                         ) : null}
                             {mixedOffer ? (
@@ -7477,7 +7484,17 @@ export default function App() {
                   <>
                     <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={processedForm.deliveryMethod} onChange={(e) => setProcessedForm({ ...processedForm, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
                     <div style={styles.field}><label>Toimitusalue</label><input style={styles.input} value={processedForm.deliveryArea} onChange={(e) => setProcessedForm({ ...processedForm, deliveryArea: e.target.value })} placeholder="Esim. Etelä-Suomi" /></div>
-                    <div style={styles.field}><label>Toimituskustannus €</label><input style={styles.input} type="number" value={processedForm.deliveryCost} onChange={(e) => setProcessedForm({ ...processedForm, deliveryCost: e.target.value })} placeholder="Esim. 65" /></div>
+                    <div style={styles.field}>
+                      <label>Toimituskustannus €</label>
+                      <input
+                        style={styles.input}
+                        type="text"
+                        inputMode="decimal"
+                        value={processedForm.deliveryCost}
+                        onChange={(e) => setProcessedForm({ ...processedForm, deliveryCost: e.target.value })}
+                        placeholder="Esim. 65,00"
+                      />
+                    </div>
                   </>
                 )}
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
@@ -7563,7 +7580,17 @@ export default function App() {
                         {row.species === "Muu" ? <input style={{ ...styles.input, marginTop: 8 }} placeholder="Kirjoita kalalaji" value={row.customSpecies} onChange={(e) => updateSpeciesRow(row.id, "customSpecies", e.target.value)} /> : null}
                       </div>
                       <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
-                      <div style={styles.field}><label>{`Hinta (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label><input style={styles.input} type="number" step="0.01" placeholder={isCrayfishSpecies(getSpeciesRowLabel(row)) ? "Esim. 2.00" : "Esim. 5.50"} value={row.price_per_kg} onChange={(e) => updateSpeciesRow(row.id, "price_per_kg", e.target.value)} /></div>
+                      <div style={styles.field}>
+                        <label>{`Hinta (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
+                        <input
+                          style={styles.input}
+                          type="text"
+                          inputMode="decimal"
+                          placeholder={isCrayfishSpecies(getSpeciesRowLabel(row)) ? "Esim. 2,00" : "Esim. 5,50"}
+                          value={row.price_per_kg}
+                          onChange={(e) => updateSpeciesRow(row.id, "price_per_kg", e.target.value)}
+                        />
+                      </div>
                       <div style={styles.field}><label>{isCrayfishSpecies(getSpeciesRowLabel(row)) ? "Kpl (pakollinen)" : "Kpl"}</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
                       <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
                     </div>
@@ -7777,7 +7804,17 @@ export default function App() {
                         onChange={(e) => setForm({ ...form, deliveryArea: e.target.value })}
                       />
                     </div>
-                    <div style={styles.field}><label>Toimituskustannus €</label><input style={styles.input} type="number" placeholder="Esim. 90" value={form.deliveryCost} onChange={(e) => setForm({ ...form, deliveryCost: e.target.value })} /></div>
+                    <div style={styles.field}>
+                      <label>Toimituskustannus €</label>
+                      <input
+                        style={styles.input}
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Esim. 90,00"
+                        value={form.deliveryCost}
+                        onChange={(e) => setForm({ ...form, deliveryCost: e.target.value })}
+                      />
+                    </div>
                   </>
                 )}
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
