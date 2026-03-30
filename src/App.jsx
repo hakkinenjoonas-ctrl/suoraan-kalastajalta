@@ -372,11 +372,19 @@ function getOfferSummaryLines(summary) {
     .filter(Boolean);
 }
 
-function formatSpeciesSummaryText(value) {
+function stripOfferTraceabilityText(line) {
+  return String(line || "")
+    .replace(/\s*·\s*Erätunnus\s+[A-Z0-9-]+/gi, "")
+    .trim();
+}
+
+function formatSpeciesSummaryText(value, options = {}) {
+  const hideTraceability = Boolean(options?.hideTraceability);
   return String(value || "")
     .split("\n")
     .map((line) => {
-      const [speciesPart, ...rest] = String(line).split(":");
+      const cleanedLine = hideTraceability ? stripOfferTraceabilityText(line) : String(line);
+      const [speciesPart, ...rest] = cleanedLine.split(":");
       if (!speciesPart) return line;
       const formattedSpecies = formatSpeciesForSale(speciesPart.trim());
       return rest.length > 0 ? `${formattedSpecies}:${rest.join(":")}` : formattedSpecies;
@@ -424,9 +432,11 @@ function formatSourceBatchSummary(entry) {
   return [species, isCrayfishSpecies(entry.species) ? count : kilos, isCrayfishSpecies(entry.species) && kilos ? kilos : "", entry.batchId || ""].filter(Boolean).join(" · ");
 }
 
-function getOfferSpeciesHeadline(summary) {
-  const firstLine = String(summary || "Kalaerä").split("\n")[0] || "Kalaerä";
-  return firstLine
+function getOfferSpeciesHeadline(summary, options = {}) {
+  const hideTraceability = Boolean(options?.hideTraceability);
+  const firstLine = (String(summary || "Kalaerä").split("\n")[0] || "Kalaerä");
+  const sanitizedFirstLine = hideTraceability ? stripOfferTraceabilityText(firstLine) : firstLine;
+  return sanitizedFirstLine
     .replace(/:\s*\d+(?:[.,]\d+)?\s*kg(?:\s*\([^)]*\))?$/i, "")
     .trim() || "Kalaerä";
 }
@@ -2323,7 +2333,7 @@ function WholesaleOffersView({
             <strong>Avattu linkistä</strong>
             <span style={{ ...styles.badge, background: "#dbeafe", borderColor: "#93c5fd", color: "#1d4ed8" }}>{buyerStatusLabel(linkedBuyerOffer.status)}</span>
           </div>
-          <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(linkedBuyerOffer.species_summary) || "-"}</div>
+          <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(linkedBuyerOffer.species_summary, { hideTraceability: linkedBuyerOffer.status !== "accepted" }) || "-"}</div>
           {getOfferSummaryCatchDates(linkedBuyerOffer.species_summary).length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryCatchDates(linkedBuyerOffer.species_summary).join(", ")}</div> : null}
           {isMixedOffer(linkedBuyerOffer)
             ? getOfferSummaryBatchItems(linkedBuyerOffer.species_summary).map((item) => (
@@ -2376,7 +2386,7 @@ function WholesaleOffersView({
                   </div>
                 </div>
                 <div>
-                  <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary) || "-"}</div>
+                  <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideTraceability: offer.status !== "accepted" }) || "-"}</div>
                   {getOfferSummaryCatchDates(offer.species_summary).length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryCatchDates(offer.species_summary).join(", ")}</div> : null}
                   {isMixedOffer(offer)
                     ? getOfferSummaryBatchItems(offer.species_summary).map((item) => (
@@ -6575,7 +6585,7 @@ export default function App() {
 
     const buildOfferHeadline = (offer) => {
       if (isMixedOffer(offer)) return "Monilajinen erä";
-      return getOfferSpeciesHeadline(offer?.species_summary);
+      return getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true });
     };
 
     const getVisibleOfferPrice = (offer) => {
@@ -6842,7 +6852,7 @@ export default function App() {
                           <div>
                             <div style={styles.muted}><strong>Erän tiedot</strong></div>
                             {mixedOffer ? <div style={{ ...styles.noticeInfo, marginBottom: 8 }}>Tämä monilajinen erä myydään kokonaisuutena. Kalalajit, hinnat ja erätunnukset näkyvät alla riveittäin.</div> : null}
-                            <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{formatSpeciesSummaryText(o.species_summary) || "-"}</div>
+                            <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{formatSpeciesSummaryText(o.species_summary, { hideTraceability: !showTraceability }) || "-"}</div>
                             {!mixedOffer ? <div style={styles.muted}>Määrä: {getOfferQuantityDisplay(o)}</div> : null}
                             {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}</div> : null}
                             {ownDeliveryPrice != null ? <div style={styles.muted}>Toimitushinta omaan kaupunkiin ({o.delivery_destination_city || linkedBuyerRecord?.city || "-" }): {formatDeliveryPrice(ownDeliveryPrice)}</div> : null}
