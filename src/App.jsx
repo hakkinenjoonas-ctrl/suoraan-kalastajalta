@@ -2530,17 +2530,17 @@ function WholesaleOffersView({
                                 <div key={`${offer.id}-${item.batchId || item.label}`} style={{ ...styles.entry, background: "#fff", padding: 12, marginTop: 8, marginBottom: 8 }}>
                                   <div style={styles.muted}><strong>{item.label || "Erä"}</strong></div>
                                   {item.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {item.catchDate}</div> : null}
-                                  {item.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> {item.batchId}</div> : null}
-                                  {item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                                  {showTraceability && item.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> {item.batchId}</div> : null}
+                                  {showTraceability && item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                                 </div>
                               ))
                               : (
                                 <>
                                   {getOfferSummaryBatchItems(offer.species_summary)[0]?.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryBatchItems(offer.species_summary)[0].catchDate}</div> : null}
-                                  {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
+                                  {showTraceability && offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
                                 </>
                               )}
-                            {!isMixedOffer(offer) && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                            {!isMixedOffer(offer) && showTraceability && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                             <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
                             <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{entry.municipality ? ` · ${entry.municipality}` : ""}{offer.spot ? ` / ${offer.spot}` : ""}</div>
                           </div>
@@ -6801,6 +6801,7 @@ export default function App() {
                     const visiblePrice = getVisibleOfferPrice(o);
                     const sellerInfo = getBuyerVisibleSellerInfo(o);
                     const mixedOffer = isMixedOffer(o);
+                    const showTraceability = o.status === "accepted";
                     const visibleAdditionalNotes = extractVisibleAdditionalNotes(o.notes);
                     const ownDeliveryPrice = o.route_price_eur !== "" && o.route_price_eur != null ? Number(o.route_price_eur) : null;
                     const ownTotalPrice = o.total_price_eur !== "" && o.total_price_eur != null ? Number(o.total_price_eur) : null;
@@ -6826,8 +6827,8 @@ export default function App() {
                               </div>
                             ) : null}
                           </div>
-                          {o.batch_id && !mixedOffer ? <div style={{ ...styles.muted, marginBottom: 8 }}><strong>Erätunnus:</strong> {o.batch_id}</div> : null}
-                          {o.batch_id && !mixedOffer ? <div style={{ ...styles.qrBlock, marginBottom: 8 }}><img src={getBatchQrImageUrl(o.batch_id)} alt={`QR ${o.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                          {showTraceability && o.batch_id && !mixedOffer ? <div style={{ ...styles.muted, marginBottom: 8 }}><strong>Erätunnus:</strong> {o.batch_id}</div> : null}
+                          {showTraceability && o.batch_id && !mixedOffer ? <div style={{ ...styles.qrBlock, marginBottom: 8 }}><img src={getBatchQrImageUrl(o.batch_id)} alt={`QR ${o.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                           <div style={styles.entryBadges}>
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
                             <span style={styles.badge}>{o.area || "-"}</span>
@@ -6848,7 +6849,7 @@ export default function App() {
                             {ownTotalPrice != null ? <div style={styles.muted}>Kokonaishinta: {formatDeliveryPrice(ownTotalPrice)}</div> : null}
                             {ownDeliveredPricePerKg != null ? <div style={styles.muted}>Toimitettuna: {formatDeliveredPricePerKg(ownDeliveredPricePerKg)}</div> : null}
                             <div style={styles.muted}>Tarjoaja: {sellerInfo.sellerLabel}</div>
-                            {sellerInfo.sellerCommercialFishingId && sellerInfo.revealIdentity ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
+                            {showTraceability && sellerInfo.sellerCommercialFishingId && sellerInfo.revealIdentity ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
                             <div style={styles.muted}>
                               {sellerInfo.deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue"}: {sellerInfo.revealIdentity ? sellerInfo.exactLocation : sellerInfo.publicLocation}
                             </div>
