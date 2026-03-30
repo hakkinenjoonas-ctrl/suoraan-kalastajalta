@@ -809,13 +809,13 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
           .scientific { font-size: 6.2pt; line-height: 1.12; color: #475569; margin-bottom: 0.7mm; }
           .batch { font-size: 7.2pt; font-weight: 800; background: #eff6ff; border: 0.22mm solid #93c5fd; border-radius: 1.2mm; padding: 0.7mm 0.9mm; margin-bottom: 0.7mm; }
           .line { font-size: 6.25pt; line-height: 1.12; margin-bottom: 0.3mm; }
-          .weight-line { display: flex; align-items: flex-end; gap: 1.1mm; font-size: 6.5pt; margin: 1.8mm 0 0.9mm; min-height: 6.4mm; }
+          .weight-line { display: flex; align-items: flex-end; gap: 1.1mm; font-size: 6.5pt; margin: 1.25mm 0 0.35mm; min-height: 4.8mm; }
           .weight-label { font-weight: 700; white-space: nowrap; }
-          .weight-write { flex: 1; min-width: 0; border-bottom: 0.3mm solid #0f172a; height: 3.6mm; }
+          .weight-write { flex: 1; min-width: 0; border-bottom: 0.45mm solid #0f172a; height: 3.1mm; }
           .weight-unit { font-weight: 700; white-space: nowrap; }
           .label-side { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; min-width: 0; }
           .label-brand { display: flex; flex-direction: column; align-items: center; width: 100%; padding-top: 0.6mm; }
-          .label-brand img { width: 12mm; height: 12mm; object-fit: contain; margin-bottom: 0.6mm; }
+          .label-brand img { width: 14.4mm; max-height: 12mm; object-fit: contain; margin-bottom: 0.6mm; }
           .label-brand-text { font-size: 5.2pt; line-height: 1.05; font-weight: 700; text-align: center; color: #0f172a; }
           .label-qr { display: flex; align-items: flex-end; justify-content: flex-start; width: 100%; }
           .label-qr img { width: 18mm; height: 18mm; object-fit: contain; border: 0.22mm solid #cbd5e1; border-radius: 1.2mm; padding: 0.8mm; background: #fff; }
@@ -846,6 +846,19 @@ async function fetchImageDataUrl(url) {
   return blobToDataUrl(blob);
 }
 
+function loadImageDimensions(dataUrl) {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined" || !dataUrl) {
+      resolve({ width: 1, height: 1 });
+      return;
+    }
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+    img.onerror = () => resolve({ width: 1, height: 1 });
+    img.src = dataUrl;
+  });
+}
+
 function buildCatchLabelPdfFileName(entry) {
   return `kalaetiketit-${String(entry?.batchId || "era").replace(/[^a-zA-Z0-9-_]+/g, "_")}.pdf`;
 }
@@ -857,6 +870,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
     Promise.all(labels.map((label) => fetchImageDataUrl(getCatchLabelQrImageUrl(label)))),
     fetchImageDataUrl(getAppLogoUrl()).catch(() => ""),
   ]);
+  const logoDimensions = await loadImageDimensions(logoDataUrl);
 
   const doc = new jsPDF({
     orientation: "portrait",
@@ -871,7 +885,8 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
   const labelHeight = 57;
   const topMargin = 6;
   const rowGap = 0;
-  const logoSize = 12;
+  const logoMaxWidth = 14.4;
+  const logoMaxHeight = 12;
   const qrSize = 18;
   const labelPaddingX = 6.2;
   const labelPaddingY = 2.4;
@@ -884,18 +899,25 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
     const top = y + labelPaddingY;
     const qrX = x + labelWidth - labelPaddingX - qrSize - qrRightInset;
     const qrY = y + labelHeight - labelPaddingY - qrSize;
-    const brandX = qrX + ((qrSize - logoSize) / 2);
+    const logoAspectRatio = Number(logoDimensions.width || 1) / Number(logoDimensions.height || 1);
+    const logoWidth = logoAspectRatio >= 1
+      ? logoMaxWidth
+      : Math.min(logoMaxWidth, logoMaxHeight * logoAspectRatio);
+    const logoHeight = logoAspectRatio >= 1
+      ? Math.min(logoMaxHeight, logoMaxWidth / logoAspectRatio)
+      : logoMaxHeight;
+    const brandX = qrX + ((qrSize - logoWidth) / 2);
     const brandY = top + 0.2;
     const textWidth = qrX - left - 2.4;
     let currentY = top + 4.2;
 
     if (logoDataUrl) {
-      doc.addImage(logoDataUrl, "PNG", brandX, brandY, logoSize, logoSize);
+      doc.addImage(logoDataUrl, "PNG", brandX, brandY, logoWidth, logoHeight);
     }
     doc.setFont("helvetica", "bold");
     doc.setFontSize(5.2);
-    doc.text("Suoraan", qrX + (qrSize / 2), brandY + logoSize + 2.4, { align: "center" });
-    doc.text("Kalastajalta", qrX + (qrSize / 2), brandY + logoSize + 4.7, { align: "center" });
+    doc.text("Suoraan", qrX + (qrSize / 2), brandY + logoHeight + 2.2, { align: "center" });
+    doc.text("Kalastajalta", qrX + (qrSize / 2), brandY + logoHeight + 4.5, { align: "center" });
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13.5);
@@ -941,15 +963,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.2);
     doc.text("Säilytys: 0–2 °C", left, currentY);
-    currentY += 5.2;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.8);
-    doc.text("Paino:", left, currentY);
-    doc.setLineWidth(0.25);
-    doc.line(left + 11, currentY + 0.2, qrX - 5, currentY + 0.2);
-    doc.text("kg", qrX - 3.8, currentY);
-    currentY += 5.2;
+    currentY += 3.6;
 
     const supplierLines = [
       `Toimittaja: ${label.supplier || "-"}`,
@@ -959,7 +973,17 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
     const wrappedSupplierLines = supplierLines.flatMap((line) => doc.splitTextToSize(line, textWidth));
     const supplierLineHeight = 2.6;
     const supplierBlockHeight = wrappedSupplierLines.length * supplierLineHeight;
-    const supplierStartY = Math.max(currentY + 0.6, qrY + qrSize - supplierBlockHeight);
+    const supplierStartY = Math.max(currentY + 3.4, qrY + qrSize - supplierBlockHeight);
+    const weightY = supplierStartY - 2.8;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.8);
+    doc.text("Paino:", left, weightY);
+    doc.setLineWidth(0.45);
+    doc.line(left + 12.2, weightY + 0.15, qrX - 4.2, weightY + 0.15);
+    doc.text("kg", qrX - 3.6, weightY);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.4);
     wrappedSupplierLines.forEach((line, index) => {
       doc.text(line, left, supplierStartY + (index * supplierLineHeight));
     });
