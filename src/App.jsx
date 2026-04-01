@@ -640,6 +640,7 @@ function extractVisibleAdditionalNotes(notes) {
     if (inSpeciesBlock) continue;
     if (
       line.startsWith("Hinta:") ||
+      line === "Kilpailuta kuljetus: Ei" ||
       line.startsWith("Toimitustapa:") ||
       line.startsWith("Toimitusalue:") ||
       line.startsWith("Noutopaikka:") ||

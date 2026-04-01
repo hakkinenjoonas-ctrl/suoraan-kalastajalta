@@ -142,7 +142,11 @@ function getAdditionalNoteRows(notesValue: unknown) {
         value: safeString(line.slice(colonIndex + 1)),
       };
     })
-    .filter((item) => item.label && item.value);
+    .filter((item) => {
+      if (!item.label || !item.value) return false;
+      if (item.label === "Kilpailuta kuljetus" && item.value === "Ei") return false;
+      return true;
+    });
 }
 
 function getPublicPickupLocation(entry: Record<string, unknown>) {
@@ -252,6 +256,11 @@ Deno.serve(async (req) => {
     const publicDeliveryLocation = deliveryMethod === "Nouto"
       ? getPublicPickupLocation(entry as Record<string, unknown>)
       : safeString(entry.deliveryArea || entry.area || "-");
+    const showPublicDeliveryLocation = deliveryMethod === "Nouto" || (
+      publicDeliveryLocation &&
+      publicDeliveryLocation !== "-" &&
+      publicDeliveryLocation !== area
+    );
 
     const lineItemRows = lineItems
       .map((item) => `
@@ -278,7 +287,7 @@ Deno.serve(async (req) => {
       !mixedOffer ? buildFieldRow("Määrä", kilos) : "",
       buildFieldRow(dateLabel, date),
       buildFieldRow("Vesialue", area),
-      buildFieldRow(deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue", publicDeliveryLocation || "-"),
+      showPublicDeliveryLocation ? buildFieldRow(deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue", publicDeliveryLocation || "-") : "",
       buildFieldRow("Pyydys", gear || "-"),
       !mixedOffer ? buildFieldRow("Hinta", price) : "",
       batchId && !mixedOffer ? buildFieldRow("Erätunnus", batchId) : "",
@@ -327,7 +336,7 @@ Deno.serve(async (req) => {
         !mixedOffer ? `Määrä: ${kilos}` : null,
         `${dateLabel}: ${date || "-"}`,
         `Vesialue: ${area || "-"}`,
-        `${deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue"}: ${publicDeliveryLocation || "-"}`,
+        showPublicDeliveryLocation ? `${deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue"}: ${publicDeliveryLocation || "-"}` : null,
         `Pyydys: ${gear || "-"}`,
         !mixedOffer ? `Hinta: ${price}` : null,
         routePrice !== "-" ? `Toimitushinta: ${routePrice}` : null,
