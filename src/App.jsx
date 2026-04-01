@@ -6930,7 +6930,7 @@ export default function App() {
                           <div style={{ ...styles.stack, marginTop: 12 }}>
                             {o.status === "accepted" ? (
                           <div style={styles.noticeSuccess}>
-                            Kauppa on hyväksytty. Kalastajan täydet tiedot ja lopullinen nouto- tai toimitusosoite näkyvät nyt alla.
+                            Kalastajan täydet tiedot näkyvät alla.
                           </div>
                         ) : null}
                         {o.status === "sold" ? (
@@ -6944,9 +6944,11 @@ export default function App() {
                             {sellerInfo.sellerCommercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
                             <div style={styles.muted}>Vesialue: {sellerInfo.sellerArea || "-"}</div>
                             {sellerInfo.sellerSpot ? <div style={styles.muted}>Pyyntipaikka: {sellerInfo.sellerSpot}</div> : null}
-                            <div style={styles.muted}>
-                              {sellerInfo.deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}: {sellerInfo.exactLocation}
-                            </div>
+                            {sellerInfo.exactLocation && sellerInfo.exactLocation !== sellerInfo.sellerArea ? (
+                              <div style={styles.muted}>
+                                {sellerInfo.deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}: {sellerInfo.exactLocation}
+                              </div>
+                            ) : null}
                             <div style={styles.muted}>Toimitustapa: {sellerInfo.deliveryMethod || "-"}</div>
                             <div style={styles.muted}>Toimituskulu: {sellerInfo.deliveryCost !== "" && sellerInfo.deliveryCost != null ? `${sellerInfo.deliveryCost} €` : "-"}</div>
                             <div style={styles.muted}>Aikaisin toimitus: {sellerInfo.earliestDeliveryDate || "-"}</div>
