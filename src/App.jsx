@@ -5456,8 +5456,37 @@ export default function App() {
       return;
     }
 
+    const sellerIds = Array.from(new Set((data || []).map((offer) => offer.seller_user_id).filter(Boolean)));
+    let sellerProfileMap = {};
+    if (sellerIds.length > 0) {
+      const { data: sellerProfiles, error: sellerProfilesError } = await supabase
+        .from("profiles")
+        .select("id, email, phone")
+        .in("id", sellerIds);
+
+      if (sellerProfilesError) {
+        if (isMissingRefreshTokenError(sellerProfilesError)) {
+          await invalidateSession();
+          return;
+        }
+        setAuthError(sellerProfilesError.message);
+        return;
+      }
+
+      sellerProfileMap = Object.fromEntries(
+        (sellerProfiles || []).map((item) => [
+          item.id,
+          {
+            email: item.email || "",
+            phone: item.phone || "",
+          },
+        ]),
+      );
+    }
+
     setBuyerOffers((data || []).map((offer) => {
       const buyer = buyers.find((item) => item.id === offer.buyer_id || item.email === (offer.buyer_email || "").toLowerCase());
+      const sellerProfile = sellerProfileMap[offer.seller_user_id] || {};
       return {
         ...offer,
         buyer_email: (offer.buyer_email || "").toLowerCase(),
@@ -5484,6 +5513,8 @@ export default function App() {
         buyer_company_name: buyer?.company_name || "",
         buyer_contact_name: buyer?.contact_name || "",
         buyer_phone: buyer?.phone || "",
+        sellerEmail: sellerProfile.email || "",
+        sellerPhone: sellerProfile.phone || "",
         fulfillment_status: offer.fulfillment_status || (offer.status === "accepted" ? "awaiting_contact" : ""),
       };
     }));
@@ -6944,6 +6975,7 @@ export default function App() {
                             <strong>Kalastajan tiedot</strong>
                             <div style={styles.muted}>Nimi: {sellerInfo.sellerName || "-"}</div>
                             {o.sellerEmail ? <div style={styles.muted}>Sähköposti: {o.sellerEmail}</div> : null}
+                            {o.sellerPhone ? <div style={styles.muted}>Puhelin: {o.sellerPhone}</div> : null}
                             {sellerInfo.sellerCommercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
                             <div style={styles.muted}>Vesialue: {sellerInfo.sellerArea || "-"}</div>
                             {sellerInfo.sellerSpot ? <div style={styles.muted}>Pyyntipaikka: {sellerInfo.sellerSpot}</div> : null}
@@ -6963,7 +6995,7 @@ export default function App() {
                             </div>
                           </div>
                         ) : null}
-                        {o.status === "sold" ? null : (
+                        {o.status === "accepted" || o.status === "sold" ? null : (
                         <>
                         {!mixedOffer ? (
                           <div style={styles.field}>
