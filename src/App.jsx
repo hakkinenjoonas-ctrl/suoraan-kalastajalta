@@ -1831,6 +1831,25 @@ function RememberedTextInput({ value, onChange, options, placeholder = "", listI
   );
 }
 
+function FishSpeciesInput({ value, onChange, placeholder = "Valitse tai kirjoita kalalaji" }) {
+  return (
+    <>
+      <input
+        style={styles.input}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        list="fish-species-options"
+      />
+      <datalist id="fish-species-options">
+        {fishSpecies.map((species) => (
+          <option key={species} value={species} />
+        ))}
+      </datalist>
+    </>
+  );
+}
+
 function PublicBatchView({ batchId, data, loading, error }) {
   const headerSummary = [formatSpeciesForSale(data?.species), data?.quantity != null && data?.quantity !== "" ? `${data.quantity} ${data.unit || "kg"}` : ""]
     .filter(Boolean)
@@ -7728,7 +7747,7 @@ export default function App() {
                     <div key={row.id} style={speciesRow}>
                       <div style={styles.field}>
                         <label>Laji {index + 1}</label>
-                        <select style={styles.input} value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)}>{fishSpecies.map((species) => <option key={species} value={species}>{species}</option>)}</select>
+                        <FishSpeciesInput value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)} />
                         {row.species === "Muu" ? <input style={{ ...styles.input, marginTop: 8 }} placeholder="Kirjoita kalalaji" value={row.customSpecies} onChange={(e) => updateSpeciesRow(row.id, "customSpecies", e.target.value)} /> : null}
                       </div>
                       <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
