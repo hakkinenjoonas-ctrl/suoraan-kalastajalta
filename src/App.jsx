@@ -2609,6 +2609,11 @@ function WholesaleOffersView({
                             <div>{offer.buyer_company_name || "-"}</div>
                             <div>{offer.buyer_contact_name || "-"}</div>
                             <div>{offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div>
+                            {(offer.buyer_delivery_address || offer.buyer_delivery_postcode || offer.buyer_delivery_city) ? (
+                              <div style={{ marginTop: 10, fontSize: 18, fontWeight: 800, lineHeight: 1.25, color: "#0f172a" }}>
+                                Voit nyt toimittaa kalaerän osoitteeseen: {[offer.buyer_delivery_address, offer.buyer_delivery_postcode, offer.buyer_delivery_city].filter(Boolean).join(", ")}
+                              </div>
+                            ) : null}
                             {(offer.buyer_delivery_address || offer.buyer_delivery_postcode || offer.buyer_delivery_city) ? <div style={styles.muted}>Toimitusosoite: {[offer.buyer_delivery_address, offer.buyer_delivery_postcode, offer.buyer_delivery_city].filter(Boolean).join(", ")}</div> : null}
                             {(offer.buyer_billing_address || offer.buyer_billing_postcode || offer.buyer_billing_city || offer.buyer_billing_email) ? <div style={styles.muted}>Laskutus: {[offer.buyer_billing_address, offer.buyer_billing_postcode, offer.buyer_billing_city].filter(Boolean).join(", ")}{offer.buyer_billing_email ? ` · ${offer.buyer_billing_email}` : ""}</div> : null}
                             {offer.buyer_business_id ? <div style={styles.muted}>Y-tunnus: {offer.buyer_business_id}</div> : null}
