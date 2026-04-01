@@ -5622,13 +5622,15 @@ export default function App() {
     if (!buyerEmail) return;
 
     let sellerEmail = "";
+    let sellerPhone = "";
     if (offer?.seller_user_id) {
       const { data: sellerProfile } = await supabase
         .from("profiles")
-        .select("email")
+        .select("email, phone")
         .eq("id", offer.seller_user_id)
         .maybeSingle();
       sellerEmail = sellerProfile?.email || "";
+      sellerPhone = sellerProfile?.phone || "";
     }
 
     const sellerInfo = getBuyerVisibleSellerInfo({ ...offer, status: "accepted" });
@@ -5644,6 +5646,7 @@ export default function App() {
         offer: {
           sellerName,
           sellerEmail,
+          sellerPhone,
           sellerCommercialFishingId: sellerInfo.sellerCommercialFishingId,
           species_summary: offer?.species_summary,
           total_kilos: offer?.total_kilos,

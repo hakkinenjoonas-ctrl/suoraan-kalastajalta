@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
 
     const sellerName = String(offer.sellerName || "Myyja");
     const sellerEmail = String(offer.sellerEmail || "").trim();
+    const sellerPhone = String(offer.sellerPhone || "").trim();
     const sellerCommercialFishingId = String(offer.sellerCommercialFishingId || "").trim();
     const speciesSummary = String(offer.species_summary || "Kalaera");
     const priceUnit = isCrayfishOffer(speciesSummary) ? "EUR/kpl" : "EUR/kg";
@@ -125,6 +126,7 @@ Deno.serve(async (req) => {
       batchId ? `Erätunnus: ${batchId}` : null,
       `Alue: ${area}${spot ? ` / ${spot}` : ""}`,
       sellerEmail ? `Kalastajan sähköposti: ${sellerEmail}` : null,
+      sellerPhone ? `Kalastajan puhelin: ${sellerPhone}` : null,
       sellerCommercialFishingId ? `Kaupallisen kalastajan tunnus: ${sellerCommercialFishingId}` : null,
       `Toimituksen tila: ${fulfillmentStatus}`,
       deliveryMethod ? `Toimitustapa: ${deliveryMethod}` : null,
@@ -152,6 +154,7 @@ Deno.serve(async (req) => {
           ${batchId ? `<strong>Erätunnus:</strong> ${batchId}<br />` : ""}
           <strong>Alue:</strong> ${area}${spot ? ` / ${spot}` : ""}<br />
           ${sellerEmail ? `<strong>Kalastajan sähköposti:</strong> ${sellerEmail}<br />` : ""}
+          ${sellerPhone ? `<strong>Kalastajan puhelin:</strong> ${sellerPhone}<br />` : ""}
           ${sellerCommercialFishingId ? `<strong>Kaupallisen kalastajan tunnus:</strong> ${sellerCommercialFishingId}<br />` : ""}
           <strong>Toimituksen tila:</strong> ${fulfillmentStatus}<br />
           ${deliveryMethod ? `<strong>Toimitustapa:</strong> ${deliveryMethod}<br />` : ""}
