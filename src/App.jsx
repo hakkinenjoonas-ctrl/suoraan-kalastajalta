@@ -1857,7 +1857,7 @@ function FishSpeciesInput({ value, onChange, placeholder = "Valitse tai kirjoita
       <select style={styles.input} value={value} onChange={onChange}>
         <option value="">{placeholder}</option>
         {fishSpecies.map((species) => (
-          <option key={species} value={species} />
+          <option key={species} value={species}>{species}</option>
         ))}
       </select>
   );
