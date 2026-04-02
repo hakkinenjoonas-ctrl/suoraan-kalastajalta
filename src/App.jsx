@@ -2585,7 +2585,9 @@ function WholesaleOffersView({
 
                         <div style={{ ...styles.grid2, marginBottom: 10 }}>
                           <div>
-                            <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary) || "-"}</div>
+                            <div style={styles.muted}>
+                              <strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideCatchDate: !isMixedOffer(offer) }) || "-"}
+                            </div>
                             {getOfferSummaryCatchDates(offer.species_summary).length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryCatchDates(offer.species_summary).join(", ")}</div> : null}
                             {isMixedOffer(offer)
                               ? getOfferSummaryBatchItems(offer.species_summary).map((item) => (
