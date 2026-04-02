@@ -378,12 +378,32 @@ function stripOfferTraceabilityText(line) {
     .trim();
 }
 
+function stripOfferInlineMetaText(line, options = {}) {
+  let cleaned = String(line || "");
+  if (options?.hideTraceability) {
+    cleaned = stripOfferTraceabilityText(cleaned);
+  }
+  if (options?.hidePrice) {
+    cleaned = cleaned.replace(/\s*·\s*Hinta\s+[^·]+/gi, "");
+  }
+  if (options?.hideCatchDate) {
+    cleaned = cleaned.replace(/\s*·\s*Pyyntipäivämäärä\s+[^·]+/gi, "");
+  }
+  return cleaned.trim();
+}
+
 function formatSpeciesSummaryText(value, options = {}) {
   const hideTraceability = Boolean(options?.hideTraceability);
+  const hidePrice = Boolean(options?.hidePrice);
+  const hideCatchDate = Boolean(options?.hideCatchDate);
   return String(value || "")
     .split("\n")
     .map((line) => {
-      const cleanedLine = hideTraceability ? stripOfferTraceabilityText(line) : String(line);
+      const cleanedLine = stripOfferInlineMetaText(line, {
+        hideTraceability,
+        hidePrice,
+        hideCatchDate,
+      });
       const [speciesPart, ...rest] = cleanedLine.split(":");
       if (!speciesPart) return line;
       const formattedSpecies = formatSpeciesForSale(speciesPart.trim());
@@ -6887,6 +6907,7 @@ export default function App() {
                     const ownDeliveryPrice = o.route_price_eur !== "" && o.route_price_eur != null ? Number(o.route_price_eur) : null;
                     const ownTotalPrice = o.total_price_eur !== "" && o.total_price_eur != null ? Number(o.total_price_eur) : null;
                     const ownDeliveredPricePerKg = o.delivered_price_per_kg !== "" && o.delivered_price_per_kg != null ? Number(o.delivered_price_per_kg) : null;
+                    const offerCatchDates = getOfferSummaryCatchDates(o.species_summary);
                     return (
                       <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
                         <div style={{ marginBottom: 10 }}>
@@ -6896,15 +6917,6 @@ export default function App() {
                             {mixedOffer ? (
                               <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
                                 {getOfferSummaryLines(o.species_summary).length} lajia samassa erässä
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
-                                {getOfferQuantityDisplay(o)}
-                              </div>
-                            )}
-                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? (
-                              <div style={{ fontSize: 24, fontWeight: 700, color: "#0f172a" }}>
-                                {euro(visiblePrice)} / {getOfferDisplayUnit(o)}
                               </div>
                             ) : null}
                           </div>
@@ -6923,9 +6935,16 @@ export default function App() {
                           <div>
                             <div style={styles.muted}><strong>Erän tiedot</strong></div>
                             {mixedOffer ? <div style={{ ...styles.noticeInfo, marginBottom: 8 }}>Tämä monilajinen erä myydään kokonaisuutena. Kalalajit, hinnat ja erätunnukset näkyvät alla riveittäin.</div> : null}
-                            <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{formatSpeciesSummaryText(o.species_summary, { hideTraceability: !showTraceability }) || "-"}</div>
+                            <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>
+                              {formatSpeciesSummaryText(o.species_summary, {
+                                hideTraceability: !showTraceability,
+                                hidePrice: !mixedOffer,
+                                hideCatchDate: !mixedOffer,
+                              }) || "-"}
+                            </div>
                             {!mixedOffer ? <div style={styles.muted}>Määrä: {getOfferQuantityDisplay(o)}</div> : null}
                             {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}</div> : null}
+                            {!mixedOffer && offerCatchDates.length > 0 ? <div style={styles.muted}>Pyyntipäivämäärä: {offerCatchDates.join(", ")}</div> : null}
                             {ownDeliveryPrice != null ? <div style={styles.muted}>Toimitushinta omaan kaupunkiin ({o.delivery_destination_city || linkedBuyerRecord?.city || "-" }): {formatDeliveryPrice(ownDeliveryPrice)}</div> : null}
                             {ownTotalPrice != null ? <div style={styles.muted}>Kokonaishinta: {formatDeliveryPrice(ownTotalPrice)}</div> : null}
                             {ownDeliveredPricePerKg != null ? <div style={styles.muted}>Toimitettuna: {formatDeliveredPricePerKg(ownDeliveredPricePerKg)}</div> : null}
