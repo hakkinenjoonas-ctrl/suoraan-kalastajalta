@@ -5846,7 +5846,25 @@ export default function App() {
     let updatePayload = { status };
 
     if (status === "accepted") {
-      const buyerRecord = buyers.find((buyer) => buyer.id === offer.buyer_id || buyer.email === (offer.buyer_email || "").toLowerCase());
+      let buyerRecord = buyers.find((buyer) => buyer.id === offer.buyer_id || buyer.email === (offer.buyer_email || "").toLowerCase());
+
+      if (!buyerRecord && (offer.buyer_id || offer.buyer_email)) {
+        let buyerLookupQuery = supabase.from("buyers").select("*").limit(1);
+        buyerLookupQuery = offer.buyer_id
+          ? buyerLookupQuery.eq("id", offer.buyer_id)
+          : buyerLookupQuery.eq("email", (offer.buyer_email || "").toLowerCase());
+
+        const { data: fetchedBuyer, error: fetchedBuyerError } = await buyerLookupQuery.maybeSingle();
+        if (fetchedBuyerError) {
+          if (isMissingRefreshTokenError(fetchedBuyerError)) {
+            await invalidateSession();
+            return;
+          }
+          setAuthError(fetchedBuyerError.message);
+          return;
+        }
+        buyerRecord = fetchedBuyer || null;
+      }
 
       updatePayload = {
         ...updatePayload,
