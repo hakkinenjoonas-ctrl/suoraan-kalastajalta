@@ -1987,6 +1987,11 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, onClo
   const previewQrImageUrl = getCatchLabelQrImageUrl(previewLabel);
   const previewLogoUrl = getAppLogoUrl();
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const previewBaseWidth = 420;
+  const previewBaseHeight = (previewBaseWidth * 57) / 105;
+  const previewScale = isMobile && typeof window !== "undefined"
+    ? Math.min(1, Math.max(0.62, (window.innerWidth - 72) / previewBaseWidth))
+    : 1;
 
   return (
     <div style={{
@@ -2042,16 +2047,27 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, onClo
 
           <div style={{ ...styles.card, background: "#f8fbff", padding: 18 }}>
             <div style={{ ...styles.small, marginBottom: 10 }}>Esikatselu</div>
-            <div style={{ overflowX: "auto", overflowY: "hidden", paddingBottom: 4 }}>
+            <div
+              style={{
+                overflow: "hidden",
+                paddingBottom: 4,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "flex-start",
+                minHeight: previewBaseHeight * previewScale,
+              }}
+            >
               <div style={{
-                width: 420,
-                minWidth: 420,
+                width: previewBaseWidth,
+                minWidth: previewBaseWidth,
                 aspectRatio: "105 / 57",
                 background: "#fff",
                 padding: 14,
                 display: "grid",
                 gridTemplateColumns: "1fr 96px",
                 gap: 12,
+                transform: `scale(${previewScale})`,
+                transformOrigin: "top center",
               }}>
                 <div style={{ display: "flex", flexDirection: "column", paddingLeft: 12, minWidth: 0 }}>
                   <div>
