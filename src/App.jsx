@@ -248,7 +248,7 @@ function safeId() {
 }
 
 function createSpeciesRow() {
-  return { id: safeId(), species: "Muikku", customSpecies: "", kilos: "", count: "", price_per_kg: "" };
+  return { id: safeId(), species: "", customSpecies: "", kilos: "", count: "", price_per_kg: "" };
 }
 
 function getPublicAppBaseUrl() {
@@ -1834,20 +1834,12 @@ function RememberedTextInput({ value, onChange, options, placeholder = "", listI
 
 function FishSpeciesInput({ value, onChange, placeholder = "Valitse tai kirjoita kalalaji" }) {
   return (
-    <>
-      <input
-        style={styles.input}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        list="fish-species-options"
-      />
-      <datalist id="fish-species-options">
+      <select style={styles.input} value={value} onChange={onChange}>
+        <option value="">{placeholder}</option>
         {fishSpecies.map((species) => (
           <option key={species} value={species} />
         ))}
-      </datalist>
-    </>
+      </select>
   );
 }
 
