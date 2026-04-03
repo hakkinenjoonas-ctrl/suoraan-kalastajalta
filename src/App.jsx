@@ -2268,6 +2268,7 @@ function WholesaleOffersView({
   profile,
   saleEntries,
   offers,
+  buyers = [],
   buyerOffers,
   offerForm,
   setOfferForm,
@@ -8178,6 +8179,7 @@ export default function App() {
             profile={profile}
             saleEntries={profile.role === "processor" ? processedSaleEntries : saleEntries}
             offers={offers}
+            buyers={buyers}
             buyerOffers={buyerOffers}
             offerForm={offerForm}
             setOfferForm={setOfferForm}
