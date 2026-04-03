@@ -7310,10 +7310,6 @@ export default function App() {
                     <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 123456" />
                   </div>
                   <div style={styles.field}>
-                    <label>Nouto-osoite</label>
-                    <input style={styles.input} value={accountForm.pickupAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, pickupAddress: e.target.value }))} placeholder="Katuosoite noutoa varten" />
-                  </div>
-                  <div style={styles.field}>
                     <label>Yrityksen nimi</label>
                     <input style={styles.input} value={accountForm.companyName} onChange={(e) => setAccountForm((prev) => ({ ...prev, companyName: e.target.value }))} placeholder="Yrityksen nimi" />
                   </div>
