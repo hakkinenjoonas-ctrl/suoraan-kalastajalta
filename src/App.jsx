@@ -4152,8 +4152,12 @@ export default function App() {
     });
 
     return {
-      sellerName: offer.seller_name || matchingEntry?.ownerName || "Myyjä",
-      sellerCommercialFishingId: matchingEntry?.commercialFishingId || "",
+      sellerName: offer.seller_company_name || offer.seller_name || matchingEntry?.ownerName || "Myyjä",
+      sellerBusinessId: offer.seller_business_id || "",
+      sellerAddress: formatInvoicePartyAddress(offer.seller_address, offer.seller_postcode, offer.seller_city),
+      sellerEmail: offer.seller_contact_email || offer.seller_email || "",
+      sellerPhone: offer.seller_phone || "",
+      sellerCommercialFishingId: offer.seller_commercial_fishing_id || matchingEntry?.commercialFishingId || "",
       sellerArea: matchingEntry?.area || offer.area || "",
       municipality: matchingEntry?.municipality || "",
       sellerSpot: matchingEntry?.spot || offer.spot || "",
@@ -4949,8 +4953,37 @@ export default function App() {
           }
           setAuthError(buyerOffersResult.error.message);
         } else {
+          const sellerIds = Array.from(
+            new Set(
+              (buyerOffersResult?.data || [])
+                .map((offer) => offer?.seller_user_id)
+                .filter(Boolean)
+            )
+          );
+          const sellerProfilesById = {};
+
+          if (sellerIds.length > 0) {
+            const { data: sellerProfilesData, error: sellerProfilesError } = await supabase
+              .from("profiles")
+              .select("id, email, display_name, company_name, business_id, address, postcode, city, contact_email, phone, commercial_fishing_id")
+              .in("id", sellerIds);
+
+            if (sellerProfilesError) {
+              if (isMissingRefreshTokenError(sellerProfilesError)) {
+                await invalidateSession();
+                return;
+              }
+              setAuthError(sellerProfilesError.message);
+            } else {
+              (sellerProfilesData || []).forEach((sellerProfile) => {
+                sellerProfilesById[sellerProfile.id] = sellerProfile;
+              });
+            }
+          }
+
           setBuyerOffers((buyerOffersResult?.data || []).map((offer) => {
             const buyer = buyersData.find((item) => item.id === offer.buyer_id || item.email === (offer.buyer_email || "").toLowerCase());
+            const sellerProfile = sellerProfilesById[offer.seller_user_id] || {};
             return {
               ...offer,
               buyer_email: (offer.buyer_email || "").toLowerCase(),
@@ -4977,6 +5010,16 @@ export default function App() {
               buyer_company_name: buyer?.company_name || "",
               buyer_contact_name: buyer?.contact_name || "",
               buyer_phone: buyer?.phone || "",
+              seller_name: offer.seller_name || sellerProfile.company_name || sellerProfile.display_name || "",
+              seller_company_name: sellerProfile.company_name || "",
+              seller_business_id: sellerProfile.business_id || "",
+              seller_address: sellerProfile.address || "",
+              seller_postcode: sellerProfile.postcode || "",
+              seller_city: sellerProfile.city || "",
+              seller_contact_email: sellerProfile.contact_email || sellerProfile.email || "",
+              seller_email: offer.seller_email || sellerProfile.email || "",
+              seller_phone: offer.seller_phone || sellerProfile.phone || "",
+              seller_commercial_fishing_id: offer.seller_commercial_fishing_id || sellerProfile.commercial_fishing_id || "",
               billing_status: offer.billing_status || "unbilled",
               billing_month: offer.billing_month || "",
               fulfillment_status: offer.fulfillment_status || (offer.status === "accepted" ? "awaiting_contact" : ""),
@@ -7917,8 +7960,10 @@ export default function App() {
                           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
                             <strong>Kalastajan tiedot</strong>
                             <div style={styles.muted}>Nimi: {sellerInfo.sellerName || "-"}</div>
-                            {o.sellerEmail ? <div style={styles.muted}>Sähköposti: {o.sellerEmail}</div> : null}
-                            {o.sellerPhone ? <div style={styles.muted}>Puhelin: {o.sellerPhone}</div> : null}
+                            {sellerInfo.sellerBusinessId ? <div style={styles.muted}>Y-tunnus: {sellerInfo.sellerBusinessId}</div> : null}
+                            {sellerInfo.sellerAddress ? <div style={styles.muted}>Yrityksen osoite: {sellerInfo.sellerAddress}</div> : null}
+                            {sellerInfo.sellerEmail ? <div style={styles.muted}>Sähköposti: {sellerInfo.sellerEmail}</div> : null}
+                            {sellerInfo.sellerPhone ? <div style={styles.muted}>Puhelin: {sellerInfo.sellerPhone}</div> : null}
                             {sellerInfo.sellerCommercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
                             <div style={styles.muted}>Vesialue: {sellerInfo.sellerArea || "-"}</div>
                             {sellerInfo.sellerSpot ? <div style={styles.muted}>Pyyntipaikka: {sellerInfo.sellerSpot}</div> : null}
