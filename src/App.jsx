@@ -3408,6 +3408,240 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
   );
 }
 
+function calculateSellerInvoiceDetails(offer) {
+  const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
+  const unitPrice = Number(offer?.counter_price_per_kg || offer?.price_per_kg || 0);
+  const productTotalFromQuantity = kilos * unitPrice;
+  const productTotalFromSummary = parseTradeValueFromSpeciesSummary(offer?.species_summary);
+  const productTotal = productTotalFromQuantity > 0 ? productTotalFromQuantity : productTotalFromSummary;
+  const deliveryCost = Number(offer?.delivery_cost ?? offer?.route_price_eur ?? 0) || 0;
+  const grandTotal = productTotal + deliveryCost;
+
+  return {
+    kilos,
+    unitPrice,
+    productTotal,
+    deliveryCost,
+    grandTotal,
+  };
+}
+
+function buildSellerInvoiceEmailLink(offer, sellerProfile) {
+  const invoiceEmail = String(offer?.buyer_billing_email || offer?.buyer_email || "").trim();
+  if (!invoiceEmail) return "";
+
+  const sellerName = String(sellerProfile?.company_name || sellerProfile?.display_name || sellerProfile?.email || "").trim() || "-";
+  const sellerAddress = [
+    String(sellerProfile?.address || "").trim(),
+    [String(sellerProfile?.postcode || "").trim(), String(sellerProfile?.city || "").trim()].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+  const sellerPhone = String(sellerProfile?.phone || "").trim();
+  const sellerEmail = String(sellerProfile?.contact_email || sellerProfile?.email || "").trim();
+  const sellerBusinessId = String(sellerProfile?.business_id || "").trim();
+  const sellerIban = String(sellerProfile?.bank_account_iban || "").trim();
+  const sellerBic = String(sellerProfile?.bank_bic || "").trim();
+  const buyerName = String(offer?.buyer_company_name || offer?.buyer_contact_name || offer?.buyer_email || "").trim() || "Asiakas";
+  const buyerBillingAddress = [
+    String(offer?.buyer_billing_address || "").trim(),
+    [String(offer?.buyer_billing_postcode || "").trim(), String(offer?.buyer_billing_city || "").trim()].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+  const buyerDeliveryAddress = [
+    String(offer?.buyer_delivery_address || "").trim(),
+    [String(offer?.buyer_delivery_postcode || "").trim(), String(offer?.buyer_delivery_city || "").trim()].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+  const invoiceDetails = calculateSellerInvoiceDetails(offer);
+  const catchDates = getOfferSummaryCatchDates(offer?.species_summary);
+  const invoiceBody = [
+    `Hei ${buyerName},`,
+    "",
+    "Tässä lasku hyväksytystä ja toimitetusta kalaerästä.",
+    "",
+    `Laskuttaja: ${sellerName}`,
+    sellerBusinessId ? `Y-tunnus: ${sellerBusinessId}` : "",
+    sellerAddress ? `Osoite: ${sellerAddress}` : "",
+    sellerEmail ? `Sähköposti: ${sellerEmail}` : "",
+    sellerPhone ? `Puhelin: ${sellerPhone}` : "",
+    sellerIban ? `IBAN: ${sellerIban}` : "",
+    sellerBic ? `BIC: ${sellerBic}` : "",
+    "",
+    `Laskutettava: ${buyerName}`,
+    buyerBillingAddress ? `Laskutusosoite: ${buyerBillingAddress}` : "",
+    buyerDeliveryAddress ? `Toimitusosoite: ${buyerDeliveryAddress}` : "",
+    "",
+    `Erä: ${String(formatSpeciesSummaryText(offer?.species_summary) || "-").replace(/\n/g, " | ")}`,
+    catchDates.length > 0 ? `Pyyntipäivämäärä: ${catchDates.join(", ")}` : "",
+    offer?.batch_id ? `Erätunnus: ${offer.batch_id}` : "",
+    `Tuotteet yhteensä: ${euro(invoiceDetails.productTotal)}`,
+    `Toimituskulu: ${euro(invoiceDetails.deliveryCost)}`,
+    `Laskun loppusumma: ${euro(invoiceDetails.grandTotal)}`,
+    "",
+    "Ystävällisin terveisin",
+    sellerName,
+  ].filter((line) => line !== "").join("\n");
+
+  return `mailto:${encodeURIComponent(invoiceEmail)}?subject=${encodeURIComponent(`Lasku kalaerästä ${offer?.batch_id || ""}`.trim())}&body=${encodeURIComponent(invoiceBody)}`;
+}
+
+function SellerBillingView({ profile, accountForm, setAccountForm, accountSaving, onSaveBankDetails, buyerOffers, billingFilter, setBillingFilter, onUpdateBillingStatus }) {
+  const sellerDeliveredOffers = (buyerOffers || []).filter((offer) => (
+    offer.status === "accepted" &&
+    offer.fulfillment_status === "delivered" &&
+    String(offer.seller_user_id || "") === String(profile?.id || "") &&
+    (billingFilter === "all" || String(offer.billing_status || "unbilled") === billingFilter)
+  ));
+
+  return (
+    <div style={styles.stack}>
+      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+        <div style={styles.rowBetween}>
+          <div>
+            <strong>Laskutus</strong>
+            <div style={styles.muted}>Tänne tulevat hyväksytyt kaupat, kun ostaja on merkinnyt toimituksen toimitetuksi.</div>
+          </div>
+          <select style={styles.input} value={billingFilter} onChange={(e) => setBillingFilter(e.target.value)}>
+            <option value="unbilled">Laskuttamattomat</option>
+            <option value="invoiced">Laskutetut</option>
+            <option value="paid">Maksetut</option>
+            <option value="all">Kaikki</option>
+          </select>
+        </div>
+      </div>
+
+      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+        <div>
+          <strong>Pankkitiedot laskulle</strong>
+          <div style={styles.muted}>Nämä tallennetaan vain omiin profiilitietoihisi ja niitä käytetään laskusähköpostin muodostamiseen.</div>
+        </div>
+        <div style={styles.grid2}>
+          <div style={styles.field}>
+            <label>IBAN</label>
+            <input
+              style={styles.input}
+              value={accountForm.bankAccountIban}
+              onChange={(e) => setAccountForm((prev) => ({ ...prev, bankAccountIban: e.target.value }))}
+              placeholder="FI00 0000 0000 0000 00"
+              autoComplete="off"
+            />
+          </div>
+          <div style={styles.field}>
+            <label>BIC</label>
+            <input
+              style={styles.input}
+              value={accountForm.bankBic}
+              onChange={(e) => setAccountForm((prev) => ({ ...prev, bankBic: e.target.value }))}
+              placeholder="Esim. NDEAFIHH"
+              autoComplete="off"
+            />
+          </div>
+        </div>
+        <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+          <button style={{ ...styles.button, ...styles.primaryButton }} onClick={onSaveBankDetails} disabled={accountSaving}>
+            {accountSaving ? "Tallennetaan..." : "Tallenna pankkitiedot"}
+          </button>
+        </div>
+      </div>
+
+      {sellerDeliveredOffers.length === 0 ? (
+        <div style={{ ...styles.card, ...styles.sectionCard }}>
+          <div style={styles.muted}>Ei vielä toimitettuja kauppoja laskutettavaksi tällä suodattimella.</div>
+        </div>
+      ) : (
+        sellerDeliveredOffers.map((offer) => {
+          const invoiceDetails = calculateSellerInvoiceDetails(offer);
+          const invoiceEmailLink = buildSellerInvoiceEmailLink(offer, profile);
+          const canCreateInvoiceEmail = Boolean(invoiceEmailLink) && Boolean(accountForm.bankAccountIban.trim());
+          const billingAddress = [
+            offer.buyer_billing_address,
+            [offer.buyer_billing_postcode, offer.buyer_billing_city].filter(Boolean).join(" "),
+          ].filter(Boolean).join(", ");
+          const deliveryAddress = [
+            offer.buyer_delivery_address,
+            [offer.buyer_delivery_postcode, offer.buyer_delivery_city].filter(Boolean).join(" "),
+          ].filter(Boolean).join(", ");
+
+          return (
+            <div key={offer.id} style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div style={styles.rowBetween}>
+                <div>
+                  <strong>{offer.buyer_company_name || offer.buyer_contact_name || offer.buyer_email || "Ostaja"}</strong>
+                  <div style={styles.muted}>Toimitettu: {offer.updated_at || offer.created_at || "-"}</div>
+                </div>
+                <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>
+                  {offer.billing_status === "paid" ? "Maksettu" : offer.billing_status === "invoiced" ? "Laskutettu" : "Laskuttamaton"}
+                </span>
+              </div>
+
+              <div style={styles.entryBadges}>
+                <span style={styles.badge}>{invoiceDetails.kilos} kg</span>
+                <span style={styles.badge}>{euro(invoiceDetails.productTotal)} tuotteet</span>
+                <span style={styles.badge}>{euro(invoiceDetails.deliveryCost)} toimitus</span>
+                <span style={{ ...styles.badge, background: "#eff6ff" }}>{euro(invoiceDetails.grandTotal)} yhteensä</span>
+              </div>
+
+              <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>
+                <strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary) || "-"}
+              </div>
+              {getOfferSummaryCatchDates(offer.species_summary).length > 0 ? (
+                <div style={styles.muted}>
+                  <strong>Pyyntipäivämäärä:</strong> {getOfferSummaryCatchDates(offer.species_summary).join(", ")}
+                </div>
+              ) : null}
+              {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
+              {offer.buyer_contact_name ? <div style={styles.muted}><strong>Yhteyshenkilö:</strong> {offer.buyer_contact_name}</div> : null}
+              {offer.buyer_email ? <div style={styles.muted}><strong>Sähköposti:</strong> {offer.buyer_email}</div> : null}
+              {offer.buyer_phone ? <div style={styles.muted}><strong>Puhelin:</strong> {offer.buyer_phone}</div> : null}
+              {deliveryAddress ? <div style={styles.noticeInfo}>Voit nyt toimittaa kalaerän osoitteeseen: {deliveryAddress}</div> : null}
+              {billingAddress ? <div style={styles.muted}><strong>Laskutusosoite:</strong> {billingAddress}</div> : null}
+              {offer.buyer_billing_email ? <div style={styles.muted}><strong>Laskutussähköposti:</strong> {offer.buyer_billing_email}</div> : null}
+
+              <div style={styles.row}>
+                <a
+                  href={canCreateInvoiceEmail ? invoiceEmailLink : undefined}
+                  style={{
+                    ...styles.button,
+                    ...styles.primaryButton,
+                    textDecoration: "none",
+                    pointerEvents: canCreateInvoiceEmail ? "auto" : "none",
+                    opacity: canCreateInvoiceEmail ? 1 : 0.5,
+                  }}
+                  onClick={(event) => {
+                    if (!canCreateInvoiceEmail) {
+                      event.preventDefault();
+                      return;
+                    }
+                    if (!accountForm.bankAccountIban.trim()) {
+                      event.preventDefault();
+                      return;
+                    }
+                    if (offer.billing_status !== "paid") {
+                      onUpdateBillingStatus(offer, "invoiced");
+                    }
+                  }}
+                >
+                  Muodosta laskusähköposti
+                </a>
+                {offer.billing_status !== "paid" ? (
+                  <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "paid")}>Merkitse maksetuksi</button>
+                ) : null}
+                {offer.billing_status !== "unbilled" ? (
+                  <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "unbilled")}>Palauta laskuttamattomaksi</button>
+                ) : null}
+              </div>
+
+              {!accountForm.bankAccountIban.trim() ? (
+                <div style={styles.noticeError}>Lisää IBAN pankkitietoihin ennen laskusähköpostin muodostamista.</div>
+              ) : null}
+              {!invoiceEmailLink ? (
+                <div style={styles.noticeError}>Ostajalle ei ole tallennettu laskutussähköpostia.</div>
+              ) : null}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const publicBatchId = getRequestedPublicBatchId();
   const requestedOfferId = getRequestedOfferId();
@@ -3579,6 +3813,8 @@ export default function App() {
     billingCity: "",
     billingEmail: "",
     einvoiceAddress: "",
+    bankAccountIban: "",
+    bankBic: "",
     contactEmail: "",
     phone: "",
     contactName: "",
@@ -4531,6 +4767,8 @@ export default function App() {
       billingCity: profile.billing_city || linkedBuyerRecord?.billing_city || "",
       billingEmail: profile.billing_email || linkedBuyerRecord?.billing_email || "",
       einvoiceAddress: profile.einvoice_address || "",
+      bankAccountIban: profile.bank_account_iban || "",
+      bankBic: profile.bank_bic || "",
       contactEmail: profile.contact_email || profile.email || "",
       phone: profile.phone || linkedBuyerRecord?.phone || "",
       contactName: linkedBuyerRecord?.contact_name || "",
@@ -4986,6 +5224,8 @@ export default function App() {
               billing_city: accountForm.billingCity.trim() || null,
               billing_email: accountForm.billingEmail.trim().toLowerCase() || null,
               einvoice_address: accountForm.einvoiceAddress.trim() || null,
+              bank_account_iban: accountForm.bankAccountIban.trim() || null,
+              bank_bic: accountForm.bankBic.trim() || null,
               contact_email: accountForm.contactEmail.trim().toLowerCase() || null,
               phone: accountForm.phone.trim() || null,
             }
@@ -5004,6 +5244,8 @@ export default function App() {
               billing_city: accountForm.billingCity.trim() || null,
               billing_email: accountForm.billingEmail.trim().toLowerCase() || null,
               einvoice_address: accountForm.einvoiceAddress.trim() || null,
+              bank_account_iban: accountForm.bankAccountIban.trim() || null,
+              bank_bic: accountForm.bankBic.trim() || null,
               contact_email: accountForm.contactEmail.trim().toLowerCase() || null,
               phone: accountForm.phone.trim() || null,
             }
@@ -7444,6 +7686,8 @@ export default function App() {
 
   const tabStyle = profile.role === "owner"
     ? { ...styles.tabs, gridTemplateColumns: "repeat(8, minmax(0, 1fr))" }
+    : profile.role === "member"
+    ? { ...styles.tabs6, gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }
     : styles.tabs6;
   const grid3 = responsiveGridStyle(styles.grid3);
   const grid2 = responsiveGridStyle(styles.grid2);
@@ -7710,6 +7954,7 @@ export default function App() {
           <button style={{ ...styles.tab, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button>
           <button style={{ ...styles.tab, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
           <button style={{ ...styles.tab, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
+          {profile.role === "member" ? <button style={{ ...styles.tab, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => setActiveTab("billing")}>Laskutus</button> : null}
           {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
           {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
           {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => setActiveTab("billing")}>Laskutus</button> : null}
@@ -8513,6 +8758,20 @@ export default function App() {
             buyerOffers={buyerOffers.map((offer) => ({ ...offer, ...calculateCommissionDetails(offer) }))}
             buyerStatusLabel={buyerStatusLabel}
             shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
+            billingFilter={billingFilter}
+            setBillingFilter={setBillingFilter}
+            onUpdateBillingStatus={handleUpdateBillingStatus}
+          />
+        ) : null}
+
+        {activeTab === "billing" && profile.role === "member" ? (
+          <SellerBillingView
+            profile={profile}
+            accountForm={accountForm}
+            setAccountForm={setAccountForm}
+            accountSaving={accountSaving}
+            onSaveBankDetails={handleSaveOwnDetails}
+            buyerOffers={buyerOffers}
             billingFilter={billingFilter}
             setBillingFilter={setBillingFilter}
             onUpdateBillingStatus={handleUpdateBillingStatus}
