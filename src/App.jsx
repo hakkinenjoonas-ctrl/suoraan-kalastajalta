@@ -3426,63 +3426,307 @@ function calculateSellerInvoiceDetails(offer) {
   };
 }
 
-function buildSellerInvoiceEmailLink(offer, sellerProfile) {
-  const invoiceEmail = String(offer?.buyer_billing_email || offer?.buyer_email || "").trim();
-  if (!invoiceEmail) return "";
-
-  const sellerName = String(sellerProfile?.company_name || sellerProfile?.display_name || sellerProfile?.email || "").trim() || "-";
-  const sellerAddress = [
-    String(sellerProfile?.address || "").trim(),
-    [String(sellerProfile?.postcode || "").trim(), String(sellerProfile?.city || "").trim()].filter(Boolean).join(" "),
+function formatInvoicePartyAddress(address, postcode, city) {
+  return [
+    String(address || "").trim(),
+    [String(postcode || "").trim(), String(city || "").trim()].filter(Boolean).join(" "),
   ].filter(Boolean).join(", ");
-  const sellerPhone = String(sellerProfile?.phone || "").trim();
-  const sellerEmail = String(sellerProfile?.contact_email || sellerProfile?.email || "").trim();
-  const sellerBusinessId = String(sellerProfile?.business_id || "").trim();
-  const sellerIban = String(sellerProfile?.bank_account_iban || "").trim();
-  const sellerBic = String(sellerProfile?.bank_bic || "").trim();
-  const buyerName = String(offer?.buyer_company_name || offer?.buyer_contact_name || offer?.buyer_email || "").trim() || "Asiakas";
-  const buyerBillingAddress = [
-    String(offer?.buyer_billing_address || "").trim(),
-    [String(offer?.buyer_billing_postcode || "").trim(), String(offer?.buyer_billing_city || "").trim()].filter(Boolean).join(" "),
-  ].filter(Boolean).join(", ");
-  const buyerDeliveryAddress = [
-    String(offer?.buyer_delivery_address || "").trim(),
-    [String(offer?.buyer_delivery_postcode || "").trim(), String(offer?.buyer_delivery_city || "").trim()].filter(Boolean).join(" "),
-  ].filter(Boolean).join(", ");
-  const invoiceDetails = calculateSellerInvoiceDetails(offer);
-  const catchDates = getOfferSummaryCatchDates(offer?.species_summary);
-  const invoiceBody = [
-    `Hei ${buyerName},`,
-    "",
-    "Tässä lasku hyväksytystä ja toimitetusta kalaerästä.",
-    "",
-    `Laskuttaja: ${sellerName}`,
-    sellerBusinessId ? `Y-tunnus: ${sellerBusinessId}` : "",
-    sellerAddress ? `Osoite: ${sellerAddress}` : "",
-    sellerEmail ? `Sähköposti: ${sellerEmail}` : "",
-    sellerPhone ? `Puhelin: ${sellerPhone}` : "",
-    sellerIban ? `IBAN: ${sellerIban}` : "",
-    sellerBic ? `BIC: ${sellerBic}` : "",
-    "",
-    `Laskutettava: ${buyerName}`,
-    buyerBillingAddress ? `Laskutusosoite: ${buyerBillingAddress}` : "",
-    buyerDeliveryAddress ? `Toimitusosoite: ${buyerDeliveryAddress}` : "",
-    "",
-    `Erä: ${String(formatSpeciesSummaryText(offer?.species_summary) || "-").replace(/\n/g, " | ")}`,
-    catchDates.length > 0 ? `Pyyntipäivämäärä: ${catchDates.join(", ")}` : "",
-    offer?.batch_id ? `Erätunnus: ${offer.batch_id}` : "",
-    `Tuotteet yhteensä: ${euro(invoiceDetails.productTotal)}`,
-    `Toimituskulu: ${euro(invoiceDetails.deliveryCost)}`,
-    `Laskun loppusumma: ${euro(invoiceDetails.grandTotal)}`,
-    "",
-    "Ystävällisin terveisin",
-    sellerName,
-  ].filter((line) => line !== "").join("\n");
-
-  return `mailto:${encodeURIComponent(invoiceEmail)}?subject=${encodeURIComponent(`Lasku kalaerästä ${offer?.batch_id || ""}`.trim())}&body=${encodeURIComponent(invoiceBody)}`;
 }
 
-function SellerBillingView({ profile, accountForm, setAccountForm, accountSaving, onSaveBankDetails, buyerOffers, billingFilter, setBillingFilter, onUpdateBillingStatus }) {
+function calculateFinnishReferenceCheckDigit(baseDigits) {
+  const weights = [7, 3, 1];
+  const sum = String(baseDigits || "")
+    .split("")
+    .reverse()
+    .reduce((total, digit, index) => total + (Number(digit || 0) * weights[index % weights.length]), 0);
+  return (10 - (sum % 10)) % 10;
+}
+
+function formatFinnishReferenceDisplay(referenceNumber) {
+  return String(referenceNumber || "")
+    .replace(/\s+/g, "")
+    .replace(/(.)(?=(.{5})+$)/g, "$1 ")
+    .trim();
+}
+
+function buildSellerInvoiceReference(offer) {
+  const baseDigits = String(offer?.id || "").replace(/\D/g, "").replace(/^0+/, "").slice(0, 18) || "1";
+  return `${baseDigits}${calculateFinnishReferenceCheckDigit(baseDigits)}`;
+}
+
+function buildSellerInvoiceNumber(offer) {
+  const datePart = String(offer?.updated_at || offer?.created_at || today()).slice(0, 10).replace(/\D/g, "") || today().replace(/\D/g, "");
+  const idPart = String(offer?.id || "").replace(/[^a-zA-Z0-9]+/g, "").slice(0, 6).toUpperCase() || "000001";
+  return `LASKU-${datePart}-${idPart}`;
+}
+
+function buildSellerInvoiceDueDate(offer) {
+  const dateValue = new Date(offer?.updated_at || offer?.created_at || new Date().toISOString());
+  if (Number.isNaN(dateValue.getTime())) return today();
+  dateValue.setDate(dateValue.getDate() + 14);
+  return dateValue.toISOString().slice(0, 10);
+}
+
+function parseSellerInvoiceLineItems(offer) {
+  const lines = getOfferSummaryLines(offer?.species_summary);
+  const fallbackQuantity = getOfferQuantityDisplay(offer);
+  const fallbackUnit = getOfferDisplayUnit(offer);
+  const fallbackPrice = Number(offer?.counter_price_per_kg || offer?.price_per_kg || 0);
+
+  const parsedLines = lines.map((line) => {
+    const visibleLine = stripOfferInlineMetaText(line, {
+      hideTraceability: true,
+      hidePrice: true,
+      hideCatchDate: true,
+    });
+    const description = formatSpeciesForSale((visibleLine.split(":")[0] || visibleLine || "Kalaerä").trim());
+    const priceMatch = String(line || "").match(/Hinta\s+([0-9]+(?:[.,][0-9]+)?)/i);
+    const pieceMatch = String(visibleLine || "").match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
+    const kiloMatch = String(visibleLine || "").match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kg/i);
+    const quantity = Number(parseLocaleNumber(pieceMatch?.[1] || kiloMatch?.[1]) || 0);
+    const unit = pieceMatch ? "kpl" : "kg";
+    const unitPrice = Number(parseLocaleNumber(priceMatch?.[1]) || 0);
+
+    return {
+      description,
+      quantity,
+      quantityDisplay: quantity > 0 ? `${quantity.toLocaleString("fi-FI")} ${unit}` : fallbackQuantity,
+      unit,
+      unitPrice,
+      lineTotal: quantity * unitPrice,
+    };
+  }).filter((item) => item.description);
+
+  if (parsedLines.length > 0) return parsedLines;
+
+  const fallbackQuantityValue = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
+  return [{
+    description: formatSpeciesSummaryText(offer?.species_summary) || "Kalaerä",
+    quantity: fallbackQuantityValue,
+    quantityDisplay: fallbackQuantity,
+    unit: fallbackUnit,
+    unitPrice: fallbackPrice,
+    lineTotal: fallbackQuantityValue * fallbackPrice,
+  }];
+}
+
+function drawSellerInvoiceReferenceBarcode(doc, referenceNumber, x, y, width, height) {
+  const code39Patterns = {
+    "0": "nnnwwnwnn",
+    "1": "wnnwnnnnw",
+    "2": "nnwwnnnnw",
+    "3": "wnwwnnnnn",
+    "4": "nnnwwnnnw",
+    "5": "wnnwwnnnn",
+    "6": "nnwwwnnnn",
+    "7": "nnnwnnwnw",
+    "8": "wnnwnnwnn",
+    "9": "nnwwnnwnn",
+    "*": "nwnnwnwnn",
+  };
+  const barcodeValue = `*${String(referenceNumber || "").replace(/\D/g, "") || "0"}*`;
+  const totalUnits = barcodeValue.split("").reduce((sum, char, charIndex) => {
+    const pattern = code39Patterns[char] || code39Patterns["0"];
+    const patternUnits = pattern.split("").reduce((count, marker) => count + (marker === "w" ? 2.8 : 1), 0);
+    return sum + patternUnits + (charIndex < barcodeValue.length - 1 ? 1 : 0);
+  }, 0);
+  const narrowWidth = width / totalUnits;
+  let cursorX = x;
+
+  doc.setFillColor(15, 23, 42);
+  barcodeValue.split("").forEach((char, charIndex) => {
+    const pattern = code39Patterns[char] || code39Patterns["0"];
+    pattern.split("").forEach((marker, markerIndex) => {
+      const barWidth = narrowWidth * (marker === "w" ? 2.8 : 1);
+      if (markerIndex % 2 === 0) {
+        doc.rect(cursorX, y, barWidth, height, "F");
+      }
+      cursorX += barWidth;
+    });
+    if (charIndex < barcodeValue.length - 1) {
+      cursorX += narrowWidth;
+    }
+  });
+}
+
+function getSellerInvoicePayload(offer, sellerProfile) {
+  const invoiceDetails = calculateSellerInvoiceDetails(offer);
+  const referenceNumber = buildSellerInvoiceReference(offer);
+  return {
+    invoiceNumber: buildSellerInvoiceNumber(offer),
+    invoiceDate: today(),
+    dueDate: buildSellerInvoiceDueDate(offer),
+    referenceNumber,
+    referenceDisplay: formatFinnishReferenceDisplay(referenceNumber),
+    sellerName: String(sellerProfile?.company_name || sellerProfile?.display_name || sellerProfile?.email || "").trim() || "-",
+    sellerBusinessId: String(sellerProfile?.business_id || "").trim(),
+    sellerAddress: formatInvoicePartyAddress(sellerProfile?.address, sellerProfile?.postcode, sellerProfile?.city),
+    sellerEmail: String(sellerProfile?.contact_email || sellerProfile?.email || "").trim(),
+    sellerPhone: String(sellerProfile?.phone || "").trim(),
+    sellerIban: String(sellerProfile?.bank_account_iban || "").trim(),
+    sellerBic: String(sellerProfile?.bank_bic || "").trim(),
+    buyerName: String(offer?.buyer_company_name || offer?.buyer_contact_name || offer?.buyer_email || "").trim() || "Asiakas",
+    buyerBillingEmail: String(offer?.buyer_billing_email || offer?.buyer_email || "").trim(),
+    buyerBillingAddress: formatInvoicePartyAddress(offer?.buyer_billing_address, offer?.buyer_billing_postcode, offer?.buyer_billing_city),
+    buyerDeliveryAddress: formatInvoicePartyAddress(offer?.buyer_delivery_address, offer?.buyer_delivery_postcode, offer?.buyer_delivery_city),
+    batchId: String(offer?.batch_id || "").trim(),
+    catchDates: getOfferSummaryCatchDates(offer?.species_summary),
+    areaText: [offer?.area, offer?.spot].map((item) => String(item || "").trim()).filter(Boolean).join(" / "),
+    deliveryMethod: String(offer?.delivery_method || "").trim(),
+    lineItems: parseSellerInvoiceLineItems(offer),
+    productTotal: invoiceDetails.productTotal,
+    deliveryCost: invoiceDetails.deliveryCost,
+    grandTotal: invoiceDetails.grandTotal,
+  };
+}
+
+function buildSellerInvoicePdfDoc(offer, sellerProfile) {
+  const invoice = getSellerInvoicePayload(offer, sellerProfile);
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+  const leftX = 16;
+  const rightX = 194;
+  let y = 18;
+
+  doc.setFillColor(239, 246, 255);
+  doc.rect(0, 0, 210, 44, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(22);
+  doc.setTextColor(15, 23, 42);
+  doc.text("LASKU", leftX, y + 2);
+  doc.setFontSize(14);
+  doc.setTextColor(30, 64, 175);
+  doc.text("Suoraan Kalastajalta", leftX, y + 12);
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text(invoice.invoiceNumber, rightX, y + 1, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`Laskun päiväys: ${invoice.invoiceDate}`, rightX, y + 8, { align: "right" });
+  doc.text(`Eräpäivä: ${invoice.dueDate}`, rightX, y + 14, { align: "right" });
+
+  y = 58;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Laskuttaja", leftX, y);
+  doc.text("Laskutettava", 120, y);
+  y += 6;
+
+  const sellerLines = [
+    invoice.sellerName,
+    invoice.sellerBusinessId ? `Y-tunnus: ${invoice.sellerBusinessId}` : "",
+    invoice.sellerAddress,
+    invoice.sellerEmail,
+    invoice.sellerPhone,
+  ].filter(Boolean);
+  const buyerLines = [
+    invoice.buyerName,
+    invoice.buyerBillingAddress,
+    invoice.buyerBillingEmail,
+    invoice.buyerDeliveryAddress ? `Toimitusosoite: ${invoice.buyerDeliveryAddress}` : "",
+  ].filter(Boolean);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  sellerLines.forEach((line, index) => doc.text(String(line), leftX, y + (index * 5)));
+  buyerLines.forEach((line, index) => doc.text(String(line), 120, y + (index * 5)));
+
+  y = 96;
+  doc.setFillColor(15, 23, 42);
+  doc.rect(leftX, y - 6, 178, 9, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.5);
+  doc.setTextColor(255, 255, 255);
+  doc.text("Tuote", leftX + 2, y);
+  doc.text("Määrä", 120, y);
+  doc.text("Yksikköhinta", 148, y, { align: "right" });
+  doc.text("Yhteensä", rightX - 2, y, { align: "right" });
+
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  invoice.lineItems.forEach((item) => {
+    const itemLines = doc.splitTextToSize(item.description, 90);
+    const rowHeight = Math.max(8, itemLines.length * 5);
+    if (y + rowHeight > 207) {
+      doc.addPage("a4", "portrait");
+      y = 24;
+    }
+    doc.text(itemLines, leftX + 2, y);
+    doc.text(item.quantityDisplay || "-", 120, y);
+    doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", 148, y, { align: "right" });
+    doc.text(euro(item.lineTotal || 0), rightX - 2, y, { align: "right" });
+    doc.setDrawColor(226, 232, 240);
+    doc.line(leftX, y + rowHeight - 2, rightX, y + rowHeight - 2);
+    y += rowHeight;
+  });
+
+  if (invoice.deliveryCost > 0) {
+    doc.text("Toimituskulu", leftX + 2, y + 2);
+    doc.text(euro(invoice.deliveryCost), rightX - 2, y + 2, { align: "right" });
+  }
+
+  const totalsY = 214;
+  doc.setFillColor(239, 246, 255);
+  doc.roundedRect(122, totalsY - 8, 72, 28, 2, 2, "F");
+  doc.text("Tuotteet yhteensä", 126, totalsY);
+  doc.text(euro(invoice.productTotal), 190, totalsY, { align: "right" });
+  doc.text("Toimituskulu", 126, totalsY + 7);
+  doc.text(euro(invoice.deliveryCost), 190, totalsY + 7, { align: "right" });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("Maksettava yhteensä", 126, totalsY + 16);
+  doc.text(euro(invoice.grandTotal), 190, totalsY + 16, { align: "right" });
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Maksutiedot", leftX, 222);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`IBAN: ${invoice.sellerIban || "-"}`, leftX, 229);
+  doc.text(`BIC: ${invoice.sellerBic || "-"}`, leftX, 235);
+  doc.text(`Viitenumero: ${invoice.referenceDisplay}`, leftX, 241);
+  doc.text(`Erätunnus: ${invoice.batchId || "-"}`, leftX, 247);
+  if (invoice.catchDates.length > 0) doc.text(`Pyyntipäivämäärä: ${invoice.catchDates.join(", ")}`, leftX, 253);
+  if (invoice.areaText) doc.text(`Kalastamisalue: ${invoice.areaText}`, leftX, 259);
+  if (invoice.deliveryMethod) doc.text(`Toimitustapa: ${invoice.deliveryMethod}`, leftX, 265);
+  drawSellerInvoiceReferenceBarcode(doc, invoice.referenceNumber, leftX, 270, 120, 14);
+  doc.setFontSize(9);
+  doc.text(`Viite ${invoice.referenceDisplay}`, leftX, 289);
+
+  return { doc, invoice };
+}
+
+async function openSellerInvoicePdf(offer, sellerProfile) {
+  const { doc, invoice } = buildSellerInvoicePdfDoc(offer, sellerProfile);
+  if (typeof window !== "undefined") {
+    window.open(URL.createObjectURL(doc.output("blob")), "_blank", "noopener,noreferrer");
+  }
+  return invoice;
+}
+
+async function buildSellerInvoiceEmailAttachment(offer, sellerProfile) {
+  const { doc, invoice } = buildSellerInvoicePdfDoc(offer, sellerProfile);
+  return {
+    invoice,
+    fileName: `${invoice.invoiceNumber}.pdf`,
+    pdfBase64: String(doc.output("datauristring") || "").split(",")[1] || "",
+  };
+}
+
+function SellerBillingView({
+  profile,
+  accountForm,
+  setAccountForm,
+  accountSaving,
+  onSaveBankDetails,
+  buyerOffers,
+  billingFilter,
+  setBillingFilter,
+  onOpenInvoicePdf,
+  onSendInvoicePdf,
+  onUpdateBillingStatus,
+}) {
   const sellerDeliveredOffers = (buyerOffers || []).filter((offer) => (
     offer.status === "accepted" &&
     offer.fulfillment_status === "delivered" &&
@@ -3548,8 +3792,8 @@ function SellerBillingView({ profile, accountForm, setAccountForm, accountSaving
       ) : (
         sellerDeliveredOffers.map((offer) => {
           const invoiceDetails = calculateSellerInvoiceDetails(offer);
-          const invoiceEmailLink = buildSellerInvoiceEmailLink(offer, profile);
-          const canCreateInvoiceEmail = Boolean(invoiceEmailLink) && Boolean(accountForm.bankAccountIban.trim());
+          const invoicePayload = getSellerInvoicePayload(offer, profile);
+          const canCreateInvoicePdf = Boolean(accountForm.bankAccountIban.trim()) && Boolean(invoicePayload.buyerBillingEmail);
           const billingAddress = [
             offer.buyer_billing_address,
             [offer.buyer_billing_postcode, offer.buyer_billing_city].filter(Boolean).join(" "),
@@ -3595,31 +3839,20 @@ function SellerBillingView({ profile, accountForm, setAccountForm, accountSaving
               {offer.buyer_billing_email ? <div style={styles.muted}><strong>Laskutussähköposti:</strong> {offer.buyer_billing_email}</div> : null}
 
               <div style={styles.row}>
-                <a
-                  href={canCreateInvoiceEmail ? invoiceEmailLink : undefined}
-                  style={{
-                    ...styles.button,
-                    ...styles.primaryButton,
-                    textDecoration: "none",
-                    pointerEvents: canCreateInvoiceEmail ? "auto" : "none",
-                    opacity: canCreateInvoiceEmail ? 1 : 0.5,
-                  }}
-                  onClick={(event) => {
-                    if (!canCreateInvoiceEmail) {
-                      event.preventDefault();
-                      return;
-                    }
-                    if (!accountForm.bankAccountIban.trim()) {
-                      event.preventDefault();
-                      return;
-                    }
-                    if (offer.billing_status !== "paid") {
-                      onUpdateBillingStatus(offer, "invoiced");
-                    }
-                  }}
+                <button
+                  style={styles.button}
+                  onClick={() => onOpenInvoicePdf(offer)}
+                  disabled={!accountForm.bankAccountIban.trim()}
                 >
-                  Muodosta laskusähköposti
-                </a>
+                  Luo PDF
+                </button>
+                <button
+                  style={{ ...styles.button, ...styles.primaryButton }}
+                  onClick={() => onSendInvoicePdf(offer)}
+                  disabled={!canCreateInvoicePdf}
+                >
+                  Lähetä PDF sähköpostilla
+                </button>
                 {offer.billing_status !== "paid" ? (
                   <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "paid")}>Merkitse maksetuksi</button>
                 ) : null}
@@ -3631,7 +3864,7 @@ function SellerBillingView({ profile, accountForm, setAccountForm, accountSaving
               {!accountForm.bankAccountIban.trim() ? (
                 <div style={styles.noticeError}>Lisää IBAN pankkitietoihin ennen laskusähköpostin muodostamista.</div>
               ) : null}
-              {!invoiceEmailLink ? (
+              {!invoicePayload.buyerBillingEmail ? (
                 <div style={styles.noticeError}>Ostajalle ei ole tallennettu laskutussähköpostia.</div>
               ) : null}
             </div>
@@ -6181,6 +6414,58 @@ export default function App() {
         : "Kauppa palautettu laskuttamattomaksi."
     );
     setRefreshTick((prev) => prev + 1);
+  };
+
+  const handleOpenSellerInvoicePdf = async (offer) => {
+    if (!profile?.bank_account_iban) {
+      setAuthError("Lisää IBAN pankkitietoihin ennen lasku-PDF:n muodostamista.");
+      return;
+    }
+    setAuthError("");
+    await openSellerInvoicePdf(offer, profile);
+  };
+
+  const handleSendSellerInvoicePdf = async (offer) => {
+    if (!profile?.bank_account_iban) {
+      setAuthError("Lisää IBAN pankkitietoihin ennen laskun lähettämistä.");
+      return;
+    }
+
+    const attachment = await buildSellerInvoiceEmailAttachment(offer, profile);
+    if (!attachment.invoice.buyerBillingEmail) {
+      setAuthError("Ostajalle ei ole tallennettu laskutussähköpostia.");
+      return;
+    }
+    if (!attachment.pdfBase64) {
+      setAuthError("Lasku-PDF:n muodostus epäonnistui.");
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    const { error } = await invokeEdgeFunctionAuthenticated("send-seller-invoice-email", {
+      invoiceEmail: attachment.invoice.buyerBillingEmail,
+      invoiceNumber: attachment.invoice.invoiceNumber,
+      referenceNumber: attachment.invoice.referenceDisplay,
+      sellerName: attachment.invoice.sellerName,
+      buyerName: attachment.invoice.buyerName,
+      totalAmount: euro(attachment.invoice.grandTotal),
+      dueDate: attachment.invoice.dueDate,
+      fileName: attachment.fileName,
+      pdfBase64: attachment.pdfBase64,
+    }, accessToken);
+
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message || "Laskun lähetys epäonnistui.");
+      return;
+    }
+
+    await handleUpdateBillingStatus(offer, "invoiced");
+    setAuthInfo(`Lasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
   };
 
   const updateFulfillmentStatus = async (offer, fulfillmentStatus) => {
@@ -8765,17 +9050,19 @@ export default function App() {
         ) : null}
 
         {activeTab === "billing" && profile.role === "member" ? (
-          <SellerBillingView
-            profile={profile}
-            accountForm={accountForm}
-            setAccountForm={setAccountForm}
-            accountSaving={accountSaving}
-            onSaveBankDetails={handleSaveOwnDetails}
-            buyerOffers={buyerOffers}
-            billingFilter={billingFilter}
-            setBillingFilter={setBillingFilter}
-            onUpdateBillingStatus={handleUpdateBillingStatus}
-          />
+            <SellerBillingView
+              profile={profile}
+              accountForm={accountForm}
+              setAccountForm={setAccountForm}
+              accountSaving={accountSaving}
+              onSaveBankDetails={handleSaveOwnDetails}
+              buyerOffers={buyerOffers}
+              billingFilter={billingFilter}
+              setBillingFilter={setBillingFilter}
+              onOpenInvoicePdf={handleOpenSellerInvoicePdf}
+              onSendInvoicePdf={handleSendSellerInvoicePdf}
+              onUpdateBillingStatus={handleUpdateBillingStatus}
+            />
         ) : null}
 
         {activeTab === "buyers" && profile.role === "owner" ? (
