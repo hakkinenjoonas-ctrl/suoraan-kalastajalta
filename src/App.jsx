@@ -862,19 +862,21 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             .munbyn-main-title { min-width: 0; flex: 1; }
             .species { font-size: 22pt; font-weight: 800; line-height: 1.02; color: #0f172a; }
             .scientific { margin-top: 1.8mm; font-size: 11pt; line-height: 1.18; color: #475569; }
-            .munbyn-brand { flex: 0 0 24mm; display: flex; flex-direction: column; align-items: center; }
-            .munbyn-brand img { width: 18mm; height: 18mm; object-fit: contain; display: block; }
-            .munbyn-brand-text { margin-top: 1.8mm; font-size: 9pt; line-height: 1.05; font-weight: 800; text-align: center; color: #0f172a; }
+            .munbyn-brand { flex: 0 0 30mm; display: flex; flex-direction: column; align-items: center; }
+            .munbyn-brand img { width: 24mm; height: 24mm; object-fit: contain; display: block; }
+            .munbyn-brand-text { margin-top: 1.8mm; font-size: 11pt; line-height: 1.05; font-weight: 800; text-align: center; color: #0f172a; }
             .munbyn-batch {
               margin-top: 7mm;
               padding: 3mm 3.2mm;
               border: 0.45mm solid #93c5fd;
               border-radius: 2.4mm;
               background: #eff6ff;
-              font-size: 12pt;
+              font-size: 11pt;
               line-height: 1.15;
               font-weight: 800;
               color: #0f172a;
+              overflow-wrap: anywhere;
+              word-break: break-word;
             }
             .munbyn-lines { margin-top: 6mm; }
             .line { font-size: 10.5pt; line-height: 1.3; color: #0f172a; margin-bottom: 1.8mm; word-break: break-word; }
@@ -1040,8 +1042,8 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     const pagePaddingX = 7;
     const topPadding = 8;
     const qrSize = 34;
-    const logoMaxWidth = 18;
-    const logoMaxHeight = 18;
+    const logoMaxWidth = 24;
+    const logoMaxHeight = 24;
     const logoAspectRatio = Number(logoDimensions.width || 1) / Number(logoDimensions.height || 1);
     const logoWidth = logoAspectRatio >= 1
       ? logoMaxWidth
@@ -1057,7 +1059,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
       const left = pagePaddingX;
       const right = pageWidth - pagePaddingX;
-      const brandCenterX = right - 12;
+      const brandCenterX = right - 15;
       const brandLogoX = brandCenterX - (logoWidth / 2);
       const brandLogoY = topPadding;
       const titleWidth = 58;
@@ -1068,9 +1070,9 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       }
       doc.setFont("helvetica", "bold");
       doc.setTextColor(15, 23, 42);
-      doc.setFontSize(9);
+      doc.setFontSize(11);
       doc.text("Suoraan", brandCenterX, brandLogoY + logoHeight + 5, { align: "center" });
-      doc.text("Kalastajalta", brandCenterX, brandLogoY + logoHeight + 9, { align: "center" });
+      doc.text("Kalastajalta", brandCenterX, brandLogoY + logoHeight + 10, { align: "center" });
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(22);
@@ -1089,13 +1091,16 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       }
 
       currentY += 2.5;
+      const batchText = `Erätunnus: ${label.batchId || "-"}`;
+      const batchTextLines = doc.splitTextToSize(batchText, 82);
+      const batchBoxHeight = Math.max(10, 5 + (batchTextLines.length * 4.5));
       doc.setFillColor(239, 246, 255);
       doc.setDrawColor(147, 197, 253);
-      doc.roundedRect(left, currentY - 4.3, 64, 10, 1.8, 1.8, "FD");
+      doc.roundedRect(left, currentY - 4.3, 82, batchBoxHeight, 1.8, 1.8, "FD");
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(11.5);
-      doc.text(`Erätunnus: ${label.batchId || "-"}`, left + 2, currentY + 2.1);
-      currentY += 11;
+      doc.setFontSize(10);
+      doc.text(batchTextLines, left + 2, currentY + 2.1);
+      currentY += batchBoxHeight + 1;
 
       const lines = [
         label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
@@ -2366,15 +2371,15 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                         <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.03 }}>{previewLabel.species}</div>
                         {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
                       </div>
-                      <div style={{ width: 78, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 58, height: 58, objectFit: "contain", marginBottom: 4 }} />
-                        <div style={{ fontSize: 10, lineHeight: 1.05, fontWeight: 800, textAlign: "center", color: "#0f172a" }}>
+                      <div style={{ width: 96, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 78, height: 78, objectFit: "contain", marginBottom: 4 }} />
+                        <div style={{ fontSize: 12, lineHeight: 1.05, fontWeight: 800, textAlign: "center", color: "#0f172a" }}>
                           <div>Suoraan</div>
                           <div>Kalastajalta</div>
                         </div>
                       </div>
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 800, padding: "10px 12px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 10 }}>Erätunnus: {previewLabel.batchId}</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.15, padding: "10px 12px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 10, overflowWrap: "anywhere", wordBreak: "break-word" }}>Erätunnus: {previewLabel.batchId}</div>
                     <div style={{ fontSize: 12, lineHeight: 1.3 }}>
                       {previewLabel.catchDate ? <div><strong>Pyyntipäivä:</strong> {previewLabel.catchDate}</div> : null}
                       {previewLabel.catchArea ? <div><strong>Pyyntialue:</strong> {previewLabel.catchArea}</div> : null}
