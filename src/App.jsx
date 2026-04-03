@@ -766,7 +766,22 @@ function getAppLogoUrl() {
   return new URL("/logo.png", window.location.origin).toString();
 }
 
-function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
+const CATCH_LABEL_FORMAT_APLI_1278 = "apli_1278";
+const CATCH_LABEL_FORMAT_MUNBYN_4X6 = "munbyn_4x6";
+const CATCH_LABEL_FORMATS = [
+  {
+    value: CATCH_LABEL_FORMAT_MUNBYN_4X6,
+    label: "MUNBYN 4x6",
+    description: "102 × 152 mm · 1 etiketti / sivu",
+  },
+  {
+    value: CATCH_LABEL_FORMAT_APLI_1278,
+    label: "APLI 1278",
+    description: "57 × 105 mm · 10 etikettiä / arkki",
+  },
+];
+
+function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = CATCH_LABEL_FORMAT_APLI_1278) {
   const count = Math.max(1, Number(labelCount || 1));
   const labels = Array.from({ length: count }, (_, index) => {
     const labelData = buildCatchLabelData(entry, profileLike, index + 1, count);
@@ -776,6 +791,115 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount) {
       logoUrl: getAppLogoUrl(),
     };
   });
+
+  if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
+    const renderMunbynLabel = (label) => `
+      <section class="munbyn-label">
+        <div class="munbyn-header">
+          <div class="munbyn-main-title">
+            <div class="species">${label.species || "-"}</div>
+            ${label.scientificName ? `<div class="scientific">${label.scientificName}</div>` : ""}
+          </div>
+          <div class="munbyn-brand">
+            <img src="${label.logoUrl}" alt="Suoraan Kalastajalta" />
+            <div class="munbyn-brand-text">
+              <div>Suoraan</div>
+              <div>Kalastajalta</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="munbyn-batch">Erätunnus: ${label.batchId || "-"}</div>
+
+        <div class="munbyn-lines">
+          ${label.catchDate ? `<div class="line"><strong>Pyyntipäivä:</strong> ${label.catchDate}</div>` : ""}
+          ${label.catchArea ? `<div class="line"><strong>Pyyntialue:</strong> ${label.catchArea}</div>` : ""}
+          ${label.gearType ? `<div class="line"><strong>Pyyntimenetelmä:</strong> ${label.gearType}</div>` : ""}
+          ${label.productForm ? `<div class="line"><strong>Tuote:</strong> ${label.productForm}</div>` : ""}
+          <div class="line"><strong>Säilytys:</strong> 0–2 °C</div>
+        </div>
+
+        <div class="munbyn-weight">
+          <span class="weight-label">Paino:</span>
+          <span class="weight-write"></span>
+          <span class="weight-unit">kg</span>
+        </div>
+
+        <div class="munbyn-footer">
+          <div class="munbyn-supplier">
+            <div class="line"><strong>Toimittaja:</strong> ${label.supplier || "-"}</div>
+            ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
+            ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
+          </div>
+          <div class="munbyn-qr">
+            <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
+          </div>
+        </div>
+      </section>
+    `;
+
+    return `
+      <!doctype html>
+      <html lang="fi">
+        <head>
+          <meta charset="utf-8" />
+          <title>Kalaetiketit ${String(entry?.batchId || "")}</title>
+          <style>
+            @page { size: 102mm 152mm portrait; margin: 0; }
+            * { box-sizing: border-box; }
+            body { margin: 0; font-family: Inter, Arial, sans-serif; background: #fff; color: #0f172a; }
+            .munbyn-label {
+              width: 102mm;
+              height: 152mm;
+              padding: 8mm 7mm 7mm;
+              page-break-after: always;
+              background: #fff;
+              display: flex;
+              flex-direction: column;
+            }
+            .munbyn-label:last-child { page-break-after: auto; }
+            .munbyn-header { display: flex; justify-content: space-between; gap: 6mm; align-items: flex-start; }
+            .munbyn-main-title { min-width: 0; flex: 1; }
+            .species { font-size: 22pt; font-weight: 800; line-height: 1.02; color: #0f172a; }
+            .scientific { margin-top: 1.8mm; font-size: 11pt; line-height: 1.18; color: #475569; }
+            .munbyn-brand { flex: 0 0 24mm; display: flex; flex-direction: column; align-items: center; }
+            .munbyn-brand img { width: 18mm; height: 18mm; object-fit: contain; display: block; }
+            .munbyn-brand-text { margin-top: 1.8mm; font-size: 9pt; line-height: 1.05; font-weight: 800; text-align: center; color: #0f172a; }
+            .munbyn-batch {
+              margin-top: 7mm;
+              padding: 3mm 3.2mm;
+              border: 0.45mm solid #93c5fd;
+              border-radius: 2.4mm;
+              background: #eff6ff;
+              font-size: 12pt;
+              line-height: 1.15;
+              font-weight: 800;
+              color: #0f172a;
+            }
+            .munbyn-lines { margin-top: 6mm; }
+            .line { font-size: 10.5pt; line-height: 1.3; color: #0f172a; margin-bottom: 1.8mm; word-break: break-word; }
+            .munbyn-weight { margin-top: 7mm; display: flex; align-items: flex-end; gap: 2mm; min-height: 12mm; }
+            .weight-label, .weight-unit { font-size: 11pt; font-weight: 800; color: #0f172a; white-space: nowrap; }
+            .weight-write { flex: 1; border-bottom: 0.8mm solid #0f172a; min-height: 9mm; }
+            .munbyn-footer { margin-top: auto; display: flex; justify-content: space-between; gap: 5mm; align-items: flex-end; }
+            .munbyn-supplier { min-width: 0; flex: 1; }
+            .munbyn-qr { flex: 0 0 34mm; }
+            .munbyn-qr img {
+              width: 34mm;
+              height: 34mm;
+              object-fit: contain;
+              display: block;
+              background: #fff;
+              border: 0.45mm solid #cbd5e1;
+              border-radius: 2mm;
+              padding: 1.3mm;
+            }
+          </style>
+        </head>
+        <body>${labels.map((label) => renderMunbynLabel(label)).join("")}</body>
+      </html>
+    `;
+  }
 
   const pages = [];
   for (let index = 0; index < labels.length; index += 10) {
@@ -894,7 +1018,7 @@ function buildCatchLabelPdfFileName(entry) {
   return `kalaetiketit-${String(entry?.batchId || "era").replace(/[^a-zA-Z0-9-_]+/g, "_")}.pdf`;
 }
 
-async function buildCatchLabelPdf(entry, profileLike, labelCount) {
+async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = CATCH_LABEL_FORMAT_APLI_1278) {
   const count = Math.max(1, Number(labelCount || 1));
   const labels = Array.from({ length: count }, (_, index) => buildCatchLabelData(entry, profileLike, index + 1, count));
   const [qrDataUrls, logoDataUrl] = await Promise.all([
@@ -902,6 +1026,123 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount) {
     fetchImageDataUrl(getAppLogoUrl()).catch(() => ""),
   ]);
   const logoDimensions = await loadImageDimensions(logoDataUrl);
+
+  if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: [102, 152],
+      compress: true,
+    });
+
+    const pageWidth = 102;
+    const pageHeight = 152;
+    const pagePaddingX = 7;
+    const topPadding = 8;
+    const qrSize = 34;
+    const logoMaxWidth = 18;
+    const logoMaxHeight = 18;
+    const logoAspectRatio = Number(logoDimensions.width || 1) / Number(logoDimensions.height || 1);
+    const logoWidth = logoAspectRatio >= 1
+      ? logoMaxWidth
+      : Math.min(logoMaxWidth, logoMaxHeight * logoAspectRatio);
+    const logoHeight = logoAspectRatio >= 1
+      ? Math.min(logoMaxHeight, logoMaxWidth / logoAspectRatio)
+      : logoMaxHeight;
+
+    labels.forEach((label, index) => {
+      if (index > 0) {
+        doc.addPage([102, 152], "portrait");
+      }
+
+      const left = pagePaddingX;
+      const right = pageWidth - pagePaddingX;
+      const brandCenterX = right - 12;
+      const brandLogoX = brandCenterX - (logoWidth / 2);
+      const brandLogoY = topPadding;
+      const titleWidth = 58;
+      let currentY = 16;
+
+      if (logoDataUrl) {
+        doc.addImage(logoDataUrl, "PNG", brandLogoX, brandLogoY, logoWidth, logoHeight);
+      }
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(9);
+      doc.text("Suoraan", brandCenterX, brandLogoY + logoHeight + 5, { align: "center" });
+      doc.text("Kalastajalta", brandCenterX, brandLogoY + logoHeight + 9, { align: "center" });
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      const speciesLines = doc.splitTextToSize(label.species || "-", titleWidth);
+      doc.text(speciesLines, left, currentY);
+      currentY += speciesLines.length * 8;
+
+      if (label.scientificName) {
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(71, 85, 105);
+        doc.setFontSize(10);
+        const scientificLines = doc.splitTextToSize(label.scientificName, titleWidth);
+        doc.text(scientificLines, left, currentY);
+        currentY += scientificLines.length * 4.8;
+        doc.setTextColor(15, 23, 42);
+      }
+
+      currentY += 2.5;
+      doc.setFillColor(239, 246, 255);
+      doc.setDrawColor(147, 197, 253);
+      doc.roundedRect(left, currentY - 4.3, 64, 10, 1.8, 1.8, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11.5);
+      doc.text(`Erätunnus: ${label.batchId || "-"}`, left + 2, currentY + 2.1);
+      currentY += 11;
+
+      const lines = [
+        label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+        label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
+        label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
+        label.productForm ? `Tuote: ${label.productForm}` : "",
+        "Säilytys: 0–2 °C",
+      ].filter(Boolean);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10.5);
+      lines.forEach((line) => {
+        const wrapped = doc.splitTextToSize(line, 84);
+        doc.text(wrapped, left, currentY);
+        currentY += wrapped.length * 5.2;
+      });
+
+      const qrX = right - qrSize;
+      const qrY = pageHeight - 41;
+      const supplierLines = [
+        `Toimittaja: ${label.supplier || "-"}`,
+        label.supplierAddress || "",
+        label.supplierContact || "",
+      ].filter(Boolean).flatMap((line) => doc.splitTextToSize(line, 47));
+      const supplierLineHeight = 4.4;
+      const supplierStartY = pageHeight - 10 - ((supplierLines.length - 1) * supplierLineHeight);
+      const weightY = supplierStartY - 16;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text("Paino:", left, weightY);
+      doc.setLineWidth(0.8);
+      doc.setDrawColor(15, 23, 42);
+      doc.line(left + 15, weightY + 0.4, qrX - 3, weightY + 0.4);
+      doc.text("kg", qrX - 1.8, weightY);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10.2);
+      supplierLines.forEach((line, supplierIndex) => {
+        doc.text(line, left, supplierStartY + (supplierIndex * supplierLineHeight));
+      });
+
+      doc.addImage(qrDataUrls[index], "PNG", qrX, qrY, qrSize, qrSize);
+    });
+
+    return doc;
+  }
 
   const doc = new jsPDF({
     orientation: "portrait",
@@ -2000,18 +2241,20 @@ function PublicBatchView({ batchId, data, loading, error }) {
   );
 }
 
-function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, onClose, onGeneratePdf, onPrint }) {
+function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, printFormat, setPrintFormat, onClose, onGeneratePdf, onPrint }) {
   if (!entry) return null;
 
   const previewLabel = buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)));
   const previewQrImageUrl = getCatchLabelQrImageUrl(previewLabel);
   const previewLogoUrl = getAppLogoUrl();
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  const previewBaseWidth = 420;
-  const previewBaseHeight = (previewBaseWidth * 57) / 105;
+  const isMunbynFormat = printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6;
+  const previewBaseWidth = isMunbynFormat ? 320 : 420;
+  const previewBaseHeight = isMunbynFormat ? (previewBaseWidth * 152) / 102 : (previewBaseWidth * 57) / 105;
   const previewScale = isMobile && typeof window !== "undefined"
     ? Math.min(1, Math.max(0.62, (window.innerWidth - 72) / previewBaseWidth))
     : 1;
+  const formatDetails = CATCH_LABEL_FORMATS.find((formatOption) => formatOption.value === printFormat) || CATCH_LABEL_FORMATS[0];
 
   return (
     <div style={{
@@ -2058,7 +2301,34 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, onClo
                 onChange={(e) => setLabelCount(Math.max(1, Number(e.target.value || 1)))}
               />
             </div>
-            <div style={styles.small}>APLI 1278 · 57 × 105 mm · 10 etikettiä / arkki. “Luo PDF” avaa tulostusikkunan, jossa voit tallentaa PDF:n.</div>
+            <div style={styles.field}>
+              <label>Tulostuspohja</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                {CATCH_LABEL_FORMATS.map((formatOption) => {
+                  const isActive = formatOption.value === printFormat;
+                  return (
+                    <button
+                      key={formatOption.value}
+                      type="button"
+                      onClick={() => setPrintFormat(formatOption.value)}
+                      style={{
+                        ...styles.button,
+                        ...(isActive ? styles.primaryButton : {}),
+                        padding: "14px 12px",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-start",
+                        gap: 4,
+                      }}
+                    >
+                      <span>{formatOption.label}</span>
+                      <span style={{ fontSize: 12, opacity: isActive ? 0.95 : 0.8, fontWeight: 600, textAlign: "left" }}>{formatOption.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={styles.small}>{formatDetails.label} · {formatDetails.description}. “Luo PDF” avaa tulostusikkunan, jossa voit tallentaa PDF:n.</div>
             <div style={{ ...styles.row, flexWrap: "wrap" }}>
               <button style={{ ...styles.button, ...styles.primaryButton }} onClick={onGeneratePdf}>Luo PDF</button>
               <button style={styles.button} onClick={onPrint}>Tulosta</button>
@@ -2080,49 +2350,90 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, onClo
               <div style={{
                 width: previewBaseWidth,
                 minWidth: previewBaseWidth,
-                aspectRatio: "105 / 57",
+                aspectRatio: isMunbynFormat ? "102 / 152" : "105 / 57",
                 background: "#fff",
-                padding: 14,
+                padding: isMunbynFormat ? 20 : 14,
                 display: "grid",
-                gridTemplateColumns: "1fr 96px",
-                gap: 12,
+                gridTemplateColumns: isMunbynFormat ? "1fr" : "1fr 96px",
+                gap: isMunbynFormat ? 14 : 12,
                 transform: `scale(${previewScale})`,
                 transformOrigin: "top center",
               }}>
-                <div style={{ display: "flex", flexDirection: "column", paddingLeft: 12, minWidth: 0 }}>
-                  <div>
-                    <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.03 }}>{previewLabel.species}</div>
-                    {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
-                    <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800, padding: "6px 8px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8 }}>Erätunnus: {previewLabel.batchId}</div>
-                    {previewLabel.catchArea ? <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.12 }}>Pyyntialue: {previewLabel.catchArea}</div> : null}
-                    {previewLabel.gearType ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntimenetelmä: {previewLabel.gearType}</div> : null}
-                    {previewLabel.catchDate ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
-                    {previewLabel.productForm ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Tuote: {previewLabel.productForm}</div> : null}
-                    <div style={{ fontSize: 12, lineHeight: 1.12 }}>Säilytys: 0–2 °C</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginTop: 12, minHeight: 24 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>Paino:</span>
-                    <span style={{ flex: 1, borderBottom: "2px solid #0f172a", height: 18 }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>kg</span>
-                  </div>
-                  <div style={{ marginTop: "auto", fontSize: 12, lineHeight: 1.12 }}>
-                    <div>Toimittaja: {previewLabel.supplier}</div>
-                    {previewLabel.supplierAddress ? <div>{previewLabel.supplierAddress}</div> : null}
-                    {previewLabel.supplierContact ? <div>{previewLabel.supplierContact}</div> : null}
-                  </div>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4 }}>
-                    <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 48, height: 48, objectFit: "contain", marginBottom: 4 }} />
-                    <div style={{ fontSize: 10, lineHeight: 1.05, fontWeight: 700, textAlign: "center", color: "#0f172a" }}>
-                      <div>Suoraan</div>
-                      <div>Kalastajalta</div>
+                {isMunbynFormat ? (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.03 }}>{previewLabel.species}</div>
+                        {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
+                      </div>
+                      <div style={{ width: 78, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 58, height: 58, objectFit: "contain", marginBottom: 4 }} />
+                        <div style={{ fontSize: 10, lineHeight: 1.05, fontWeight: 800, textAlign: "center", color: "#0f172a" }}>
+                          <div>Suoraan</div>
+                          <div>Kalastajalta</div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-start", width: "100%" }}>
-                    <img src={previewQrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 82, height: 82, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff" }} />
-                  </div>
-                </div>
+                    <div style={{ fontSize: 14, fontWeight: 800, padding: "10px 12px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 10 }}>Erätunnus: {previewLabel.batchId}</div>
+                    <div style={{ fontSize: 12, lineHeight: 1.3 }}>
+                      {previewLabel.catchDate ? <div><strong>Pyyntipäivä:</strong> {previewLabel.catchDate}</div> : null}
+                      {previewLabel.catchArea ? <div><strong>Pyyntialue:</strong> {previewLabel.catchArea}</div> : null}
+                      {previewLabel.gearType ? <div><strong>Pyyntimenetelmä:</strong> {previewLabel.gearType}</div> : null}
+                      {previewLabel.productForm ? <div><strong>Tuote:</strong> {previewLabel.productForm}</div> : null}
+                      <div><strong>Säilytys:</strong> 0–2 °C</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginTop: 4, minHeight: 36 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>Paino:</span>
+                      <span style={{ flex: 1, borderBottom: "3px solid #0f172a", height: 26 }} />
+                      <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>kg</span>
+                    </div>
+                    <div style={{ marginTop: "auto", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ minWidth: 0, flex: 1, fontSize: 12, lineHeight: 1.2 }}>
+                        <div><strong>Toimittaja:</strong> {previewLabel.supplier}</div>
+                        {previewLabel.supplierAddress ? <div>{previewLabel.supplierAddress}</div> : null}
+                        {previewLabel.supplierContact ? <div>{previewLabel.supplierContact}</div> : null}
+                      </div>
+                      <img src={previewQrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 108, height: 108, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff", flexShrink: 0 }} />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", flexDirection: "column", paddingLeft: 12, minWidth: 0 }}>
+                      <div>
+                        <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.03 }}>{previewLabel.species}</div>
+                        {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
+                        <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800, padding: "6px 8px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8 }}>Erätunnus: {previewLabel.batchId}</div>
+                        {previewLabel.catchArea ? <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.12 }}>Pyyntialue: {previewLabel.catchArea}</div> : null}
+                        {previewLabel.gearType ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntimenetelmä: {previewLabel.gearType}</div> : null}
+                        {previewLabel.catchDate ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
+                        {previewLabel.productForm ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Tuote: {previewLabel.productForm}</div> : null}
+                        <div style={{ fontSize: 12, lineHeight: 1.12 }}>Säilytys: 0–2 °C</div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginTop: 12, minHeight: 24 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>Paino:</span>
+                        <span style={{ flex: 1, borderBottom: "2px solid #0f172a", height: 18 }} />
+                        <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>kg</span>
+                      </div>
+                      <div style={{ marginTop: "auto", fontSize: 12, lineHeight: 1.12 }}>
+                        <div>Toimittaja: {previewLabel.supplier}</div>
+                        {previewLabel.supplierAddress ? <div>{previewLabel.supplierAddress}</div> : null}
+                        {previewLabel.supplierContact ? <div>{previewLabel.supplierContact}</div> : null}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4 }}>
+                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 48, height: 48, objectFit: "contain", marginBottom: 4 }} />
+                        <div style={{ fontSize: 10, lineHeight: 1.05, fontWeight: 700, textAlign: "center", color: "#0f172a" }}>
+                          <div>Suoraan</div>
+                          <div>Kalastajalta</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-start", width: "100%" }}>
+                        <img src={previewQrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 82, height: 82, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff" }} />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -3284,6 +3595,7 @@ export default function App() {
   const [publicBatchError, setPublicBatchError] = useState("");
   const [labelPrintEntry, setLabelPrintEntry] = useState(null);
   const [labelPrintCount, setLabelPrintCount] = useState(10);
+  const [labelPrintFormat, setLabelPrintFormat] = useState(CATCH_LABEL_FORMAT_MUNBYN_4X6);
   const accountFormSyncingRef = useRef(false);
   const fisherInfoSyncingRef = useRef(false);
   const accountFormInitializedRef = useRef(false);
@@ -6624,7 +6936,7 @@ export default function App() {
     if (mode === "pdf") {
       void (async () => {
         try {
-          const doc = await buildCatchLabelPdf(entry, profile, labelPrintCount);
+          const doc = await buildCatchLabelPdf(entry, profile, labelPrintCount, labelPrintFormat);
           const blobUrl = doc.output("bloburl");
           const pdfWindow = window.open(blobUrl, "_blank");
           if (!pdfWindow) {
@@ -6645,7 +6957,7 @@ export default function App() {
       })();
       return;
     }
-    const html = buildCatchLabelPrintHtml(entry, profile, labelPrintCount);
+    const html = buildCatchLabelPrintHtml(entry, profile, labelPrintCount, labelPrintFormat);
     const printWindow = window.open("", "_blank", "width=1200,height=900");
     if (!printWindow) {
       setAuthError("Tulostusikkunan avaaminen estettiin selaimessa.");
@@ -8397,6 +8709,8 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             profile={profile}
             labelCount={labelPrintCount}
             setLabelCount={setLabelPrintCount}
+            printFormat={labelPrintFormat}
+            setPrintFormat={setLabelPrintFormat}
             onClose={() => setLabelPrintEntry(null)}
             onGeneratePdf={() => openCatchLabelPrintDialog(labelPrintEntry, "pdf")}
             onPrint={() => openCatchLabelPrintDialog(labelPrintEntry, "print")}
