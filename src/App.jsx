@@ -3414,19 +3414,25 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
 }
 
 function calculateSellerInvoiceDetails(offer) {
+  const vatRate = 0.135;
   const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
   const unitPrice = Number(offer?.counter_price_per_kg || offer?.price_per_kg || 0);
   const productTotalFromQuantity = kilos * unitPrice;
   const productTotalFromSummary = parseTradeValueFromSpeciesSummary(offer?.species_summary);
   const productTotal = productTotalFromQuantity > 0 ? productTotalFromQuantity : productTotalFromSummary;
   const deliveryCost = Number(offer?.delivery_cost ?? offer?.route_price_eur ?? 0) || 0;
-  const grandTotal = productTotal + deliveryCost;
+  const netTotal = productTotal + deliveryCost;
+  const vatAmount = netTotal * vatRate;
+  const grandTotal = netTotal + vatAmount;
 
   return {
+    vatRate,
     kilos,
     unitPrice,
     productTotal,
     deliveryCost,
+    netTotal,
+    vatAmount,
     grandTotal,
   };
 }
@@ -3579,8 +3585,11 @@ function getSellerInvoicePayload(offer, sellerProfile) {
     areaText: [offer?.area, offer?.spot].map((item) => String(item || "").trim()).filter(Boolean).join(" / "),
     deliveryMethod: String(offer?.delivery_method || "").trim(),
     lineItems: parseSellerInvoiceLineItems(offer),
+    vatRate: invoiceDetails.vatRate,
     productTotal: invoiceDetails.productTotal,
     deliveryCost: invoiceDetails.deliveryCost,
+    netTotal: invoiceDetails.netTotal,
+    vatAmount: invoiceDetails.vatAmount,
     grandTotal: invoiceDetails.grandTotal,
   };
 }
@@ -3643,7 +3652,7 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
   doc.setTextColor(255, 255, 255);
   doc.text("Tuote", leftX + 2, y);
   doc.text("Määrä", 120, y);
-  doc.text("Yksikköhinta", 148, y, { align: "right" });
+  doc.text("Yksikköhinta ALV 0 %", 148, y, { align: "right" });
   doc.text("Yhteensä", rightX - 2, y, { align: "right" });
 
   y += 8;
@@ -3673,15 +3682,17 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
 
   const totalsY = 214;
   doc.setFillColor(239, 246, 255);
-  doc.roundedRect(122, totalsY - 8, 72, 28, 2, 2, "F");
-  doc.text("Tuotteet yhteensä", 126, totalsY);
-  doc.text(euro(invoice.productTotal), 190, totalsY, { align: "right" });
-  doc.text("Toimituskulu", 126, totalsY + 7);
-  doc.text(euro(invoice.deliveryCost), 190, totalsY + 7, { align: "right" });
+  doc.roundedRect(122, totalsY - 8, 72, 35, 2, 2, "F");
+  doc.text("Veroton yhteensä", 126, totalsY);
+  doc.text(euro(invoice.netTotal), 190, totalsY, { align: "right" });
+  doc.text(`ALV ${(invoice.vatRate * 100).toLocaleString("fi-FI")} %`, 126, totalsY + 7);
+  doc.text(euro(invoice.vatAmount), 190, totalsY + 7, { align: "right" });
+  doc.text("Sis. toimituskulu", 126, totalsY + 14);
+  doc.text(euro(invoice.deliveryCost), 190, totalsY + 14, { align: "right" });
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("Maksettava yhteensä", 126, totalsY + 16);
-  doc.text(euro(invoice.grandTotal), 190, totalsY + 16, { align: "right" });
+  doc.text("Maksettava yhteensä", 126, totalsY + 23);
+  doc.text(euro(invoice.grandTotal), 190, totalsY + 23, { align: "right" });
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
@@ -3822,9 +3833,9 @@ function SellerBillingView({
 
               <div style={styles.entryBadges}>
                 <span style={styles.badge}>{invoiceDetails.kilos} kg</span>
-                <span style={styles.badge}>{euro(invoiceDetails.productTotal)} tuotteet</span>
-                <span style={styles.badge}>{euro(invoiceDetails.deliveryCost)} toimitus</span>
-                <span style={{ ...styles.badge, background: "#eff6ff" }}>{euro(invoiceDetails.grandTotal)} yhteensä</span>
+                <span style={styles.badge}>{euro(invoiceDetails.netTotal)} veroton</span>
+                <span style={styles.badge}>ALV {(invoiceDetails.vatRate * 100).toLocaleString("fi-FI")} % {euro(invoiceDetails.vatAmount)}</span>
+                <span style={{ ...styles.badge, background: "#eff6ff" }}>{euro(invoiceDetails.grandTotal)} lasku</span>
               </div>
 
               <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>
@@ -8648,7 +8659,7 @@ export default function App() {
                       </div>
                       <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
                       <div style={styles.field}>
-                        <label>{`Hinta (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
+                        <label>{`Hinta ALV 0 % (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
                         <input
                           style={styles.input}
                           type="text"
@@ -9002,7 +9013,7 @@ export default function App() {
                           {entry.landingPlace ? <div style={styles.muted}>Purkamispaikka: {entry.landingPlace}</div> : null}
                           {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                           {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
-                          {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>Hinta: {formatEntryPrice(entry.species, entry.pricePerKg)}</div> : null}
+                          {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>Hinta ALV 0 %: {formatEntryPrice(entry.species, entry.pricePerKg)}</div> : null}
                           {entry.gearCount ? <div style={styles.muted}>Pyydysten määrä: {entry.gearCount}</div> : null}
                           {entry.fishingDurationDays ? <div style={styles.muted}>Pyyntiaika: {entry.fishingDurationDays}</div> : null}
                           <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
