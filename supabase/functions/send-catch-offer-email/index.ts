@@ -32,7 +32,7 @@ function formatPrice(value: unknown, unit = "kg") {
   if (value === null || value === undefined || value === "") return "-";
   const number = Number(value);
   if (Number.isNaN(number)) return safeString(value);
-  return `${number.toLocaleString("fi-FI")} €/${unit}`;
+  return `${number.toLocaleString("fi-FI")} €/${unit} (ALV 0 %)`;
 }
 
 function parsePriceFromNotes(notesValue: unknown) {
@@ -52,7 +52,7 @@ function formatMoney(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
   const number = Number(value);
   if (Number.isNaN(number)) return safeString(value) || "-";
-  return `${number.toLocaleString("fi-FI")} €`;
+  return `${number.toLocaleString("fi-FI")} € (ALV 0 %)`;
 }
 
 function formatLineItemQuantity(row: Record<string, unknown>) {
@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Kalalaji</th>
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Tieteellinen nimi</th>
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Määrä</th>
-                  <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Hinta</th>
+          <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Hinta ALV 0 %</th>
                   <th style="padding:14px 16px;border:1px solid #cbd5e1;background:#1e3a8a;text-align:left;">Pyyntipäivämäärä</th>
                 </tr>
               </thead>
