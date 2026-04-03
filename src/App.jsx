@@ -2419,6 +2419,14 @@ function WholesaleOffersView({
             const isCountered = offer.status === "countered";
             const revealIdentity = shouldRevealBuyerIdentity(offer.status);
             const isLinkedOffer = requestedOfferId && offer.id === requestedOfferId;
+            const buyerProfile = buyers.find(
+              (buyer) => buyer.id === offer.buyer_id || buyer.email === (offer.buyer_email || "").toLowerCase(),
+            );
+            const buyerDeliveryAddressText = [
+              offer.buyer_delivery_address || buyerProfile?.delivery_address || "",
+              offer.buyer_delivery_postcode || buyerProfile?.delivery_postcode || "",
+              offer.buyer_delivery_city || buyerProfile?.delivery_city || "",
+            ].filter(Boolean).join(", ");
             return (
               <div
                 key={offer.id}
@@ -2460,6 +2468,14 @@ function WholesaleOffersView({
                   {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
                   {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
                   {revealIdentity ? <div style={styles.muted}><strong>Yhteystiedot:</strong> {offer.buyer_contact_name || "-"} · {offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div> : null}
+                  {revealIdentity && buyerDeliveryAddressText ? (
+                    <div style={{ marginTop: 10, fontSize: 18, fontWeight: 800, lineHeight: 1.25, color: "#0f172a" }}>
+                      Voit nyt toimittaa kalaerän osoitteeseen: {buyerDeliveryAddressText}
+                    </div>
+                  ) : null}
+                  {revealIdentity && buyerDeliveryAddressText ? (
+                    <div style={styles.muted}><strong>Toimitusosoite:</strong> {buyerDeliveryAddressText}</div>
+                  ) : null}
                   {offer.status === "accepted" ? <div style={styles.muted}><strong>Laskutus:</strong> tämä kauppa siirtyy ownerin laskutusnäkymään kuukausikohtaisesti.</div> : null}
                   {canManageBuyerOffer(offer) && offer.status !== "accepted" && offer.status !== "rejected" ? (
                     <div style={{ ...styles.row, marginTop: 12 }}>
@@ -2562,6 +2578,21 @@ function WholesaleOffersView({
                     const revealIdentity = shouldRevealBuyerIdentity(offer.status);
                     const buyerIdentity = revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type);
                     const isLinkedOffer = requestedOfferId && offer.id === requestedOfferId;
+                    const buyerProfile = buyers.find(
+                      (buyer) => buyer.id === offer.buyer_id || buyer.email === (offer.buyer_email || "").toLowerCase(),
+                    );
+                    const buyerDeliveryAddressText = [
+                      offer.buyer_delivery_address || buyerProfile?.delivery_address || "",
+                      offer.buyer_delivery_postcode || buyerProfile?.delivery_postcode || "",
+                      offer.buyer_delivery_city || buyerProfile?.delivery_city || "",
+                    ].filter(Boolean).join(", ");
+                    const buyerBillingAddressText = [
+                      offer.buyer_billing_address || buyerProfile?.billing_address || "",
+                      offer.buyer_billing_postcode || buyerProfile?.billing_postcode || "",
+                      offer.buyer_billing_city || buyerProfile?.billing_city || "",
+                    ].filter(Boolean).join(", ");
+                    const buyerBillingEmail = offer.buyer_billing_email || buyerProfile?.billing_email || "";
+                    const buyerBusinessId = offer.buyer_business_id || buyerProfile?.business_id || "";
 
                     return (
                       <div
@@ -2639,23 +2670,23 @@ function WholesaleOffersView({
                             <div>{offer.buyer_company_name || "-"}</div>
                             <div>{offer.buyer_contact_name || "-"}</div>
                             <div>{offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div>
-                            {(offer.buyer_delivery_address || offer.buyer_delivery_postcode || offer.buyer_delivery_city) ? (
+                            {buyerDeliveryAddressText ? (
                               <div style={{ marginTop: 10, fontSize: 18, fontWeight: 800, lineHeight: 1.25, color: "#0f172a" }}>
-                                Voit nyt toimittaa kalaerän osoitteeseen: {[offer.buyer_delivery_address, offer.buyer_delivery_postcode, offer.buyer_delivery_city].filter(Boolean).join(", ")}
+                                Voit nyt toimittaa kalaerän osoitteeseen: {buyerDeliveryAddressText}
                               </div>
                             ) : null}
-                            {(offer.buyer_delivery_address || offer.buyer_delivery_postcode || offer.buyer_delivery_city) ? (
+                            {buyerDeliveryAddressText ? (
                               <div style={styles.muted}>
-                                Toimitusosoite: {[offer.buyer_delivery_address, offer.buyer_delivery_postcode, offer.buyer_delivery_city].filter(Boolean).join(", ")}
+                                Toimitusosoite: {buyerDeliveryAddressText}
                               </div>
                             ) : null}
-                            {(offer.buyer_billing_address || offer.buyer_billing_postcode || offer.buyer_billing_city) ? (
+                            {buyerBillingAddressText ? (
                               <div style={styles.muted}>
-                                Laskutusosoite: {[offer.buyer_billing_address, offer.buyer_billing_postcode, offer.buyer_billing_city].filter(Boolean).join(", ")}
+                                Laskutusosoite: {buyerBillingAddressText}
                               </div>
                             ) : null}
-                            {offer.buyer_billing_email ? <div style={styles.muted}>Laskutussähköposti: {offer.buyer_billing_email}</div> : null}
-                            {offer.buyer_business_id ? <div style={styles.muted}>Y-tunnus: {offer.buyer_business_id}</div> : null}
+                            {buyerBillingEmail ? <div style={styles.muted}>Laskutussähköposti: {buyerBillingEmail}</div> : null}
+                            {buyerBusinessId ? <div style={styles.muted}>Y-tunnus: {buyerBusinessId}</div> : null}
                             <div style={styles.muted}>Toimituksen tila: {fulfillmentStatusLabel(offer.fulfillment_status)}</div>
                           </div>
                         ) : null}
