@@ -864,7 +864,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             .scientific { margin-top: 1.8mm; font-size: 11pt; line-height: 1.18; color: #475569; }
             .munbyn-brand { flex: 0 0 30mm; display: flex; flex-direction: column; align-items: center; }
             .munbyn-brand img { width: 24mm; height: 24mm; object-fit: contain; display: block; }
-            .munbyn-brand-text { margin-top: 1.8mm; font-size: 11pt; line-height: 1.05; font-weight: 800; text-align: center; color: #0f172a; }
+            .munbyn-brand-text { margin-top: 0.6mm; font-size: 11pt; line-height: 1.05; font-weight: 800; text-align: center; color: #0f172a; }
             .munbyn-batch {
               margin-top: 7mm;
               padding: 3mm 3.2mm;
@@ -1071,8 +1071,8 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       doc.setFont("helvetica", "bold");
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(11);
-      doc.text("Suoraan", brandCenterX, brandLogoY + logoHeight + 5, { align: "center" });
-      doc.text("Kalastajalta", brandCenterX, brandLogoY + logoHeight + 10, { align: "center" });
+      doc.text("Suoraan", brandCenterX, brandLogoY + logoHeight + 3, { align: "center" });
+      doc.text("Kalastajalta", brandCenterX, brandLogoY + logoHeight + 8, { align: "center" });
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(22);
@@ -2372,7 +2372,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                         {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
                       </div>
                       <div style={{ width: 96, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 78, height: 78, objectFit: "contain", marginBottom: 4 }} />
+                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 78, height: 78, objectFit: "contain", marginBottom: 0 }} />
                         <div style={{ fontSize: 12, lineHeight: 1.05, fontWeight: 800, textAlign: "center", color: "#0f172a" }}>
                           <div>Suoraan</div>
                           <div>Kalastajalta</div>
@@ -2427,7 +2427,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4 }}>
-                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 48, height: 48, objectFit: "contain", marginBottom: 4 }} />
+                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 48, height: 48, objectFit: "contain", marginBottom: 0 }} />
                         <div style={{ fontSize: 10, lineHeight: 1.05, fontWeight: 700, textAlign: "center", color: "#0f172a" }}>
                           <div>Suoraan</div>
                           <div>Kalastajalta</div>
