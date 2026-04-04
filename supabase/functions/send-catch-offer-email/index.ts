@@ -19,6 +19,14 @@ function safeString(value: unknown) {
   return String(value || "").trim();
 }
 
+function formatSpeciesNameOnly(value: unknown) {
+  return safeString(value)
+    .replace(/\s*\([^()]+\)\s*/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -76,8 +84,9 @@ function getLineItems(entry: Record<string, unknown>) {
   return rawItems
     .map((item) => {
       const row = (item || {}) as Record<string, unknown>;
-      const species = safeString(row.species);
-      const scientificNames = Array.from(species.matchAll(/\(([^()]+)\)/g)).map((match) => safeString(match[1])).filter(Boolean).join(", ");
+      const rawSpecies = safeString(row.species);
+      const species = formatSpeciesNameOnly(rawSpecies);
+      const scientificNames = Array.from(rawSpecies.matchAll(/\(([^()]+)\)/g)).map((match) => safeString(match[1])).filter(Boolean).join(", ");
       const quantity = formatLineItemQuantity(row);
       const price = formatPrice(row.price_per_kg, safeString(row.price_unit || "kg"));
       const batchId = safeString(row.batch_id);
@@ -233,7 +242,8 @@ Deno.serve(async (req) => {
       return jsonResponse(400, { error: "Missing entry or recipients" });
     }
 
-    const species = safeString(entry.species || "Kalaerä");
+    const rawSpeciesLabel = safeString(entry.species || "Kalaerä");
+    const species = formatSpeciesNameOnly(rawSpeciesLabel) || "Kalaerä";
     const kilos = formatKilos(entry.kilos);
     const rawLineItems = Array.isArray(entry.line_items) ? entry.line_items : [];
     const lineItems = getLineItems(entry as Record<string, unknown>);
@@ -275,7 +285,7 @@ Deno.serve(async (req) => {
       .join("");
 
     const subjectSpecies = mixedOffer
-      ? lineItems.map((item) => item.species.replace(/\s*\([^()]+\)\s*/g, "").trim()).filter(Boolean).join(", ")
+      ? lineItems.map((item) => formatSpeciesNameOnly(item.species)).filter(Boolean).join(", ")
       : species;
     const mixedLabel = mixedOffer
       ? `Monilajinen erä (${subjectSpecies || "useita kalalajeja"})`
