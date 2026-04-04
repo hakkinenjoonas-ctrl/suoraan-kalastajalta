@@ -5371,6 +5371,15 @@ export default function App() {
     );
   }, [profile, linkedBuyerRecord, accountFormDirty]);
 
+  const handleManualRefresh = () => {
+    setAuthError("");
+    setAuthInfo("Päivitetään tietoja...");
+    setRefreshTick((prev) => prev + 1);
+    window.setTimeout(() => {
+      setAuthInfo((current) => (current === "Päivitetään tietoja..." ? "Tiedot päivitetty." : current));
+    }, 700);
+  };
+
   useEffect(() => {
     if (!accountFormInitializedRef.current) {
       accountFormInitializedRef.current = true;
@@ -7984,7 +7993,7 @@ export default function App() {
                 <p style={styles.subtitle}>Ostaja: <strong>{profile.display_name}</strong></p>
               </div>
               <div style={styles.toolbar}>
-                <button style={styles.button} onClick={() => setRefreshTick((prev) => prev + 1)}>Päivitä</button>
+                <button style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
                 <button style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
                 <button style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
               </div>
@@ -8405,7 +8414,7 @@ export default function App() {
                 </select>
               ) : null}
               <span style={styles.badge}>{profile.role === "processor" ? `${totals.totalProcessedKg.toFixed(1)} kg jalosteita` : `${totals.totalKg.toFixed(1)} kg yhteensä`}</span>
-              <button style={styles.button} onClick={() => setRefreshTick((prev) => prev + 1)}>Päivitä</button>
+              <button style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
               <button style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
               <button style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
             </div>
