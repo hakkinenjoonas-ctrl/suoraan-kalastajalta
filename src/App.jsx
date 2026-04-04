@@ -2513,7 +2513,15 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                 min="1"
                 step="1"
                 value={labelCount}
-                onChange={(e) => setLabelCount(Math.max(1, Number(e.target.value || 1)))}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  if (nextValue === "") {
+                    setLabelCount("");
+                    return;
+                  }
+
+                  setLabelCount(Math.max(1, Number(nextValue)));
+                }}
               />
             </div>
             <div style={styles.field}>
