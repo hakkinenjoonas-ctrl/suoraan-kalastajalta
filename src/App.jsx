@@ -5888,13 +5888,25 @@ export default function App() {
           setAccountSaving(false);
           return;
         }
-        const { error: buyerUpdateError } = await supabase.from("buyers").update(buyerPayload).eq("id", linkedBuyerRecord.id);
+        const { data: updatedBuyerRecord, error: buyerUpdateError } = await supabase
+          .from("buyers")
+          .update(buyerPayload)
+          .eq("id", linkedBuyerRecord.id)
+          .select("*")
+          .single();
         if (buyerUpdateError) {
           if (isMissingRefreshTokenError(buyerUpdateError)) {
             await invalidateSession();
             return;
           }
           throw buyerUpdateError;
+        }
+        if (updatedBuyerRecord) {
+          setBuyers((prev) => prev.map((buyer) => (
+            String(buyer.id) === String(updatedBuyerRecord.id)
+              ? { ...buyer, ...updatedBuyerRecord, email: normalizeEmail(updatedBuyerRecord.email || buyer.email || "") }
+              : buyer
+          )));
         }
       }
 
