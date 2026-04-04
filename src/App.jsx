@@ -3817,7 +3817,10 @@ function getSellerInvoicePayload(offer, sellerProfile) {
     sellerIban: String(sellerProfile?.bank_account_iban || "").trim(),
     sellerBic: String(sellerProfile?.bank_bic || "").trim(),
     buyerName: String(offer?.buyer_company_name || offer?.buyer_contact_name || offer?.buyer_email || "").trim() || "Asiakas",
+    buyerBusinessId: String(offer?.buyer_business_id || "").trim(),
+    buyerContactName: String(offer?.buyer_contact_name || "").trim(),
     buyerBillingEmail: String(offer?.buyer_billing_email || offer?.buyer_email || "").trim(),
+    buyerPhone: String(offer?.buyer_phone || "").trim(),
     buyerBillingAddress: formatInvoicePartyAddress(offer?.buyer_billing_address, offer?.buyer_billing_postcode, offer?.buyer_billing_city),
     buyerDeliveryAddress: formatInvoicePartyAddress(offer?.buyer_delivery_address, offer?.buyer_delivery_postcode, offer?.buyer_delivery_city),
     deliveryDate: formatInvoiceDeliveryDate(offer?.updated_at || offer?.created_at),
@@ -3877,8 +3880,11 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
   ].filter(Boolean);
   const buyerLines = [
     invoice.buyerName,
+    invoice.buyerBusinessId ? `Y-tunnus: ${invoice.buyerBusinessId}` : "",
+    invoice.buyerContactName ? `Yhteyshenkilö: ${invoice.buyerContactName}` : "",
     invoice.buyerBillingAddress,
     invoice.buyerBillingEmail,
+    invoice.buyerPhone,
     invoice.buyerDeliveryAddress ? `Toimitusosoite: ${invoice.buyerDeliveryAddress}` : "",
   ].filter(Boolean);
 
