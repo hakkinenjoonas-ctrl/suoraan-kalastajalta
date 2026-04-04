@@ -4354,7 +4354,39 @@ export default function App() {
   const linkedBuyerRecord = useMemo(() => {
     if (!profile || profile.role !== "buyer") return null;
     const normalizedProfileEmail = normalizeEmail(profile.email);
-    return buyers.find((buyer) => buyer.id === profile.buyer_id || normalizeEmail(buyer.email) === normalizedProfileEmail) || null;
+    const exactBuyer = buyers.find((buyer) => String(buyer.id || "") === String(profile.buyer_id || ""));
+    if (exactBuyer) return exactBuyer;
+
+    const emailMatches = buyers.filter((buyer) => normalizeEmail(buyer.email) === normalizedProfileEmail);
+    if (emailMatches.length === 0) return null;
+
+    return [...emailMatches].sort((a, b) => {
+      const aScore = [
+        a.billing_email,
+        a.billing_address,
+        a.billing_postcode,
+        a.billing_city,
+        a.delivery_address,
+        a.delivery_postcode,
+        a.delivery_city,
+        a.company_name,
+        a.business_id,
+        a.phone,
+      ].filter((value) => String(value || "").trim()).length;
+      const bScore = [
+        b.billing_email,
+        b.billing_address,
+        b.billing_postcode,
+        b.billing_city,
+        b.delivery_address,
+        b.delivery_postcode,
+        b.delivery_city,
+        b.company_name,
+        b.business_id,
+        b.phone,
+      ].filter((value) => String(value || "").trim()).length;
+      return bScore - aScore;
+    })[0];
   }, [buyers, profile]);
 
   const activeRoleOption = useMemo(
@@ -5874,7 +5906,9 @@ export default function App() {
               contact_email: accountForm.contactEmail.trim().toLowerCase() || null,
               phone: accountForm.phone.trim() || null,
             }
-          : {}),
+          : linkedBuyerRecord?.id
+            ? { buyer_id: linkedBuyerRecord.id }
+            : {}),
       };
 
       const { data: updatedProfile, error: profileUpdateError } = await supabase
