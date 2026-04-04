@@ -735,6 +735,7 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
     species,
     scientificName,
     batchId: String(entry?.batchId || "").trim(),
+    commercialFishingId: String(entry?.commercialFishingId || profileLike?.commercial_fishing_id || profileLike?.commercialFishingId || "").trim(),
     catchDate: String(entry?.date || "").trim(),
     catchArea: [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / "),
     gearType: String(entry?.gear || "").trim(),
@@ -751,6 +752,7 @@ function getCatchLabelQrImageUrl(labelData) {
     labelData.species || "-",
     labelData.catchDate ? `Pyyntipäivä: ${labelData.catchDate}` : "",
     labelData.batchId ? `Erätunnus: ${labelData.batchId}` : "",
+    labelData.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${labelData.commercialFishingId}` : "",
     labelData.scientificName ? `Tieteellinen nimi: ${labelData.scientificName}` : "",
     labelData.catchArea ? `Pyyntialue: ${labelData.catchArea}` : "",
     labelData.gearType ? `Pyyntimenetelmä: ${labelData.gearType}` : "",
@@ -814,7 +816,8 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
         <div class="munbyn-batch">Erätunnus: ${label.batchId || "-"}</div>
 
         <div class="munbyn-lines">
-          ${label.catchDate ? `<div class="line"><strong>Pyyntipäivä:</strong> ${label.catchDate}</div>` : ""}
+          ${label.catchDate ? `<div class="line catch-date"><strong>Pyyntipäivä:</strong> ${label.catchDate}</div>` : ""}
+          ${label.commercialFishingId ? `<div class="line"><strong>Kaupallisen kalastajan tunnus:</strong> ${label.commercialFishingId}</div>` : ""}
           ${label.catchArea ? `<div class="line"><strong>Pyyntialue:</strong> ${label.catchArea}</div>` : ""}
           ${label.gearType ? `<div class="line"><strong>Pyyntimenetelmä:</strong> ${label.gearType}</div>` : ""}
           ${label.productForm ? `<div class="line"><strong>Tuote:</strong> ${label.productForm}</div>` : ""}
@@ -882,6 +885,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             }
             .munbyn-lines { margin-top: 6mm; }
             .line { font-size: 10.5pt; line-height: 1.3; color: #0f172a; margin-bottom: 1.8mm; word-break: break-word; }
+            .catch-date { font-size: 13pt; line-height: 1.22; font-weight: 700; }
             .munbyn-weight { margin-top: 7mm; display: flex; align-items: flex-end; gap: 2mm; min-height: 12mm; }
             .weight-label, .weight-unit { font-size: 11pt; font-weight: 800; color: #0f172a; white-space: nowrap; }
             .weight-write { flex: 1; border-bottom: 0.8mm solid #0f172a; min-height: 9mm; }
@@ -920,7 +924,8 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             <div class="batch">Erätunnus: ${label.batchId || "-"}</div>
           ${label.catchArea ? `<div class="line">Pyyntialue: ${label.catchArea}</div>` : ""}
           ${label.gearType ? `<div class="line">Pyyntimenetelmä: ${label.gearType}</div>` : ""}
-          ${label.catchDate ? `<div class="line">Pyyntipäivä: ${label.catchDate}</div>` : ""}
+          ${label.catchDate ? `<div class="line catch-date">Pyyntipäivä: ${label.catchDate}</div>` : ""}
+          ${label.commercialFishingId ? `<div class="line">Kaupallisen kalastajan tunnus: ${label.commercialFishingId}</div>` : ""}
           ${label.productForm ? `<div class="line">Tuote: ${label.productForm}</div>` : ""}
           <div class="line">Säilytys: 0–2 °C</div>
         </div>
@@ -968,6 +973,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           .scientific { font-size: 6.2pt; line-height: 1.12; color: #475569; margin-bottom: 0.7mm; }
           .batch { font-size: 7.2pt; font-weight: 800; background: #eff6ff; border: 0.22mm solid #93c5fd; border-radius: 1.2mm; padding: 0.7mm 0.9mm; margin-bottom: 0.7mm; }
           .line { font-size: 6.25pt; line-height: 1.12; margin-bottom: 0.3mm; }
+          .catch-date { font-size: 7.4pt; line-height: 1.16; font-weight: 700; margin-bottom: 0.5mm; }
           .weight-line { display: flex; align-items: flex-end; gap: 1.1mm; font-size: 6.5pt; margin: 1.25mm 0 0.35mm; min-height: 4.8mm; }
           .weight-label { font-weight: 700; white-space: nowrap; }
           .weight-write { flex: 1; min-width: 0; border-bottom: 0.45mm solid #0f172a; height: 3.1mm; }
@@ -1106,18 +1112,20 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
       const lines = [
         label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+        label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
         label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
         label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
         label.productForm ? `Tuote: ${label.productForm}` : "",
         "Säilytys: 0–2 °C",
       ].filter(Boolean);
 
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10.5);
       lines.forEach((line) => {
+        const isCatchDateLine = line.startsWith("Pyyntipäivä:");
+        doc.setFont("helvetica", isCatchDateLine ? "bold" : "normal");
+        doc.setFontSize(isCatchDateLine ? 13 : 10.5);
         const wrapped = doc.splitTextToSize(line, 84);
         doc.text(wrapped, left, currentY);
-        currentY += wrapped.length * 5.2;
+        currentY += wrapped.length * (isCatchDateLine ? 6.2 : 5.2);
       });
 
       const qrX = right - qrSize;
@@ -1229,13 +1237,17 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
       label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
       label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+      label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
       label.productForm ? `Tuote: ${label.productForm}` : "",
     ].filter(Boolean);
 
     lines.forEach((line) => {
+      const isCatchDateLine = line.startsWith("Pyyntipäivä:");
+      doc.setFont("helvetica", isCatchDateLine ? "bold" : "normal");
+      doc.setFontSize(isCatchDateLine ? 7.6 : 6.4);
       const wrapped = doc.splitTextToSize(line, textWidth);
       doc.text(wrapped, left, currentY);
-      currentY += wrapped.length * 2.8;
+      currentY += wrapped.length * (isCatchDateLine ? 3.2 : 2.8);
     });
 
     currentY += 0.8;
@@ -2433,7 +2445,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
   const previewBaseWidth = isMunbynFormat ? 320 : 420;
   const previewBaseHeight = isMunbynFormat ? (previewBaseWidth * 152) / 102 : (previewBaseWidth * 57) / 105;
   const previewScale = isMobile && typeof window !== "undefined"
-    ? Math.min(1, Math.max(0.62, (window.innerWidth - 72) / previewBaseWidth))
+    ? Math.min(1, Math.max(0.5, (window.innerWidth - 52) / previewBaseWidth))
     : 1;
   const formatDetails = CATCH_LABEL_FORMATS.find((formatOption) => formatOption.value === printFormat) || CATCH_LABEL_FORMATS[0];
 
@@ -2443,12 +2455,19 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
       inset: 0,
       background: "rgba(15, 23, 42, 0.45)",
       display: "flex",
-      alignItems: "center",
+      alignItems: isMobile ? "stretch" : "center",
       justifyContent: "center",
-      padding: isMobile ? 10 : 20,
+      padding: isMobile ? 8 : 20,
       zIndex: 2000,
     }}>
-      <div style={{ ...styles.card, width: "min(980px, 100%)", maxHeight: isMobile ? "100vh" : "90vh", overflow: "auto", padding: isMobile ? 16 : 24 }}>
+      <div style={{
+        ...styles.card,
+        width: isMobile ? "calc(100vw - 16px)" : "min(980px, 100%)",
+        maxHeight: isMobile ? "calc(100dvh - 16px)" : "90vh",
+        overflowY: "auto",
+        overflowX: "hidden",
+        padding: isMobile ? 14 : 24,
+      }}>
         <div style={styles.rowBetween}>
           <div>
             <strong style={{ fontSize: 22 }}>Tulosta etiketit</strong>
@@ -2516,7 +2535,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
             </div>
           </div>
 
-          <div style={{ ...styles.card, background: "#f8fbff", padding: 18 }}>
+          <div style={{ ...styles.card, background: "#f8fbff", padding: isMobile ? 10 : 18, minWidth: 0 }}>
             <div style={{ ...styles.small, marginBottom: 10 }}>Esikatselu</div>
             <div
               style={{
@@ -2557,7 +2576,8 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.15, padding: "10px 12px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 10, overflowWrap: "anywhere", wordBreak: "break-word" }}>Erätunnus: {previewLabel.batchId}</div>
                     <div style={{ fontSize: 12, lineHeight: 1.3 }}>
-                      {previewLabel.catchDate ? <div><strong>Pyyntipäivä:</strong> {previewLabel.catchDate}</div> : null}
+                      {previewLabel.catchDate ? <div style={{ fontSize: 14, lineHeight: 1.22, fontWeight: 700 }}><strong>Pyyntipäivä:</strong> {previewLabel.catchDate}</div> : null}
+                      {previewLabel.commercialFishingId ? <div><strong>Kaupallisen kalastajan tunnus:</strong> {previewLabel.commercialFishingId}</div> : null}
                       {previewLabel.catchArea ? <div><strong>Pyyntialue:</strong> {previewLabel.catchArea}</div> : null}
                       {previewLabel.gearType ? <div><strong>Pyyntimenetelmä:</strong> {previewLabel.gearType}</div> : null}
                       {previewLabel.productForm ? <div><strong>Tuote:</strong> {previewLabel.productForm}</div> : null}
@@ -2586,7 +2606,8 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                         <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800, padding: "6px 8px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8 }}>Erätunnus: {previewLabel.batchId}</div>
                         {previewLabel.catchArea ? <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.12 }}>Pyyntialue: {previewLabel.catchArea}</div> : null}
                         {previewLabel.gearType ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntimenetelmä: {previewLabel.gearType}</div> : null}
-                        {previewLabel.catchDate ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
+                        {previewLabel.catchDate ? <div style={{ fontSize: 14, lineHeight: 1.16, fontWeight: 700 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
+                        {previewLabel.commercialFishingId ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Kaupallisen kalastajan tunnus: {previewLabel.commercialFishingId}</div> : null}
                         {previewLabel.productForm ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Tuote: {previewLabel.productForm}</div> : null}
                         <div style={{ fontSize: 12, lineHeight: 1.12 }}>Säilytys: 0–2 °C</div>
                       </div>
