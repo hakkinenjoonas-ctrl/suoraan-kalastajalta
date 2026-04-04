@@ -3646,8 +3646,10 @@ function calculateSellerInvoiceDetails(offer) {
   const productTotalFromSummary = parseTradeValueFromSpeciesSummary(offer?.species_summary);
   const productTotal = productTotalFromQuantity > 0 ? productTotalFromQuantity : productTotalFromSummary;
   const deliveryCost = Number(offer?.delivery_cost ?? offer?.route_price_eur ?? 0) || 0;
+  const productVatAmount = productTotal * vatRate;
+  const deliveryVatAmount = deliveryCost * vatRate;
   const netTotal = productTotal + deliveryCost;
-  const vatAmount = netTotal * vatRate;
+  const vatAmount = productVatAmount + deliveryVatAmount;
   const grandTotal = netTotal + vatAmount;
 
   return {
@@ -3655,7 +3657,9 @@ function calculateSellerInvoiceDetails(offer) {
     kilos,
     unitPrice,
     productTotal,
+    productVatAmount,
     deliveryCost,
+    deliveryVatAmount,
     netTotal,
     vatAmount,
     grandTotal,
@@ -3824,7 +3828,9 @@ function getSellerInvoicePayload(offer, sellerProfile) {
     lineItems: parseSellerInvoiceLineItems(offer),
     vatRate: invoiceDetails.vatRate,
     productTotal: invoiceDetails.productTotal,
+    productVatAmount: invoiceDetails.productVatAmount,
     deliveryCost: invoiceDetails.deliveryCost,
+    deliveryVatAmount: invoiceDetails.deliveryVatAmount,
     netTotal: invoiceDetails.netTotal,
     vatAmount: invoiceDetails.vatAmount,
     grandTotal: invoiceDetails.grandTotal,
@@ -3919,32 +3925,38 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
 
   const totalsY = 214;
   doc.setFillColor(239, 246, 255);
-  doc.roundedRect(122, totalsY - 8, 72, 35, 2, 2, "F");
-  doc.text("Veroton yhteensä", 126, totalsY);
-  doc.text(euro(invoice.netTotal), 190, totalsY, { align: "right" });
-  doc.text(`ALV ${(invoice.vatRate * 100).toLocaleString("fi-FI")} %`, 126, totalsY + 7);
-  doc.text(euro(invoice.vatAmount), 190, totalsY + 7, { align: "right" });
-  doc.text("Sis. toimituskulu", 126, totalsY + 14);
-  doc.text(euro(invoice.deliveryCost), 190, totalsY + 14, { align: "right" });
+  doc.roundedRect(122, totalsY - 8, 72, 49, 2, 2, "F");
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text("Tuotteet ALV 0 %", 126, totalsY);
+  doc.text(euro(invoice.productTotal), 190, totalsY, { align: "right" });
+  doc.text("Toimituskulu ALV 0 %", 126, totalsY + 7);
+  doc.text(euro(invoice.deliveryCost), 190, totalsY + 7, { align: "right" });
+  doc.text("Veroton yhteensä", 126, totalsY + 14);
+  doc.text(euro(invoice.netTotal), 190, totalsY + 14, { align: "right" });
+  doc.text(`ALV ${(invoice.vatRate * 100).toLocaleString("fi-FI")} % tuotteet`, 126, totalsY + 21);
+  doc.text(euro(invoice.productVatAmount), 190, totalsY + 21, { align: "right" });
+  doc.text(`ALV ${(invoice.vatRate * 100).toLocaleString("fi-FI")} % toimitus`, 126, totalsY + 28);
+  doc.text(euro(invoice.deliveryVatAmount), 190, totalsY + 28, { align: "right" });
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("Maksettava yhteensä", 126, totalsY + 23);
-  doc.text(euro(invoice.grandTotal), 190, totalsY + 23, { align: "right" });
+  doc.text("Maksettava yhteensä", 126, totalsY + 37);
+  doc.text(euro(invoice.grandTotal), 190, totalsY + 37, { align: "right" });
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text("Maksutiedot", leftX, 222);
+  doc.text("Maksutiedot", leftX, 220);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  doc.text(`IBAN: ${invoice.sellerIban || "-"}`, leftX, 229);
-  doc.text(`BIC: ${invoice.sellerBic || "-"}`, leftX, 235);
-  doc.text(`Viitenumero: ${invoice.referenceDisplay}`, leftX, 241);
-  doc.text(`Erätunnus: ${invoice.batchId || "-"}`, leftX, 247);
-  if (invoice.catchDates.length > 0) doc.text(`Pyyntipäivämäärä: ${invoice.catchDates.join(", ")}`, leftX, 253);
-  if (invoice.deliveryDate) doc.text(`Toimituspäivä: ${invoice.deliveryDate}`, leftX, 259);
-  if (invoice.areaText) doc.text(`Kalastamisalue: ${invoice.areaText}`, leftX, 265);
-  if (invoice.deliveryMethod) doc.text(`Toimitustapa: ${invoice.deliveryMethod}`, leftX, 271);
-  drawSellerInvoiceReferenceBarcode(doc, invoice.referenceNumber, leftX, 274, 120, 12);
+  doc.text(`IBAN: ${invoice.sellerIban || "-"}`, leftX, 227);
+  doc.text(`BIC: ${invoice.sellerBic || "-"}`, leftX, 233);
+  doc.text(`Viitenumero: ${invoice.referenceDisplay}`, leftX, 239);
+  doc.text(`Erätunnus: ${invoice.batchId || "-"}`, leftX, 245);
+  if (invoice.catchDates.length > 0) doc.text(`Pyyntipäivämäärä: ${invoice.catchDates.join(", ")}`, leftX, 251);
+  if (invoice.deliveryDate) doc.text(`Toimituspäivä: ${invoice.deliveryDate}`, leftX, 257);
+  if (invoice.areaText) doc.text(`Kalastamisalue: ${invoice.areaText}`, leftX, 263);
+  if (invoice.deliveryMethod) doc.text(`Toimitustapa: ${invoice.deliveryMethod}`, leftX, 269);
+  drawSellerInvoiceReferenceBarcode(doc, invoice.referenceNumber, leftX, 273, 120, 12);
   doc.setFontSize(9);
   doc.text(`Viite ${invoice.referenceDisplay}`, leftX, 291);
 
