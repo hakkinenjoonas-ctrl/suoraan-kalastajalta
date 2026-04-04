@@ -5414,7 +5414,7 @@ export default function App() {
     setAccountForm(nextForm);
     setAccountFormDirty(false);
     setAccountBillingSameAsDelivery(
-      profile.role === "buyer" ? billingMatchesDelivery(nextForm) : billingMatchesAddress(nextForm)
+      profile.role === "buyer" ? false : billingMatchesAddress(nextForm)
     );
   }, [profile, linkedBuyerRecord, accountFormDirty]);
 
@@ -5990,7 +5990,7 @@ export default function App() {
       accountFormSyncingRef.current = true;
       setAccountForm(savedAccountForm);
       setAccountBillingSameAsDelivery(
-        profile.role === "buyer" ? billingMatchesDelivery(savedAccountForm) : billingMatchesAddress(savedAccountForm)
+        profile.role === "buyer" ? false : billingMatchesAddress(savedAccountForm)
       );
       fisherInfoSyncingRef.current = true;
       setFisherInfoForm({
@@ -8135,22 +8135,15 @@ export default function App() {
                     </div>
                     <div style={styles.field}>
                       <label>Toimitusosoite</label>
-                      <input style={styles.input} value={accountForm.deliveryAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryAddress: e.target.value, ...(accountBillingSameAsDelivery ? { billingAddress: e.target.value } : {}) }))} placeholder="Katuosoite" />
+                      <input style={styles.input} value={accountForm.deliveryAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryAddress: e.target.value }))} placeholder="Katuosoite" />
                     </div>
                     <div style={styles.field}>
                       <label>Toimitus postinumero</label>
-                      <input style={styles.input} value={accountForm.deliveryPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryPostcode: e.target.value, ...(accountBillingSameAsDelivery ? { billingPostcode: e.target.value } : {}) }))} placeholder="00100" />
+                      <input style={styles.input} value={accountForm.deliveryPostcode} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryPostcode: e.target.value }))} placeholder="00100" />
                     </div>
                     <div style={styles.field}>
                       <label>Toimitus kaupunki</label>
-                      <MunicipalitySelect value={accountForm.deliveryCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryCity: e.target.value, ...(accountBillingSameAsDelivery ? { billingCity: e.target.value } : {}) }))} />
-                    </div>
-                    <div style={{ ...styles.field, ...styles.fieldFull }}>
-                      <label><input type="checkbox" checked={accountBillingSameAsDelivery} onChange={(e) => {
-                        const checked = e.target.checked;
-                        setAccountBillingSameAsDelivery(checked);
-                        if (checked) applyAccountDeliveryToBilling();
-                      }} /> Laskutustiedot samat kuin toimitustiedot</label>
+                      <MunicipalitySelect value={accountForm.deliveryCity} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryCity: e.target.value }))} />
                     </div>
                     <div style={styles.field}>
                       <label>Laskutusosoite</label>
