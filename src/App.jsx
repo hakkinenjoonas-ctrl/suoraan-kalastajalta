@@ -5808,6 +5808,29 @@ export default function App() {
 
     setAccountSaving(true);
     try {
+      const savedAccountForm = {
+        ...accountForm,
+        displayName,
+        companyName: accountForm.companyName.trim(),
+        businessId: accountForm.businessId.trim(),
+        address: accountForm.address.trim(),
+        postcode: accountForm.postcode.trim(),
+        city: accountForm.city.trim(),
+        billingAddress: accountForm.billingAddress.trim(),
+        billingPostcode: accountForm.billingPostcode.trim(),
+        billingCity: accountForm.billingCity.trim(),
+        billingEmail: accountForm.billingEmail.trim().toLowerCase(),
+        einvoiceAddress: accountForm.einvoiceAddress.trim(),
+        bankAccountIban: accountForm.bankAccountIban.trim(),
+        bankBic: accountForm.bankBic.trim(),
+        contactEmail: accountForm.contactEmail.trim().toLowerCase(),
+        phone: accountForm.phone.trim(),
+        contactName: accountForm.contactName.trim(),
+        deliveryAddress: accountForm.deliveryAddress.trim(),
+        deliveryPostcode: accountForm.deliveryPostcode.trim(),
+        deliveryCity: accountForm.deliveryCity.trim(),
+        notes: accountForm.notes.trim(),
+      };
       const vesselIds = parseCommercialFishingVesselIds(accountForm.commercialFishingVesselIdsText);
       const vesselIdsText = vesselIds.join("\n");
       const profilePayload = {
@@ -5922,7 +5945,11 @@ export default function App() {
         email: normalizeEmail(updatedProfile?.email || profile.email || ""),
       };
       setProfile(normalizedUpdatedProfile);
-      setAccountBillingSameAsDelivery(billingMatchesDelivery(accountForm));
+      accountFormSyncingRef.current = true;
+      setAccountForm(savedAccountForm);
+      setAccountBillingSameAsDelivery(
+        profile.role === "buyer" ? billingMatchesDelivery(savedAccountForm) : billingMatchesAddress(savedAccountForm)
+      );
       fisherInfoSyncingRef.current = true;
       setFisherInfoForm({
         commercialFishingId: normalizedUpdatedProfile.commercial_fishing_id || "",
@@ -5932,7 +5959,9 @@ export default function App() {
       });
       setAccountFormDirty(false);
       setFisherInfoDirty(false);
-      setRefreshTick((prev) => prev + 1);
+      if (profile.role !== "buyer") {
+        setRefreshTick((prev) => prev + 1);
+      }
       setAuthInfo("Omat tiedot tallennettu.");
     } catch (error) {
       setAuthError(String(error?.message || error));
