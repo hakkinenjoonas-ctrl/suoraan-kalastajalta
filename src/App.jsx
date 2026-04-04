@@ -8320,7 +8320,12 @@ export default function App() {
                             )}
                             <div style={styles.field}>
                               <label>Viesti myyjälle</label>
-                              <textarea style={styles.textarea} value={buyerAction.buyer_message} onChange={(e) => setBuyerAction((p) => ({ ...p, buyer_message: e.target.value }))} placeholder="Toimitus, nouto, aikataulu..." />
+                              <textarea
+                                style={styles.textarea}
+                                value={buyerAction.buyer_message}
+                                onChange={(e) => setBuyerAction((p) => ({ ...p, buyer_message: e.target.value }))}
+                                placeholder="Ohje: viesti myyjälle toimitetaan varauksen yhteydessä. Voit ilmoittaa esim. milloin tuotteen voi toimittaa."
+                              />
                             </div>
                             <div style={styles.row}>
                               <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onSubmitCounter(o)}>Lähetä vastatarjous</button>
