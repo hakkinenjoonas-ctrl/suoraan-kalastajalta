@@ -59,6 +59,8 @@ const fishSpeciesByName = Object.fromEntries(
 const fishSpecies = [...fishSpeciesCatalog.map((item) => item.name_fi), ...fishSpeciesVariants, "Muu"];
 const gearTypes = ["Rysä", "Paunetti/avorysä", "Verkko", "Katiska", "Merta", "Trooli", "Nuotta", "Vapaväline", "Muu"];
 const CATCH_FORM_DEFAULTS_KEY = "catch_form_defaults_v1";
+const ONBOARDING_GUIDE_MAX_VIEWS = 3;
+const ONBOARDING_GUIDE_STORAGE_PREFIX = "onboarding_guide_v1";
 const CUSTOM_LAKE_AREA_OPTION = "__custom_lake_area__";
 const CUSTOM_SEA_AREA_OPTION = "__custom_sea_area__";
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
@@ -1364,6 +1366,92 @@ function getStoredCatchFormDefaults() {
   }
 }
 
+function getOnboardingGuideStorageKey(profileLike) {
+  const profileId = String(profileLike?.id || profileLike?.email || "anonymous").trim().toLowerCase() || "anonymous";
+  const role = String(profileLike?.role || "unknown").trim().toLowerCase() || "unknown";
+  return `${ONBOARDING_GUIDE_STORAGE_PREFIX}:${profileId}:${role}`;
+}
+
+function getStoredOnboardingGuideState(profileLike) {
+  if (typeof window === "undefined") return { views: 0, hiddenForever: false };
+  try {
+    const raw = window.localStorage.getItem(getOnboardingGuideStorageKey(profileLike));
+    const parsed = raw ? JSON.parse(raw) : {};
+    return {
+      views: Number(parsed?.views || 0),
+      hiddenForever: Boolean(parsed?.hiddenForever),
+    };
+  } catch {
+    return { views: 0, hiddenForever: false };
+  }
+}
+
+function saveStoredOnboardingGuideState(profileLike, state) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      getOnboardingGuideStorageKey(profileLike),
+      JSON.stringify({
+        views: Number(state?.views || 0),
+        hiddenForever: Boolean(state?.hiddenForever),
+      }),
+    );
+  } catch {
+    // ignore local storage issues
+  }
+}
+
+function getRoleOnboardingGuideContent(role) {
+  if (role === "buyer") {
+    return {
+      title: "Aloita ostajana näin",
+      intro: "Nämä ohjeet näkyvät vain ensimmäisillä käyttökerroilla tai kunnes piilotat ne kokonaan.",
+      steps: [
+        "Täytä ensin Omat tiedot: yritys, toimitusosoite, laskutustiedot, sähköposti ja puhelin.",
+        "Avaa sinulle tarjotut kalaerät, tee varaus tai lähetä vastatarjous.",
+        "Kun kalastaja hyväksyy kaupan, näet hänen täydet yhteystietonsa ja voit sopia toimituksen loppuun.",
+        "Kun erä on saapunut, merkitse toimitus toimitetuksi, jotta laskutus voi edetä oikein.",
+      ],
+    };
+  }
+
+  if (role === "processor") {
+    return {
+      title: "Aloita jalostajana näin",
+      intro: "Nämä ohjeet auttavat alkuun ensimmäisillä käyttökerroilla ja ne voi piilottaa milloin tahansa.",
+      steps: [
+        "Täytä ensin Omat tiedot: yrityksen yhteystiedot, laskutustiedot ja Laitosnumero.",
+        "Kun olet ostanut YKP-raaka-aine-eriä, voit liittää ne jaloste-erälle kohdassa Lisää jaloste-erä.",
+        "Lisää jaloste-erän tuotetiedot, jäljitettävyys ja toimitustiedot, ja lähetä tarjous ostajille tarvittaessa.",
+        "Seuraa ostajien vastauksia Tarjoukset-välilehdellä.",
+      ],
+    };
+  }
+
+  if (role === "owner") {
+    return {
+      title: "Aloita ownerina näin",
+      intro: "Tämä pikamuistilista näkyy vain alussa ja sen voi sulkea pysyvästi.",
+      steps: [
+        "Hyväksy uudet käyttäjät Käyttäjät-välilehdellä, jotta he pääsevät aloittamaan roolinsa käytön.",
+        "Päivitä ostajarekisteri Ostajat-välilehdellä, jotta tarjoukset ohjautuvat oikeille yrityksille.",
+        "Tarkista Raportit ja Laskutus säännöllisesti, jos haluat seurata kaupankäyntiä ja komissioita.",
+      ],
+    };
+  }
+
+  return {
+    title: "Aloita kalastajana näin",
+    intro: "Nämä ohjeet näkyvät vain ensimmäisillä käyttökerroilla tai kunnes valitset Älä näytä enää.",
+    steps: [
+      "Täytä ensin Omat tiedot: yrityksen tiedot sekä kaupallisen kalastajan tunnus tai käytössä olevat aluksen tunnukset.",
+      "Siirry Lisää saalis -välilehdelle, täytä saalistiedot ja tallenna erä saaliskirjanpitoon tai lähetä se tarjouksena ostajille.",
+      "Tulosta etiketit Saaliit-välilehdeltä ja seuraa ostajien varauksia sekä vastatarjouksia Tarjoukset-välilehdellä.",
+      "Kun ostaja on merkinnyt toimituksen toimitetuksi, muodosta lasku Laskutus-välilehdellä.",
+    ],
+  };
+}
+
 function resolveAreaSelectorValue(area, customLakeAreas = [], customSeaAreas = []) {
   const normalized = String(area || "").trim();
   if (!normalized) return "Saimaa";
@@ -1932,6 +2020,57 @@ const styles = {
     border: "1px solid #a5f3fc",
     whiteSpace: "pre-wrap",
   },
+  onboardingCard: {
+    background: "linear-gradient(140deg, rgba(239,246,255,0.98) 0%, rgba(240,249,255,0.98) 45%, rgba(224,242,254,0.96) 100%)",
+    border: "1px solid rgba(125, 211, 252, 0.85)",
+    boxShadow: "0 18px 40px rgba(14, 165, 233, 0.1)",
+  },
+  onboardingEyebrow: {
+    color: "#0369a1",
+    fontSize: 12,
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    marginBottom: 6,
+  },
+  onboardingTitle: {
+    fontSize: 22,
+    color: "#0f172a",
+    lineHeight: 1.15,
+    letterSpacing: "-0.04em",
+  },
+  onboardingSteps: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+  },
+  onboardingStep: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: 14,
+    borderRadius: 18,
+    background: "rgba(255,255,255,0.9)",
+    border: "1px solid rgba(191, 219, 254, 0.95)",
+  },
+  onboardingStepNumber: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#fff",
+    background: "linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)",
+  },
+  onboardingStepText: {
+    color: "#0f172a",
+    fontSize: 14,
+    lineHeight: 1.55,
+  },
   small: { fontSize: 12, color: "#64748b", lineHeight: 1.45 },
   offerBox: {
     border: "1px solid #bfdbfe",
@@ -2106,6 +2245,43 @@ function FishSpeciesInput({ value, onChange, placeholder = "Valitse tai kirjoita
           <option key={species} value={species}>{species}</option>
         ))}
       </select>
+  );
+}
+
+function FirstUseGuideCard({ profile, guideState, onDismissNow, onHideForever }) {
+  const guide = getRoleOnboardingGuideContent(profile?.role);
+  if (!guide || !guideState?.visible) return null;
+  const onboardingStepsStyle = responsiveGridStyle(styles.onboardingSteps);
+
+  return (
+    <div style={{ ...styles.card, ...styles.sectionCard, ...styles.onboardingCard, ...styles.stack, marginBottom: 16 }}>
+      <div style={styles.rowBetween}>
+        <div>
+          <div style={styles.onboardingEyebrow}>Ensimmäisten käyttökertojen ohje</div>
+          <strong style={styles.onboardingTitle}>{guide.title}</strong>
+          <div style={{ ...styles.muted, marginTop: 6 }}>{guide.intro}</div>
+        </div>
+        <span style={styles.badge}>Rooli: {roleLabel(profile?.role)}</span>
+      </div>
+
+      <div style={onboardingStepsStyle}>
+        {guide.steps.map((step, index) => (
+          <div key={`${profile?.role || "role"}-${index}`} style={styles.onboardingStep}>
+            <span style={styles.onboardingStepNumber}>{index + 1}</span>
+            <div style={styles.onboardingStepText}>{step}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={styles.row}>
+        <button type="button" style={styles.button} onClick={onDismissNow}>
+          Sulje nyt
+        </button>
+        <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={onHideForever}>
+          Älä näytä enää
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -4081,6 +4257,7 @@ export default function App() {
   const [labelPrintEntry, setLabelPrintEntry] = useState(null);
   const [labelPrintCount, setLabelPrintCount] = useState(10);
   const [labelPrintFormat, setLabelPrintFormat] = useState(CATCH_LABEL_FORMAT_MUNBYN_4X6);
+  const [onboardingGuideState, setOnboardingGuideState] = useState({ views: 0, hiddenForever: false, visible: false });
   const accountFormSyncingRef = useRef(false);
   const fisherInfoSyncingRef = useRef(false);
   const accountFormInitializedRef = useRef(false);
@@ -4250,6 +4427,49 @@ export default function App() {
     ])).filter(Boolean),
     [availableProcessedRouteOptions, processedForm.deliveryDestinations],
   );
+
+  useEffect(() => {
+    if (!profile?.id || !profile?.role || !profile?.is_active) {
+      setOnboardingGuideState((prev) => ({ ...prev, visible: false }));
+      return;
+    }
+
+    const storedGuideState = getStoredOnboardingGuideState(profile);
+    if (storedGuideState.hiddenForever || storedGuideState.views >= ONBOARDING_GUIDE_MAX_VIEWS) {
+      setOnboardingGuideState({
+        views: storedGuideState.views,
+        hiddenForever: storedGuideState.hiddenForever,
+        visible: false,
+      });
+      return;
+    }
+
+    const nextViews = storedGuideState.hiddenForever
+      ? storedGuideState.views
+      : storedGuideState.views + 1;
+    const nextGuideState = {
+      views: nextViews,
+      hiddenForever: storedGuideState.hiddenForever,
+      visible: !storedGuideState.hiddenForever && nextViews <= ONBOARDING_GUIDE_MAX_VIEWS,
+    };
+
+    if (!storedGuideState.hiddenForever) {
+      saveStoredOnboardingGuideState(profile, nextGuideState);
+    }
+
+    setOnboardingGuideState(nextGuideState);
+  }, [profile?.id, profile?.role, profile?.is_active]);
+
+  const dismissOnboardingGuideNow = useCallback(() => {
+    setOnboardingGuideState((prev) => ({ ...prev, visible: false }));
+  }, []);
+
+  const hideOnboardingGuideForever = useCallback(() => {
+    if (profile?.id && profile?.role) {
+      saveStoredOnboardingGuideState(profile, { ...onboardingGuideState, hiddenForever: true, visible: false });
+    }
+    setOnboardingGuideState((prev) => ({ ...prev, hiddenForever: true, visible: false }));
+  }, [onboardingGuideState, profile]);
 
   const analyzeOfferRecipients = (offerFormState, rows) => {
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
@@ -7805,6 +8025,12 @@ export default function App() {
 
           {authError ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{authError}</div> : null}
           {authInfo ? <div style={{ ...styles.noticeSuccess, marginBottom: 16 }}>{authInfo}</div> : null}
+          <FirstUseGuideCard
+            profile={profile}
+            guideState={onboardingGuideState}
+            onDismissNow={dismissOnboardingGuideNow}
+            onHideForever={hideOnboardingGuideForever}
+          />
           {acceptedBuyerOffers.length > 0 ? (
             <div style={{ ...styles.successHighlightBox, ...styles.stack, marginBottom: 16 }}>
               <div style={styles.rowBetween}>
@@ -8293,6 +8519,12 @@ export default function App() {
 
         {authError ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{authError}</div> : null}
         {authInfo ? <div style={{ ...styles.noticeSuccess, marginBottom: 16 }}>{authInfo}</div> : null}
+        <FirstUseGuideCard
+          profile={profile}
+          guideState={onboardingGuideState}
+          onDismissNow={dismissOnboardingGuideNow}
+          onHideForever={hideOnboardingGuideForever}
+        />
 
         <div style={tabStyle}>
           <button style={{ ...styles.tab, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
