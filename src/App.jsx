@@ -5342,6 +5342,7 @@ export default function App() {
     if (!profile) return;
     if (accountFormDirty) return;
     const vesselIds = getCommercialFishingVesselIds(profile);
+    const buyerAccountData = profile.role === "buyer" ? linkedBuyerRecord : null;
     const nextForm = {
       displayName: profile.display_name || "",
       eviraFacilityId: profile.evira_facility_id || "",
@@ -5349,25 +5350,25 @@ export default function App() {
       commercialFishingVesselIdsText: vesselIds.join("\n"),
       commercialFishingId: profile.commercial_fishing_id || "",
       pickupAddress: profile.pickup_address || "",
-      companyName: profile.company_name || linkedBuyerRecord?.company_name || "",
-      businessId: profile.business_id || linkedBuyerRecord?.business_id || "",
+      companyName: buyerAccountData?.company_name || profile.company_name || "",
+      businessId: buyerAccountData?.business_id || profile.business_id || "",
       address: profile.address || "",
       postcode: profile.postcode || "",
-      city: profile.city || linkedBuyerRecord?.city || "",
-      billingAddress: profile.billing_address || linkedBuyerRecord?.billing_address || "",
-      billingPostcode: profile.billing_postcode || linkedBuyerRecord?.billing_postcode || "",
-      billingCity: profile.billing_city || linkedBuyerRecord?.billing_city || "",
-      billingEmail: profile.billing_email || linkedBuyerRecord?.billing_email || "",
+      city: buyerAccountData?.city || profile.city || "",
+      billingAddress: buyerAccountData?.billing_address || profile.billing_address || "",
+      billingPostcode: buyerAccountData?.billing_postcode || profile.billing_postcode || "",
+      billingCity: buyerAccountData?.billing_city || profile.billing_city || "",
+      billingEmail: buyerAccountData?.billing_email || profile.billing_email || "",
       einvoiceAddress: profile.einvoice_address || "",
       bankAccountIban: profile.bank_account_iban || "",
       bankBic: profile.bank_bic || "",
       contactEmail: profile.contact_email || profile.email || "",
-      phone: profile.phone || linkedBuyerRecord?.phone || "",
-      contactName: linkedBuyerRecord?.contact_name || "",
-      deliveryAddress: linkedBuyerRecord?.delivery_address || "",
-      deliveryPostcode: linkedBuyerRecord?.delivery_postcode || "",
-      deliveryCity: linkedBuyerRecord?.delivery_city || "",
-      notes: linkedBuyerRecord?.notes || "",
+      phone: buyerAccountData?.phone || profile.phone || "",
+      contactName: buyerAccountData?.contact_name || "",
+      deliveryAddress: buyerAccountData?.delivery_address || "",
+      deliveryPostcode: buyerAccountData?.delivery_postcode || "",
+      deliveryCity: buyerAccountData?.delivery_city || "",
+      notes: buyerAccountData?.notes || "",
     };
     accountFormSyncingRef.current = true;
     setAccountForm(nextForm);
