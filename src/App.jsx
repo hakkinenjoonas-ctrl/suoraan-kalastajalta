@@ -5962,19 +5962,14 @@ export default function App() {
           }
           throw buyerUpdateError;
         }
-        if (updatedBuyerRecord) {
-          setBuyers((prev) => prev.map((buyer) => (
-            String(buyer.id) === String(updatedBuyerRecord.id)
-              ? { ...buyer, ...updatedBuyerRecord, email: normalizeEmail(updatedBuyerRecord.email || buyer.email || "") }
-              : buyer
-          )));
-        } else {
-          setBuyers((prev) => prev.map((buyer) => (
-            String(buyer.id) === String(linkedBuyerRecord.id)
-              ? { ...buyer, ...buyerPayload, email: normalizeEmail(buyerPayload.email || buyer.email || "") }
-              : buyer
-          )));
+        if (!updatedBuyerRecord) {
+          throw new Error("Ostajan laskutustietoja ei voitu tallentaa tietokantaan. Tarkista buyers-taulun päivitysoikeudet Supabasessa.");
         }
+        setBuyers((prev) => prev.map((buyer) => (
+          String(buyer.id) === String(updatedBuyerRecord.id)
+            ? { ...buyer, ...updatedBuyerRecord, email: normalizeEmail(updatedBuyerRecord.email || buyer.email || "") }
+            : buyer
+        )));
       }
 
       const normalizedUpdatedProfile = {
