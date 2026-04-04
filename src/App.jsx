@@ -3669,6 +3669,17 @@ function formatInvoicePartyAddress(address, postcode, city) {
   ].filter(Boolean).join(", ");
 }
 
+function formatInvoiceDeliveryDate(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value || "").trim();
+  return parsed.toLocaleDateString("fi-FI", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
 function calculateFinnishReferenceCheckDigit(baseDigits) {
   const weights = [7, 3, 1];
   const sum = String(baseDigits || "")
@@ -3805,6 +3816,7 @@ function getSellerInvoicePayload(offer, sellerProfile) {
     buyerBillingEmail: String(offer?.buyer_billing_email || offer?.buyer_email || "").trim(),
     buyerBillingAddress: formatInvoicePartyAddress(offer?.buyer_billing_address, offer?.buyer_billing_postcode, offer?.buyer_billing_city),
     buyerDeliveryAddress: formatInvoicePartyAddress(offer?.buyer_delivery_address, offer?.buyer_delivery_postcode, offer?.buyer_delivery_city),
+    deliveryDate: formatInvoiceDeliveryDate(offer?.updated_at || offer?.created_at),
     batchId: String(offer?.batch_id || "").trim(),
     catchDates: getOfferSummaryCatchDates(offer?.species_summary),
     areaText: [offer?.area, offer?.spot].map((item) => String(item || "").trim()).filter(Boolean).join(" / "),
@@ -3929,11 +3941,12 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
   doc.text(`Viitenumero: ${invoice.referenceDisplay}`, leftX, 241);
   doc.text(`Erätunnus: ${invoice.batchId || "-"}`, leftX, 247);
   if (invoice.catchDates.length > 0) doc.text(`Pyyntipäivämäärä: ${invoice.catchDates.join(", ")}`, leftX, 253);
-  if (invoice.areaText) doc.text(`Kalastamisalue: ${invoice.areaText}`, leftX, 259);
-  if (invoice.deliveryMethod) doc.text(`Toimitustapa: ${invoice.deliveryMethod}`, leftX, 265);
-  drawSellerInvoiceReferenceBarcode(doc, invoice.referenceNumber, leftX, 270, 120, 14);
+  if (invoice.deliveryDate) doc.text(`Toimituspäivä: ${invoice.deliveryDate}`, leftX, 259);
+  if (invoice.areaText) doc.text(`Kalastamisalue: ${invoice.areaText}`, leftX, 265);
+  if (invoice.deliveryMethod) doc.text(`Toimitustapa: ${invoice.deliveryMethod}`, leftX, 271);
+  drawSellerInvoiceReferenceBarcode(doc, invoice.referenceNumber, leftX, 274, 120, 12);
   doc.setFontSize(9);
-  doc.text(`Viite ${invoice.referenceDisplay}`, leftX, 289);
+  doc.text(`Viite ${invoice.referenceDisplay}`, leftX, 291);
 
   return { doc, invoice };
 }
@@ -8582,10 +8595,10 @@ export default function App() {
           <button style={{ ...styles.tab, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button>
           <button style={{ ...styles.tab, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
           <button style={{ ...styles.tab, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
-          {profile.role === "member" ? <button style={{ ...styles.tab, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => setActiveTab("billing")}>Laskutus</button> : null}
+          {profile.role === "member" ? <button style={{ ...styles.tab, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
           {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
           {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
-          {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => setActiveTab("billing")}>Laskutus</button> : null}
+          {profile.role === "owner" ? <button style={{ ...styles.tab, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
         </div>
 
         {activeTab === "dashboard" ? (
