@@ -8138,6 +8138,7 @@ export default function App() {
                     const ownTotalPrice = o.total_price_eur !== "" && o.total_price_eur != null ? Number(o.total_price_eur) : null;
                     const ownDeliveredPricePerKg = o.delivered_price_per_kg !== "" && o.delivered_price_per_kg != null ? Number(o.delivered_price_per_kg) : null;
                     const offerCatchDates = getOfferSummaryCatchDates(o.species_summary);
+                    const buyerOfferActionsOpen = ["sent", "viewed", "countered"].includes(o.status);
                     return (
                       <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
                         <div style={{ marginBottom: 10 }}>
@@ -8213,7 +8214,7 @@ export default function App() {
                               buyerUpdateOffer(o.id, { status: "viewed" });
                             }
                             setBuyerActiveOfferId(isActive ? null : o.id);
-                          }}>{isActive ? "Sulje" : o.status === "accepted" || o.status === "sold" ? "Näytä tiedot" : o.status === "reserved" ? "Muokkaa varausta" : "Tee vastatarjous / varaa"}</button>
+                          }}>{isActive ? "Sulje" : buyerOfferActionsOpen ? "Tee vastatarjous / varaa" : "Näytä tiedot"}</button>
                           {o.status !== "accepted" && o.status !== "sold" ? <button style={styles.button} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button> : null}
                         </div>
 
@@ -8254,7 +8255,7 @@ export default function App() {
                             </div>
                           </div>
                         ) : null}
-                        {o.status === "accepted" || o.status === "sold" ? null : (
+                        {!buyerOfferActionsOpen ? null : (
                         <>
                         {!mixedOffer ? (
                           <div style={styles.field}>
