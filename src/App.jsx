@@ -299,6 +299,21 @@ function formatSpeciesForSale(label) {
   return `${metadata.name_fi} (${metadata.scientific})`;
 }
 
+function formatSpeciesForLabelTitle(label) {
+  const raw = String(label || "").trim();
+  if (!raw) return "Muu";
+
+  const [baseSpecies, ...variantParts] = raw.split(",");
+  const metadata = getSpeciesMetadata(baseSpecies);
+  const speciesName = metadata?.name_fi || String(baseSpecies || "").trim() || "Muu";
+  const variantText = variantParts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ");
+
+  return variantText ? `${speciesName}, ${variantText}` : speciesName;
+}
+
 function formatSpeciesSummaryLine(label, kilos, count) {
   if (isCrayfishSpecies(label)) {
     return `${formatSpeciesForSale(label)}: ${count > 0 ? `${count} kpl` : "-"}${kilos > 0 ? ` (${kilos} kg)` : ""}`;
@@ -712,7 +727,7 @@ function getCatchLabelProductForm(speciesValue) {
 }
 
 function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
-  const species = formatSpeciesForSale(entry?.species || "");
+  const species = formatSpeciesForLabelTitle(entry?.species || "");
   const scientificName = getCatchLabelScientificName(entry?.species);
   const productForm = getCatchLabelProductForm(entry?.species);
   const supplierNameParts = [
