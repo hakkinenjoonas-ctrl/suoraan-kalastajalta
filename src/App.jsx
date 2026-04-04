@@ -4351,43 +4351,38 @@ export default function App() {
     )) || null;
   }, []);
 
+  const getBuyerRecordCompletenessScore = useCallback((buyer, preferredBuyerId = "") => {
+    const dataScore = [
+      buyer?.billing_email,
+      buyer?.billing_address,
+      buyer?.billing_postcode,
+      buyer?.billing_city,
+      buyer?.delivery_address,
+      buyer?.delivery_postcode,
+      buyer?.delivery_city,
+      buyer?.company_name,
+      buyer?.business_id,
+      buyer?.contact_name,
+      buyer?.phone,
+    ].filter((value) => String(value || "").trim()).length;
+    const preferredBonus = String(buyer?.id || "") === String(preferredBuyerId || "") ? 0.01 : 0;
+    return preferredBonus + dataScore;
+  }, []);
+
   const linkedBuyerRecord = useMemo(() => {
     if (!profile || profile.role !== "buyer") return null;
     const normalizedProfileEmail = normalizeEmail(profile.email);
-    const exactBuyer = buyers.find((buyer) => String(buyer.id || "") === String(profile.buyer_id || ""));
-    if (exactBuyer) return exactBuyer;
+    const buyerCandidates = buyers.filter((buyer) => (
+      String(buyer.id || "") === String(profile.buyer_id || "") ||
+      normalizeEmail(buyer.email) === normalizedProfileEmail
+    ));
+    if (buyerCandidates.length === 0) return null;
 
-    const emailMatches = buyers.filter((buyer) => normalizeEmail(buyer.email) === normalizedProfileEmail);
-    if (emailMatches.length === 0) return null;
-
-    return [...emailMatches].sort((a, b) => {
-      const aScore = [
-        a.billing_email,
-        a.billing_address,
-        a.billing_postcode,
-        a.billing_city,
-        a.delivery_address,
-        a.delivery_postcode,
-        a.delivery_city,
-        a.company_name,
-        a.business_id,
-        a.phone,
-      ].filter((value) => String(value || "").trim()).length;
-      const bScore = [
-        b.billing_email,
-        b.billing_address,
-        b.billing_postcode,
-        b.billing_city,
-        b.delivery_address,
-        b.delivery_postcode,
-        b.delivery_city,
-        b.company_name,
-        b.business_id,
-        b.phone,
-      ].filter((value) => String(value || "").trim()).length;
-      return bScore - aScore;
-    })[0];
-  }, [buyers, profile]);
+    return [...buyerCandidates].sort((a, b) => (
+      getBuyerRecordCompletenessScore(b, profile.buyer_id) -
+      getBuyerRecordCompletenessScore(a, profile.buyer_id)
+    ))[0] || null;
+  }, [buyers, getBuyerRecordCompletenessScore, profile]);
 
   const activeRoleOption = useMemo(
     () => getMatchingAllowedRole(availableRoleOptions, profile),
