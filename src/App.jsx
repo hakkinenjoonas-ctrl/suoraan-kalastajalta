@@ -1086,6 +1086,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       const brandLogoX = brandCenterX - (logoWidth / 2);
       const brandLogoY = topPadding;
       const titleWidth = 58;
+      const batchBoxWidth = Math.max(46, brandLogoX - left - 3);
       let currentY = 16;
 
       if (logoDataUrl) {
@@ -1115,11 +1116,11 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
       currentY += 2.5;
       const batchText = `Erätunnus: ${label.batchId || "-"}`;
-      const batchTextLines = doc.splitTextToSize(batchText, 82);
+      const batchTextLines = doc.splitTextToSize(batchText, batchBoxWidth - 4);
       const batchBoxHeight = Math.max(10, 5 + (batchTextLines.length * 4.5));
       doc.setFillColor(239, 246, 255);
       doc.setDrawColor(147, 197, 253);
-      doc.roundedRect(left, currentY - 4.3, 82, batchBoxHeight, 1.8, 1.8, "FD");
+      doc.roundedRect(left, currentY - 4.3, batchBoxWidth, batchBoxHeight, 1.8, 1.8, "FD");
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
       doc.text(batchTextLines, left + 2, currentY + 2.1);
