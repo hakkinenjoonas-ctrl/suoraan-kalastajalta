@@ -8220,7 +8220,11 @@ export default function App() {
                             <div style={styles.muted}>Tarjoaja: {sellerInfo.sellerLabel}</div>
                             {showTraceability && sellerInfo.sellerCommercialFishingId && sellerInfo.revealIdentity ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
                             <div style={styles.muted}>
-                              {sellerInfo.deliveryMethod === "Nouto" ? "Noutopaikka" : "Toimitusalue"}: {sellerInfo.revealIdentity ? sellerInfo.exactLocation : sellerInfo.publicLocation}
+                              {sellerInfo.revealIdentity
+                                ? sellerInfo.deliveryMethod === "Nouto"
+                                  ? "Noutopaikka"
+                                  : "Toimitusalue"
+                                : "Kalastamisalue"}: {sellerInfo.revealIdentity ? sellerInfo.exactLocation : sellerInfo.publicLocation}
                             </div>
                             {sellerInfo.publicSpot ? <div style={styles.muted}>Paikka: {sellerInfo.publicSpot}</div> : null}
                           </div>
@@ -8295,9 +8299,8 @@ export default function App() {
                         ) : null}
                         {!buyerOfferActionsOpen ? null : (
                         <>
-                        {!mixedOffer ? (
                           <div style={styles.field}>
-                            <label>Vastatarjous €/kg</label>
+                            <label>{mixedOffer ? "Vastatarjous koko erästä €/kg" : "Vastatarjous €/kg"}</label>
                                 <input
                                   style={styles.input}
                                   type="text"
@@ -8307,7 +8310,6 @@ export default function App() {
                                   placeholder="Esim. 5,80"
                                 />
                               </div>
-                        ) : null}
                             {mixedOffer ? (
                               <div style={styles.noticeInfo}>Monilajinen erä varataan aina kokonaisuutena. Yksittäisiä kalalajeja ei voi varata erikseen tästä tarjouksesta.</div>
                             ) : (
@@ -8321,7 +8323,7 @@ export default function App() {
                               <textarea style={styles.textarea} value={buyerAction.buyer_message} onChange={(e) => setBuyerAction((p) => ({ ...p, buyer_message: e.target.value }))} placeholder="Toimitus, nouto, aikataulu..." />
                             </div>
                             <div style={styles.row}>
-                              {!mixedOffer ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onSubmitCounter(o)}>Lähetä vastatarjous</button> : null}
+                              <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onSubmitCounter(o)}>Lähetä vastatarjous</button>
                               <button style={styles.button} onClick={() => onReserve(o)}>{o.status === "reserved" ? "Päivitä varaus" : "Varaa erä"}</button>
                             </div>
                             </>
