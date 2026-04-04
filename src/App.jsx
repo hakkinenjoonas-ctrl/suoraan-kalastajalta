@@ -1444,10 +1444,10 @@ function getRoleOnboardingGuideContent(role) {
     title: "Aloita kalastajana näin",
     intro: "Nämä ohjeet näkyvät vain ensimmäisillä käyttökerroilla tai kunnes valitset Älä näytä enää.",
     steps: [
-      "Täytä ensin Omat tiedot: yrityksen tiedot sekä kaupallisen kalastajan tunnus tai käytössä olevat aluksen tunnukset.",
+      "Täytä ensin Omat tiedot: yrityksen tiedot, kaupallisen kalastajan tunnus ja käytössä olevat kaupallisen kalastusaluksen tunnukset.",
       "Siirry Lisää saalis -välilehdelle, täytä saalistiedot ja tallenna erä saaliskirjanpitoon tai lähetä se tarjouksena ostajille.",
       "Tulosta etiketit Saaliit-välilehdeltä ja seuraa ostajien varauksia sekä vastatarjouksia Tarjoukset-välilehdellä.",
-      "Kun ostaja on merkinnyt toimituksen toimitetuksi, muodosta lasku Laskutus-välilehdellä.",
+      "Kun ostaja on merkinnyt toimituksen vastaanotetuksi, muodosta lasku Laskutus-välilehdellä.",
     ],
   };
 }
