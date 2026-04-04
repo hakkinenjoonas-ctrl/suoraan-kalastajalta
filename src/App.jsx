@@ -3014,7 +3014,11 @@ function WholesaleOffersView({
                   {revealIdentity && buyerDeliveryAddressText ? (
                     <div style={styles.muted}><strong>Toimitusosoite:</strong> {buyerDeliveryAddressText}</div>
                   ) : null}
-                  {offer.status === "accepted" ? <div style={styles.muted}><strong>Laskutus:</strong> tämä kauppa siirtyy ownerin laskutusnäkymään kuukausikohtaisesti.</div> : null}
+                  {offer.status === "accepted" ? (
+                    <div style={styles.muted}>
+                      <strong>Laskutus:</strong> Tiedot tästä kaupasta siirtyvät Laskutus-välilehdelle, missä voit muodostaa laskun ostajalle. Suoraan Kalastajalta perii 3 % komission hyväksytyistä kaupoista ja laskuttaa komissiot kuukausittain.
+                    </div>
+                  ) : null}
                   {canManageBuyerOffer(offer) && offer.status !== "accepted" && offer.status !== "rejected" ? (
                     <div style={{ ...styles.row, marginTop: 12 }}>
                       <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBuyerOfferStatus(offer, "accepted")}>
