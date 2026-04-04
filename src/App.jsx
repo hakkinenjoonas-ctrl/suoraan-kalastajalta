@@ -5859,7 +5859,7 @@ export default function App() {
         .update(profilePayload)
         .eq("id", profile.id)
         .select("*")
-        .single();
+        .maybeSingle();
       if (profileUpdateError) {
         if (isMissingRefreshTokenError(profileUpdateError)) {
           await invalidateSession();
@@ -5894,7 +5894,7 @@ export default function App() {
           .update(buyerPayload)
           .eq("id", linkedBuyerRecord.id)
           .select("*")
-          .single();
+          .maybeSingle();
         if (buyerUpdateError) {
           if (isMissingRefreshTokenError(buyerUpdateError)) {
             await invalidateSession();
@@ -5908,12 +5908,18 @@ export default function App() {
               ? { ...buyer, ...updatedBuyerRecord, email: normalizeEmail(updatedBuyerRecord.email || buyer.email || "") }
               : buyer
           )));
+        } else {
+          setBuyers((prev) => prev.map((buyer) => (
+            String(buyer.id) === String(linkedBuyerRecord.id)
+              ? { ...buyer, ...buyerPayload, email: normalizeEmail(buyerPayload.email || buyer.email || "") }
+              : buyer
+          )));
         }
       }
 
       const normalizedUpdatedProfile = {
-        ...updatedProfile,
-        email: normalizeEmail(updatedProfile.email || profile.email || ""),
+        ...(updatedProfile || { ...profile, ...profilePayload }),
+        email: normalizeEmail(updatedProfile?.email || profile.email || ""),
       };
       setProfile(normalizedUpdatedProfile);
       setAccountBillingSameAsDelivery(billingMatchesDelivery(accountForm));
