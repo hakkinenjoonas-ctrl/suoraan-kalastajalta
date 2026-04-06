@@ -2370,10 +2370,55 @@ function PublicBatchView({ batchId, data, loading, error }) {
           body { background: #fff !important; }
           .print-card { box-shadow: none !important; border-color: #cbd5e1 !important; break-inside: avoid; }
         }
+
+        .public-batch-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          align-items: flex-start;
+          flex-wrap: wrap;
+        }
+
+        .public-batch-row {
+          display: grid;
+          grid-template-columns: 220px minmax(0, 1fr);
+          gap: 12px;
+          border-bottom: 1px solid #e2e8f0;
+          padding-bottom: 8px;
+        }
+
+        .public-batch-value {
+          min-width: 0;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .public-batch-source {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          align-items: flex-start;
+          flex-wrap: wrap;
+        }
+
+        @media (max-width: 640px) {
+          .public-batch-row {
+            grid-template-columns: 1fr;
+            gap: 4px;
+          }
+
+          .public-batch-header {
+            gap: 12px;
+          }
+
+          .public-batch-source {
+            gap: 12px;
+          }
+        }
       `}</style>
       <div style={{ ...styles.container, maxWidth: 960 }}>
         <div style={{ ...styles.card, ...styles.headerCard, marginBottom: 16, background: "linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)" }} className="print-card">
-          <div style={styles.rowBetween}>
+          <div className="public-batch-header">
             <div>
               <div style={{ fontSize: 14, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>Erän jäljitettävyys</div>
               <h1 style={{ ...styles.title, marginBottom: 8 }}>Batch information</h1>
@@ -2396,9 +2441,9 @@ function PublicBatchView({ batchId, data, loading, error }) {
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
               <strong style={{ fontSize: 20 }}>Erän perustiedot</strong>
               {infoRows.map(([label, value]) => (
-                <div key={label} style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, borderBottom: "1px solid #e2e8f0", paddingBottom: 8 }}>
+                <div key={label} className="public-batch-row">
                   <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
-                  <div style={{ color: "#0f172a" }}>{String(value)}</div>
+                  <div className="public-batch-value" style={{ color: "#0f172a" }}>{String(value)}</div>
                 </div>
               ))}
             </div>
@@ -2407,9 +2452,9 @@ function PublicBatchView({ batchId, data, loading, error }) {
               <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
                 <strong style={{ fontSize: 20 }}>Jalostustiedot</strong>
                 {processingRows.map(([label, value]) => (
-                  <div key={label} style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, borderBottom: "1px solid #e2e8f0", paddingBottom: 8 }}>
+                  <div key={label} className="public-batch-row">
                     <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
-                    <div style={{ color: "#0f172a" }}>{String(value)}</div>
+                    <div className="public-batch-value" style={{ color: "#0f172a" }}>{String(value)}</div>
                   </div>
                 ))}
               </div>
@@ -2420,7 +2465,7 @@ function PublicBatchView({ batchId, data, loading, error }) {
                 <strong style={{ fontSize: 20 }}>Raaka-aine-erät</strong>
                 {data.source_batches.map((source) => (
                   <div key={`${source.batch_id}-${source.source_entry_id || source.species || Math.random()}`} style={{ ...styles.entry, background: "#f8fbff" }}>
-                    <div style={styles.rowBetween}>
+                    <div className="public-batch-source">
                       <div style={{ ...styles.stack, gap: 6 }}>
                         <div><strong>Erätunnus:</strong> {source.batch_id || "-"}</div>
                         <div style={styles.muted}><strong>Laji:</strong> {formatSpeciesForSale(source.species)}</div>
