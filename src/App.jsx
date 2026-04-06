@@ -2421,7 +2421,7 @@ function PublicBatchView({ batchId, data, loading, error }) {
           <div className="public-batch-header">
             <div>
               <div style={{ fontSize: 14, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>Erän jäljitettävyys</div>
-              <h1 style={{ ...styles.title, marginBottom: 8 }}>Batch information</h1>
+              <h1 style={{ ...styles.title, marginBottom: 8 }}>ERÄTIEDOT</h1>
               <div style={{ fontSize: 18, fontWeight: 700 }}>{batchId}</div>
               {headerSummary ? <div style={{ marginTop: 8, fontSize: 18, color: "#0f172a", fontWeight: 700 }}>{headerSummary}</div> : null}
             </div>
