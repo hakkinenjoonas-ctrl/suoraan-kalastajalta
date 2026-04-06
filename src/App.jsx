@@ -3908,8 +3908,10 @@ function getSellerInvoicePayload(offer, sellerProfile) {
   };
 }
 
-function buildSellerInvoicePdfDoc(offer, sellerProfile) {
+function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   const invoice = getSellerInvoicePayload(offer, sellerProfile);
+  const documentKind = options.documentKind === "reminder" ? "reminder" : "invoice";
+  const isReminder = documentKind === "reminder";
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   const leftX = 16;
   const rightX = 194;
@@ -3944,12 +3946,18 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
   doc.setFillColor(239, 246, 255);
   doc.rect(0, 0, 210, 44, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
+  doc.setFontSize(isReminder ? 18 : 22);
   doc.setTextColor(15, 23, 42);
-  doc.text("LASKU", leftX, y + 2);
+  doc.text(isReminder ? "MAKSUMUISTUTUS" : "LASKU", leftX, y + 2);
   doc.setFontSize(14);
   doc.setTextColor(30, 64, 175);
   doc.text("Suoraan Kalastajalta", leftX, y + 12);
+  if (isReminder) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Alkuperainen lasku: ${invoice.invoiceNumber}`, leftX, y + 19);
+  }
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
   doc.text(invoice.invoiceNumber, rightX, y + 1, { align: "right" });
@@ -4100,11 +4108,21 @@ async function openSellerInvoicePdf(offer, sellerProfile) {
   return invoice;
 }
 
-async function buildSellerInvoiceEmailAttachment(offer, sellerProfile) {
-  const { doc, invoice } = buildSellerInvoicePdfDoc(offer, sellerProfile);
+async function buildSellerInvoicePdf(offer, sellerProfile, documentKind = "invoice") {
+  const { doc, invoice } = buildSellerInvoicePdfDoc(offer, sellerProfile, { documentKind });
+  if (typeof window !== "undefined") {
+    window.open(URL.createObjectURL(doc.output("blob")), "_blank", "noopener,noreferrer");
+  }
+  return invoice;
+}
+
+async function buildSellerInvoiceEmailAttachment(offer, sellerProfile, documentKind = "invoice") {
+  const { doc, invoice } = buildSellerInvoicePdfDoc(offer, sellerProfile, { documentKind });
+  const isReminder = documentKind === "reminder";
   return {
     invoice,
-    fileName: `${invoice.invoiceNumber}.pdf`,
+    documentKind,
+    fileName: isReminder ? `${invoice.invoiceNumber}-maksumuistutus.pdf` : `${invoice.invoiceNumber}.pdf`,
     pdfBase64: String(doc.output("datauristring") || "").split(",")[1] || "",
   };
 }
@@ -4189,6 +4207,7 @@ function SellerBillingView({
           const invoiceDetails = calculateSellerInvoiceDetails(offer);
           const invoicePayload = getSellerInvoicePayload(offer, profile);
           const canCreateInvoicePdf = Boolean(accountForm.bankAccountIban.trim()) && Boolean(invoicePayload.buyerBillingEmail);
+          const isReminderOffer = offer.billing_status === "invoiced";
           const billingAddress = [
             offer.buyer_billing_address,
             [offer.buyer_billing_postcode, offer.buyer_billing_city].filter(Boolean).join(" "),
@@ -4239,14 +4258,14 @@ function SellerBillingView({
                   onClick={() => onOpenInvoicePdf(offer)}
                   disabled={!accountForm.bankAccountIban.trim()}
                 >
-                  Luo PDF
+                  {isReminderOffer ? "Luo PDF maksumuistutus" : "Luo PDF"}
                 </button>
                 <button
                   style={{ ...styles.button, ...styles.primaryButton }}
                   onClick={() => onSendInvoicePdf(offer)}
                   disabled={!canCreateInvoicePdf}
                 >
-                  Lähetä PDF sähköpostilla
+                  {isReminderOffer ? "Lähetä maksumuistutus sähköpostilla" : "Lähetä PDF sähköpostilla"}
                 </button>
                 {offer.billing_status !== "paid" ? (
                   <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "paid")}>Merkitse maksetuksi</button>
@@ -6998,7 +7017,7 @@ export default function App() {
       return;
     }
     setAuthError("");
-    await openSellerInvoicePdf(offer, profile);
+    await buildSellerInvoicePdf(offer, profile, offer?.billing_status === "invoiced" ? "reminder" : "invoice");
   };
 
   const handleSendSellerInvoicePdf = async (offer) => {
@@ -7007,7 +7026,8 @@ export default function App() {
       return;
     }
 
-    const attachment = await buildSellerInvoiceEmailAttachment(offer, profile);
+    const documentKind = offer?.billing_status === "invoiced" ? "reminder" : "invoice";
+    const attachment = await buildSellerInvoiceEmailAttachment(offer, profile, documentKind);
     if (!attachment.invoice.buyerBillingEmail) {
       setAuthError("Ostajalle ei ole tallennettu laskutussähköpostia.");
       return;
@@ -7027,6 +7047,7 @@ export default function App() {
       buyerName: attachment.invoice.buyerName,
       totalAmount: euro(attachment.invoice.grandTotal),
       dueDate: attachment.invoice.dueDate,
+      documentKind,
       fileName: attachment.fileName,
       pdfBase64: attachment.pdfBase64,
     }, accessToken);
@@ -7040,8 +7061,13 @@ export default function App() {
       return;
     }
 
-    await handleUpdateBillingStatus(offer, "invoiced");
-    setAuthInfo(`Lasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
+    if (documentKind === "invoice") {
+      await handleUpdateBillingStatus(offer, "invoiced");
+      setAuthInfo(`Lasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
+      return;
+    }
+
+    setAuthInfo(`Maksumuistutus ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
   };
 
   const updateFulfillmentStatus = async (offer, fulfillmentStatus) => {

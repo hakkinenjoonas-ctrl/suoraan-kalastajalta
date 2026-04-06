@@ -47,6 +47,7 @@ Deno.serve(async (req) => {
       buyerName,
       totalAmount,
       dueDate,
+      documentKind,
       fileName,
       pdfBase64,
     } = await req.json();
@@ -61,11 +62,16 @@ Deno.serve(async (req) => {
     const safeBuyerName = escapeHtml(buyerName || "Asiakas");
     const safeTotalAmount = escapeHtml(totalAmount || "");
     const safeDueDate = escapeHtml(dueDate || "");
+    const isReminder = documentKind === "reminder";
+    const documentLabel = isReminder ? "Maksumuistutus" : "Lasku";
+    const introText = isReminder
+      ? `${sellerName || "Suoraan Kalastajalta"} lähetti sinulle maksumuistutuksen PDF-liitteenä.`
+      : `${sellerName || "Suoraan Kalastajalta"} lähetti sinulle laskun PDF-liitteenä.`;
 
     const text = [
       `Hei ${buyerName || "Asiakas"},`,
       "",
-      `${sellerName || "Suoraan Kalastajalta"} lähetti sinulle laskun PDF-liitteenä.`,
+      introText,
       invoiceNumber ? `Laskunumero: ${invoiceNumber}` : "",
       referenceNumber ? `Viitenumero: ${referenceNumber}` : "",
       totalAmount ? `Maksettava yhteensä: ${totalAmount}` : "",
@@ -77,9 +83,9 @@ Deno.serve(async (req) => {
 
     const html = `
       <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
-        <h2 style="color: #1d4ed8; margin-bottom: 12px;">Lasku PDF-liitteenä</h2>
+        <h2 style="color: #1d4ed8; margin-bottom: 12px;">${escapeHtml(documentLabel)} PDF-liitteenä</h2>
         <p>Hei <strong>${safeBuyerName}</strong>,</p>
-        <p><strong>${safeSellerName}</strong> lähetti sinulle laskun PDF-liitteenä.</p>
+        <p><strong>${safeSellerName}</strong> lähetti sinulle ${isReminder ? "maksumuistutuksen" : "laskun"} PDF-liitteenä.</p>
         <table style="border-collapse: collapse; width: 100%; max-width: 520px;">
           ${safeInvoiceNumber ? `<tr><td style="padding: 8px 10px; background: #eff6ff; border: 1px solid #bfdbfe; font-weight: 700;">Laskunumero</td><td style="padding: 8px 10px; border: 1px solid #bfdbfe;">${safeInvoiceNumber}</td></tr>` : ""}
           ${safeReferenceNumber ? `<tr><td style="padding: 8px 10px; background: #eff6ff; border: 1px solid #bfdbfe; font-weight: 700;">Viitenumero</td><td style="padding: 8px 10px; border: 1px solid #bfdbfe;">${safeReferenceNumber}</td></tr>` : ""}
@@ -99,7 +105,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: fromEmail,
         to: [invoiceEmail],
-        subject: `${invoiceNumber || "Lasku"} - ${sellerName || "Suoraan Kalastajalta"}`,
+        subject: `${documentLabel}${invoiceNumber ? ` ${invoiceNumber}` : ""} - ${sellerName || "Suoraan Kalastajalta"}`,
         text,
         html,
         attachments: [
