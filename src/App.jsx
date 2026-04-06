@@ -1054,8 +1054,19 @@ function isNativeCapacitorApp() {
   return false;
 }
 
+let lastPresentedPdfKey = "";
+let lastPresentedPdfAt = 0;
+
 async function presentPdfDocument(doc, fileName) {
   if (typeof window === "undefined") return;
+
+  const presentationKey = String(fileName || "document.pdf");
+  const now = Date.now();
+  if (presentationKey === lastPresentedPdfKey && now - lastPresentedPdfAt < 1500) {
+    return;
+  }
+  lastPresentedPdfKey = presentationKey;
+  lastPresentedPdfAt = now;
 
   if (isNativeCapacitorApp()) {
     const pdfBase64 = String(doc.output("datauristring") || "").split(",")[1] || "";
