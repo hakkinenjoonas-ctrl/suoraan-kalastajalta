@@ -2703,8 +2703,8 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
             </div>
             <div style={styles.small}>{formatDetails.label} · {formatDetails.description}. “Luo PDF” avaa tulostusikkunan, jossa voit tallentaa PDF:n.</div>
             <div style={{ ...styles.row, flexWrap: "wrap" }}>
-              <button style={{ ...styles.button, ...styles.primaryButton }} onClick={onGeneratePdf}>Luo PDF</button>
-              <button style={styles.button} onClick={onPrint}>Tulosta</button>
+              <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={onGeneratePdf}>Luo PDF</button>
+              <button type="button" style={styles.button} onClick={onPrint}>Tulosta</button>
             </div>
           </div>
 
@@ -4379,6 +4379,7 @@ function SellerBillingView({
 
               <div style={styles.row}>
                 <button
+                  type="button"
                   style={styles.button}
                   onClick={() => onOpenInvoicePdf(offer)}
                   disabled={!accountForm.bankAccountIban.trim()}
@@ -4387,6 +4388,7 @@ function SellerBillingView({
                 </button>
                 {!isPaidOffer ? (
                   <button
+                    type="button"
                     style={{ ...styles.button, ...styles.primaryButton }}
                     onClick={() => onSendInvoicePdf(offer)}
                     disabled={!canCreateInvoicePdf}
