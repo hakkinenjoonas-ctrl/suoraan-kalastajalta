@@ -4073,6 +4073,7 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
     doc.text(wrappedLines, leftX, infoY);
     infoY += Math.max(1, wrappedLines.length) * lineHeight + 1.4;
   };
+  drawInfoLine(`Saajan nimi: ${invoice.sellerName || "-"}`);
   drawInfoLine(`IBAN: ${invoice.sellerIban || "-"}`);
   drawInfoLine(`BIC: ${invoice.sellerBic || "-"}`);
   drawInfoLine(`Viitenumero: ${invoice.referenceDisplay}`);
