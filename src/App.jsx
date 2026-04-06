@@ -4259,7 +4259,7 @@ function SellerBillingView({
                   onClick={() => onOpenInvoicePdf(offer)}
                   disabled={!accountForm.bankAccountIban.trim()}
                 >
-                  {isPaidOffer ? "Luo laskukopio PDF" : isReminderOffer ? "Luo PDF maksumuistutus" : "Luo PDF"}
+                  {isPaidOffer ? "Luo laskukopio PDF" : isReminderOffer ? "Luo maksumuistutus (PDF)" : "Luo lasku (PDF)"}
                 </button>
                 {!isPaidOffer ? (
                   <button
@@ -4267,7 +4267,7 @@ function SellerBillingView({
                     onClick={() => onSendInvoicePdf(offer)}
                     disabled={!canCreateInvoicePdf}
                   >
-                    {isReminderOffer ? "Lähetä maksumuistutus sähköpostilla" : "Lähetä PDF sähköpostilla"}
+                    {isReminderOffer ? "Lähetä maksumuistutus sähköpostilla" : "Lähetä lasku sähköpostilla"}
                   </button>
                 ) : null}
                 {offer.billing_status !== "paid" ? (
