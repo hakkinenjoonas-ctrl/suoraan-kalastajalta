@@ -3870,16 +3870,19 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
   const pageBottomY = 287;
   const lineHeight = 4.6;
   const tableBottomLimit = 207;
+  const quantityX = 132;
+  const unitPriceX = 162;
+  const totalX = rightX - 2;
   const drawInvoiceTableHeader = (headerY) => {
     doc.setFillColor(15, 23, 42);
     doc.rect(leftX, headerY - 6, 178, 9, "F");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(9.5);
+    doc.setFontSize(8.2);
     doc.setTextColor(255, 255, 255);
     doc.text("Tuote", leftX + 2, headerY);
-    doc.text("Määrä", 120, headerY);
-    doc.text("Yksikköhinta ALV 0 %", 148, headerY, { align: "right" });
-    doc.text("Yhteensä", rightX - 2, headerY, { align: "right" });
+    doc.text("Määrä", quantityX, headerY, { align: "right" });
+    doc.text("Yks.hinta ALV 0 %", unitPriceX, headerY, { align: "right" });
+    doc.text("Yhteensä", totalX, headerY, { align: "right" });
   };
   const renderInvoiceColumn = (lines, x, startY, maxWidth) => {
     let columnY = startY;
@@ -3959,9 +3962,9 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
     }
     const textY = y + 3.5;
     doc.text(itemLines, leftX + 2, textY);
-    doc.text(item.quantityDisplay || "-", 120, textY);
-    doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", 148, textY, { align: "right" });
-    doc.text(euro(item.lineTotal || 0), rightX - 2, textY, { align: "right" });
+    doc.text(item.quantityDisplay || "-", quantityX, textY, { align: "right" });
+    doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", unitPriceX, textY, { align: "right" });
+    doc.text(euro(item.lineTotal || 0), totalX, textY, { align: "right" });
     doc.setDrawColor(226, 232, 240);
     doc.line(leftX, y + rowHeight, rightX, y + rowHeight);
     y += rowHeight;
@@ -4033,7 +4036,7 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
   if (invoice.areaText) drawInfoLine(`Kalastamisalue: ${invoice.areaText}`);
   if (invoice.deliveryMethod) drawInfoLine(`Toimitustapa: ${invoice.deliveryMethod}`);
 
-  const barcodeY = Math.min(infoY + 2, pageBottomY - 18);
+  const barcodeY = Math.min(infoY + 6, pageBottomY - 18);
   drawSellerInvoiceReferenceBarcode(doc, invoice.referenceNumber, leftX, barcodeY, 120, 12);
   doc.setFontSize(9);
   doc.text(`Viite ${invoice.referenceDisplay}`, leftX, Math.min(barcodeY + 18, pageBottomY));
