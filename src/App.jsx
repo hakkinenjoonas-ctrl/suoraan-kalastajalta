@@ -3847,8 +3847,9 @@ function parseSellerInvoiceLineItems(offer) {
     const priceMatch = String(line || "").match(/Hinta\s+([0-9]+(?:[.,][0-9]+)?)/i);
     const pieceMatch = String(visibleLine || "").match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
     const kiloMatch = String(visibleLine || "").match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kg/i);
-    const quantity = Number(parseLocaleNumber(pieceMatch?.[1] || kiloMatch?.[1]) || 0);
-    const unit = pieceMatch ? "kpl" : "kg";
+    const isCrayfishLine = isCrayfishSpecies(description);
+    const quantity = Number(parseLocaleNumber(isCrayfishLine ? pieceMatch?.[1] : kiloMatch?.[1]) || 0);
+    const unit = isCrayfishLine ? "kpl" : "kg";
     const unitPrice = Number(parseLocaleNumber(priceMatch?.[1]) || 0);
 
     return {
