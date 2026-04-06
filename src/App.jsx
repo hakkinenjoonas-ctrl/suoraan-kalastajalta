@@ -4208,6 +4208,7 @@ function SellerBillingView({
           const invoicePayload = getSellerInvoicePayload(offer, profile);
           const canCreateInvoicePdf = Boolean(accountForm.bankAccountIban.trim()) && Boolean(invoicePayload.buyerBillingEmail);
           const isReminderOffer = offer.billing_status === "invoiced";
+          const isPaidOffer = offer.billing_status === "paid";
           const billingAddress = [
             offer.buyer_billing_address,
             [offer.buyer_billing_postcode, offer.buyer_billing_city].filter(Boolean).join(" "),
@@ -4258,15 +4259,17 @@ function SellerBillingView({
                   onClick={() => onOpenInvoicePdf(offer)}
                   disabled={!accountForm.bankAccountIban.trim()}
                 >
-                  {isReminderOffer ? "Luo PDF maksumuistutus" : "Luo PDF"}
+                  {isPaidOffer ? "Luo laskukopio PDF" : isReminderOffer ? "Luo PDF maksumuistutus" : "Luo PDF"}
                 </button>
-                <button
-                  style={{ ...styles.button, ...styles.primaryButton }}
-                  onClick={() => onSendInvoicePdf(offer)}
-                  disabled={!canCreateInvoicePdf}
-                >
-                  {isReminderOffer ? "Lähetä maksumuistutus sähköpostilla" : "Lähetä PDF sähköpostilla"}
-                </button>
+                {!isPaidOffer ? (
+                  <button
+                    style={{ ...styles.button, ...styles.primaryButton }}
+                    onClick={() => onSendInvoicePdf(offer)}
+                    disabled={!canCreateInvoicePdf}
+                  >
+                    {isReminderOffer ? "Lähetä maksumuistutus sähköpostilla" : "Lähetä PDF sähköpostilla"}
+                  </button>
+                ) : null}
                 {offer.billing_status !== "paid" ? (
                   <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "paid")}>Merkitse maksetuksi</button>
                 ) : null}
