@@ -2356,12 +2356,6 @@ function PublicBatchView({ batchId, data, loading, error }) {
     ["Luotu", data?.created_at ? new Date(data.created_at).toLocaleString("fi-FI") : ""],
   ].filter(([, value]) => value);
 
-  const saleRows = [
-    ["Myyntitila", data?.sale_info?.status],
-    ["Tarjouksia", data?.sale_info?.offer_count],
-    ["Viimeisin päivitys", data?.sale_info?.updated_at ? new Date(data.sale_info.updated_at).toLocaleString("fi-FI") : ""],
-  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
-
   const processingRows = [
     ["Tuotetyyppi", data?.related_processing?.product_type],
     ["Pakkauskoko", data?.related_processing?.package_size_g ? `${data.related_processing.package_size_g} g` : ""],
@@ -2409,14 +2403,6 @@ function PublicBatchView({ batchId, data, loading, error }) {
               ))}
             </div>
 
-            {data?.species_summary || data?.notes ? (
-              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
-                <strong style={{ fontSize: 20 }}>Sisältö ja lisätiedot</strong>
-                {data?.species_summary ? <div style={{ whiteSpace: "pre-wrap", color: "#0f172a" }}>{formatSpeciesSummaryText(data.species_summary)}</div> : null}
-                {data?.notes ? <div style={{ whiteSpace: "pre-wrap", color: "#475569" }}>{data.notes}</div> : null}
-              </div>
-            ) : null}
-
             {processingRows.length > 0 ? (
               <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
                 <strong style={{ fontSize: 20 }}>Jalostustiedot</strong>
@@ -2453,17 +2439,6 @@ function PublicBatchView({ batchId, data, loading, error }) {
               </div>
             ) : null}
 
-            {saleRows.length > 0 ? (
-              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
-                <strong style={{ fontSize: 20 }}>Myynti / tarjous</strong>
-                {saleRows.map(([label, value]) => (
-                  <div key={label} style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, borderBottom: "1px solid #e2e8f0", paddingBottom: 8 }}>
-                    <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
-                    <div style={{ color: "#0f172a" }}>{String(value)}</div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
           </div>
         ) : null}
 
