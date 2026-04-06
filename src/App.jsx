@@ -429,6 +429,28 @@ function formatSpeciesSummaryText(value, options = {}) {
     .join("\n");
 }
 
+function getMixedOfferCounterRows(summary) {
+  return getOfferSummaryLines(summary)
+    .map((line, index) => {
+      const rawLine = String(line || "").trim();
+      if (!rawLine) return null;
+      const speciesPart = (rawLine.split(":")[0] || rawLine).trim();
+      const label = formatSpeciesForSale(speciesPart);
+      const kiloMatch = rawLine.match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kg/i);
+      const countMatch = rawLine.match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
+      const parsedWeight =
+        parseLocaleNumber(kiloMatch?.[1]) ??
+        parseLocaleNumber(countMatch?.[1]) ??
+        0;
+      return {
+        key: `${speciesPart}-${index}`,
+        label,
+        weight: Number.isFinite(parsedWeight) ? parsedWeight : 0,
+      };
+    })
+    .filter(Boolean);
+}
+
 function getOfferSummaryBatchItems(summary) {
   return String(summary || "")
     .split("\n")
@@ -4259,7 +4281,12 @@ export default function App() {
   });
   const [processedAreaSelector, setProcessedAreaSelector] = useState(() => resolveAreaSelectorValue("Saimaa", initialCatchDefaults.customLakeAreas, initialCatchDefaults.customSeaAreas));
   const [newAllowedForm, setNewAllowedForm] = useState({ email: "", displayName: "", role: "member", buyer_id: "" });
-  const [buyerAction, setBuyerAction] = useState({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
+  const [buyerAction, setBuyerAction] = useState({
+    counter_price_per_kg: "",
+    mixed_counter_prices: {},
+    reserved_kilos: "",
+    buyer_message: "",
+  });
   const [offerForm, setOfferForm] = useState({
     company_name: "",
     contact_name: "",
@@ -7072,8 +7099,41 @@ export default function App() {
   };
 
   const onSubmitCounter = async (offer) => {
-    const price = parseLocaleNumber(buyerAction.counter_price_per_kg);
-    const msg = buyerAction.buyer_message?.trim() || null;
+    const mixedOffer = isMixedOffer(offer);
+    let price = parseLocaleNumber(buyerAction.counter_price_per_kg);
+    let msg = buyerAction.buyer_message?.trim() || null;
+    if (mixedOffer) {
+      const rows = getMixedOfferCounterRows(offer.species_summary);
+      const perSpeciesPrices = {};
+      for (const row of rows) {
+        const parsedPrice = parseLocaleNumber(buyerAction.mixed_counter_prices?.[row.key]);
+        if (parsedPrice == null) {
+          setAuthError("Täytä vastatarjoushinta jokaiselle kalalajille.");
+          return;
+        }
+        perSpeciesPrices[row.key] = parsedPrice;
+      }
+      const totalWeight = rows.reduce((sum, row) => sum + Number(row.weight || 0), 0);
+      const weightedTotal = rows.reduce(
+        (sum, row) => sum + perSpeciesPrices[row.key] * Number(row.weight || 0),
+        0
+      );
+      const fallbackPrice = rows.length > 0 ? perSpeciesPrices[rows[0].key] : null;
+      price =
+        totalWeight > 0
+          ? Number((weightedTotal / totalWeight).toFixed(2))
+          : fallbackPrice;
+      const speciesCounterText = [
+        "Lajikohtainen vastatarjous:",
+        ...rows.map(
+          (row) =>
+            `- ${row.label}: ${perSpeciesPrices[row.key].toFixed(2).replace(".", ",")} €/kg`
+        ),
+      ].join("\n");
+      msg = [speciesCounterText, buyerAction.buyer_message?.trim()]
+        .filter(Boolean)
+        .join("\n\n");
+    }
     const ok = await buyerUpdateOffer(offer.id, {
       status: "countered",
       counter_price_per_kg: price,
@@ -7083,7 +7143,12 @@ export default function App() {
       const updatedOffer = { ...offer, status: "countered", counter_price_per_kg: price, buyer_message: msg };
       await sendBuyerResponseEmail(updatedOffer, "Ostaja teki vastatarjouksen");
       setAuthInfo("Vastatarjous lähetetty myyjälle.");
-      setBuyerAction({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
+      setBuyerAction({
+        counter_price_per_kg: "",
+        mixed_counter_prices: {},
+        reserved_kilos: "",
+        buyer_message: "",
+      });
       setBuyerActiveOfferId(null);
     }
   };
@@ -7104,7 +7169,12 @@ export default function App() {
       const updatedOffer = { ...offer, status: "reserved", reserved_kilos: reserved, buyer_message: msg };
       await sendBuyerResponseEmail(updatedOffer, "Ostaja varasi erän");
       setAuthInfo("Erä varattu. Myyjälle näkyy varaus.");
-      setBuyerAction({ counter_price_per_kg: "", reserved_kilos: "", buyer_message: "" });
+      setBuyerAction({
+        counter_price_per_kg: "",
+        mixed_counter_prices: {},
+        reserved_kilos: "",
+        buyer_message: "",
+      });
       setBuyerActiveOfferId(null);
     }
   };
@@ -8378,25 +8448,59 @@ export default function App() {
                         ) : null}
                         {!buyerOfferActionsOpen ? null : (
                         <>
+                        {mixedOffer ? (
+                          <>
+                            <div style={styles.field}>
+                              <label>Vastatarjous lajeittain €/kg</label>
+                              <div style={styles.stack}>
+                                {getMixedOfferCounterRows(o.species_summary).map((row) => (
+                                  <div key={row.key} style={styles.field}>
+                                    <label>{row.label}</label>
+                                    <input
+                                      style={styles.input}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={buyerAction.mixed_counter_prices?.[row.key] || ""}
+                                      onChange={(e) =>
+                                        setBuyerAction((p) => ({
+                                          ...p,
+                                          mixed_counter_prices: {
+                                            ...(p.mixed_counter_prices || {}),
+                                            [row.key]: e.target.value,
+                                          },
+                                        }))
+                                      }
+                                      placeholder="Esim. 5,80"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            <div style={styles.noticeInfo}>
+                              Monilajinen erä varataan aina kokonaisuutena. Yksittäisiä kalalajeja ei voi varata erikseen tästä tarjouksesta.
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={styles.field}>
+                              <label>Vastatarjous €/kg</label>
+                              <input
+                                style={styles.input}
+                                type="text"
+                                inputMode="decimal"
+                                value={buyerAction.counter_price_per_kg}
+                                onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))}
+                                placeholder="Esim. 5,80"
+                              />
+                            </div>
+                          </>
+                        )}
+                        {!mixedOffer ? (
                           <div style={styles.field}>
-                            <label>{mixedOffer ? "Vastatarjous koko erästä €/kg" : "Vastatarjous €/kg"}</label>
-                                <input
-                                  style={styles.input}
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={buyerAction.counter_price_per_kg}
-                                  onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))}
-                                  placeholder="Esim. 5,80"
-                                />
-                              </div>
-                            {mixedOffer ? (
-                              <div style={styles.noticeInfo}>Monilajinen erä varataan aina kokonaisuutena. Yksittäisiä kalalajeja ei voi varata erikseen tästä tarjouksesta.</div>
-                            ) : (
-                              <div style={styles.field}>
-                                <label>Varaa kg (tyhjä = koko erä)</label>
-                                <input style={styles.input} type="number" value={buyerAction.reserved_kilos} onChange={(e) => setBuyerAction((p) => ({ ...p, reserved_kilos: e.target.value }))} placeholder={`Max ${o.total_kilos}`} />
-                              </div>
-                            )}
+                            <label>Varaa kg (tyhjä = koko erä)</label>
+                            <input style={styles.input} type="number" value={buyerAction.reserved_kilos} onChange={(e) => setBuyerAction((p) => ({ ...p, reserved_kilos: e.target.value }))} placeholder={`Max ${o.total_kilos}`} />
+                          </div>
+                        ) : null}
                             <div style={styles.field}>
                               <label>Viesti myyjälle</label>
                               <textarea
