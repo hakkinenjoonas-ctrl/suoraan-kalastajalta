@@ -8195,19 +8195,7 @@ export default function App() {
       void (async () => {
         try {
           const doc = await buildCatchLabelPdf(entry, profile, labelPrintCount, labelPrintFormat);
-          const blobUrl = doc.output("bloburl");
-          const pdfWindow = window.open(blobUrl, "_blank");
-          if (!pdfWindow) {
-            doc.save(buildCatchLabelPdfFileName(entry));
-            return;
-          }
-          window.setTimeout(() => {
-            try {
-              window.URL.revokeObjectURL(blobUrl);
-            } catch {
-              // ignore
-            }
-          }, 60000);
+          await presentPdfDocument(doc, buildCatchLabelPdfFileName(entry));
         } catch (error) {
           console.error("Etiketti-PDF:n luonti epäonnistui:", error);
           setAuthError(`Etiketti-PDF:n luonti epäonnistui: ${String(error?.message || error)}`);
