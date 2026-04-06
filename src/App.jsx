@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { Directory, Filesystem } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { jsPDF } from "jspdf";
 
 const SUPABASE_URL = "https://exuqgemipmaqdkficlfn.supabase.co";
@@ -1037,6 +1039,64 @@ function blobToDataUrl(blob) {
     reader.onerror = () => reject(new Error("Tiedoston muunto data-URL:ksi epäonnistui."));
     reader.readAsDataURL(blob);
   });
+}
+
+function isNativeCapacitorApp() {
+  if (typeof window === "undefined") return false;
+  const maybeCapacitor = window.Capacitor;
+  if (!maybeCapacitor) return false;
+  if (typeof maybeCapacitor.isNativePlatform === "function") {
+    return maybeCapacitor.isNativePlatform();
+  }
+  if (typeof maybeCapacitor.getPlatform === "function") {
+    return maybeCapacitor.getPlatform() !== "web";
+  }
+  return false;
+}
+
+async function presentPdfDocument(doc, fileName) {
+  if (typeof window === "undefined") return;
+
+  if (isNativeCapacitorApp()) {
+    const pdfBase64 = String(doc.output("datauristring") || "").split(",")[1] || "";
+    if (!pdfBase64) {
+      throw new Error("PDF-tiedoston muodostus epäonnistui.");
+    }
+
+    const { uri } = await Filesystem.writeFile({
+      path: fileName,
+      data: pdfBase64,
+      directory: Directory.Cache,
+      recursive: true,
+    });
+
+    await Share.share({
+      title: fileName,
+      text: "Avaa tai jaa PDF-tiedosto",
+      url: uri,
+      dialogTitle: "Lasku PDF",
+    });
+    return;
+  }
+
+  const blobUrl = URL.createObjectURL(doc.output("blob"));
+  const openedWindow = window.open(blobUrl, "_blank", "noopener,noreferrer");
+  if (!openedWindow) {
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  window.setTimeout(() => {
+    try {
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // ignore cleanup failure
+    }
+  }, 60000);
 }
 
 async function fetchImageDataUrl(url) {
@@ -4129,17 +4189,14 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
 
 async function openSellerInvoicePdf(offer, sellerProfile) {
   const { doc, invoice } = buildSellerInvoicePdfDoc(offer, sellerProfile);
-  if (typeof window !== "undefined") {
-    window.open(URL.createObjectURL(doc.output("blob")), "_blank", "noopener,noreferrer");
-  }
+  await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`);
   return invoice;
 }
 
 async function buildSellerInvoicePdf(offer, sellerProfile, documentKind = "invoice") {
   const { doc, invoice } = buildSellerInvoicePdfDoc(offer, sellerProfile, { documentKind });
-  if (typeof window !== "undefined") {
-    window.open(URL.createObjectURL(doc.output("blob")), "_blank", "noopener,noreferrer");
-  }
+  const fileName = documentKind === "reminder" ? `${invoice.invoiceNumber}-maksumuistutus.pdf` : `${invoice.invoiceNumber}.pdf`;
+  await presentPdfDocument(doc, fileName);
   return invoice;
 }
 
