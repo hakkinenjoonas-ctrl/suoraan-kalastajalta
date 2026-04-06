@@ -4014,9 +4014,9 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  let paymentStartY = 220;
+  let paymentStartY = 214;
   if (totalsY === 26) {
-    paymentStartY = 32;
+    paymentStartY = 26;
   }
   doc.text("Maksutiedot", leftX, paymentStartY);
   doc.setFont("helvetica", "normal");
