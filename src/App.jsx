@@ -4085,7 +4085,7 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
 
   const barcodeData = buildSellerInvoiceBankBarcode(invoice);
   if (barcodeData) {
-    const barcodeY = Math.min(infoY + 14, pageBottomY - 18);
+    const barcodeY = Math.min(infoY + 20, pageBottomY - 18);
     drawCode128SetCBarcode(doc, barcodeData, leftX, barcodeY, 120, 12);
   }
 
