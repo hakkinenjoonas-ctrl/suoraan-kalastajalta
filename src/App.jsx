@@ -3716,14 +3716,18 @@ function calculateFinnishReferenceCheckDigit(baseDigits) {
 }
 
 function formatFinnishReferenceDisplay(referenceNumber) {
-  return String(referenceNumber || "")
-    .replace(/\s+/g, "")
+  const digits = String(referenceNumber || "").replace(/\D/g, "").replace(/^0+/, "") || "0";
+  return digits
     .replace(/(.)(?=(.{5})+$)/g, "$1 ")
     .trim();
 }
 
 function buildSellerInvoiceReference(offer) {
-  const baseDigits = String(offer?.id || "").replace(/\D/g, "").replace(/^0+/, "").slice(0, 18) || "1";
+  const idDigits = String(offer?.id || "").replace(/\D/g, "");
+  const dateDigits = String(offer?.updated_at || offer?.created_at || today()).replace(/\D/g, "");
+  let baseDigits = `${dateDigits}${idDigits}`.replace(/^0+/, "").slice(-18);
+  if (!baseDigits) baseDigits = "100";
+  if (baseDigits.length < 3) baseDigits = baseDigits.padEnd(3, "0");
   return `${baseDigits}${calculateFinnishReferenceCheckDigit(baseDigits)}`;
 }
 
@@ -3783,43 +3787,85 @@ function parseSellerInvoiceLineItems(offer) {
   }];
 }
 
-function drawSellerInvoiceReferenceBarcode(doc, referenceNumber, x, y, width, height) {
-  const code39Patterns = {
-    "0": "nnnwwnwnn",
-    "1": "wnnwnnnnw",
-    "2": "nnwwnnnnw",
-    "3": "wnwwnnnnn",
-    "4": "nnnwwnnnw",
-    "5": "wnnwwnnnn",
-    "6": "nnwwwnnnn",
-    "7": "nnnwnnwnw",
-    "8": "wnnwnnwnn",
-    "9": "nnwwnnwnn",
-    "*": "nwnnwnwnn",
-  };
-  const barcodeValue = `*${String(referenceNumber || "").replace(/\D/g, "") || "0"}*`;
-  const totalUnits = barcodeValue.split("").reduce((sum, char, charIndex) => {
-    const pattern = code39Patterns[char] || code39Patterns["0"];
-    const patternUnits = pattern.split("").reduce((count, marker) => count + (marker === "w" ? 2.8 : 1), 0);
-    return sum + patternUnits + (charIndex < barcodeValue.length - 1 ? 1 : 0);
-  }, 0);
-  const narrowWidth = width / totalUnits;
-  let cursorX = x;
+function normalizeFinnishIban(iban) {
+  const cleaned = String(iban || "").replace(/\s+/g, "").toUpperCase();
+  if (!/^FI\d{16}$/.test(cleaned)) return "";
+  return cleaned;
+}
+
+function formatBankBarcodeDueDate(dueDate) {
+  if (!dueDate) return "000000";
+  const digits = String(dueDate || "").replace(/\D/g, "");
+  if (digits.length === 8) return digits.slice(2);
+  return "000000";
+}
+
+function formatBankBarcodeAmount(total) {
+  const cents = Math.round(Number(total || 0) * 100);
+  if (!Number.isFinite(cents) || cents < 0 || cents > 99999999) return "00000000";
+  return String(cents).padStart(8, "0");
+}
+
+function buildSellerInvoiceBankBarcode(invoice) {
+  const iban = normalizeFinnishIban(invoice?.sellerIban);
+  const referenceDigits = String(invoice?.referenceNumber || "").replace(/\D/g, "");
+  if (!iban || !referenceDigits) return "";
+
+  const ibanNumericPart = iban.slice(2);
+  const amountField = formatBankBarcodeAmount(invoice?.grandTotal);
+  const referenceField = referenceDigits.padStart(20, "0").slice(-20);
+  const dueDateField = formatBankBarcodeDueDate(invoice?.dueDate);
+  return `4${ibanNumericPart}${amountField}000${referenceField}${dueDateField}`;
+}
+
+function drawCode128SetCBarcode(doc, data, x, y, width, height) {
+  const code128Patterns = [
+    "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312", "132212", "221213",
+    "221312", "231212", "112232", "122132", "122231", "113222", "123122", "123221", "223211", "221132",
+    "221231", "213212", "223112", "312131", "311222", "321122", "321221", "312212", "322112", "322211",
+    "212123", "212321", "232121", "111323", "131123", "131321", "112313", "132113", "132311", "211313",
+    "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121", "313121", "211331",
+    "231131", "213113", "213311", "213131", "311123", "311321", "331121", "312113", "312311", "332111",
+    "314111", "221411", "431111", "111224", "111422", "121124", "121421", "141122", "141221", "112214",
+    "112412", "122114", "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111",
+    "111242", "121142", "121241", "114212", "124112", "124211", "411212", "421112", "421211", "212141",
+    "214121", "412121", "111143", "111341", "131141", "114113", "114311", "411113", "411311", "113141",
+    "114131", "311141", "411131", "211412", "211214", "211232", "2331112",
+  ];
+  const cleaned = String(data || "").replace(/\D/g, "");
+  if (!cleaned || cleaned.length % 2 !== 0) return false;
+
+  const values = [];
+  for (let index = 0; index < cleaned.length; index += 2) {
+    values.push(Number(cleaned.slice(index, index + 2)));
+  }
+
+  let checksum = 105;
+  values.forEach((value, index) => {
+    checksum += value * (index + 1);
+  });
+  checksum %= 103;
+
+  const sequence = [105, ...values, checksum, 106];
+  const totalModules = sequence.reduce((sum, value) => sum + code128Patterns[value].split("").reduce((patternSum, digit) => patternSum + Number(digit), 0), 0);
+  const maxBarcodeWidth = Math.min(105, width);
+  const barcodeWidth = Math.max(70, maxBarcodeWidth);
+  const moduleWidth = barcodeWidth / totalModules;
+  let cursorX = x + ((width - barcodeWidth) / 2);
 
   doc.setFillColor(15, 23, 42);
-  barcodeValue.split("").forEach((char, charIndex) => {
-    const pattern = code39Patterns[char] || code39Patterns["0"];
-    pattern.split("").forEach((marker, markerIndex) => {
-      const barWidth = narrowWidth * (marker === "w" ? 2.8 : 1);
-      if (markerIndex % 2 === 0) {
-        doc.rect(cursorX, y, barWidth, height, "F");
+  sequence.forEach((value) => {
+    const pattern = code128Patterns[value];
+    pattern.split("").forEach((digit, patternIndex) => {
+      const segmentWidth = Number(digit) * moduleWidth;
+      if (patternIndex % 2 === 0) {
+        doc.rect(cursorX, y, segmentWidth, height, "F");
       }
-      cursorX += barWidth;
+      cursorX += segmentWidth;
     });
-    if (charIndex < barcodeValue.length - 1) {
-      cursorX += narrowWidth;
-    }
   });
+
+  return true;
 }
 
 function getSellerInvoicePayload(offer, sellerProfile) {
@@ -4036,10 +4082,11 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
   if (invoice.areaText) drawInfoLine(`Kalastamisalue: ${invoice.areaText}`);
   if (invoice.deliveryMethod) drawInfoLine(`Toimitustapa: ${invoice.deliveryMethod}`);
 
-  const barcodeY = Math.min(infoY + 6, pageBottomY - 18);
-  drawSellerInvoiceReferenceBarcode(doc, invoice.referenceNumber, leftX, barcodeY, 120, 12);
-  doc.setFontSize(9);
-  doc.text(`Viite ${invoice.referenceDisplay}`, leftX, Math.min(barcodeY + 18, pageBottomY));
+  const barcodeData = buildSellerInvoiceBankBarcode(invoice);
+  if (barcodeData) {
+    const barcodeY = Math.min(infoY + 10, pageBottomY - 18);
+    drawCode128SetCBarcode(doc, barcodeData, leftX, barcodeY, 120, 12);
+  }
 
   return { doc, invoice };
 }
