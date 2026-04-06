@@ -3867,6 +3867,29 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   const leftX = 16;
   const rightX = 194;
+  const pageBottomY = 287;
+  const lineHeight = 4.6;
+  const tableBottomLimit = 207;
+  const drawInvoiceTableHeader = (headerY) => {
+    doc.setFillColor(15, 23, 42);
+    doc.rect(leftX, headerY - 6, 178, 9, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Tuote", leftX + 2, headerY);
+    doc.text("Määrä", 120, headerY);
+    doc.text("Yksikköhinta ALV 0 %", 148, headerY, { align: "right" });
+    doc.text("Yhteensä", rightX - 2, headerY, { align: "right" });
+  };
+  const renderInvoiceColumn = (lines, x, startY, maxWidth) => {
+    let columnY = startY;
+    lines.forEach((line) => {
+      const wrappedLines = doc.splitTextToSize(String(line), maxWidth);
+      doc.text(wrappedLines, x, columnY);
+      columnY += Math.max(1, wrappedLines.length) * lineHeight;
+    });
+    return columnY;
+  };
   let y = 18;
 
   doc.setFillColor(239, 246, 255);
@@ -3912,19 +3935,11 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  sellerLines.forEach((line, index) => doc.text(String(line), leftX, y + (index * 5)));
-  buyerLines.forEach((line, index) => doc.text(String(line), 120, y + (index * 5)));
+  const sellerEndY = renderInvoiceColumn(sellerLines, leftX, y, 84);
+  const buyerEndY = renderInvoiceColumn(buyerLines, 120, y, 70);
 
-  y = 96;
-  doc.setFillColor(15, 23, 42);
-  doc.rect(leftX, y - 6, 178, 9, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.5);
-  doc.setTextColor(255, 255, 255);
-  doc.text("Tuote", leftX + 2, y);
-  doc.text("Määrä", 120, y);
-  doc.text("Yksikköhinta ALV 0 %", 148, y, { align: "right" });
-  doc.text("Yhteensä", rightX - 2, y, { align: "right" });
+  y = Math.max(sellerEndY, buyerEndY) + 8;
+  drawInvoiceTableHeader(y);
 
   y += 8;
   doc.setFont("helvetica", "normal");
@@ -3932,26 +3947,49 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
   doc.setTextColor(15, 23, 42);
   invoice.lineItems.forEach((item) => {
     const itemLines = doc.splitTextToSize(item.description, 90);
-    const rowHeight = Math.max(8, itemLines.length * 5);
-    if (y + rowHeight > 207) {
+    const rowHeight = Math.max(10, (itemLines.length * lineHeight) + 4);
+    if (y + rowHeight > tableBottomLimit) {
       doc.addPage("a4", "portrait");
       y = 24;
+      drawInvoiceTableHeader(y);
+      y += 8;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(15, 23, 42);
     }
-    doc.text(itemLines, leftX + 2, y);
-    doc.text(item.quantityDisplay || "-", 120, y);
-    doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", 148, y, { align: "right" });
-    doc.text(euro(item.lineTotal || 0), rightX - 2, y, { align: "right" });
+    const textY = y + 3.5;
+    doc.text(itemLines, leftX + 2, textY);
+    doc.text(item.quantityDisplay || "-", 120, textY);
+    doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", 148, textY, { align: "right" });
+    doc.text(euro(item.lineTotal || 0), rightX - 2, textY, { align: "right" });
     doc.setDrawColor(226, 232, 240);
-    doc.line(leftX, y + rowHeight - 2, rightX, y + rowHeight - 2);
+    doc.line(leftX, y + rowHeight, rightX, y + rowHeight);
     y += rowHeight;
   });
 
   if (invoice.deliveryCost > 0) {
-    doc.text("Toimituskulu", leftX + 2, y + 2);
-    doc.text(euro(invoice.deliveryCost), rightX - 2, y + 2, { align: "right" });
+    const deliveryRowHeight = 10;
+    if (y + deliveryRowHeight > tableBottomLimit) {
+      doc.addPage("a4", "portrait");
+      y = 24;
+      drawInvoiceTableHeader(y);
+      y += 8;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(15, 23, 42);
+    }
+    doc.text("Toimituskulu", leftX + 2, y + 3.5);
+    doc.text(euro(invoice.deliveryCost), rightX - 2, y + 3.5, { align: "right" });
+    doc.setDrawColor(226, 232, 240);
+    doc.line(leftX, y + deliveryRowHeight, rightX, y + deliveryRowHeight);
+    y += deliveryRowHeight;
   }
 
-  const totalsY = 214;
+  let totalsY = 214;
+  if (y > 198) {
+    doc.addPage("a4", "portrait");
+    totalsY = 26;
+  }
   doc.setFillColor(239, 246, 255);
   doc.roundedRect(122, totalsY - 8, 72, 49, 2, 2, "F");
   doc.setFont("helvetica", "normal");
@@ -3973,20 +4011,32 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile) {
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text("Maksutiedot", leftX, 220);
+  let paymentStartY = 220;
+  if (totalsY === 26) {
+    paymentStartY = 32;
+  }
+  doc.text("Maksutiedot", leftX, paymentStartY);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  doc.text(`IBAN: ${invoice.sellerIban || "-"}`, leftX, 227);
-  doc.text(`BIC: ${invoice.sellerBic || "-"}`, leftX, 233);
-  doc.text(`Viitenumero: ${invoice.referenceDisplay}`, leftX, 239);
-  doc.text(`Erätunnus: ${invoice.batchId || "-"}`, leftX, 245);
-  if (invoice.catchDates.length > 0) doc.text(`Pyyntipäivämäärä: ${invoice.catchDates.join(", ")}`, leftX, 251);
-  if (invoice.deliveryDate) doc.text(`Toimituspäivä: ${invoice.deliveryDate}`, leftX, 257);
-  if (invoice.areaText) doc.text(`Kalastamisalue: ${invoice.areaText}`, leftX, 263);
-  if (invoice.deliveryMethod) doc.text(`Toimitustapa: ${invoice.deliveryMethod}`, leftX, 269);
-  drawSellerInvoiceReferenceBarcode(doc, invoice.referenceNumber, leftX, 273, 120, 12);
+  let infoY = paymentStartY + 7;
+  const drawInfoLine = (text) => {
+    const wrappedLines = doc.splitTextToSize(text, 102);
+    doc.text(wrappedLines, leftX, infoY);
+    infoY += Math.max(1, wrappedLines.length) * lineHeight + 1.4;
+  };
+  drawInfoLine(`IBAN: ${invoice.sellerIban || "-"}`);
+  drawInfoLine(`BIC: ${invoice.sellerBic || "-"}`);
+  drawInfoLine(`Viitenumero: ${invoice.referenceDisplay}`);
+  drawInfoLine(`Erätunnus: ${invoice.batchId || "-"}`);
+  if (invoice.catchDates.length > 0) drawInfoLine(`Pyyntipäivämäärä: ${invoice.catchDates.join(", ")}`);
+  if (invoice.deliveryDate) drawInfoLine(`Toimituspäivä: ${invoice.deliveryDate}`);
+  if (invoice.areaText) drawInfoLine(`Kalastamisalue: ${invoice.areaText}`);
+  if (invoice.deliveryMethod) drawInfoLine(`Toimitustapa: ${invoice.deliveryMethod}`);
+
+  const barcodeY = Math.min(infoY + 2, pageBottomY - 18);
+  drawSellerInvoiceReferenceBarcode(doc, invoice.referenceNumber, leftX, barcodeY, 120, 12);
   doc.setFontSize(9);
-  doc.text(`Viite ${invoice.referenceDisplay}`, leftX, 291);
+  doc.text(`Viite ${invoice.referenceDisplay}`, leftX, Math.min(barcodeY + 18, pageBottomY));
 
   return { doc, invoice };
 }
