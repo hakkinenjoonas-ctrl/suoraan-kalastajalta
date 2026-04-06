@@ -3038,7 +3038,7 @@ function WholesaleOffersView({
                   ) : null}
                   {offer.status === "accepted" ? (
                     <div style={styles.muted}>
-                      <strong>Laskutus:</strong> Tiedot tästä kaupasta siirtyvät Laskutus-välilehdelle, missä voit muodostaa laskun ostajalle. Suoraan Kalastajalta perii 3 % komission hyväksytyistä kaupoista ja laskuttaa komissiot kuukausittain.
+                        <strong>Laskutus:</strong> Tiedot tästä kaupasta siirtyvät Laskutus-välilehdelle heti kun ostaja on vahvistanut erän vastaanotetuksi. Siellä voit muodostaa laskun ostajalle. Suoraan Kalastajalta perii 3 % komission hyväksytyistä kaupoista ja laskuttaa komissiot kuukausittain.
                     </div>
                   ) : null}
                   {canManageBuyerOffer(offer) && offer.status !== "accepted" && offer.status !== "rejected" ? (
