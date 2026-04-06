@@ -1131,7 +1131,7 @@ async function presentPdfDocument(doc, fileName) {
   const blob = doc.output("blob");
   await presentFileBlob(blob, fileName, {
     mimeType: "application/pdf",
-    browserAction: "open",
+    browserAction: "download",
     shareTitle: fileName,
     shareText: "Avaa tai jaa PDF-tiedosto",
     dialogTitle: "PDF-tiedosto",
