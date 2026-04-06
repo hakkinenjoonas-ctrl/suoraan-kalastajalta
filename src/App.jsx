@@ -4249,7 +4249,6 @@ function SellerBillingView({
               {offer.buyer_contact_name ? <div style={styles.muted}><strong>Yhteyshenkilö:</strong> {offer.buyer_contact_name}</div> : null}
               {offer.buyer_email ? <div style={styles.muted}><strong>Sähköposti:</strong> {offer.buyer_email}</div> : null}
               {offer.buyer_phone ? <div style={styles.muted}><strong>Puhelin:</strong> {offer.buyer_phone}</div> : null}
-              {deliveryAddress ? <div style={styles.noticeInfo}>Voit nyt toimittaa kalaerän osoitteeseen: {deliveryAddress}</div> : null}
               {billingAddress ? <div style={styles.muted}><strong>Laskutusosoite:</strong> {billingAddress}</div> : null}
               {offer.buyer_billing_email ? <div style={styles.muted}><strong>Laskutussähköposti:</strong> {offer.buyer_billing_email}</div> : null}
 
