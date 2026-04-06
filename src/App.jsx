@@ -1057,42 +1057,59 @@ function isNativeCapacitorApp() {
 let lastPresentedPdfKey = "";
 let lastPresentedPdfAt = 0;
 
-async function presentPdfDocument(doc, fileName) {
-  if (typeof window === "undefined") return;
-
-  const presentationKey = String(fileName || "document.pdf");
+function shouldSkipDuplicateFilePresentation(fileName) {
+  const presentationKey = String(fileName || "document");
   const now = Date.now();
   if (presentationKey === lastPresentedPdfKey && now - lastPresentedPdfAt < 1500) {
-    return;
+    return true;
   }
   lastPresentedPdfKey = presentationKey;
   lastPresentedPdfAt = now;
+  return false;
+}
+
+async function presentFileBlob(blob, fileName, options = {}) {
+  if (typeof window === "undefined") return;
+  if (shouldSkipDuplicateFilePresentation(fileName)) return;
+
+  const mimeType = String(options.mimeType || blob?.type || "application/octet-stream");
+  const browserAction = options.browserAction === "open" ? "open" : "download";
 
   if (isNativeCapacitorApp()) {
-    const pdfBase64 = String(doc.output("datauristring") || "").split(",")[1] || "";
-    if (!pdfBase64) {
-      throw new Error("PDF-tiedoston muodostus epäonnistui.");
+    const dataUrl = await blobToDataUrl(blob);
+    const base64Data = String(dataUrl || "").split(",")[1] || "";
+    if (!base64Data) {
+      throw new Error("Tiedoston muodostus epäonnistui.");
     }
 
     const { uri } = await Filesystem.writeFile({
       path: fileName,
-      data: pdfBase64,
+      data: base64Data,
       directory: Directory.Cache,
       recursive: true,
     });
 
     await Share.share({
-      title: fileName,
-      text: "Avaa tai jaa PDF-tiedosto",
+      title: String(options.shareTitle || fileName),
+      text: String(options.shareText || "Avaa tai jaa tiedosto"),
       url: uri,
-      dialogTitle: "Lasku PDF",
+      dialogTitle: String(options.dialogTitle || fileName),
     });
     return;
   }
 
-  const blobUrl = URL.createObjectURL(doc.output("blob"));
-  const openedWindow = window.open(blobUrl, "_blank", "noopener,noreferrer");
-  if (!openedWindow) {
+  const blobUrl = URL.createObjectURL(new Blob([blob], { type: mimeType }));
+  if (browserAction === "open") {
+    const openedWindow = window.open(blobUrl, "_blank", "noopener,noreferrer");
+    if (!openedWindow) {
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  } else {
     const link = document.createElement("a");
     link.href = blobUrl;
     link.download = fileName;
@@ -1108,6 +1125,17 @@ async function presentPdfDocument(doc, fileName) {
       // ignore cleanup failure
     }
   }, 60000);
+}
+
+async function presentPdfDocument(doc, fileName) {
+  const blob = doc.output("blob");
+  await presentFileBlob(blob, fileName, {
+    mimeType: "application/pdf",
+    browserAction: "open",
+    shareTitle: fileName,
+    shareText: "Avaa tai jaa PDF-tiedosto",
+    dialogTitle: "PDF-tiedosto",
+  });
 }
 
 async function fetchImageDataUrl(url) {
@@ -1901,17 +1929,18 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function exportCsv(filename, rows) {
+async function exportCsv(filename, rows) {
   const csv = rows
     .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(";"))
     .join("\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  await presentFileBlob(blob, filename, {
+    mimeType: "text/csv;charset=utf-8;",
+    browserAction: "download",
+    shareTitle: filename,
+    shareText: "Avaa tai jaa raportti",
+    dialogTitle: "Raporttitiedosto",
+  });
 }
 
 function isMissingRefreshTokenError(error) {
@@ -3516,19 +3545,19 @@ function ReportsView({ entries, processedEntries, offers }) {
         <div style={styles.noticeInfo}>Raportit ladataan CSV-muodossa, joka aukeaa suoraan Excelissä.</div>
         <button
           style={{ ...styles.button, ...styles.primaryButton }}
-          onClick={() => exportCsv(`saaliit-${today()}.csv`, [catchReportHeader, ...reportRows])}
+          onClick={() => { void exportCsv(`saaliit-${today()}.csv`, [catchReportHeader, ...reportRows]); }}
         >
           Lataa saalisraportti Exceliin
         </button>
         <button
           style={styles.button}
-          onClick={() => exportCsv(`tarjoukset-${today()}.csv`, [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows])}
+          onClick={() => { void exportCsv(`tarjoukset-${today()}.csv`, [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows]); }}
         >
           Lataa tarjousraportti Exceliin
         </button>
         <button
           style={styles.button}
-          onClick={() => exportCsv(`jaloste-erat-${today()}.csv`, [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows])}
+          onClick={() => { void exportCsv(`jaloste-erat-${today()}.csv`, [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows]); }}
         >
           Lataa jaloste-erät Exceliin
         </button>
@@ -3672,7 +3701,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
   });
 
   const exportBillingCsv = (group) => {
-    exportCsv(
+    void exportCsv(
       `laskutus-${group.monthKey}-${group.sellerLabel.replace(/[^a-z0-9åäö_-]+/gi, "-")}.csv`,
       [
         ["Kuukausi", "Myyjä", "Ostaja", "Erä", "Kg", "Hinta €/kg", "Kaupan arvo €", "Komissio %", "Komissio €", "Päivä", "Tila"],
