@@ -7122,7 +7122,7 @@ export default function App() {
           await sendPushEvent({
             targetBuyerId: recipient.buyer_id || "",
             title: "Uusi kalatarjous",
-            body: `${profileState?.display_name || "Kalastaja"} lähetti tarjouksen: ${buildPushEventHeadline({
+            body: `Sinulle on lähetetty uusi tarjous: ${buildPushEventHeadline({
               species_summary: summaryLines,
               total_kilos: entry.kilos,
               batch_id: rows[0]?.batch_id || "",
@@ -8101,7 +8101,7 @@ export default function App() {
         await sendPushEvent({
           targetBuyerId: recipient.buyer_id || "",
           title: "Uusi kalatarjous",
-          body: `${profileState?.display_name || "Kalastaja"} lähetti tarjouksen: ${formState.productName || formState.productType || "Jaloste-erä"}.`,
+          body: `Sinulle on lähetetty uusi tarjous: ${formState.productName || formState.productType || "Jaloste-erä"}.`,
           eventType: "offer_sent",
           route: "offers",
           offerId,
