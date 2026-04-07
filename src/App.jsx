@@ -6142,8 +6142,6 @@ export default function App() {
         deliveryCity: accountForm.deliveryCity.trim(),
         notes: accountForm.notes.trim(),
       };
-      const vesselIds = parseCommercialFishingVesselIds(accountForm.commercialFishingVesselIdsText);
-      const vesselIdsText = vesselIds.join("\n");
       const profilePayload = {
         display_name: displayName,
         ...(profile.role === "processor"
@@ -6167,8 +6165,8 @@ export default function App() {
             }
           : profile.role !== "buyer"
             ? {
-              commercial_fishing_vessel_id: vesselIdsText || null,
-              commercial_fishing_id: accountForm.commercialFishingId.trim() || null,
+              commercial_fishing_vessel_id: profile.commercial_fishing_vessel_id || null,
+              commercial_fishing_id: profile.commercial_fishing_id || null,
               pickup_address: accountForm.pickupAddress.trim() || null,
               company_name: accountForm.companyName.trim() || null,
               business_id: accountForm.businessId.trim() || null,
@@ -8390,12 +8388,12 @@ export default function App() {
             <div style={styles.rowBetween}>
               <div>
                 <h1 style={styles.title}>Suoraan Kalastajalta</h1>
-                <p style={styles.subtitle}>Ostaja: <strong>{profile.display_name}</strong></p>
+                <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · Rooli: <strong>{roleLabel(profile?.role)}</strong></p>
               </div>
               <div style={styles.toolbar}>
-                <button style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
-                <button style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
-                <button style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
+                <button type="button" style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
+                <button type="button" style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
+                <button type="button" style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
               </div>
             </div>
           </div>
@@ -8835,17 +8833,7 @@ export default function App() {
                   }}
                 />
               </div>
-              <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · rooli: {profile.role === "owner" ? "omistaja" : profile.role === "buyer" ? "ostaja" : profile.role === "processor" ? "jalostaja" : "kalastaja"}</p>
-              {profile.role === "processor" ? (
-                <p style={{ ...styles.subtitle, marginTop: 4 }}>
-                  Vesiviljelylaitoksen laitosnumero: <strong>{profile.evira_facility_id || "ei asetettu"}</strong>
-                </p>
-              ) : profile.role !== "buyer" ? (
-                <p style={{ ...styles.subtitle, marginTop: 4 }}>
-                  Kaupallisen kalastusaluksen tunnukset: <strong>{getCommercialFishingVesselIds(profile).join(", ") || profile.commercial_fishing_vessel_id || "ei asetettu"}</strong>
-                  {profile.commercial_fishing_id ? ` · Kalastajan tunnus: ${profile.commercial_fishing_id}` : ""}
-                </p>
-              ) : null}
+              <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · Rooli: <strong>{roleLabel(profile?.role)}</strong></p>
             </div>
             <div style={styles.toolbar}>
               {availableRoleOptions.length > 1 ? (
@@ -8872,10 +8860,9 @@ export default function App() {
                   <option value="all">Näytä kaikkien saaliit</option>
                 </select>
               ) : null}
-              <span style={styles.badge}>{profile.role === "processor" ? `${totals.totalProcessedKg.toFixed(1)} kg jalosteita` : `${totals.totalKg.toFixed(1)} kg yhteensä`}</span>
-              <button style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
-              <button style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
-              <button style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
+              <button type="button" style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
+              <button type="button" style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
+              <button type="button" style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
             </div>
           </div>
         </div>
@@ -8888,7 +8875,7 @@ export default function App() {
                 <div style={styles.muted}>
                   {profile.role === "processor"
                     ? "Päivitä oma nimi, vesiviljelylaitoksen laitosnumero ja salasana."
-                    : "Päivitä oma nimi, aluksen tunnus, kalastajatunnus ja salasana."}
+                    : "Päivitä oma nimi, yrityksen tiedot ja salasana."}
                 </div>
               </div>
               <span style={styles.badge}>{profile.email}</span>
@@ -8967,20 +8954,6 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <div style={styles.field}>
-                    <label>Kaupallisen kalastusaluksen tunnukset</label>
-                    <textarea
-                      style={styles.textarea}
-                      value={accountForm.commercialFishingVesselIdsText}
-                      onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselIdsText: e.target.value }))}
-                      placeholder={"Yksi tunnus per rivi\nEsim. FIN1234A"}
-                    />
-                    <div style={styles.small}>Ensimmäinen tunnus toimii oletuksena, mutta saalista syöttäessä voit valita käytetyn aluksen erikseen.</div>
-                  </div>
-                  <div style={styles.field}>
-                    <label>Kaupallisen kalastajan tunnus</label>
-                    <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 123456" />
-                  </div>
                   <div style={styles.field}>
                     <label>Yrityksen nimi</label>
                     <input style={styles.input} value={accountForm.companyName} onChange={(e) => setAccountForm((prev) => ({ ...prev, companyName: e.target.value }))} placeholder="Yrityksen nimi" />
