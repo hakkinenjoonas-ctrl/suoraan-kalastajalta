@@ -8810,10 +8810,10 @@ export default function App() {
   const formGrid = responsiveGridStyle(styles.formGrid);
   const speciesRow = responsiveGridStyle(styles.speciesRow);
   const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
-    ? 156
+    ? 172
     : typeof window !== "undefined" && window.innerWidth < 1024
-    ? 188
-    : 208;
+    ? 206
+    : 228;
 
   return (
     <div style={styles.app}>
@@ -8829,7 +8829,7 @@ export default function App() {
                   style={{
                     height: logoHeight,
                     width: "auto",
-                    maxWidth: typeof window !== "undefined" && window.innerWidth < 768 ? "42vw" : "none",
+                    maxWidth: typeof window !== "undefined" && window.innerWidth < 768 ? "46vw" : "none",
                     objectFit: "contain",
                     display: "block",
                     flexShrink: 0,
