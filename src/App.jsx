@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { Directory, Filesystem } from "@capacitor/filesystem";
+import { LocalNotifications } from "@capacitor/local-notifications";
+import { PushNotifications } from "@capacitor/push-notifications";
 import { Share } from "@capacitor/share";
 import { jsPDF } from "jspdf";
 
@@ -69,6 +71,8 @@ const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään"
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
 const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Jauhatus", "Kypsennys", "Muu"];
 const COMMISSION_RATE = 0.03;
+const PUSH_CHANNEL_ID = "trade_events";
+const PUSH_SOUND_NAME = "blop";
 const finlandMunicipalities = [
   "Akaa", "Alajärvi", "Alavieska", "Alavus", "Asikkala", "Askola", "Aura", "Brändö", "Eckerö", "Enonkoski",
   "Enontekiö", "Espoo", "Eura", "Eurajoki", "Evijärvi", "Finström", "Forssa", "Föglö", "Geta", "Haapajärvi",
@@ -1669,6 +1673,17 @@ async function invokeEdgeFunctionAuthenticated(functionName, body, accessToken) 
   }
 
   return { data, error: null };
+}
+
+function buildPushEventHeadline(offer) {
+  return getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true }) || "Kalaerä";
+}
+
+function getNotificationRouteTarget(data) {
+  const route = String(data?.route || "");
+  if (route === "billing") return "billing";
+  if (route === "offers") return "offers";
+  return "dashboard";
 }
 
 function formatBatchArea(area) {
@@ -4616,6 +4631,8 @@ export default function App() {
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [accountSaving, setAccountSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const foregroundNotificationRef = useRef({ key: "", at: 0 });
+  const pushRegistrationKeyRef = useRef("");
   const [accountForm, setAccountForm] = useState({
     displayName: "",
     eviraFacilityId: "",
@@ -4707,6 +4724,192 @@ export default function App() {
     () => getCommercialFishingVesselIds(profile),
     [profile],
   );
+
+  const handleNotificationNavigation = useCallback((payload = {}) => {
+    const nextTab = getNotificationRouteTarget(payload);
+    if (nextTab) {
+      setActiveTab(nextTab);
+    }
+    if (String(payload.offerId || "").trim()) {
+      setBuyerActiveOfferId(String(payload.offerId).trim());
+    }
+  }, []);
+
+  const sendPushEvent = useCallback(async ({
+    targetUserId = "",
+    targetBuyerId = "",
+    title = "",
+    body = "",
+    eventType = "",
+    route = "offers",
+    offerId = "",
+    batchId = "",
+  }) => {
+    const trimmedTitle = String(title || "").trim();
+    const trimmedBody = String(body || "").trim();
+    if (!trimmedTitle || !trimmedBody) return;
+    if (!String(targetUserId || "").trim() && !String(targetBuyerId || "").trim()) return;
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    await invokeEdgeFunctionAuthenticated("send-push-notification", {
+      targetUserId: String(targetUserId || "").trim() || null,
+      targetBuyerId: String(targetBuyerId || "").trim() || null,
+      title: trimmedTitle,
+      body: trimmedBody,
+      eventType: String(eventType || "").trim() || "general",
+      data: {
+        route,
+        offerId: String(offerId || "").trim(),
+        batchId: String(batchId || "").trim(),
+      },
+    }, accessToken).catch(() => null);
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user?.id || !profile?.id || !isNativeCapacitorApp()) return undefined;
+
+    const registrationKey = [
+      session.user.id,
+      profile.id,
+      profile.role,
+      linkedBuyerRecord?.id || "",
+    ].join(":");
+    if (pushRegistrationKeyRef.current === registrationKey) {
+      return undefined;
+    }
+    pushRegistrationKeyRef.current = registrationKey;
+
+    let cancelled = false;
+    const removeHandles = [];
+
+    const registerPushNotifications = async () => {
+      try {
+        const permissionStatus = await PushNotifications.requestPermissions();
+        if (permissionStatus.receive !== "granted") {
+          return;
+        }
+
+        try {
+          await LocalNotifications.requestPermissions();
+        } catch {
+          // ignore local permission failure
+        }
+
+        try {
+          await PushNotifications.createChannel({
+            id: PUSH_CHANNEL_ID,
+            name: "Kauppailmoitukset",
+            description: "Tarjoukset, varaukset, kaupat ja laskutus",
+            importance: 5,
+            visibility: 1,
+            sound: PUSH_SOUND_NAME,
+            vibration: true,
+          });
+        } catch {
+          // channel may already exist
+        }
+
+        try {
+          await LocalNotifications.createChannel({
+            id: PUSH_CHANNEL_ID,
+            name: "Kauppailmoitukset",
+            description: "Tarjoukset, varaukset, kaupat ja laskutus",
+            importance: 5,
+            visibility: 1,
+            sound: PUSH_SOUND_NAME,
+            vibration: true,
+          });
+        } catch {
+          // channel may already exist
+        }
+
+        const registrationHandle = await PushNotifications.addListener("registration", async (token) => {
+          if (cancelled || !token?.value) return;
+          await supabase
+            .from("app_push_tokens")
+            .upsert({
+              user_id: profile.id,
+              buyer_id: linkedBuyerRecord?.id || null,
+              role: profile.role || "member",
+              platform: "android",
+              token: token.value,
+              device_label: "android-app",
+              is_active: true,
+              last_seen_at: new Date().toISOString(),
+            }, { onConflict: "token" });
+        });
+        removeHandles.push(registrationHandle);
+
+        const registrationErrorHandle = await PushNotifications.addListener("registrationError", (error) => {
+          console.error("Push registration error:", error);
+        });
+        removeHandles.push(registrationErrorHandle);
+
+        const receivedHandle = await PushNotifications.addListener("pushNotificationReceived", async (notification) => {
+          if (cancelled) return;
+          const title = String(notification?.title || "Suoraan Kalastajalta");
+          const body = String(notification?.body || "");
+          const data = notification?.data || {};
+          const notificationKey = JSON.stringify([title, body, data?.eventType || "", data?.offerId || "", data?.batchId || ""]);
+          const now = Date.now();
+          if (
+            foregroundNotificationRef.current.key === notificationKey &&
+            now - foregroundNotificationRef.current.at < 1500
+          ) {
+            return;
+          }
+          foregroundNotificationRef.current = { key: notificationKey, at: now };
+
+          setAuthInfo(body || title);
+          try {
+            await LocalNotifications.schedule({
+              notifications: [{
+                id: Number(String(Date.now()).slice(-9)),
+                title,
+                body,
+                channelId: PUSH_CHANNEL_ID,
+                sound: PUSH_SOUND_NAME,
+                extra: data,
+              }],
+            });
+          } catch {
+            // ignore foreground local notification failure
+          }
+        });
+        removeHandles.push(receivedHandle);
+
+        const actionHandle = await PushNotifications.addListener("pushNotificationActionPerformed", (result) => {
+          if (cancelled) return;
+          handleNotificationNavigation(result?.notification?.data || {});
+        });
+        removeHandles.push(actionHandle);
+
+        const localActionHandle = await LocalNotifications.addListener("localNotificationActionPerformed", (result) => {
+          if (cancelled) return;
+          handleNotificationNavigation(result?.notification?.extra || {});
+        });
+        removeHandles.push(localActionHandle);
+
+        await PushNotifications.register();
+      } catch (error) {
+        console.error("Push notification setup failed:", error);
+      }
+    };
+
+    void registerPushNotifications();
+
+    return () => {
+      cancelled = true;
+      removeHandles.forEach((handle) => {
+        try {
+          handle.remove();
+        } catch {
+          // ignore cleanup failure
+        }
+      });
+    };
+  }, [handleNotificationNavigation, linkedBuyerRecord?.id, profile?.id, profile?.role, session?.user?.id]);
 
   const calculateCommissionDetails = (offer) => {
     const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
@@ -6883,6 +7086,19 @@ export default function App() {
               describeOfferEmailError(error),
           });
         } else {
+          await sendPushEvent({
+            targetBuyerId: recipient.buyer_id || "",
+            title: "Uusi kalatarjous",
+            body: `${profileState?.display_name || "Kalastaja"} lähetti tarjouksen: ${buildPushEventHeadline({
+              species_summary: summaryLines,
+              total_kilos: entry.kilos,
+              batch_id: rows[0]?.batch_id || "",
+            })}.`,
+            eventType: "offer_sent",
+            route: "offers",
+            offerId,
+            batchId: rows[0]?.batch_id || "",
+          });
           sent.push({
             buyer_id: recipient.buyer_id,
             company_name: recipient.company_name,
@@ -7229,10 +7445,28 @@ export default function App() {
 
     if (documentKind === "invoice") {
       await handleUpdateBillingStatus(offer, "invoiced");
+      await sendPushEvent({
+        targetBuyerId: offer?.buyer_id || "",
+        title: "Uusi lasku",
+        body: `${offer?.seller_name || "Myyjä"} lähetti laskun kaupasta ${buildPushEventHeadline(offer)}.`,
+        eventType: "invoice_sent",
+        route: "billing",
+        offerId: offer?.id,
+        batchId: offer?.batch_id,
+      });
       setAuthInfo(`Lasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
       return;
     }
 
+    await sendPushEvent({
+      targetBuyerId: offer?.buyer_id || "",
+      title: "Maksumuistutus",
+      body: `${offer?.seller_name || "Myyjä"} lähetti maksumuistutuksen kaupasta ${buildPushEventHeadline(offer)}.`,
+      eventType: "payment_reminder_sent",
+      route: "billing",
+      offerId: offer?.id,
+      batchId: offer?.batch_id,
+    });
     setAuthInfo(`Maksumuistutus ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
   };
 
@@ -7258,6 +7492,17 @@ export default function App() {
         ? "Kauppa merkitty toimitetuksi."
         : "Toimituksen tila päivitetty."
     );
+    await sendPushEvent({
+      targetBuyerId: offer?.buyer_id || "",
+      title: fulfillmentStatus === "delivered" ? "Toimitus merkitty toimitetuksi" : "Toimitus sovittu",
+      body: fulfillmentStatus === "delivered"
+        ? `${offer?.seller_name || "Myyjä"} merkitsi kaupan ${buildPushEventHeadline(offer)} toimitetuksi.`
+        : `${offer?.seller_name || "Myyjä"} merkitsi kaupan ${buildPushEventHeadline(offer)} toimituksen sovituksi.`,
+      eventType: fulfillmentStatus,
+      route: "offers",
+      offerId: offer?.id,
+      batchId: offer?.batch_id,
+    });
     await refreshBuyerOffers();
     setRefreshTick((prev) => prev + 1);
   };
@@ -7435,6 +7680,15 @@ export default function App() {
     if (ok) {
       const updatedOffer = { ...offer, status: "countered", counter_price_per_kg: price, buyer_message: msg };
       await sendBuyerResponseEmail(updatedOffer, "Ostaja teki vastatarjouksen");
+      await sendPushEvent({
+        targetUserId: offer?.seller_user_id || "",
+        title: "Uusi vastatarjous",
+        body: `${offer?.buyer_company_name || "Ostaja"} teki vastatarjouksen kaupasta ${buildPushEventHeadline(updatedOffer)}.`,
+        eventType: "buyer_countered",
+        route: "offers",
+        offerId: offer?.id,
+        batchId: offer?.batch_id,
+      });
       setAuthInfo("Vastatarjous lähetetty myyjälle.");
       setBuyerAction({
         counter_price_per_kg: "",
@@ -7461,6 +7715,15 @@ export default function App() {
     if (ok) {
       const updatedOffer = { ...offer, status: "reserved", reserved_kilos: reserved, buyer_message: msg };
       await sendBuyerResponseEmail(updatedOffer, "Ostaja varasi erän");
+      await sendPushEvent({
+        targetUserId: offer?.seller_user_id || "",
+        title: "Erä varattu",
+        body: `${offer?.buyer_company_name || "Ostaja"} varasi erän ${buildPushEventHeadline(updatedOffer)}.`,
+        eventType: "buyer_reserved",
+        route: "offers",
+        offerId: offer?.id,
+        batchId: offer?.batch_id,
+      });
       setAuthInfo("Erä varattu. Myyjälle näkyy varaus.");
       setBuyerAction({
         counter_price_per_kg: "",
@@ -7631,6 +7894,15 @@ export default function App() {
       } catch (emailError) {
         setAuthError(`Kauppa hyväksyttiin, mutta vahvistussähköpostin lähetys epäonnistui: ${String(emailError?.message || emailError)}`);
       }
+      await sendPushEvent({
+        targetBuyerId: offer?.buyer_id || "",
+        title: "Kauppa hyväksytty",
+        body: `${offer?.seller_name || "Myyjä"} hyväksyi kaupan ${buildPushEventHeadline({ ...offer, ...updatePayload })}.`,
+        eventType: "offer_accepted",
+        route: "offers",
+        offerId: offer?.id,
+        batchId: offer?.batch_id,
+      });
     }
 
     await refreshBuyerOffers();
@@ -7793,6 +8065,15 @@ export default function App() {
       );
       if (!error) {
         console.log("send-catch-offer-email ok", recipient.email, data);
+        await sendPushEvent({
+          targetBuyerId: recipient.buyer_id || "",
+          title: "Uusi kalatarjous",
+          body: `${profileState?.display_name || "Kalastaja"} lähetti tarjouksen: ${formState.productName || formState.productType || "Jaloste-erä"}.`,
+          eventType: "offer_sent",
+          route: "offers",
+          offerId,
+          batchId,
+        });
         sent.push({
           buyer_id: recipient.buyer_id,
           company_name: recipient.company_name,
