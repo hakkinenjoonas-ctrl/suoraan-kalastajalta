@@ -113,20 +113,20 @@ Deno.serve(async (req) => {
     }
 
     const authHeader = req.headers.get("Authorization") || "";
-    if (!authHeader) {
-      return jsonResponse(401, { error: "Missing authorization header" });
-    }
+    let callerUserId = "";
 
-    const authClient = createClient(supabaseUrl, anonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
+    if (authHeader) {
+      const authClient = createClient(supabaseUrl, anonKey, {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
         },
-      },
-    });
-    const { data: authData, error: authError } = await authClient.auth.getUser();
-    if (authError || !authData.user) {
-      return jsonResponse(401, { error: "Invalid access token" });
+      });
+      const { data: authData, error: authError } = await authClient.auth.getUser();
+      if (!authError && authData.user) {
+        callerUserId = safeString(authData.user.id);
+      }
     }
 
     const body = await req.json().catch(() => ({}));
@@ -235,6 +235,8 @@ Deno.serve(async (req) => {
 
     return jsonResponse(200, {
       ok: true,
+      callerAuthenticated: Boolean(callerUserId),
+      callerUserId: callerUserId || null,
       attempted: tokens.length,
       delivered: results.filter((item) => item.ok).length,
       failed: results.filter((item) => !item.ok).length,
