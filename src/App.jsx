@@ -8821,7 +8821,7 @@ export default function App() {
         <div style={{ ...styles.card, ...styles.headerCard }}>
           <div style={styles.rowBetween}>
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap", marginTop: 12, marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "nowrap", marginTop: 12, marginBottom: 12 }}>
                 <h1 style={{ ...styles.title, marginRight: -2 }}>Suoraan Kalastajalta</h1>
                 <img
                   src="/logo.png"
