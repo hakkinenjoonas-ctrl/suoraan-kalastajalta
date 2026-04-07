@@ -4826,11 +4826,44 @@ export default function App() {
 
         const registrationHandle = await PushNotifications.addListener("registration", async (token) => {
           if (cancelled || !token?.value) return;
+          let resolvedBuyerId = linkedBuyerRecord?.id || profile.buyer_id || null;
+
+          if (!resolvedBuyerId && profile.role === "buyer") {
+            const candidateEmails = Array.from(new Set([
+              normalizeEmail(profile.email),
+              normalizeEmail(session.user?.email),
+              normalizeEmail(profile.contact_email),
+              normalizeEmail(profile.billing_email),
+            ].filter(Boolean)));
+
+            for (const candidateEmail of candidateEmails) {
+              const { data: buyerMatch } = await supabase
+                .from("buyers")
+                .select("id")
+                .or(`email.eq.${candidateEmail},billing_email.eq.${candidateEmail}`)
+                .limit(1)
+                .maybeSingle();
+
+              if (buyerMatch?.id) {
+                resolvedBuyerId = buyerMatch.id;
+                break;
+              }
+            }
+
+            if (resolvedBuyerId && String(profile.buyer_id || "") !== String(resolvedBuyerId)) {
+              await supabase
+                .from("profiles")
+                .update({ buyer_id: resolvedBuyerId })
+                .eq("id", profile.id);
+              setProfile((prev) => (prev ? { ...prev, buyer_id: resolvedBuyerId } : prev));
+            }
+          }
+
           await supabase
             .from("app_push_tokens")
             .upsert({
               user_id: profile.id,
-              buyer_id: linkedBuyerRecord?.id || null,
+              buyer_id: resolvedBuyerId,
               role: profile.role || "member",
               platform: "android",
               token: token.value,
