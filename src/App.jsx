@@ -2178,6 +2178,36 @@ const styles = {
     border: "1px solid #a5f3fc",
     whiteSpace: "pre-wrap",
   },
+  toastStack: {
+    position: "fixed",
+    top: 18,
+    right: 18,
+    zIndex: 3000,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    width: "min(420px, calc(100vw - 24px))",
+    pointerEvents: "none",
+  },
+  toastCard: {
+    boxShadow: "0 18px 42px rgba(15, 23, 42, 0.18)",
+    backdropFilter: "blur(10px)",
+    pointerEvents: "auto",
+    position: "relative",
+    paddingRight: 44,
+  },
+  toastClose: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    border: 0,
+    background: "transparent",
+    color: "inherit",
+    cursor: "pointer",
+    fontSize: 18,
+    lineHeight: 1,
+    padding: 4,
+  },
   onboardingCard: {
     background: "linear-gradient(140deg, rgba(239,246,255,0.98) 0%, rgba(240,249,255,0.98) 45%, rgba(224,242,254,0.96) 100%)",
     border: "1px solid rgba(125, 211, 252, 0.85)",
@@ -4449,6 +4479,14 @@ export default function App() {
   const [authInfo, setAuthInfo] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
   const [activeTab, setActiveTab] = useState("dashboard");
+
+  useEffect(() => {
+    if (!authInfo) return undefined;
+    const timer = window.setTimeout(() => {
+      setAuthInfo((current) => (current === authInfo ? "" : current));
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [authInfo]);
   const [form, setForm] = useState(() => {
     const defaults = initialCatchDefaults;
     return {
@@ -9038,8 +9076,22 @@ export default function App() {
           </div>
         ) : null}
 
-        {authError ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{authError}</div> : null}
-        {authInfo ? <div style={{ ...styles.noticeSuccess, marginBottom: 16 }}>{authInfo}</div> : null}
+        {(authError || authInfo) ? (
+          <div style={styles.toastStack}>
+            {authError ? (
+              <div style={{ ...styles.noticeError, ...styles.toastCard }}>
+                {authError}
+                <button type="button" style={styles.toastClose} onClick={() => setAuthError("")} aria-label="Sulje virheilmoitus">×</button>
+              </div>
+            ) : null}
+            {authInfo ? (
+              <div style={{ ...styles.noticeSuccess, ...styles.toastCard }}>
+                {authInfo}
+                <button type="button" style={styles.toastClose} onClick={() => setAuthInfo("")} aria-label="Sulje ilmoitus">×</button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <FirstUseGuideCard
           profile={profile}
           guideState={onboardingGuideState}
