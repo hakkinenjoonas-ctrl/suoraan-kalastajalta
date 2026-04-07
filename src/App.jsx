@@ -2027,6 +2027,7 @@ const styles = {
     border: "1px solid rgba(147, 197, 253, 0.92)",
   },
   toolbar: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
+  toolbarActions: { display: "flex", gap: 10, flexWrap: "nowrap", alignItems: "center", whiteSpace: "nowrap" },
   tabs: {
     display: "grid",
     gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
@@ -8391,9 +8392,11 @@ export default function App() {
                 <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · Rooli: <strong>{roleLabel(profile?.role)}</strong></p>
               </div>
               <div style={styles.toolbar}>
-                <button type="button" style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
-                <button type="button" style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
-                <button type="button" style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
+                <div style={styles.toolbarActions}>
+                  <button type="button" style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
+                  <button type="button" style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
+                  <button type="button" style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
+                </div>
               </div>
             </div>
           </div>
@@ -8860,9 +8863,11 @@ export default function App() {
                   <option value="all">Näytä kaikkien saaliit</option>
                 </select>
               ) : null}
-              <button type="button" style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
-              <button type="button" style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
-              <button type="button" style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
+              <div style={styles.toolbarActions}>
+                <button type="button" style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
+                <button type="button" style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
+                <button type="button" style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
+              </div>
             </div>
           </div>
         </div>
