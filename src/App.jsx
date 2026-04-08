@@ -8733,6 +8733,11 @@ export default function App() {
     const acceptedBuyerOffers = (buyerOffers || []).filter(
       (offer) => offer.status === "accepted" && formatOfferDay(offer.updated_at || offer.created_at) === todayLabel
     );
+    const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
+      ? 172
+      : typeof window !== "undefined" && window.innerWidth < 1024
+      ? 206
+      : 228;
 
     return (
       <div style={styles.app}>
@@ -8740,7 +8745,21 @@ export default function App() {
           <div style={{ ...styles.card, ...styles.headerCard }}>
             <div style={styles.rowBetween}>
               <div>
-                <h1 style={styles.title}>Suoraan Kalastajalta</h1>
+                <div style={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "nowrap", marginTop: 12, marginBottom: 12 }}>
+                  <h1 style={{ ...styles.title, marginRight: -2 }}>Suoraan Kalastajalta</h1>
+                  <img
+                    src="/logo.png"
+                    alt=""
+                    style={{
+                      height: logoHeight,
+                      width: "auto",
+                      maxWidth: typeof window !== "undefined" && window.innerWidth < 768 ? "46vw" : "none",
+                      objectFit: "contain",
+                      display: "block",
+                      flexShrink: 0,
+                    }}
+                  />
+                </div>
                 <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · Rooli: <strong>{roleLabel(profile?.role)}</strong></p>
               </div>
               <div style={styles.toolbar}>
