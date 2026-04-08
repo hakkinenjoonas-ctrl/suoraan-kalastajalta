@@ -203,8 +203,8 @@ Deno.serve(async (req) => {
             android: {
               priority: "high",
               notification: {
-                channel_id: "trade_events_plopplop",
-                sound: "plopplop",
+                channel_id: "trade_events_waterdrop",
+                sound: "waterdrop",
               },
             },
           },

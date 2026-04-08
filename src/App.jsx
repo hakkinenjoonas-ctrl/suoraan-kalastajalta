@@ -71,8 +71,8 @@ const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään"
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
 const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Jauhatus", "Kypsennys", "Muu"];
 const COMMISSION_RATE = 0.03;
-const PUSH_CHANNEL_ID = "trade_events_plopplop";
-const PUSH_SOUND_NAME = "plopplop";
+const PUSH_CHANNEL_ID = "trade_events_waterdrop";
+const PUSH_SOUND_NAME = "waterdrop";
 const finlandMunicipalities = [
   "Akaa", "Alajärvi", "Alavieska", "Alavus", "Asikkala", "Askola", "Aura", "Brändö", "Eckerö", "Enonkoski",
   "Enontekiö", "Espoo", "Eura", "Eurajoki", "Evijärvi", "Finström", "Forssa", "Föglö", "Geta", "Haapajärvi",
