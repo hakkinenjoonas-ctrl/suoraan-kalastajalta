@@ -68,6 +68,11 @@ const ONBOARDING_GUIDE_STORAGE_PREFIX = "onboarding_guide_v1";
 const CUSTOM_LAKE_AREA_OPTION = "__custom_lake_area__";
 const CUSTOM_SEA_AREA_OPTION = "__custom_sea_area__";
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
+const transportModeLabels = {
+  terminal: "Vie terminaaliin",
+  pickup: "Kuljetusfirma noutaa",
+  collection_point: "Vie keräilypisteeseen",
+};
 const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
 const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Jauhatus", "Kypsennys", "Muu"];
 const COMMISSION_RATE = 0.03;
@@ -2298,6 +2303,57 @@ const styles = {
     background: "rgba(255,255,255,0.95)",
     fontWeight: 600,
     color: "#1e3a8a",
+  },
+  transportPlannerCard: {
+    border: "1px solid rgba(125, 211, 252, 0.85)",
+    borderRadius: 22,
+    background: "linear-gradient(145deg, rgba(239,246,255,0.96) 0%, rgba(240,249,255,0.98) 48%, rgba(224,242,254,0.94) 100%)",
+    padding: 18,
+    boxShadow: "0 18px 40px rgba(14, 165, 233, 0.09)",
+  },
+  transportPlannerSteps: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 12,
+  },
+  transportPlannerStep: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: 12,
+    borderRadius: 18,
+    border: "1px solid rgba(191, 219, 254, 0.95)",
+    background: "rgba(255,255,255,0.92)",
+  },
+  transportPlannerStepMarker: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: 800,
+    color: "#fff",
+    background: "linear-gradient(135deg, #94a3b8 0%, #cbd5e1 100%)",
+  },
+  transportPlannerStepMarkerActive: {
+    background: "linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)",
+  },
+  transportPlannerStepMarkerDone: {
+    background: "linear-gradient(135deg, #0891b2 0%, #22c55e 100%)",
+  },
+  transportSummaryGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 12,
+  },
+  transportSummaryCard: {
+    padding: 14,
+    borderRadius: 18,
+    border: "1px solid rgba(147, 197, 253, 0.85)",
+    background: "rgba(255,255,255,0.9)",
   },
   qrBlock: {
     display: "inline-flex",
@@ -4575,6 +4631,15 @@ export default function App() {
     pickupAddress: "",
     pickupSurcharge: "",
     estimatedPickupTime: "",
+    pickupPostal: "",
+    deliveryAddress: "",
+    deliveryPostal: "",
+    palletType: "EUR-lava",
+    palletCount: "1",
+    tailLift: false,
+    pickupWindow: "",
+    deliveryWindow: "",
+    transportNotes: "",
     deliveryDestinations: [],
     deliveryArea: "",
     deliveryCost: "",
@@ -5053,13 +5118,18 @@ export default function App() {
     () => getAvailableOriginPoints(currentProcessedOriginCity, processedForm.area, processedForm.transportMode),
     [currentProcessedOriginCity, processedForm.area, processedForm.transportMode],
   );
+  const totalKilosForOffer = useMemo(
+    () => speciesRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0),
+    [speciesRows],
+  );
+  const totalProcessedKilosForOffer = Number(processedForm.kilos || 0);
   const availableRouteOptions = useMemo(
-    () => (form.originPointId ? getRouteOptionsForPoint(form.originPointId, speciesRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0)) : []),
-    [form.originPointId, speciesRows],
+    () => (form.originPointId ? getRouteOptionsForPoint(form.originPointId, totalKilosForOffer) : []),
+    [form.originPointId, totalKilosForOffer],
   );
   const availableProcessedRouteOptions = useMemo(
-    () => (processedForm.originPointId ? getRouteOptionsForPoint(processedForm.originPointId, Number(processedForm.kilos || 0)) : []),
-    [processedForm.originPointId, processedForm.kilos],
+    () => (processedForm.originPointId ? getRouteOptionsForPoint(processedForm.originPointId, totalProcessedKilosForOffer) : []),
+    [processedForm.originPointId, totalProcessedKilosForOffer],
   );
   const suggestedDeliveryCities = useMemo(
     () => getSuggestedDestinationCities(currentOriginCity, form.area),
@@ -5084,6 +5154,14 @@ export default function App() {
       ...(Array.isArray(processedForm.deliveryDestinations) ? processedForm.deliveryDestinations : []),
     ])).filter(Boolean),
     [availableProcessedRouteOptions, processedForm.deliveryDestinations],
+  );
+  const selectedOriginPoint = useMemo(
+    () => availableOriginPoints.find((point) => point.id === form.originPointId) || null,
+    [availableOriginPoints, form.originPointId],
+  );
+  const selectedProcessedOriginPoint = useMemo(
+    () => availableProcessedOriginPoints.find((point) => point.id === processedForm.originPointId) || null,
+    [availableProcessedOriginPoints, processedForm.originPointId],
   );
 
   useEffect(() => {
@@ -8337,8 +8415,17 @@ export default function App() {
       transportCompanyId: "north-fresh-logistics",
       pickupAddress: "",
       pickupSurcharge: "",
-      estimatedPickupTime: "",
-      deliveryDestinations: [],
+    estimatedPickupTime: "",
+    pickupPostal: "",
+    deliveryAddress: "",
+    deliveryPostal: "",
+    palletType: "EUR-lava",
+    palletCount: "1",
+    tailLift: false,
+    pickupWindow: "",
+    deliveryWindow: "",
+    transportNotes: "",
+    deliveryDestinations: [],
       deliveryArea: "",
       deliveryCost: "",
       earliestDeliveryDate: today(),
@@ -9580,6 +9667,72 @@ export default function App() {
                 <div style={styles.field}><label><input type="checkbox" checked={processedForm.coldTransport} onChange={(e) => setProcessedForm({ ...processedForm, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 {processedForm.deliveryPossible ? (
                   <>
+                    <div style={{ ...styles.field, ...styles.fieldFull }}>
+                      <div style={{ ...styles.transportPlannerCard, ...styles.stack }}>
+                        <div>
+                          <label>Kuljetuskilpailutuksen eteneminen</label>
+                          <div style={styles.small}>Valitse ensin kuljetustapa, sitten lähtöpiste tai nouto-osoite ja lopuksi toimituskohteet.</div>
+                        </div>
+                        <div style={styles.transportPlannerSteps}>
+                          {[
+                            {
+                              title: "1. Kuljetustapa",
+                              detail: processedForm.transportMode ? transportModeLabels[processedForm.transportMode] : "Valitse miten erä lähtee liikkeelle",
+                              state: processedForm.transportMode ? "done" : "active",
+                            },
+                            {
+                              title: "2. Lähtöpiste",
+                              detail: processedForm.transportMode === "pickup"
+                                ? (resolvedProcessedPickupAddress || "Lisää nouto-osoite")
+                                : (selectedProcessedOriginPoint?.name || "Valitse terminaali tai keräilypiste"),
+                              state: processedForm.transportMode
+                                ? ((processedForm.transportMode === "pickup" ? Boolean(resolvedProcessedPickupAddress) : Boolean(processedForm.originPointId)) ? "done" : "active")
+                                : "idle",
+                            },
+                            {
+                              title: "3. Toimituskohteet",
+                              detail: processedForm.deliveryDestinations.length > 0
+                                ? `${processedForm.deliveryDestinations.length} kohdetta valittu`
+                                : "Valitse vähintään yksi kohde",
+                              state: processedForm.deliveryDestinations.length > 0 ? "done" : ((processedForm.transportMode === "pickup" ? Boolean(resolvedProcessedPickupAddress) : Boolean(processedForm.originPointId)) ? "active" : "idle"),
+                            },
+                          ].map((step, index) => {
+                            const markerStyle = step.state === "done"
+                              ? { ...styles.transportPlannerStepMarker, ...styles.transportPlannerStepMarkerDone }
+                              : step.state === "active"
+                                ? { ...styles.transportPlannerStepMarker, ...styles.transportPlannerStepMarkerActive }
+                                : styles.transportPlannerStepMarker;
+                            return (
+                              <div key={step.title} style={styles.transportPlannerStep}>
+                                <span style={markerStyle}>{index + 1}</span>
+                                <span style={{ ...styles.stack, gap: 4 }}>
+                                  <strong>{step.title}</strong>
+                                  <span style={styles.small}>{step.detail}</span>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={styles.transportSummaryGrid}>
+                          <div style={styles.transportSummaryCard}>
+                            <div style={styles.small}>Valittu tapa</div>
+                            <strong>{transportModeLabels[processedForm.transportMode] || "Ei valittu"}</strong>
+                          </div>
+                          <div style={styles.transportSummaryCard}>
+                            <div style={styles.small}>Lähtö</div>
+                            <strong>
+                              {processedForm.transportMode === "pickup"
+                                ? (resolvedProcessedPickupAddress || "Nouto-osoite puuttuu")
+                                : (selectedProcessedOriginPoint?.name || "Piste puuttuu")}
+                            </strong>
+                          </div>
+                          <div style={styles.transportSummaryCard}>
+                            <div style={styles.small}>Kohteet</div>
+                            <strong>{processedForm.deliveryDestinations.length} / {availableProcessedDestinationCities.length}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                     <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
                       <label>Kuljetus järjestetään</label>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
@@ -9674,18 +9827,47 @@ export default function App() {
                     <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
                       <div style={styles.rowBetween}>
                         <label>Toimituskohteet</label>
-                        <button
-                          type="button"
-                          style={styles.button}
-                          onClick={() => setProcessedForm((prev) => ({ ...prev, deliveryDestinations: suggestedProcessedDeliveryCities.filter((city) => !prev.originPointId || getRoutePrice(prev.originPointId, city, Number(prev.kilos || 0))).slice(0, 10) }))}
-                        >
-                          Ehdota kohteet
-                        </button>
+                        <div style={styles.row}>
+                          <button
+                            type="button"
+                            style={styles.button}
+                            onClick={() => setProcessedForm((prev) => ({ ...prev, deliveryDestinations: suggestedProcessedDeliveryCities.filter((city) => !prev.originPointId || getRoutePrice(prev.originPointId, city, totalProcessedKilosForOffer)).slice(0, 10) }))}
+                          >
+                            Ehdota kohteet
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.button}
+                            onClick={() => setProcessedForm((prev) => ({
+                              ...prev,
+                              deliveryDestinations: availableProcessedDestinationCities.filter((city) => !prev.originPointId || getRoutePrice(prev.originPointId, city, totalProcessedKilosForOffer)),
+                            }))}
+                          >
+                            Valitse kaikki hinnastolliset
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.button}
+                            onClick={() => setProcessedForm((prev) => ({ ...prev, deliveryDestinations: [] }))}
+                          >
+                            Tyhjennä
+                          </button>
+                        </div>
                       </div>
                       <div style={styles.small}>Mukana aina Helsinki, Vantaa ja Espoo. Tarjous näkyy vain ostajille, joille löytyy reittihinta.</div>
+                      <div style={styles.noticeInfo}>
+                        {processedForm.deliveryDestinations.length > 0
+                          ? `${processedForm.deliveryDestinations.length} kohdetta valittu.`
+                          : "Et ole vielä valinnut toimituskohteita."}{" "}
+                        {processedForm.transportMode === "pickup"
+                          ? "Noutomallissa kohteet voidaan valita ilman luovutuspistettä."
+                          : processedForm.originPointId
+                            ? `Valitusta pisteestä löytyy hinnasto ${availableProcessedDestinationCities.filter((city) => getRoutePrice(processedForm.originPointId, city, totalProcessedKilosForOffer)).length} kohteeseen.`
+                            : "Valitse ensin terminaali tai keräilypiste, niin näet hinnastolliset reitit."}
+                      </div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
                         {availableProcessedDestinationCities.map((city) => {
-                          const routePrice = processedForm.originPointId ? getRoutePrice(processedForm.originPointId, city, Number(processedForm.kilos || 0)) : null;
+                          const routePrice = processedForm.originPointId ? getRoutePrice(processedForm.originPointId, city, totalProcessedKilosForOffer) : null;
                           const checked = processedForm.deliveryDestinations.includes(city);
                           const disabled = Boolean(processedForm.originPointId) && !routePrice;
                           return (
@@ -9922,6 +10104,72 @@ export default function App() {
                 <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 {form.deliveryPossible ? (
                   <>
+                    <div style={{ ...styles.field, ...styles.fieldFull }}>
+                      <div style={{ ...styles.transportPlannerCard, ...styles.stack }}>
+                        <div>
+                          <label>Kuljetuskilpailutuksen eteneminen</label>
+                          <div style={styles.small}>Valitse ensin kuljetustapa, sitten lähtöpiste tai nouto-osoite ja lopuksi toimituskohteet.</div>
+                        </div>
+                        <div style={styles.transportPlannerSteps}>
+                          {[
+                            {
+                              title: "1. Kuljetustapa",
+                              detail: form.transportMode ? transportModeLabels[form.transportMode] : "Valitse miten erä lähtee liikkeelle",
+                              state: form.transportMode ? "done" : "active",
+                            },
+                            {
+                              title: "2. Lähtöpiste",
+                              detail: form.transportMode === "pickup"
+                                ? (resolvedPickupAddress || "Lisää nouto-osoite")
+                                : (selectedOriginPoint?.name || "Valitse terminaali tai keräilypiste"),
+                              state: form.transportMode
+                                ? ((form.transportMode === "pickup" ? Boolean(resolvedPickupAddress) : Boolean(form.originPointId)) ? "done" : "active")
+                                : "idle",
+                            },
+                            {
+                              title: "3. Toimituskohteet",
+                              detail: form.deliveryDestinations.length > 0
+                                ? `${form.deliveryDestinations.length} kohdetta valittu`
+                                : "Valitse vähintään yksi kohde",
+                              state: form.deliveryDestinations.length > 0 ? "done" : ((form.transportMode === "pickup" ? Boolean(resolvedPickupAddress) : Boolean(form.originPointId)) ? "active" : "idle"),
+                            },
+                          ].map((step, index) => {
+                            const markerStyle = step.state === "done"
+                              ? { ...styles.transportPlannerStepMarker, ...styles.transportPlannerStepMarkerDone }
+                              : step.state === "active"
+                                ? { ...styles.transportPlannerStepMarker, ...styles.transportPlannerStepMarkerActive }
+                                : styles.transportPlannerStepMarker;
+                            return (
+                              <div key={step.title} style={styles.transportPlannerStep}>
+                                <span style={markerStyle}>{index + 1}</span>
+                                <span style={{ ...styles.stack, gap: 4 }}>
+                                  <strong>{step.title}</strong>
+                                  <span style={styles.small}>{step.detail}</span>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={styles.transportSummaryGrid}>
+                          <div style={styles.transportSummaryCard}>
+                            <div style={styles.small}>Valittu tapa</div>
+                            <strong>{transportModeLabels[form.transportMode] || "Ei valittu"}</strong>
+                          </div>
+                          <div style={styles.transportSummaryCard}>
+                            <div style={styles.small}>Lähtö</div>
+                            <strong>
+                              {form.transportMode === "pickup"
+                                ? (resolvedPickupAddress || "Nouto-osoite puuttuu")
+                                : (selectedOriginPoint?.name || "Piste puuttuu")}
+                            </strong>
+                          </div>
+                          <div style={styles.transportSummaryCard}>
+                            <div style={styles.small}>Kohteet</div>
+                            <strong>{form.deliveryDestinations.length} / {availableDestinationCities.length}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                     <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
                       <label>Kuljetus järjestetään</label>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
@@ -10016,18 +10264,47 @@ export default function App() {
                     <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
                       <div style={styles.rowBetween}>
                         <label>Toimituskohteet</label>
-                        <button
-                          type="button"
-                          style={styles.button}
-                          onClick={() => setForm((prev) => ({ ...prev, deliveryDestinations: getSuggestedDestinationCities(currentOriginCity, prev.area).filter((city) => !prev.originPointId || getRoutePrice(prev.originPointId, city, speciesRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0))).slice(0, 10) }))}
-                        >
-                          Ehdota kohteet
-                        </button>
+                        <div style={styles.row}>
+                          <button
+                            type="button"
+                            style={styles.button}
+                            onClick={() => setForm((prev) => ({ ...prev, deliveryDestinations: getSuggestedDestinationCities(currentOriginCity, prev.area).filter((city) => !prev.originPointId || getRoutePrice(prev.originPointId, city, totalKilosForOffer)).slice(0, 10) }))}
+                          >
+                            Ehdota kohteet
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.button}
+                            onClick={() => setForm((prev) => ({
+                              ...prev,
+                              deliveryDestinations: availableDestinationCities.filter((city) => !prev.originPointId || getRoutePrice(prev.originPointId, city, totalKilosForOffer)),
+                            }))}
+                          >
+                            Valitse kaikki hinnastolliset
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.button}
+                            onClick={() => setForm((prev) => ({ ...prev, deliveryDestinations: [] }))}
+                          >
+                            Tyhjennä
+                          </button>
+                        </div>
                       </div>
                       <div style={styles.small}>Mukana aina Helsinki, Vantaa ja Espoo. Tarjous näkyy vain ostajille, joille löytyy reittihinta.</div>
+                      <div style={styles.noticeInfo}>
+                        {form.deliveryDestinations.length > 0
+                          ? `${form.deliveryDestinations.length} kohdetta valittu.`
+                          : "Et ole vielä valinnut toimituskohteita."}{" "}
+                        {form.transportMode === "pickup"
+                          ? "Noutomallissa kohteet voidaan valita ilman luovutuspistettä."
+                          : form.originPointId
+                            ? `Valitusta pisteestä löytyy hinnasto ${availableDestinationCities.filter((city) => getRoutePrice(form.originPointId, city, totalKilosForOffer)).length} kohteeseen.`
+                            : "Valitse ensin terminaali tai keräilypiste, niin näet hinnastolliset reitit."}
+                      </div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
                         {availableDestinationCities.map((city) => {
-                          const routePrice = form.originPointId ? getRoutePrice(form.originPointId, city, speciesRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0)) : null;
+                          const routePrice = form.originPointId ? getRoutePrice(form.originPointId, city, totalKilosForOffer) : null;
                           const checked = form.deliveryDestinations.includes(city);
                           const disabled = Boolean(form.originPointId) && !routePrice;
                           return (
