@@ -5083,7 +5083,8 @@ export default function App() {
       ...sellerIdentity,
       revealIdentity,
       sellerLabel: revealIdentity ? sellerIdentity.sellerName : ANONYMOUS_SELLER_LABEL,
-      publicLocation: isPickup ? publicPickupLocation : (sellerIdentity.deliveryArea || sellerIdentity.sellerArea || "-"),
+      publicLocation: sellerIdentity.sellerArea || offer?.area || "-",
+      publicDeliveryLocation: isPickup ? publicPickupLocation : (sellerIdentity.deliveryArea || sellerIdentity.sellerArea || "-"),
       exactLocation: sellerIdentity.deliveryArea || sellerIdentity.sellerArea || "-",
       publicSpot: revealIdentity ? (sellerIdentity.sellerSpot || "") : "",
     };
