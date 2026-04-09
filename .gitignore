@@ -9,3 +9,5 @@ android/app/build/
 *.keystore
 *.jks
 local.properties
+
+android/app/google-services.json
