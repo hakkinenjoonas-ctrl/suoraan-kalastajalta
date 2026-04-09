@@ -67,6 +67,7 @@ const ONBOARDING_GUIDE_MAX_VIEWS = 3;
 const ONBOARDING_GUIDE_STORAGE_PREFIX = "onboarding_guide_v1";
 const CUSTOM_LAKE_AREA_OPTION = "__custom_lake_area__";
 const CUSTOM_SEA_AREA_OPTION = "__custom_sea_area__";
+const DELIVERY_COMPETITION_AVAILABLE = false;
 const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
 const transportModeLabels = {
   terminal: "Vie terminaaliin",
@@ -2291,6 +2292,11 @@ const styles = {
     borderRadius: 20,
     background: "linear-gradient(140deg, #eff6ff 0%, #f0f9ff 58%, #e0f2fe 100%)",
     padding: 18,
+  },
+  disabledSection: {
+    opacity: 0.58,
+    pointerEvents: "none",
+    filter: "grayscale(0.08)",
   },
   successHighlightBox: {
     border: "1px solid #93c5fd",
@@ -9756,10 +9762,10 @@ export default function App() {
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={processedForm.earliestDeliveryDate} onChange={(e) => setProcessedForm({ ...processedForm, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={processedForm.coldTransport} onChange={(e) => setProcessedForm({ ...processedForm, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
-                  <div style={{ ...styles.offerBox, ...styles.stack }}>
-                    <label><input type="checkbox" checked={processedForm.deliveryPossible} onChange={(e) => setProcessedForm({ ...processedForm, deliveryPossible: e.target.checked, deliveryMethod: e.target.checked ? "Kuljetus järjestetään" : "Nouto" })} /> Kilpailuta kuljetus</label>
-                    <div style={styles.small}>Valitse ensin kuljetustapa. Sen jälkeen annat nouto-osoitteen tai valitset lähimmän terminaalin tai keräilypisteen, jonka pohjalta appi ehdottaa toimituskohteita.</div>
-                    {processedForm.deliveryPossible ? (
+                  <div style={{ ...styles.offerBox, ...styles.stack, ...(!DELIVERY_COMPETITION_AVAILABLE ? styles.disabledSection : null) }}>
+                    <label><input type="checkbox" checked={DELIVERY_COMPETITION_AVAILABLE && processedForm.deliveryPossible} disabled /> Kilpailuta kuljetus</label>
+                    <div style={styles.small}>Saatavilla myöhemmin. Tässä kohtaa voi jatkossa valita kuljetustavan, nouto-osoitteen tai lähimmän terminaalin ja toimituskohteet.</div>
+                    {DELIVERY_COMPETITION_AVAILABLE && processedForm.deliveryPossible ? (
                       <>
                         <div style={styles.field}>
                           <label>Lähtösijainti</label>
@@ -9808,7 +9814,7 @@ export default function App() {
                     ) : null}
                   </div>
                 </div>
-                {processedForm.deliveryPossible ? (
+                {DELIVERY_COMPETITION_AVAILABLE && processedForm.deliveryPossible ? (
                   <>
                     {processedForm.transportMode === "terminal" || processedForm.transportMode === "collection_point" ? (
                       <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
@@ -10151,10 +10157,10 @@ export default function App() {
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
-                  <div style={{ ...styles.offerBox, ...styles.stack }}>
-                    <label><input type="checkbox" checked={form.deliveryPossible} onChange={(e) => setForm({ ...form, deliveryPossible: e.target.checked, deliveryMethod: e.target.checked ? "Kuljetus järjestetään" : "Nouto" })} /> Kilpailuta kuljetus</label>
-                    <div style={styles.small}>Valitse ensin kuljetustapa. Sen jälkeen annat nouto-osoitteen tai valitset lähimmän terminaalin tai keräilypisteen, jonka pohjalta appi ehdottaa toimituskohteita.</div>
-                    {form.deliveryPossible ? (
+                  <div style={{ ...styles.offerBox, ...styles.stack, ...(!DELIVERY_COMPETITION_AVAILABLE ? styles.disabledSection : null) }}>
+                    <label><input type="checkbox" checked={DELIVERY_COMPETITION_AVAILABLE && form.deliveryPossible} disabled /> Kilpailuta kuljetus</label>
+                    <div style={styles.small}>Saatavilla myöhemmin. Tässä kohtaa voi jatkossa valita kuljetustavan, nouto-osoitteen tai lähimmän terminaalin ja toimituskohteet.</div>
+                    {DELIVERY_COMPETITION_AVAILABLE && form.deliveryPossible ? (
                       <>
                         <div style={styles.field}>
                           <label>Lähtösijainti</label>
@@ -10203,7 +10209,7 @@ export default function App() {
                     ) : null}
                   </div>
                 </div>
-                {form.deliveryPossible ? (
+                {DELIVERY_COMPETITION_AVAILABLE && form.deliveryPossible ? (
                   <>
                     {form.transportMode === "terminal" || form.transportMode === "collection_point" ? (
                       <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
