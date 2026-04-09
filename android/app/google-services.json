@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "476532876388",
+    "project_id": "suoraan-kalastajalta",
+    "storage_bucket": "suoraan-kalastajalta.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:476532876388:android:2d623bafe2fbdef2c7eb71",
+        "android_client_info": {
+          "package_name": "fi.suoraankalastajalta.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPq6DVSyQ-tqCZI8HQYafq44vk67aEAjQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
