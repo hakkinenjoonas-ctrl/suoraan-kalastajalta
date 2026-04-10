@@ -1,269 +1,54 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Share } from "@capacitor/share";
 import { jsPDF } from "jspdf";
-
-const SUPABASE_URL = "https://exuqgemipmaqdkficlfn.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_6OpTn3AxVjMnpei8Bpsy7A_Y8kOXaZP";
-const DEFAULT_PUBLIC_APP_URL = "https://suoraan-kalastajalta.vercel.app";
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-});
-
-const fishSpeciesCatalog = [
-  { name_fi: "Kuha", name_en: "Zander", scientific: "Sander lucioperca", fao: "FPP" },
-  { name_fi: "Ahven", name_en: "European perch", scientific: "Perca fluviatilis", fao: "FPE" },
-  { name_fi: "Hauki", name_en: "Pike", scientific: "Esox lucius", fao: "FPI" },
-  { name_fi: "Lahna", name_en: "Freshwater bream", scientific: "Abramis brama", fao: "FBM" },
-  { name_fi: "Särki", name_en: "Roach", scientific: "Rutilus rutilus", fao: "FRO" },
-  { name_fi: "Muikku", name_en: "Vendace", scientific: "Coregonus albula", fao: "FVE" },
-  { name_fi: "Siika", name_en: "Whitefish", scientific: "Coregonus lavaretus", fao: "WHF" },
-  { name_fi: "Made", name_en: "Burbot", scientific: "Lota lota", fao: "FBU" },
-  { name_fi: "Säyne", name_en: "Ide", scientific: "Leuciscus idus", fao: "FID" },
-  { name_fi: "Kiiski", name_en: "Ruffe", scientific: "Gymnocephalus cernua", fao: "FRF" },
-  { name_fi: "Kuore", name_en: "Smelt", scientific: "Osmerus eperlanus", fao: "SME" },
-  { name_fi: "Silakka", name_en: "Baltic herring", scientific: "Clupea harengus", fao: "HER" },
-  { name_fi: "Kilohaili", name_en: "Sprat", scientific: "Sprattus sprattus", fao: "SPR" },
-  { name_fi: "Lohi", name_en: "Atlantic salmon", scientific: "Salmo salar", fao: "SAL" },
-  { name_fi: "Kirjolohi", name_en: "Rainbow trout", scientific: "Oncorhynchus mykiss", fao: "TRR" },
-  { name_fi: "Taimen", name_en: "Brown trout", scientific: "Salmo trutta", fao: "TRU" },
-  { name_fi: "Ankerias", name_en: "Eel", scientific: "Anguilla anguilla", fao: "ELE" },
-  { name_fi: "Toutain", name_en: "Asp", scientific: "Aspius aspius", fao: "ASU" },
-  { name_fi: "Suutari", name_en: "Tench", scientific: "Tinca tinca", fao: "FTE" },
-  { name_fi: "Kampela", name_en: "Flounder", scientific: "Platichthys flesus", fao: "FLE" },
-  { name_fi: "Täplärapu", name_en: "Signal crayfish", scientific: "Pacifastacus leniusculus", fao: "PCL" },
-  { name_fi: "Jokirapu", name_en: "Noble crayfish", scientific: "Astacus astacus", fao: "AAS" },
-];
-const fishSpeciesVariants = [
-  "Muikku, perattu",
-  "Muikku, perattu päätön",
-  "Kuha, avattu",
-  "Kuha filee",
-  "Ahven, avattu",
-  "Ahven filee",
-  "Hauki, avattu",
-  "Hauki filee",
-  "Made, nyljetty",
-  "Kirjolohi filee",
-  "Lohi filee",
-  "Siika filee",
-  "Taimen filee",
-];
-const fishSpeciesByName = Object.fromEntries(
-  fishSpeciesCatalog.map((item) => [item.name_fi.toLowerCase(), item])
-);
-const fishSpecies = [...fishSpeciesCatalog.map((item) => item.name_fi), ...fishSpeciesVariants, "Muu"];
-const gearTypes = ["Rysä", "Paunetti/avorysä", "Verkko", "Katiska", "Merta", "Trooli", "Nuotta", "Vapaväline", "Muu"];
-const CATCH_FORM_DEFAULTS_KEY = "catch_form_defaults_v1";
-const ONBOARDING_GUIDE_MAX_VIEWS = 3;
-const ONBOARDING_GUIDE_STORAGE_PREFIX = "onboarding_guide_v1";
-const CUSTOM_LAKE_AREA_OPTION = "__custom_lake_area__";
-const CUSTOM_SEA_AREA_OPTION = "__custom_sea_area__";
-const DELIVERY_COMPETITION_AVAILABLE = false;
-const deliveryMethods = ["Nouto", "Myyjä toimittaa", "Kuljetus järjestetään", "Sovitaan erikseen"];
-const transportModeLabels = {
-  terminal: "Vie terminaaliin",
-  pickup: "Kuljetusfirma noutaa",
-  collection_point: "Vie keräilypisteeseen",
-};
-const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
-const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Jauhatus", "Kypsennys", "Muu"];
-const COMMISSION_RATE = 0.03;
-const PUSH_CHANNEL_ID = "trade_events_waterdrop";
-const PUSH_SOUND_NAME = "waterdrop";
-const finlandMunicipalities = [
-  "Akaa", "Alajärvi", "Alavieska", "Alavus", "Asikkala", "Askola", "Aura", "Brändö", "Eckerö", "Enonkoski",
-  "Enontekiö", "Espoo", "Eura", "Eurajoki", "Evijärvi", "Finström", "Forssa", "Föglö", "Geta", "Haapajärvi",
-  "Haapavesi", "Hailuoto", "Halsua", "Hamina", "Hammarland", "Hankasalmi", "Hanko", "Harjavalta", "Hartola", "Hattula",
-  "Hausjärvi", "Heinola", "Heinävesi", "Helsinki", "Hirvensalmi", "Hollola", "Huittinen", "Humppila", "Hyrynsalmi", "Hyvinkää",
-  "Hämeenkyrö", "Hämeenlinna", "Ii", "Iisalmi", "Iitti", "Ikaalinen", "Ilmajoki", "Ilomantsi", "Imatra", "Inari",
-  "Inkoo", "Isojoki", "Isokyrö", "Janakkala", "Joensuu", "Jokioinen", "Jomala", "Joroinen", "Joutsa", "Juuka",
-  "Juupajoki", "Juva", "Jyväskylä", "Jämijärvi", "Jämsä", "Järvenpää", "Kaarina", "Kaavi", "Kajaani", "Kalajoki",
-  "Kangasala", "Kangasniemi", "Kankaanpää", "Kannonkoski", "Kannus", "Karijoki", "Karkkila", "Karstula", "Karvia", "Kaskinen",
-  "Kauhajoki", "Kauhava", "Kauniainen", "Kaustinen", "Keitele", "Kemi", "Kemijärvi", "Keminmaa", "Kimitoön", "Kinnula",
-  "Kirkkonummi", "Kitee", "Kittilä", "Kiuruvesi", "Kivijärvi", "Kokemäki", "Kokkola", "Kolari", "Konnevesi", "Kontiolahti",
-  "Korsnäs", "Koski Tl", "Kotka", "Kouvola", "Kristiinankaupunki", "Kruunupyy", "Kuhmo", "Kuhmoinen", "Kumlinge", "Kuopio",
-  "Kuortane", "Kurikka", "Kustavi", "Kuusamo", "Kyyjärvi", "Kärkölä", "Kärsämäki", "Kökar", "Lahti", "Laihia",
-  "Laitila", "Lapinjärvi", "Lapinlahti", "Lappajärvi", "Lappeenranta", "Lapua", "Laukaa", "Lemi", "Lemland", "Lempäälä",
-  "Leppävirta", "Lestijärvi", "Lieksa", "Lieto", "Liminka", "Liperi", "Lohja", "Loimaa", "Loppi", "Loviisa",
-  "Luhanka", "Lumijoki", "Lumparland", "Luoto", "Luumäki", "Maalahti", "Maarianhamina", "Marttila", "Masku", "Merijärvi",
-  "Merikarvia", "Miehikkälä", "Mikkeli", "Muhos", "Multia", "Muonio", "Mustasaari", "Muurame", "Mynämäki", "Myrskylä",
-  "Mäntsälä", "Mänttä-Vilppula", "Mäntyharju", "Naantali", "Nakkila", "Nivala", "Nokia", "Nousiainen", "Nurmes", "Nurmijärvi",
-  "Närpiö", "Orimattila", "Oripää", "Orivesi", "Oulainen", "Oulu", "Outokumpu", "Padasjoki", "Paimio", "Paltamo",
-  "Parainen", "Parikkala", "Parkano", "Pedersören kunta", "Pelkosenniemi", "Pello", "Perho", "Pertunmaa", "Petäjävesi", "Pieksämäki",
-  "Pielavesi", "Pietarsaari", "Pihtipudas", "Pirkkala", "Polvijärvi", "Pomarkku", "Pori", "Pornainen", "Porvoo", "Posio",
-  "Pudasjärvi", "Pukkila", "Punkalaidun", "Puolanka", "Puumala", "Pyhtää", "Pyhäjoki", "Pyhäjärvi", "Pyhäntä", "Pyhäranta",
-  "Pälkäne", "Pöytyä", "Raahe", "Raasepori", "Raisio", "Rantasalmi", "Ranua", "Rauma", "Rautalampi", "Rautavaara",
-  "Rautjärvi", "Reisjärvi", "Riihimäki", "Ristijärvi", "Rovaniemi", "Ruokolahti", "Ruovesi", "Rusko", "Rääkkylä", "Saarijärvi",
-  "Salla", "Salo", "Saltvik", "Sastamala", "Sauvo", "Savitaipale", "Savonlinna", "Savukoski", "Seinäjoki", "Sievi",
-  "Siikainen", "Siikajoki", "Siikalatva", "Siilinjärvi", "Simo", "Sipoo", "Siuntio", "Sodankylä", "Soini", "Somero",
-  "Sonkajärvi", "Sotkamo", "Sottunga", "Sulkava", "Sund", "Suomussalmi", "Suonenjoki", "Sysmä", "Säkylä", "Taipalsaari",
-  "Taivalkoski", "Taivassalo", "Tammela", "Tampere", "Tervo", "Tervola", "Teuva", "Tohmajärvi", "Toholampi", "Toivakka",
-  "Tornio", "Turku", "Tuusniemi", "Tuusula", "Tyrnävä", "Ulvila", "Urjala", "Utajärvi", "Utsjoki", "Uurainen",
-  "Uusikaarlepyy", "Uusikaupunki", "Vaala", "Vaasa", "Valkeakoski", "Vantaa", "Varkaus", "Vehmaa", "Vesanto", "Vesilahti",
-  "Veteli", "Vieremä", "Vihti", "Viitasaari", "Vimpeli", "Virolahti", "Virrat", "Vårdö", "Vöyri", "Ylitornio",
-  "Ylivieska", "Ylöjärvi", "Ypäjä", "Ähtäri", "Äänekoski"
-];
-
-const defaultAreas = [
-  // SAIMAA
-  "Saimaa",
-  "Suur-Saimaa",
-  "Pien-Saimaa",
-  "Puruvesi",
-  "Haukivesi",
-  "Pihlajavesi",
-  "Orivesi (Saimaa)",
-  "Pyhäselkä",
-  "Enonvesi",
-  "Lietvesi",
-  "Luonteri",
-  "Yövesi",
-
-  // ITÄ-SUOMI
-  "Kallavesi",
-  "Unnukka",
-  "Suvasvesi",
-  "Onkivesi",
-  "Porovesi",
-  "Iisvesi",
-  "Nilakka",
-  "Keitele",
-  "Konnevesi",
-
-  // ETELÄ / KESKI
-  "Päijänne",
-  "Puula",
-  "Jääsjärvi",
-  "Vesijärvi (Lahti)",
-
-  // LÄNSI
-  "Näsijärvi",
-  "Pyhäjärvi",
-  "Pyhäjärvi (Tampere)",
-  "Vanajavesi",
-  "Kyrösjärvi",
-  "Lappajärvi",
-
-  // POHJOINEN
-  "Oulujärvi",
-  "Inari",
-  "Kemijärvi",
-  "Lokka",
-  "Porttipahta",
-
-  // MERI
-  "Suomenlahti",
-  "Saaristomeri",
-  "Selkämeri",
-  "Perämeri",
-  "Ahvenanmeri",
-
-  // FALLBACK
-  "Muu järvi",
-  "Merialue (muu)"
-];
-
-const alwaysSuggestedDestinationCities = ["Helsinki", "Vantaa", "Espoo"];
-const logisticsRegionCities = {
-  south: ["Helsinki", "Espoo", "Vantaa", "Lahti", "Porvoo", "Turku", "Salo", "Hyvinkää", "Kotka", "Kouvola"],
-  east: ["Lappeenranta", "Imatra", "Mikkeli", "Savonlinna", "Joensuu", "Kuopio", "Varkaus", "Pieksämäki", "Lahti"],
-  west: ["Tampere", "Turku", "Pori", "Rauma", "Vaasa", "Seinäjoki", "Kokkola", "Sastamala", "Forssa"],
-  central: ["Jyväskylä", "Jämsä", "Äänekoski", "Kuopio", "Lahti", "Tampere", "Mikkeli"],
-  north: ["Oulu", "Kemi", "Tornio", "Rovaniemi", "Kuusamo", "Kajaani", "Ylivieska"],
-};
-const municipalityRegionMap = Object.fromEntries([
-  ...logisticsRegionCities.south.map((city) => [city, "south"]),
-  ...logisticsRegionCities.east.map((city) => [city, "east"]),
-  ...logisticsRegionCities.west.map((city) => [city, "west"]),
-  ...logisticsRegionCities.central.map((city) => [city, "central"]),
-  ...logisticsRegionCities.north.map((city) => [city, "north"]),
-  ["Lappeenranta", "east"],
-  ["Helsinki", "south"],
-  ["Espoo", "south"],
-  ["Vantaa", "south"],
-  ["Tampere", "west"],
-  ["Turku", "west"],
-  ["Oulu", "north"],
-  ["Jyväskylä", "central"],
-]);
-const pickupPoints = [
-  { id: "terminal-hel", name: "Helsinki Terminaali", type: "terminal", city: "Helsinki", address: "Satamakaari 12, Helsinki", active: true, latest_dropoff_time: "18:00", region: "south" },
-  { id: "terminal-van", name: "Vantaa Terminaali", type: "terminal", city: "Vantaa", address: "Rahtitie 4, Vantaa", active: true, latest_dropoff_time: "19:00", region: "south" },
-  { id: "terminal-lpr", name: "Lappeenranta Terminaali", type: "terminal", city: "Lappeenranta", address: "Teollisuuskatu 8, Lappeenranta", active: true, latest_dropoff_time: "17:30", region: "east" },
-  { id: "terminal-mkl", name: "Mikkeli Terminaali", type: "terminal", city: "Mikkeli", address: "Rantakylänkatu 5, Mikkeli", active: true, latest_dropoff_time: "17:00", region: "east" },
-  { id: "terminal-kuo", name: "Kuopio Terminaali", type: "terminal", city: "Kuopio", address: "Varastotie 9, Kuopio", active: true, latest_dropoff_time: "18:00", region: "east" },
-  { id: "terminal-tre", name: "Tampere Terminaali", type: "terminal", city: "Tampere", address: "Logistiikkakatu 3, Tampere", active: true, latest_dropoff_time: "18:00", region: "west" },
-  { id: "terminal-jkl", name: "Jyväskylä Terminaali", type: "terminal", city: "Jyväskylä", address: "Rahtikatu 7, Jyväskylä", active: true, latest_dropoff_time: "17:30", region: "central" },
-  { id: "terminal-oul", name: "Oulu Terminaali", type: "terminal", city: "Oulu", address: "Satamatie 11, Oulu", active: true, latest_dropoff_time: "18:00", region: "north" },
-  { id: "cp-lpr", name: "Lappeenrannan keräilypiste", type: "collection_point", city: "Lappeenranta", address: "Kauppakatu 21, Lappeenranta", active: true, latest_dropoff_time: "16:30", region: "east" },
-  { id: "cp-mkl", name: "Mikkelin keräilypiste", type: "collection_point", city: "Mikkeli", address: "Pursialankatu 4, Mikkeli", active: true, latest_dropoff_time: "16:00", region: "east" },
-  { id: "cp-hel", name: "Helsingin keräilypiste", type: "collection_point", city: "Helsinki", address: "Sörnäisten rantatie 6, Helsinki", active: true, latest_dropoff_time: "17:00", region: "south" },
-  { id: "cp-van", name: "Vantaan keräilypiste", type: "collection_point", city: "Vantaa", address: "Tikkurilantie 2, Vantaa", active: true, latest_dropoff_time: "17:30", region: "south" },
-  { id: "cp-tre", name: "Tampereen keräilypiste", type: "collection_point", city: "Tampere", address: "Hatanpään valtatie 10, Tampere", active: true, latest_dropoff_time: "17:00", region: "west" },
-  { id: "cp-jkl", name: "Jyväskylän keräilypiste", type: "collection_point", city: "Jyväskylä", address: "Vapaudenkatu 14, Jyväskylä", active: true, latest_dropoff_time: "16:30", region: "central" },
-  { id: "cp-oul", name: "Oulun keräilypiste", type: "collection_point", city: "Oulu", address: "Rantakatu 5, Oulu", active: true, latest_dropoff_time: "17:00", region: "north" },
-];
-const transportCompanies = [
-  { id: "north-fresh-logistics", name: "North Fresh Logistics", active: true },
-];
-const routeRegionPriceMatrix = {
-  south: { south: 35, east: 58, west: 52, central: 60, north: 115 },
-  east: { south: 55, east: 28, west: 72, central: 54, north: 122 },
-  west: { south: 49, east: 70, west: 30, central: 45, north: 108 },
-  central: { south: 48, east: 50, west: 44, central: 28, north: 92 },
-  north: { south: 110, east: 118, west: 102, central: 88, north: 34 },
-};
-
-function buildRoutePrices() {
-  const destinations = Array.from(new Set([
-    ...alwaysSuggestedDestinationCities,
-    ...logisticsRegionCities.south,
-    ...logisticsRegionCities.east,
-    ...logisticsRegionCities.west,
-    ...logisticsRegionCities.central,
-    ...logisticsRegionCities.north,
-  ]));
-
-  const rows = [];
-  for (const point of pickupPoints.filter((item) => item.active)) {
-    for (const destinationCity of destinations) {
-      const destinationRegion = municipalityRegionMap[destinationCity] || "south";
-      const base = routeRegionPriceMatrix[point.region]?.[destinationRegion] ?? 65;
-      const typeSurcharge = point.type === "terminal" ? 0 : 8;
-      rows.push({
-        origin_point_id: point.id,
-        destination_city: destinationCity,
-        carrier_id: "north-fresh-logistics",
-        price_eur: base + typeSurcharge,
-        min_kg: 1,
-        max_kg: 2000,
-        active: true,
-        cutoff_time: point.latest_dropoff_time || "17:00",
-      });
-    }
-  }
-  return rows;
-}
-
-const routePrices = buildRoutePrices();
-
-function safeId() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function createSpeciesRow() {
-  return { id: safeId(), species: "", customSpecies: "", kilos: "", count: "", price_per_kg: "" };
-}
+import {
+  clearBrokenSession,
+  findAllowedUserByEmail,
+  findAllowedUsersByEmail,
+  isMissingRefreshTokenError,
+} from "./lib/auth.js";
+import {
+  CATCH_FORM_DEFAULTS_KEY,
+  COMMISSION_RATE,
+  CUSTOM_LAKE_AREA_OPTION,
+  CUSTOM_SEA_AREA_OPTION,
+  DELIVERY_COMPETITION_AVAILABLE,
+  ONBOARDING_GUIDE_MAX_VIEWS,
+  ONBOARDING_GUIDE_STORAGE_PREFIX,
+  PUSH_CHANNEL_ID,
+  PUSH_SOUND_NAME,
+  defaultAreas,
+  deliveryMethods,
+  finlandMunicipalities,
+  fishSpecies,
+  fishSpeciesByName,
+  fishSpeciesCatalog,
+  gearTypes,
+  pickupPoints,
+  processedProductTypes,
+  processingMethods,
+  routePrices,
+  transportCompanies,
+  transportModeLabels,
+} from "./lib/constants.js";
+import { createSpeciesRow, safeId, today } from "./lib/helpers.js";
+import { DEFAULT_PUBLIC_APP_URL, supabase } from "./lib/supabase.js";
+import {
+  ANONYMOUS_SELLER_LABEL,
+  buildRoleOptionLabel,
+  buyerStatusBadgeStyle,
+  formatDeliveryDestinations,
+  getPublicPickupLocation,
+  normalizeDestinationCities,
+  normalizeEmail,
+  resolveBuyerDestinationCity,
+  responsiveGridStyle,
+  roleLabel,
+  styles,
+} from "./lib/ui.js";
 
 function getPublicAppBaseUrl() {
   const configuredUrl = typeof import.meta !== "undefined" ? import.meta.env?.VITE_PUBLIC_APP_URL : "";
@@ -1960,10 +1745,6 @@ function getAcceptedInvoiceSourceLabel(offer) {
   return "Hyväksytty tarjous";
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 async function exportCsv(filename, rows) {
   const csv = rows
     .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(";"))
@@ -1978,30 +1759,6 @@ async function exportCsv(filename, rows) {
   });
 }
 
-function isMissingRefreshTokenError(error) {
-  const message = String(error?.message || error || "").toLowerCase();
-  return message.includes("invalid refresh token") || message.includes("refresh token not found");
-}
-
-async function clearBrokenSession() {
-  try {
-    await supabase.auth.signOut({ scope: "local" });
-  } catch {
-    // ignore
-  }
-
-  try {
-    const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i += 1) {
-      const key = localStorage.key(i);
-      if (key && key.includes("supabase")) keysToRemove.push(key);
-    }
-    keysToRemove.forEach((key) => localStorage.removeItem(key));
-  } catch {
-    // ignore
-  }
-}
-
 function runLocalTests() {
   const tests = [
     { name: "Kuha on kalalistassa", pass: fishSpecies.includes("Kuha") },
@@ -2014,474 +1771,6 @@ function runLocalTests() {
   if (failed.length > 0) {
     console.error("Paikalliset testit epäonnistuivat:", failed);
   }
-}
-
-const styles = {
-  app: {
-    minHeight: "100vh",
-    background: "radial-gradient(circle at top left, rgba(191,219,254,0.55) 0%, rgba(239,246,255,0.96) 26%, rgba(219,234,254,0.82) 54%, rgba(239,246,255,1) 100%)",
-    color: "#0f172a",
-    fontFamily: '"Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    padding: 20,
-  },
-  container: { maxWidth: 1320, margin: "0 auto" },
-  card: {
-    background: "rgba(255,255,255,0.88)",
-    border: "1px solid rgba(148, 184, 255, 0.28)",
-    borderRadius: 24,
-    boxShadow: "0 22px 50px rgba(30, 64, 175, 0.08)",
-    backdropFilter: "blur(10px)",
-  },
-  headerCard: {
-    padding: 24,
-    marginBottom: 22,
-    background: "linear-gradient(140deg, rgba(239,246,255,0.98) 0%, rgba(219,234,254,0.95) 42%, rgba(186,230,253,0.92) 100%)",
-    border: "1px solid rgba(125, 176, 255, 0.38)",
-  },
-  sectionCard: { padding: 20 },
-  row: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" },
-  rowBetween: {
-    display: "flex",
-    gap: 16,
-    justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
-  },
-  title: { margin: 0, fontSize: 38, lineHeight: 1.02, letterSpacing: "-0.04em", fontWeight: 800, color: "#0f172a" },
-  subtitle: { margin: "8px 0 0", color: "#475569", fontSize: 14, lineHeight: 1.5 },
-  badge: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "8px 13px",
-    borderRadius: 999,
-    background: "rgba(239,246,255,0.95)",
-    color: "#1e3a8a",
-    fontSize: 13,
-    fontWeight: 600,
-    border: "1px solid rgba(147, 197, 253, 0.92)",
-  },
-  toolbar: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
-  toolbarActions: { display: "flex", gap: 10, flexWrap: "nowrap", alignItems: "center", whiteSpace: "nowrap" },
-  tabs: {
-    display: "grid",
-    gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-    gap: 8,
-    background: "rgba(255,255,255,0.75)",
-    border: "1px solid rgba(147, 197, 253, 0.42)",
-    padding: 8,
-    borderRadius: 22,
-    marginBottom: 18,
-    boxShadow: "0 16px 36px rgba(37, 99, 235, 0.07)",
-  },
-  tabs6: {
-    display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-    gap: 8,
-    background: "rgba(255,255,255,0.75)",
-    border: "1px solid rgba(147, 197, 253, 0.42)",
-    padding: 8,
-    borderRadius: 22,
-    marginBottom: 18,
-    boxShadow: "0 16px 36px rgba(37, 99, 235, 0.07)",
-  },
-  stickyTabsWrap: {
-    position: "sticky",
-    top: 10,
-    zIndex: 40,
-    marginBottom: 18,
-    paddingTop: 6,
-  },
-  tab: {
-    border: 0,
-    background: "transparent",
-    padding: "13px 12px",
-    borderRadius: 16,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    color: "#1e3a8a",
-    fontWeight: 700,
-  },
-  activeTab: { background: "linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)", color: "#fff", boxShadow: "0 14px 28px rgba(37, 99, 235, 0.24)" },
-  grid3: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 18 },
-  grid2: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 18 },
-  stack: { display: "flex", flexDirection: "column", gap: 14 },
-  metric: { fontSize: 40, fontWeight: 800, margin: "10px 0 0", letterSpacing: "-0.04em", color: "#0f172a" },
-  muted: { color: "#475569", fontSize: 14, lineHeight: 1.55 },
-  progress: { height: 12, background: "rgba(191,219,254,0.48)", borderRadius: 999, overflow: "hidden" },
-  progressFill: { display: "block", height: "100%", background: "linear-gradient(90deg, #2563eb 0%, #0ea5e9 100%)", borderRadius: 999 },
-  formGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 },
-  field: { display: "flex", flexDirection: "column", gap: 8 },
-  fieldFull: { gridColumn: "1 / -1" },
-  input: {
-    width: "100%",
-    padding: "13px 15px",
-    border: "1px solid rgba(147, 197, 253, 0.75)",
-    borderRadius: 16,
-    background: "rgba(255,255,255,0.94)",
-    font: "inherit",
-    boxSizing: "border-box",
-    color: "#0f172a",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.65)",
-  },
-  textarea: {
-    width: "100%",
-    padding: "13px 15px",
-    border: "1px solid rgba(147, 197, 253, 0.75)",
-    borderRadius: 16,
-    background: "rgba(255,255,255,0.94)",
-    font: "inherit",
-    minHeight: 108,
-    resize: "vertical",
-    boxSizing: "border-box",
-    color: "#0f172a",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.65)",
-  },
-  button: {
-    border: "1px solid rgba(147, 197, 253, 0.72)",
-    background: "rgba(255,255,255,0.92)",
-    color: "#1e3a8a",
-    borderRadius: 16,
-    padding: "11px 16px",
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    fontWeight: 700,
-    boxShadow: "0 10px 22px rgba(37, 99, 235, 0.08)",
-  },
-  primaryButton: { background: "linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)", color: "#fff", borderColor: "#2563eb" },
-  speciesBox: {
-    border: "1px solid rgba(147, 197, 253, 0.4)",
-    borderRadius: 20,
-    background: "linear-gradient(140deg, rgba(248,250,252,0.98) 0%, rgba(239,246,255,0.98) 55%, rgba(224,242,254,0.9) 100%)",
-    padding: 18,
-  },
-  speciesRow: {
-    display: "grid",
-    gridTemplateColumns: "1.4fr 0.8fr 0.8fr auto",
-    gap: 12,
-    alignItems: "end",
-    background: "rgba(255,255,255,0.96)",
-    border: "1px solid rgba(191, 219, 254, 0.95)",
-    borderRadius: 18,
-    padding: 14,
-    boxShadow: "0 10px 22px rgba(59, 130, 246, 0.05)",
-  },
-  entry: {
-    border: "1px solid rgba(191, 219, 254, 0.82)",
-    borderRadius: 20,
-    padding: 16,
-    background: "rgba(255,255,255,0.92)",
-    boxShadow: "0 16px 34px rgba(37, 99, 235, 0.06)",
-  },
-  entryHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    alignItems: "flex-start",
-    flexWrap: "wrap",
-  },
-  entryBadges: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 },
-  noticeError: {
-    padding: "13px 15px",
-    borderRadius: 16,
-    fontSize: 14,
-    background: "linear-gradient(135deg, #fef2f2 0%, #fff7f7 100%)",
-    color: "#b91c1c",
-    border: "1px solid #fecaca",
-  },
-  noticeInfo: {
-    padding: "13px 15px",
-    borderRadius: 16,
-    fontSize: 14,
-    background: "linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%)",
-    color: "#1d4ed8",
-    border: "1px solid #bfdbfe",
-    whiteSpace: "pre-wrap",
-  },
-  noticeSuccess: {
-    padding: "13px 15px",
-    borderRadius: 16,
-    fontSize: 14,
-    background: "linear-gradient(135deg, #ecfeff 0%, #f0f9ff 100%)",
-    color: "#0f766e",
-    border: "1px solid #a5f3fc",
-    whiteSpace: "pre-wrap",
-  },
-  toastStack: {
-    position: "fixed",
-    top: 18,
-    right: 18,
-    zIndex: 3000,
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    width: "min(420px, calc(100vw - 24px))",
-    pointerEvents: "none",
-  },
-  toastCard: {
-    boxShadow: "0 18px 42px rgba(15, 23, 42, 0.18)",
-    backdropFilter: "blur(10px)",
-    pointerEvents: "auto",
-    position: "relative",
-    paddingRight: 44,
-  },
-  toastClose: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    border: 0,
-    background: "transparent",
-    color: "inherit",
-    cursor: "pointer",
-    fontSize: 18,
-    lineHeight: 1,
-    padding: 4,
-  },
-  onboardingCard: {
-    background: "linear-gradient(140deg, rgba(239,246,255,0.98) 0%, rgba(240,249,255,0.98) 45%, rgba(224,242,254,0.96) 100%)",
-    border: "1px solid rgba(125, 211, 252, 0.85)",
-    boxShadow: "0 18px 40px rgba(14, 165, 233, 0.1)",
-  },
-  onboardingEyebrow: {
-    color: "#0369a1",
-    fontSize: 12,
-    fontWeight: 800,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    marginBottom: 6,
-  },
-  onboardingTitle: {
-    fontSize: 22,
-    color: "#0f172a",
-    lineHeight: 1.15,
-    letterSpacing: "-0.04em",
-  },
-  onboardingSteps: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-  },
-  onboardingStep: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 12,
-    padding: 14,
-    borderRadius: 18,
-    background: "rgba(255,255,255,0.9)",
-    border: "1px solid rgba(191, 219, 254, 0.95)",
-  },
-  onboardingStepNumber: {
-    width: 30,
-    height: 30,
-    borderRadius: 999,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    fontSize: 13,
-    fontWeight: 800,
-    color: "#fff",
-    background: "linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)",
-  },
-  onboardingStepText: {
-    color: "#0f172a",
-    fontSize: 14,
-    lineHeight: 1.55,
-  },
-  small: { fontSize: 12, color: "#64748b", lineHeight: 1.45 },
-  offerBox: {
-    border: "1px solid #bfdbfe",
-    borderRadius: 20,
-    background: "linear-gradient(140deg, #eff6ff 0%, #f0f9ff 58%, #e0f2fe 100%)",
-    padding: 18,
-  },
-  disabledSection: {
-    opacity: 0.58,
-    pointerEvents: "none",
-    filter: "grayscale(0.08)",
-  },
-  successHighlightBox: {
-    border: "1px solid #93c5fd",
-    borderRadius: 20,
-    background: "linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%)",
-    padding: 18,
-  },
-  checkboxRow: { display: "flex", gap: 20, flexWrap: "wrap" },
-  checkboxCard: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "11px 15px",
-    borderRadius: 999,
-    border: "1px solid rgba(147, 197, 253, 0.85)",
-    background: "rgba(255,255,255,0.95)",
-    fontWeight: 600,
-    color: "#1e3a8a",
-  },
-  transportPlannerCard: {
-    border: "1px solid rgba(125, 211, 252, 0.85)",
-    borderRadius: 22,
-    background: "linear-gradient(145deg, rgba(239,246,255,0.96) 0%, rgba(240,249,255,0.98) 48%, rgba(224,242,254,0.94) 100%)",
-    padding: 18,
-    boxShadow: "0 18px 40px rgba(14, 165, 233, 0.09)",
-  },
-  transportPlannerSteps: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 12,
-  },
-  transportPlannerStep: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 12,
-    borderRadius: 18,
-    border: "1px solid rgba(191, 219, 254, 0.95)",
-    background: "rgba(255,255,255,0.92)",
-  },
-  transportPlannerStepMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    fontSize: 12,
-    fontWeight: 800,
-    color: "#fff",
-    background: "linear-gradient(135deg, #94a3b8 0%, #cbd5e1 100%)",
-  },
-  transportPlannerStepMarkerActive: {
-    background: "linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)",
-  },
-  transportPlannerStepMarkerDone: {
-    background: "linear-gradient(135deg, #0891b2 0%, #22c55e 100%)",
-  },
-  transportSummaryGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 12,
-  },
-  transportSummaryCard: {
-    padding: 14,
-    borderRadius: 18,
-    border: "1px solid rgba(147, 197, 253, 0.85)",
-    background: "rgba(255,255,255,0.9)",
-  },
-  qrBlock: {
-    display: "inline-flex",
-    flexDirection: "column",
-    gap: 8,
-    padding: 12,
-    borderRadius: 18,
-    border: "1px solid #bfdbfe",
-    background: "linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%)",
-    alignItems: "center",
-    width: "fit-content",
-  },
-  qrImage: {
-    width: 96,
-    height: 96,
-    borderRadius: 12,
-    border: "1px solid rgba(147, 197, 253, 0.75)",
-    background: "#fff",
-  },
-};
-
-function buyerStatusBadgeStyle(status, baseStyle) {
-  if (status === "accepted") {
-    return { ...baseStyle, background: "#dcfce7", borderColor: "#86efac", color: "#166534" };
-  }
-  if (status === "reserved") {
-    return { ...baseStyle, background: "#fef3c7", borderColor: "#fcd34d", color: "#92400e" };
-  }
-  if (status === "sold") {
-    return { ...baseStyle, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" };
-  }
-  return baseStyle;
-}
-
-const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
-const ANONYMOUS_SELLER_LABEL = "Anonyymi kalastaja";
-
-function normalizeDestinationCities(value) {
-  const list = Array.isArray(value)
-    ? value
-    : String(value || "")
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  return Array.from(new Set(list.map((item) => String(item || "").trim()).filter(Boolean)));
-}
-
-function formatDeliveryDestinations(value) {
-  const cities = normalizeDestinationCities(value);
-  return cities.length > 0 ? cities.join(", ") : "";
-}
-
-function resolveBuyerDestinationCity(buyer) {
-  return String(buyer?.delivery_city || buyer?.city || "").trim();
-}
-
-function getPublicPickupLocation({ municipality, deliveryArea, area }) {
-  const municipalityValue = String(municipality || "").trim();
-  if (municipalityValue) return municipalityValue;
-
-  const deliveryAreaValue = String(deliveryArea || "").trim();
-  if (deliveryAreaValue) {
-    const parts = deliveryAreaValue.split(",").map((part) => part.trim()).filter(Boolean);
-    if (parts.length > 1) return parts[parts.length - 1];
-    return deliveryAreaValue;
-  }
-
-  return String(area || "").trim() || "-";
-}
-
-async function findAllowedUsersByEmail(supabase, email) {
-  const normalizedEmail = normalizeEmail(email);
-  const { data, error } = await supabase
-    .from("allowed_users")
-    .select("*")
-    .ilike("email", normalizedEmail);
-
-  if (error) return { data: [], error };
-
-  const matches = (data || []).filter((row) => normalizeEmail(row.email) === normalizedEmail);
-  return { data: matches, error: null };
-}
-
-async function findAllowedUserByEmail(supabase, email) {
-  const { data, error } = await findAllowedUsersByEmail(supabase, email);
-  return { data: (data || [])[0] || null, error };
-}
-
-function roleLabel(role) {
-  if (role === "owner") return "Omistaja";
-  if (role === "buyer") return "Ostaja";
-  if (role === "processor") return "Jalostaja";
-  return "Kalastaja";
-}
-
-function buildRoleOptionLabel(option, buyers = []) {
-  if (option.role === "buyer") {
-    const linkedBuyer = buyers.find((buyer) => buyer.id === option.buyer_id);
-    return linkedBuyer?.company_name ? `Ostaja · ${linkedBuyer.company_name}` : "Ostaja";
-  }
-  return roleLabel(option.role);
-}
-
-function responsiveGridStyle(base) {
-  if (typeof window !== "undefined" && window.innerWidth < 960) {
-    return { ...base, gridTemplateColumns: "1fr" };
-  }
-  return base;
 }
 
 function MunicipalitySelect({ value, onChange, placeholder = "Valitse paikkakunta" }) {
@@ -5007,6 +4296,39 @@ export default function App() {
     }, accessToken).catch(() => null);
   }, []);
 
+  const notifyOwnersAboutPendingApproval = useCallback(async (pendingProfile) => {
+    const pendingUserId = String(pendingProfile?.id || "").trim();
+    if (!pendingUserId) return;
+
+    const { data: ownerProfiles, error } = await supabase
+      .from("profiles")
+      .select("id, role, is_active")
+      .eq("role", "owner")
+      .eq("is_active", true);
+
+    if (error || !Array.isArray(ownerProfiles) || ownerProfiles.length === 0) {
+      return;
+    }
+
+    const pendingLabel = String(pendingProfile?.display_name || pendingProfile?.email || "Uusi käyttäjä").trim();
+    const pendingRole = roleLabel(pendingProfile?.role || "member");
+
+    await Promise.all(
+      ownerProfiles
+        .map((owner) => String(owner?.id || "").trim())
+        .filter((ownerId) => ownerId && ownerId !== pendingUserId)
+        .map((ownerId) =>
+          sendPushEvent({
+            targetUserId: ownerId,
+            title: "Uusi käyttäjä odottaa hyväksyntää",
+            body: `${pendingLabel} (${pendingRole}) odottaa ownerin hyväksyntää.`,
+            eventType: "pending_user_approval",
+            route: "users",
+          })
+        ),
+    );
+  }, [sendPushEvent]);
+
   useEffect(() => {
     if (!session?.user?.id || !profile?.id || !isNativeCapacitorApp()) return undefined;
 
@@ -5744,6 +5066,7 @@ export default function App() {
       setRoleSelectionOpen(activeAllowedRows.length > 1);
       if (!defaultAllowedRole) {
         setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
+        await notifyOwnersAboutPendingApproval(insertedProfile);
       }
       fisherInfoSyncingRef.current = true;
       setFisherInfoForm({
