@@ -3227,6 +3227,7 @@ function WholesaleOffersView({
       ),
     };
   });
+  const openBuyerOfferStatuses = ["sent", "viewed"];
 
   const buyerResponsePriority = {
     reserved: 0,
@@ -3378,7 +3379,10 @@ function WholesaleOffersView({
         {groupedBuyerOffers.length === 0 ? (
           <div style={styles.muted}>Ei vielä myyntiin merkittyjä eriä.</div>
         ) : (
-          groupedBuyerOffers.map(({ entry, reservation, entryOffers, buyerMatches }) => (
+          groupedBuyerOffers.map(({ entry, reservation, entryOffers, buyerMatches }) => {
+            const openBuyerOffers = buyerMatches.filter((offer) => openBuyerOfferStatuses.includes(offer.status));
+            const answeredBuyerOffers = buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status));
+            return (
             <div key={entry.id} style={styles.entry}>
               <div style={styles.entryHeader}>
                 <div>
@@ -3416,6 +3420,27 @@ function WholesaleOffersView({
                 <div style={styles.small}>Tarjous lähetetty {buyerMatches.length} ostajalle</div>
                 {reservation?.status === "reserved" ? <div style={styles.noticeInfo}>Erä on tällä hetkellä varattu. Voit hyväksyä varauksen tai hylätä sen ostajien vastauksista.</div> : null}
                 {reservation?.status === "accepted" ? <div style={styles.noticeSuccess}>Erä on merkitty myydyksi hyväksytyn varauksen perusteella.</div> : null}
+                <div style={styles.small}>Avoimia tarjouksia: {openBuyerOffers.length}</div>
+                {openBuyerOffers.length === 0 ? (
+                  <div style={styles.muted}>Ei tällä hetkellä avoimia tarjouksia.</div>
+                ) : (
+                  openBuyerOffers.map((offer) => (
+                    <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc" }}>
+                      <div style={styles.entryHeader}>
+                        <div>
+                          <div style={styles.entryBadges}>
+                            <span style={buyerStatusBadgeStyle(offer.status, styles.badge)}>{buyerStatusLabel(offer.status)}</span>
+                            <span style={styles.badge}>{offer.buyer_company_name || offer.buyer_email || buyerTypeLabel(offer.buyer_type)}</span>
+                            {offer.delivery_destination_city ? <span style={styles.badge}>{offer.delivery_destination_city}</span> : null}
+                          </div>
+                          <div style={styles.muted}>{formatOfferDate(offer.updated_at || offer.created_at)}</div>
+                          <div style={styles.muted}>Tarjous on lähetetty ostajalle ja odottaa vastausta.</div>
+                          {offer.route_price_eur !== "" && offer.route_price_eur != null ? <div style={styles.muted}>Toimitushinta: {formatDeliveryPrice(offer.route_price_eur)}</div> : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
                 {entryOffers.map((offer) => (
                   <div key={offer.id} style={{ ...styles.entry, background: "#f8fafc" }}>
                     <div style={styles.entryHeader}>
@@ -3439,12 +3464,11 @@ function WholesaleOffersView({
                   </div>
                 ))}
 
-                <div style={styles.small}>Vastauksia: {buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length}</div>
-                {buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status)).length === 0 ? (
+                <div style={styles.small}>Vastauksia: {answeredBuyerOffers.length}</div>
+                {answeredBuyerOffers.length === 0 ? (
                   <div style={styles.muted}>Ei vielä ostajien vastauksia.</div>
                 ) : (
-                  buyerMatches
-                    .filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status))
+                  answeredBuyerOffers
                     .sort((a, b) => {
                       if (requestedOfferId) {
                         if (a.id === requestedOfferId && b.id !== requestedOfferId) return -1;
@@ -3595,7 +3619,8 @@ function WholesaleOffersView({
                 )}
               </div>
             </div>
-          ))
+          );
+          })
         )}
       </div>
     </div>
