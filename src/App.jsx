@@ -3016,9 +3016,39 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
 }
 
 function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, onForgotPassword, onResetRecoveredPassword, authError, authInfo }) {
+  const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
+    ? 172
+    : typeof window !== "undefined" && window.innerWidth < 1024
+    ? 206
+    : 228;
+
   return (
     <div style={styles.app}>
       <div style={{ ...styles.container, maxWidth: 520 }}>
+        <div style={{ ...styles.card, ...styles.headerCard, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "nowrap", marginTop: 12, marginBottom: 12 }}>
+            <h1 style={{ ...styles.title, marginRight: -2 }}>Suoraan Kalastajalta</h1>
+            <img
+              src="/logo.png"
+              alt=""
+              style={{
+                height: logoHeight,
+                width: "auto",
+                maxWidth: typeof window !== "undefined" && window.innerWidth < 768 ? "46vw" : "none",
+                objectFit: "contain",
+                display: "block",
+                flexShrink: 0,
+              }}
+            />
+          </div>
+          <p style={styles.subtitle}>
+            {authMode === "signup"
+              ? "Luo tunnus kalastajalle, ostajalle tai jalostajalle."
+              : authMode === "recovery"
+              ? "Aseta uusi salasana turvallisesti."
+              : "Kirjaudu sisään jatkaaksesi sovellukseen."}
+          </p>
+        </div>
         <form
           style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}
           onSubmit={(e) => {
@@ -3032,7 +3062,6 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
             }
           }}
         >
-          <h1 style={styles.title}>Suoraan Kalastajalta</h1>
           {authMode !== "recovery" ? (
             <div style={{ ...styles.tabs6, gridTemplateColumns: "1fr 1fr", marginBottom: 0 }}>
               <button type="button" style={{ ...styles.tab, ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
@@ -3059,7 +3088,7 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
             <>
               <div style={styles.field}>
                 <label>Nimi</label>
-                <input style={styles.input} value={authForm.displayName} onChange={(e) => setAuthForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Joonas Häkkinen" />
+                <input style={styles.input} value={authForm.displayName} onChange={(e) => setAuthForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Kala Yritys Oy" />
               </div>
               <div style={styles.field}>
                 <label>Rooli</label>
