@@ -448,6 +448,7 @@ function getMixedOfferCounterRows(summary) {
       if (!rawLine) return null;
       const speciesPart = (rawLine.split(":")[0] || rawLine).trim();
       const label = formatSpeciesForSale(speciesPart);
+      const unit = getSpeciesPriceUnit(speciesPart);
       const kiloMatch = rawLine.match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kg/i);
       const countMatch = rawLine.match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
       const parsedWeight =
@@ -457,6 +458,7 @@ function getMixedOfferCounterRows(summary) {
       return {
         key: `${speciesPart}-${index}`,
         label,
+        unit,
         weight: Number.isFinite(parsedWeight) ? parsedWeight : 0,
       };
     })
@@ -1939,9 +1941,9 @@ function calculateCommissionDetails(offer, commissionRate = 0.03) {
   const pricePerKg = Number(
     offer?.counter_price_per_kg || offer?.price_per_kg || offer?.offer_price_per_kg || 0
   );
-  const directTradeValue = kilos * pricePerKg;
+  const lineItemTradeValue = parseSellerInvoiceLineItems(offer).reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
   const summaryTradeValue = parseTradeValueFromSpeciesSummary(offer?.species_summary);
-  const tradeValue = directTradeValue > 0 ? directTradeValue : summaryTradeValue;
+  const tradeValue = lineItemTradeValue > 0 ? lineItemTradeValue : summaryTradeValue;
   const commissionValue = tradeValue * commissionRate;
 
   return {
@@ -1950,6 +1952,12 @@ function calculateCommissionDetails(offer, commissionRate = 0.03) {
     tradeValue,
     commissionValue,
   };
+}
+
+function getAcceptedInvoiceSourceLabel(offer) {
+  if (offer?.counter_price_per_kg !== "" && offer?.counter_price_per_kg != null) return "Viimeisin hyväksytty vastatarjous";
+  if (offer?.reserved_kilos !== "" && offer?.reserved_kilos != null) return "Viimeisin hyväksytty varaus";
+  return "Hyväksytty tarjous";
 }
 
 function today() {
@@ -4005,9 +4013,9 @@ function calculateSellerInvoiceDetails(offer) {
   const vatRate = 0.135;
   const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
   const unitPrice = Number(offer?.counter_price_per_kg || offer?.price_per_kg || 0);
-  const productTotalFromQuantity = kilos * unitPrice;
+  const productTotalFromLineItems = parseSellerInvoiceLineItems(offer).reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
   const productTotalFromSummary = parseTradeValueFromSpeciesSummary(offer?.species_summary);
-  const productTotal = productTotalFromQuantity > 0 ? productTotalFromQuantity : productTotalFromSummary;
+  const productTotal = productTotalFromLineItems > 0 ? productTotalFromLineItems : productTotalFromSummary;
   const deliveryCost = Number(offer?.delivery_cost ?? offer?.route_price_eur ?? 0) || 0;
   const productVatAmount = productTotal * vatRate;
   const deliveryVatAmount = deliveryCost * vatRate;
@@ -4085,11 +4093,29 @@ function buildSellerInvoiceDueDate(offer) {
   return dateValue.toISOString().slice(0, 10);
 }
 
+function parseAcceptedSpeciesPricesFromMessage(message) {
+  return String(message || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .reduce((acc, line) => {
+      const match = line.match(/^- (.+?):\s*([0-9]+(?:[.,][0-9]+)?)\s*€\/(kg|kpl)$/i);
+      if (!match) return acc;
+      const label = String(match[1] || "").trim();
+      const price = parseLocaleNumber(match[2]);
+      if (!label || price == null) return acc;
+      acc[label] = { price: Number(price), unit: String(match[3] || "").trim().toLowerCase() };
+      return acc;
+    }, {});
+}
+
 function parseSellerInvoiceLineItems(offer) {
   const lines = getOfferSummaryLines(offer?.species_summary);
   const fallbackQuantity = getOfferQuantityDisplay(offer);
   const fallbackUnit = getOfferDisplayUnit(offer);
   const fallbackPrice = Number(offer?.counter_price_per_kg || offer?.price_per_kg || 0);
+  const mixedOffer = isMixedOffer(offer);
+  const acceptedSpeciesPrices = parseAcceptedSpeciesPricesFromMessage(offer?.buyer_message);
+  const reservedKilos = Number(offer?.reserved_kilos || 0);
 
   const parsedLines = lines.map((line) => {
     const visibleLine = stripOfferInlineMetaText(line, {
@@ -4102,15 +4128,22 @@ function parseSellerInvoiceLineItems(offer) {
     const pieceMatch = String(visibleLine || "").match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
     const kiloMatch = String(visibleLine || "").match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kg/i);
     const isCrayfishLine = isCrayfishSpecies(description);
-    const quantity = Number(parseLocaleNumber(isCrayfishLine ? pieceMatch?.[1] : kiloMatch?.[1]) || 0);
+    const parsedSummaryQuantity = Number(parseLocaleNumber(isCrayfishLine ? pieceMatch?.[1] : kiloMatch?.[1]) || 0);
+    const quantity = !mixedOffer && !isCrayfishLine && reservedKilos > 0 ? reservedKilos : parsedSummaryQuantity;
     const unit = isCrayfishLine ? "kpl" : "kg";
-    const unitPrice = Number(parseLocaleNumber(priceMatch?.[1]) || 0);
+    const summaryUnitPrice = Number(parseLocaleNumber(priceMatch?.[1]) || 0);
+    const acceptedPriceRow = acceptedSpeciesPrices[description] || null;
+    const unitPrice = Number(
+      acceptedPriceRow?.price ??
+      (!mixedOffer && offer?.counter_price_per_kg !== "" && offer?.counter_price_per_kg != null ? offer.counter_price_per_kg : summaryUnitPrice) ??
+      0
+    );
 
     return {
       description,
       quantity,
       quantityDisplay: quantity > 0 ? `${quantity.toLocaleString("fi-FI")} ${unit}` : fallbackQuantity,
-      unit,
+      unit: acceptedPriceRow?.unit || unit,
       unitPrice,
       lineTotal: quantity * unitPrice,
     };
@@ -4237,6 +4270,7 @@ function getSellerInvoicePayload(offer, sellerProfile) {
     batchId: String(offer?.batch_id || "").trim(),
     catchDates: getOfferSummaryCatchDates(offer?.species_summary),
     areaText: [offer?.area, offer?.spot].map((item) => String(item || "").trim()).filter(Boolean).join(" / "),
+    acceptedSourceLabel: getAcceptedInvoiceSourceLabel(offer),
     deliveryMethod: String(offer?.delivery_method || "").trim(),
     lineItems: parseSellerInvoiceLineItems(offer),
     vatRate: invoiceDetails.vatRate,
@@ -4428,6 +4462,7 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   drawInfoLine(`BIC: ${invoice.sellerBic || "-"}`);
   drawInfoLine(`Viitenumero: ${invoice.referenceDisplay}`);
   drawInfoLine(`Erätunnus: ${invoice.batchId || "-"}`);
+  if (invoice.acceptedSourceLabel) drawInfoLine(`Laskutusperuste: ${invoice.acceptedSourceLabel}`);
   if (invoice.catchDates.length > 0) drawInfoLine(`Pyyntipäivämäärä: ${invoice.catchDates.join(", ")}`);
   if (invoice.deliveryDate) drawInfoLine(`Toimituspäivä: ${invoice.deliveryDate}`);
   if (invoice.areaText) drawInfoLine(`Kalastamisalue: ${invoice.areaText}`);
@@ -7899,7 +7934,7 @@ export default function App() {
         "Lajikohtainen vastatarjous:",
         ...rows.map(
           (row) =>
-            `- ${row.label}: ${perSpeciesPrices[row.key].toFixed(2).replace(".", ",")} €/kg`
+            `- ${row.label}: ${perSpeciesPrices[row.key].toFixed(2).replace(".", ",")} €/${row.unit}`
         ),
       ].join("\n");
       msg = [speciesCounterText, buyerAction.buyer_message?.trim()]
@@ -9277,11 +9312,11 @@ export default function App() {
                         {mixedOffer ? (
                           <>
                             <div style={styles.field}>
-                              <label>Vastatarjous lajeittain €/kg</label>
+                              <label>Vastatarjous lajeittain</label>
                               <div style={styles.stack}>
                                 {getMixedOfferCounterRows(o.species_summary).map((row) => (
                                   <div key={row.key} style={styles.field}>
-                                    <label>{row.label}</label>
+                                    <label>{row.label} ({row.unit === "kpl" ? "€/kpl" : "€/kg"})</label>
                                     <input
                                       style={styles.input}
                                       type="text"
