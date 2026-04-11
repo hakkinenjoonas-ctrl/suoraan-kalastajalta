@@ -4252,10 +4252,17 @@ export default function App() {
     if (nextTab) {
       setActiveTab(nextTab);
     }
+    if (nextTab === "offers" && profile?.role === "buyer") {
+      setBuyerOffersFilter("open");
+      if (String(payload.eventType || "").trim() === "offer_accepted") {
+        setBuyerActiveOfferId(null);
+        return;
+      }
+    }
     if (String(payload.offerId || "").trim()) {
       setBuyerActiveOfferId(String(payload.offerId).trim());
     }
-  }, []);
+  }, [profile?.role]);
 
   const sendPushEvent = useCallback(async ({
     targetUserId = "",
