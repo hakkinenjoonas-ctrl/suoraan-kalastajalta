@@ -8388,7 +8388,13 @@ export default function App() {
                           {buyerOfferActionsOpen ? (
                             <>
                               <button
-                                style={{ ...styles.button, ...(showCounterAction ? styles.primaryButton : {}) }}
+                                style={{
+                                  ...styles.button,
+                                  ...(showCounterAction ? styles.primaryButton : {}),
+                                  background: showCounterAction ? "#2563eb" : "#eff6ff",
+                                  borderColor: "#93c5fd",
+                                  color: showCounterAction ? "#fff" : "#1d4ed8",
+                                }}
                                 onClick={() => {
                                   if (o.status === "sent") {
                                     buyerUpdateOffer(o.id, { status: "viewed" });
@@ -8400,7 +8406,13 @@ export default function App() {
                                 {showCounterAction ? "Sulje vastatarjous" : "Tee vastatarjous"}
                               </button>
                               <button
-                                style={{ ...styles.button, ...(showReserveAction ? styles.primaryButton : {}) }}
+                                style={{
+                                  ...styles.button,
+                                  ...(showReserveAction ? styles.primaryButton : {}),
+                                  background: showReserveAction ? "#16a34a" : "#f0fdf4",
+                                  borderColor: "#86efac",
+                                  color: showReserveAction ? "#fff" : "#166534",
+                                }}
                                 onClick={() => {
                                   if (o.status === "sent") {
                                     buyerUpdateOffer(o.id, { status: "viewed" });
@@ -8417,7 +8429,7 @@ export default function App() {
                               {isActive ? "Sulje" : "Näytä tiedot"}
                             </button>
                           )}
-                          {o.status !== "accepted" && o.status !== "sold" ? <button style={styles.button} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button> : null}
+                          {o.status !== "accepted" && o.status !== "sold" ? <button style={{ ...styles.button, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button> : null}
                         </div>
 
                         {isActive ? (
