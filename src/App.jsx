@@ -4,6 +4,7 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Share } from "@capacitor/share";
 import { jsPDF } from "jspdf";
+import * as XLSX from "xlsx";
 import {
   clearBrokenSession,
   findAllowedUserByEmail,
@@ -1732,13 +1733,16 @@ function getAcceptedInvoiceSourceLabel(offer) {
   return "Hyväksytty tarjous";
 }
 
-async function exportCsv(filename, rows) {
-  const csv = rows
-    .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(";"))
-    .join("\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+async function exportSpreadsheet(filename, rows, sheetName = "Raportti") {
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, String(sheetName || "Raportti").slice(0, 31));
+  const workbookArray = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([workbookArray], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
   await presentFileBlob(blob, filename, {
-    mimeType: "text/csv;charset=utf-8;",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     browserAction: "download",
     shareTitle: filename,
     shareText: "Avaa tai jaa raportti",
@@ -2853,22 +2857,22 @@ function ReportsView({ entries, processedEntries, offers }) {
       <div style={styles.grid2}>
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Excel-raportit</strong>
-        <div style={styles.noticeInfo}>Raportit ladataan CSV-muodossa, joka aukeaa suoraan Excelissä.</div>
+        <div style={styles.noticeInfo}>Raportit ladataan nyt oikeina Excel-tiedostoina (.xlsx), jolloin ä ja ö näkyvät oikein.</div>
         <button
           style={{ ...styles.button, ...styles.primaryButton }}
-          onClick={() => { void exportCsv(`saaliit-${today()}.csv`, [catchReportHeader, ...reportRows]); }}
+          onClick={() => { void exportSpreadsheet(`saaliit-${today()}.xlsx`, [catchReportHeader, ...reportRows], "Saalisraportti"); }}
         >
           Lataa saalisraportti Exceliin
         </button>
         <button
           style={styles.button}
-          onClick={() => { void exportCsv(`tarjoukset-${today()}.csv`, [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows]); }}
+          onClick={() => { void exportSpreadsheet(`tarjoukset-${today()}.xlsx`, [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows], "Tarjoukset"); }}
         >
           Lataa tarjousraportti Exceliin
         </button>
         <button
           style={styles.button}
-          onClick={() => { void exportCsv(`jaloste-erat-${today()}.csv`, [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows]); }}
+          onClick={() => { void exportSpreadsheet(`jaloste-erat-${today()}.xlsx`, [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows], "Jaloste-erat"); }}
         >
           Lataa jaloste-erät Exceliin
         </button>
@@ -3012,8 +3016,8 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
   });
 
   const exportBillingCsv = (group) => {
-    void exportCsv(
-      `laskutus-${group.monthKey}-${group.sellerLabel.replace(/[^a-z0-9åäö_-]+/gi, "-")}.csv`,
+    void exportSpreadsheet(
+      `laskutus-${group.monthKey}-${group.sellerLabel.replace(/[^a-z0-9åäö_-]+/gi, "-")}.xlsx`,
       [
         ["Kuukausi", "Myyjä", "Ostaja", "Erä", "Kg", "Hinta €/kg", "Kaupan arvo €", "Komissio %", "Komissio €", "Päivä", "Tila"],
         ...group.offers.map((offer) => [
@@ -3030,6 +3034,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
           buyerStatusLabel(offer.status),
         ]),
       ],
+      "Laskutus"
     );
   };
 
@@ -5613,7 +5618,7 @@ export default function App() {
       const message = String(error.message || "");
       if (message.toLowerCase().includes("user already registered")) {
         setAuthInfo("");
-        setAuthError("Tällä sähköpostilla on jo käyttäjätili. Kirjaudu sisään olemassa olevalla tunnuksella tai nollaa salasana Supabasen Auth-käyttäjälle, jos haluat ottaa sähköpostin uudelleen käyttöön.");
+        setAuthError("Tällä sähköpostilla on jo käyttäjätili. Et tarvitse uutta tiliä ostajaroolia varten. Kirjaudu sisään olemassa olevalla tunnuksella ja pyydä owneria lisäämään sinulle myös ostajarooli.");
         setAuthMode("signin");
         return;
       }
