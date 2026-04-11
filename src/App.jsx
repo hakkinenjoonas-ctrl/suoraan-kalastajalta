@@ -65,6 +65,7 @@ import {
   LinkedBuyerOfferCard,
   OfferedEntriesDetailsSection,
   OfferedEntriesSummarySection,
+  WholesaleOffersOverviewSection,
 } from "./components/wholesaleOffersSections.jsx";
 
 function getPublicAppBaseUrl() {
@@ -2557,6 +2558,7 @@ function WholesaleOffersView({
       reservationStatus: reservation?.status || "",
     }))
     .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+  const openOfferedEntriesSummary = offeredEntriesSummary.filter((item) => item.reservationStatus === "");
   const openBuyerOfferStatuses = ["sent", "viewed"];
 
   const buyerResponsePriority = {
@@ -2577,6 +2579,9 @@ function WholesaleOffersView({
       if (priorityDiff !== 0) return priorityDiff;
       return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
     });
+  const actionRequiredResponses = prioritizedBuyerResponses.filter((offer) => ["reserved", "countered"].includes(offer.status));
+  const acceptedBuyerResponses = prioritizedBuyerResponses.filter((offer) => offer.status === "accepted");
+  const archivedBuyerResponses = prioritizedBuyerResponses.filter((offer) => offer.status === "rejected");
 
   const canManageBuyerOffer = (offer) => profile?.role === "owner" || profile?.id === offer?.seller_user_id;
   const linkedBuyerOffer = requestedOfferId
@@ -2585,6 +2590,14 @@ function WholesaleOffersView({
 
   return (
     <div style={styles.stack}>
+      <WholesaleOffersOverviewSection
+        actionRequiredCount={actionRequiredResponses.length}
+        openEntriesCount={openOfferedEntriesSummary.length}
+        acceptedCount={acceptedBuyerResponses.length}
+        archivedCount={archivedBuyerResponses.length}
+        styles={styles}
+      />
+
       <LinkedBuyerOfferCard
         linkedBuyerOffer={linkedBuyerOffer}
         buyerStatusLabel={buyerStatusLabel}
@@ -2599,14 +2612,17 @@ function WholesaleOffersView({
       />
 
       <OfferedEntriesSummarySection
-        offeredEntriesSummary={offeredEntriesSummary}
+        offeredEntriesSummary={openOfferedEntriesSummary}
         jumpToEntryOffer={jumpToEntryOffer}
         buyerStatusBadgeStyle={buyerStatusBadgeStyle}
         styles={styles}
+        title="Avoimet tarjoukset"
+        infoText="Tässä näkyvät erät, jotka on lähetetty ostajille ja jotka vielä odottavat vastausta."
+        emptyText="Ei tällä hetkellä avoimia, vastausta odottavia eriä."
       />
 
       <BuyerResponsesSection
-        prioritizedBuyerResponses={prioritizedBuyerResponses}
+        prioritizedBuyerResponses={actionRequiredResponses}
         requestedOfferId={requestedOfferId}
         buyers={buyers}
         buyerStatusLabel={buyerStatusLabel}
@@ -2623,6 +2639,55 @@ function WholesaleOffersView({
         onUpdateBuyerOfferStatus={onUpdateBuyerOfferStatus}
         styles={styles}
         formatOfferDate={formatOfferDate}
+        title="Vaatii toimenpiteitä"
+        infoText="Tässä näkyvät varaukset ja vastatarjoukset, joihin sinun kannattaa reagoida nyt."
+        emptyText="Ei tällä hetkellä toimenpiteitä vaativia tarjouksia."
+      />
+
+      <BuyerResponsesSection
+        prioritizedBuyerResponses={acceptedBuyerResponses}
+        requestedOfferId={requestedOfferId}
+        buyers={buyers}
+        buyerStatusLabel={buyerStatusLabel}
+        buyerStatusBadgeStyle={buyerStatusBadgeStyle}
+        shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
+        buyerTypeLabel={buyerTypeLabel}
+        formatSpeciesSummaryText={formatSpeciesSummaryText}
+        getOfferSummaryCatchDates={getOfferSummaryCatchDates}
+        isMixedOffer={isMixedOffer}
+        getOfferSummaryBatchItems={getOfferSummaryBatchItems}
+        getBatchQrImageUrl={getBatchQrImageUrl}
+        euro={euro}
+        canManageBuyerOffer={canManageBuyerOffer}
+        onUpdateBuyerOfferStatus={onUpdateBuyerOfferStatus}
+        styles={styles}
+        formatOfferDate={formatOfferDate}
+        title="Hyväksytyt kaupat"
+        infoText="Tässä näkyvät hyväksytyt kaupat, jotka etenevät toimitukseen ja myöhemmin laskutukseen."
+        emptyText="Ei vielä hyväksyttyjä kauppoja."
+      />
+
+      <BuyerResponsesSection
+        prioritizedBuyerResponses={archivedBuyerResponses}
+        requestedOfferId={requestedOfferId}
+        buyers={buyers}
+        buyerStatusLabel={buyerStatusLabel}
+        buyerStatusBadgeStyle={buyerStatusBadgeStyle}
+        shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
+        buyerTypeLabel={buyerTypeLabel}
+        formatSpeciesSummaryText={formatSpeciesSummaryText}
+        getOfferSummaryCatchDates={getOfferSummaryCatchDates}
+        isMixedOffer={isMixedOffer}
+        getOfferSummaryBatchItems={getOfferSummaryBatchItems}
+        getBatchQrImageUrl={getBatchQrImageUrl}
+        euro={euro}
+        canManageBuyerOffer={canManageBuyerOffer}
+        onUpdateBuyerOfferStatus={onUpdateBuyerOfferStatus}
+        styles={styles}
+        formatOfferDate={formatOfferDate}
+        title="Arkisto"
+        infoText="Tässä näkyvät hylätyt tarjoukset. Näet historian, mutta nämä eivät enää vaadi toimenpiteitä."
+        emptyText="Arkistossa ei ole vielä hylättyjä tarjouksia."
       />
 
       <OfferedEntriesDetailsSection
@@ -2653,6 +2718,7 @@ function WholesaleOffersView({
         formatOfferDate={formatOfferDate}
         COMMISSION_RATE={COMMISSION_RATE}
         formatSpeciesForSale={formatSpeciesForSale}
+        title="Eräkohtainen näkymä"
       />
     </div>
   );

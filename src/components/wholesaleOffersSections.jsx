@@ -1,3 +1,24 @@
+export function WholesaleOffersOverviewSection({
+  actionRequiredCount,
+  openEntriesCount,
+  acceptedCount,
+  archivedCount,
+  styles,
+}) {
+  return (
+    <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+      <strong>Tilannekuva</strong>
+      <div style={styles.muted}>Tärkeimmät asiat näkyvät ensin, jotta tiedät heti mihin pitää reagoida.</div>
+      <div style={styles.entryBadges}>
+        <span style={{ ...styles.badge, background: "#eff6ff", borderColor: "#93c5fd", color: "#1d4ed8" }}>{actionRequiredCount} vaatii toimenpiteitä</span>
+        <span style={styles.badge}>{openEntriesCount} avoinna</span>
+        <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac", color: "#166534" }}>{acceptedCount} hyväksyttyä</span>
+        <span style={{ ...styles.badge, background: "#f8fafc", borderColor: "#cbd5e1", color: "#475569" }}>{archivedCount} arkistossa</span>
+      </div>
+    </div>
+  );
+}
+
 export function LinkedBuyerOfferCard({
   linkedBuyerOffer,
   buyerStatusLabel,
@@ -47,13 +68,16 @@ export function OfferedEntriesSummarySection({
   jumpToEntryOffer,
   buyerStatusBadgeStyle,
   styles,
+  title = "Myyntiin lähetetyt erät",
+  infoText = "Tässä näkyvät kaikki myyntiin merkityt saaliit heti, vaikka yksikään ostaja ei olisi vielä vastannut tai tehnyt varausta.",
+  emptyText = "Ei vielä myyntiin merkittyjä eriä.",
 }) {
   return (
     <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-      <strong>Myyntiin lähetetyt erät</strong>
-      <div style={styles.noticeInfo}>Tässä näkyvät kaikki myyntiin merkityt saaliit heti, vaikka yksikään ostaja ei olisi vielä vastannut tai tehnyt varausta.</div>
+      <strong>{title}</strong>
+      <div style={styles.noticeInfo}>{infoText}</div>
       {offeredEntriesSummary.length === 0 ? (
-        <div style={styles.muted}>Ei vielä myyntiin merkittyjä eriä.</div>
+        <div style={styles.muted}>{emptyText}</div>
       ) : (
         offeredEntriesSummary.map((item) => (
           <div key={item.id} style={{ ...styles.entry, background: "#f8fafc" }}>
@@ -99,15 +123,19 @@ export function BuyerResponsesSection({
   onUpdateBuyerOfferStatus,
   styles,
   formatOfferDate,
+  title = "Ostajien vastaukset ja varaukset",
+  infoText = "Tässä näkyvät ensin ostajien varaukset ja vastatarjoukset. Näin näet heti, mihin eriin pitää reagoida. Hyväksytyt ja hylätyt näkyvät niiden jälkeen.",
+  emptyText = "Ei vielä ostajien vastauksia.",
+  maxItems = 20,
 }) {
   return (
     <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-      <strong>Ostajien vastaukset ja varaukset</strong>
-      <div style={styles.noticeInfo}>Tässä näkyvät ensin ostajien varaukset ja vastatarjoukset. Näin näet heti, mihin eriin pitää reagoida. Hyväksytyt ja hylätyt näkyvät niiden jälkeen.</div>
+      <strong>{title}</strong>
+      <div style={styles.noticeInfo}>{infoText}</div>
       {prioritizedBuyerResponses.length === 0 ? (
-        <div style={styles.muted}>Ei vielä ostajien vastauksia.</div>
+        <div style={styles.muted}>{emptyText}</div>
       ) : (
-        prioritizedBuyerResponses.slice(0, 20).map((offer) => {
+        prioritizedBuyerResponses.slice(0, maxItems).map((offer) => {
           const isAccepted = offer.status === "accepted";
           const isReserved = offer.status === "reserved";
           const isCountered = offer.status === "countered";
@@ -220,10 +248,11 @@ export function OfferedEntriesDetailsSection({
   formatOfferDate,
   COMMISSION_RATE,
   formatSpeciesForSale,
+  title = "Myyntiin merkityt erät",
 }) {
   return (
     <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-      <strong>Myyntiin merkityt erät</strong>
+      <strong>{title}</strong>
 
       {groupedBuyerOffers.length === 0 ? (
         <div style={styles.muted}>Ei vielä myyntiin merkittyjä eriä.</div>
