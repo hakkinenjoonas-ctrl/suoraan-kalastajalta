@@ -2617,7 +2617,7 @@ function WholesaleOffersView({
         buyerStatusBadgeStyle={buyerStatusBadgeStyle}
         styles={styles}
         title="Avoimet tarjoukset"
-        infoText="Tässä näkyvät erät, jotka on lähetetty ostajille ja jotka vielä odottavat vastausta."
+        infoText="Tässä näkyvät erät, jotka on lähetetty ostajille ja jotka vielä odottavat vastausta. Selaa alaspäin niin näet toimenpiteitä vaativat kalaerät sekä hyväksytyt kaupat."
         emptyText="Ei tällä hetkellä avoimia, vastausta odottavia eriä."
       />
 
