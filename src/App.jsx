@@ -3,6 +3,7 @@ import { Directory, Filesystem } from "@capacitor/filesystem";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Share } from "@capacitor/share";
+import { jsPDF } from "jspdf";
 import {
   clearBrokenSession,
   findAllowedUserByEmail,
@@ -967,22 +968,11 @@ function loadImageDimensions(dataUrl) {
   });
 }
 
-let jsPdfModulePromise = null;
-
-async function loadJsPdf() {
-  if (!jsPdfModulePromise) {
-    jsPdfModulePromise = import("jspdf");
-  }
-  const module = await jsPdfModulePromise;
-  return module.jsPDF;
-}
-
 function buildCatchLabelPdfFileName(entry) {
   return `kalaetiketit-${String(entry?.batchId || "era").replace(/[^a-zA-Z0-9-_]+/g, "_")}.pdf`;
 }
 
 async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = CATCH_LABEL_FORMAT_APLI_1278) {
-  const jsPDF = await loadJsPdf();
   const count = Math.max(1, Number(labelCount || 1));
   const labels = Array.from({ length: count }, (_, index) => buildCatchLabelData(entry, profileLike, index + 1, count));
   const [qrDataUrls, logoDataUrl] = await Promise.all([
@@ -3593,7 +3583,6 @@ function getSellerInvoicePayload(offer, sellerProfile) {
 }
 
 async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
-  const jsPDF = await loadJsPdf();
   const invoice = getSellerInvoicePayload(offer, sellerProfile);
   const documentKind = options.documentKind === "reminder" ? "reminder" : "invoice";
   const isReminder = documentKind === "reminder";
