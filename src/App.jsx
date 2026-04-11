@@ -39,10 +39,13 @@ import {
 import { createSpeciesRow, safeId, today } from "./lib/helpers.js";
 import {
   DEFAULT_PUBLIC_APP_URL,
-  SUPABASE_PUBLISHABLE_KEY,
-  SUPABASE_URL,
   supabase,
 } from "./lib/supabase.js";
+import { tableExists } from "./services/database.js";
+import {
+  getPublicBatchInfoUrl,
+  invokeEdgeFunctionAuthenticated,
+} from "./services/edgeFunctions.js";
 import {
   ANONYMOUS_SELLER_LABEL,
   buildRoleOptionLabel,
@@ -1459,37 +1462,6 @@ function fulfillmentStatusLabel(status) {
   if (status === "delivery_agreed") return "Toimitus sovittu";
   if (status === "delivered") return "Toimitettu";
   return "Yhteydenotto kesken";
-}
-
-function getPublicBatchInfoUrl(batchId) {
-  if (!batchId) return "";
-  return `${SUPABASE_URL}/functions/v1/public-batch-info?batchId=${encodeURIComponent(batchId)}`;
-}
-
-async function invokeEdgeFunctionAuthenticated(functionName, body, accessToken) {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: SUPABASE_PUBLISHABLE_KEY,
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    return {
-      data,
-      error: {
-        message: data?.error || `HTTP ${response.status}`,
-        status: response.status,
-        context: data,
-      },
-    };
-  }
-
-  return { data, error: null };
 }
 
 function buildPushEventHeadline(offer) {
@@ -5115,33 +5087,20 @@ export default function App() {
       const entriesQuery = supabase.from("catch_entries").select("*").order("date", { ascending: false }).order("created_at", { ascending: false });
       const finalEntriesQuery = profile.role === "owner" && entryScope === "all" ? entriesQuery : entriesQuery.eq("owner_user_id", profile.id);
 
-      const offerTableExists = async () => {
-        const { error } = await supabase.from("wholesale_offers").select("id", { count: "exact", head: true });
-        return !error;
-      };
-      const buyersTableExists = async () => {
-        const { error } = await supabase.from("buyers").select("id", { count: "exact", head: true });
-        return !error;
-      };
-      const processedBatchesTableExists = async () => {
-        const { error } = await supabase.from("processed_batches").select("id", { count: "exact", head: true });
-        return !error;
-      };
-      const processedBatchSourcesTableExists = async () => {
-        const { error } = await supabase.from("processed_batch_sources").select("id", { count: "exact", head: true });
-        return !error;
-      };
-      const buyerOffersTableExists = async () => {
-        const { error } = await supabase.from("buyer_offers").select("id", { count: "exact", head: true });
-        return !error;
-      };
-
       try {
-        const hasOffersTable = await offerTableExists();
-        const hasBuyersTable = await buyersTableExists();
-        const hasProcessedBatchesTable = await processedBatchesTableExists();
-        const hasProcessedBatchSourcesTable = await processedBatchSourcesTableExists();
-        const hasBuyerOffersTable = await buyerOffersTableExists();
+        const [
+          hasOffersTable,
+          hasBuyersTable,
+          hasProcessedBatchesTable,
+          hasProcessedBatchSourcesTable,
+          hasBuyerOffersTable,
+        ] = await Promise.all([
+          tableExists(supabase, "wholesale_offers"),
+          tableExists(supabase, "buyers"),
+          tableExists(supabase, "processed_batches"),
+          tableExists(supabase, "processed_batch_sources"),
+          tableExists(supabase, "buyer_offers"),
+        ]);
 
         const normalizedProfileEmail = (profile.email || "").trim().toLowerCase();
 
