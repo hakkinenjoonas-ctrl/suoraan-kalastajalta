@@ -2533,7 +2533,14 @@ function WholesaleOffersView({
       ),
     };
   });
+  const jumpToEntryOffer = (entryId) => {
+    if (typeof document === "undefined") return;
+    const target = document.getElementById(`offer-entry-${entryId}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const offeredEntriesSummary = groupedBuyerOffers
+    .filter(({ reservation }) => reservation?.status !== "accepted")
     .map(({ entry, buyerMatches, reservation }) => ({
       id: entry.id,
       species: formatSpeciesForSale(entry.species),
@@ -2613,8 +2620,16 @@ function WholesaleOffersView({
                 <span style={styles.badge}>{item.species}</span>
                 <span style={styles.badge}>{item.kilos} kg</span>
                 {item.reservationStatus === "reserved" ? <span style={buyerStatusBadgeStyle("reserved", styles.badge)}>Varattu</span> : null}
-                {item.reservationStatus === "accepted" ? <span style={buyerStatusBadgeStyle("accepted", styles.badge)}>Myyty</span> : null}
                 {item.reservationStatus === "" ? <span style={styles.badge}>Odottaa ostajia</span> : null}
+                {item.reservationStatus === "reserved" ? (
+                  <button
+                    type="button"
+                    style={{ ...styles.button, padding: "8px 12px" }}
+                    onClick={() => jumpToEntryOffer(item.id)}
+                  >
+                    Siirry hyväksymään/hylkäämään varaus
+                  </button>
+                ) : null}
               </div>
               <div style={styles.muted}>{item.date || "-"} · {item.area || "-"}</div>
               <div style={styles.muted}>Tarjous lähetetty {item.buyerCount} ostajalle</div>
@@ -2722,7 +2737,7 @@ function WholesaleOffersView({
             const openBuyerOffers = buyerMatches.filter((offer) => openBuyerOfferStatuses.includes(offer.status));
             const answeredBuyerOffers = buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status));
             return (
-            <div key={entry.id} style={styles.entry}>
+            <div key={entry.id} id={`offer-entry-${entry.id}`} style={styles.entry}>
               <div style={styles.entryHeader}>
                 <div>
                   <div style={styles.entryBadges}>
