@@ -5582,12 +5582,6 @@ export default function App() {
     if (typeof window === "undefined") return;
     try {
       const landingPlaces = buildLandingPlaceHistory(form.landingPlace, savedLandingPlaces);
-      const customLakeAreas = catchAreaSelector === CUSTOM_LAKE_AREA_OPTION
-        ? buildAreaHistory(form.area, savedCustomLakeAreas)
-        : savedCustomLakeAreas;
-      const customSeaAreas = catchAreaSelector === CUSTOM_SEA_AREA_OPTION
-        ? buildAreaHistory(form.area, savedCustomSeaAreas)
-        : savedCustomSeaAreas;
       const gearCountOptions = buildRememberedOptions(form.gearCount, savedGearCountOptions);
       const fishingDurationOptions = buildRememberedOptions(form.fishingDurationDays, savedFishingDurationOptions);
       const netHeightOptions = buildRememberedOptions(form.netHeight, savedNetHeightOptions);
@@ -5595,8 +5589,8 @@ export default function App() {
       const fykeHeightOptions = buildRememberedOptions(form.fykeHeight, savedFykeHeightOptions);
       window.localStorage.setItem(CATCH_FORM_DEFAULTS_KEY, JSON.stringify({
         area: form.area || "Saimaa",
-        customLakeAreas,
-        customSeaAreas,
+        customLakeAreas: savedCustomLakeAreas,
+        customSeaAreas: savedCustomSeaAreas,
         municipality: form.municipality || "",
         landingPlace: form.landingPlace || "",
         landingPlaces,
@@ -5614,14 +5608,6 @@ export default function App() {
         fykeHeight: form.fykeHeight || "",
         fykeHeightOptions,
       }));
-      setSavedCustomLakeAreas((prev) => {
-        if (customLakeAreas.length === prev.length && customLakeAreas.every((item, index) => item === prev[index])) return prev;
-        return customLakeAreas;
-      });
-      setSavedCustomSeaAreas((prev) => {
-        if (customSeaAreas.length === prev.length && customSeaAreas.every((item, index) => item === prev[index])) return prev;
-        return customSeaAreas;
-      });
       setSavedLandingPlaces((prev) => {
         const next = buildLandingPlaceHistory(form.landingPlace, prev);
         if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
@@ -7885,6 +7871,12 @@ export default function App() {
     }
 
     setSaving(false);
+    if (catchAreaSelector === CUSTOM_LAKE_AREA_OPTION) {
+      setSavedCustomLakeAreas((prev) => buildAreaHistory(form.area, prev));
+    }
+    if (catchAreaSelector === CUSTOM_SEA_AREA_OPTION) {
+      setSavedCustomSeaAreas((prev) => buildAreaHistory(form.area, prev));
+    }
     setForm((prev) => ({
       ...prev,
       originCity: prev.originCity || prev.municipality || "",
