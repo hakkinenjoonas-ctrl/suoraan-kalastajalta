@@ -3,7 +3,6 @@ import { Directory, Filesystem } from "@capacitor/filesystem";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Share } from "@capacitor/share";
-import { jsPDF } from "jspdf";
 import {
   clearBrokenSession,
   findAllowedUserByEmail,
@@ -965,11 +964,22 @@ function loadImageDimensions(dataUrl) {
   });
 }
 
+let jsPdfModulePromise = null;
+
+async function loadJsPdf() {
+  if (!jsPdfModulePromise) {
+    jsPdfModulePromise = import("jspdf");
+  }
+  const module = await jsPdfModulePromise;
+  return module.jsPDF;
+}
+
 function buildCatchLabelPdfFileName(entry) {
   return `kalaetiketit-${String(entry?.batchId || "era").replace(/[^a-zA-Z0-9-_]+/g, "_")}.pdf`;
 }
 
 async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = CATCH_LABEL_FORMAT_APLI_1278) {
+  const jsPDF = await loadJsPdf();
   const count = Math.max(1, Number(labelCount || 1));
   const labels = Array.from({ length: count }, (_, index) => buildCatchLabelData(entry, profileLike, index + 1, count));
   const [qrDataUrls, logoDataUrl] = await Promise.all([
@@ -3610,7 +3620,8 @@ function getSellerInvoicePayload(offer, sellerProfile) {
   };
 }
 
-function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
+async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
+  const jsPDF = await loadJsPdf();
   const invoice = getSellerInvoicePayload(offer, sellerProfile);
   const documentKind = options.documentKind === "reminder" ? "reminder" : "invoice";
   const isReminder = documentKind === "reminder";
@@ -3804,20 +3815,20 @@ function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
 }
 
 async function openSellerInvoicePdf(offer, sellerProfile) {
-  const { doc, invoice } = buildSellerInvoicePdfDoc(offer, sellerProfile);
+  const { doc, invoice } = await buildSellerInvoicePdfDoc(offer, sellerProfile);
   await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`);
   return invoice;
 }
 
 async function buildSellerInvoicePdf(offer, sellerProfile, documentKind = "invoice") {
-  const { doc, invoice } = buildSellerInvoicePdfDoc(offer, sellerProfile, { documentKind });
+  const { doc, invoice } = await buildSellerInvoicePdfDoc(offer, sellerProfile, { documentKind });
   const fileName = documentKind === "reminder" ? `${invoice.invoiceNumber}-maksumuistutus.pdf` : `${invoice.invoiceNumber}.pdf`;
   await presentPdfDocument(doc, fileName);
   return invoice;
 }
 
 async function buildSellerInvoiceEmailAttachment(offer, sellerProfile, documentKind = "invoice") {
-  const { doc, invoice } = buildSellerInvoicePdfDoc(offer, sellerProfile, { documentKind });
+  const { doc, invoice } = await buildSellerInvoicePdfDoc(offer, sellerProfile, { documentKind });
   const isReminder = documentKind === "reminder";
   return {
     invoice,
@@ -4204,6 +4215,7 @@ export default function App() {
   const [publicBatchData, setPublicBatchData] = useState(null);
   const [publicBatchLoading, setPublicBatchLoading] = useState(Boolean(publicBatchId));
   const [publicBatchError, setPublicBatchError] = useState("");
+  const [slowBoot, setSlowBoot] = useState(false);
   const [labelPrintEntry, setLabelPrintEntry] = useState(null);
   const [labelPrintCount, setLabelPrintCount] = useState(10);
   const [labelPrintFormat, setLabelPrintFormat] = useState(CATCH_LABEL_FORMAT_MUNBYN_4X6);
@@ -4578,20 +4590,12 @@ export default function App() {
   const getBuyerVisibleSellerInfo = (offer) => {
     const sellerIdentity = getSellerIdentityForBuyer(offer);
     const revealIdentity = offer?.status === "accepted";
-    const isPickup = sellerIdentity.deliveryMethod === "Nouto";
-    const publicPickupLocation = getPublicPickupLocation({
-      municipality: sellerIdentity.municipality,
-      deliveryArea: sellerIdentity.deliveryArea,
-      area: sellerIdentity.sellerArea || offer?.area,
-    });
 
     return {
       ...sellerIdentity,
       revealIdentity,
       sellerLabel: revealIdentity ? sellerIdentity.sellerName : ANONYMOUS_SELLER_LABEL,
       publicLocation: sellerIdentity.sellerArea || offer?.area || "-",
-      publicDeliveryLocation: isPickup ? publicPickupLocation : (sellerIdentity.deliveryArea || sellerIdentity.sellerArea || "-"),
-      exactLocation: sellerIdentity.deliveryArea || sellerIdentity.sellerArea || "-",
       publicSpot: revealIdentity ? (sellerIdentity.sellerSpot || "") : "",
     };
   };
@@ -4879,6 +4883,19 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      setSlowBoot(false);
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setSlowBoot(true);
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [loading]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -8248,7 +8265,16 @@ export default function App() {
   }
 
   if (loading) {
-    return <div style={styles.app}><div style={styles.container}><div style={{ ...styles.card, ...styles.sectionCard }}>Ladataan...</div></div></div>;
+    return (
+      <div style={styles.app}>
+        <div style={styles.container}>
+          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <strong>{slowBoot ? "Yhdistetään palveluun..." : "Ladataan..."}</strong>
+            {slowBoot ? <div style={styles.muted}>Ensimmäinen avaus tai tarjouslinkki voi kestää hetken, jos selain hakee istunnon ja datan uudelleen.</div> : null}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (authMode === "recovery" || !session || !profile) {
@@ -8589,13 +8615,7 @@ export default function App() {
                             {ownDeliveredPricePerKg != null ? <div style={styles.muted}>Toimitettuna: {formatDeliveredPricePerKg(ownDeliveredPricePerKg)}</div> : null}
                             <div style={styles.muted}>Tarjoaja: {sellerInfo.sellerLabel}</div>
                             {showTraceability && sellerInfo.sellerCommercialFishingId && sellerInfo.revealIdentity ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
-                            <div style={styles.muted}>
-                              {sellerInfo.revealIdentity
-                                ? sellerInfo.deliveryMethod === "Nouto"
-                                  ? "Noutopaikka"
-                                  : "Toimitusalue"
-                                : "Kalastamisalue"}: {sellerInfo.revealIdentity ? sellerInfo.exactLocation : sellerInfo.publicLocation}
-                            </div>
+                            <div style={styles.muted}>Kalastamisalue: {sellerInfo.publicLocation}</div>
                             {sellerInfo.publicSpot ? <div style={styles.muted}>Paikka: {sellerInfo.publicSpot}</div> : null}
                           </div>
                           <div>
@@ -8651,11 +8671,6 @@ export default function App() {
                             {sellerInfo.sellerCommercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
                             <div style={styles.muted}>Vesialue: {sellerInfo.sellerArea || "-"}</div>
                             {sellerInfo.sellerSpot ? <div style={styles.muted}>Pyyntipaikka: {sellerInfo.sellerSpot}</div> : null}
-                            {sellerInfo.exactLocation && sellerInfo.exactLocation !== sellerInfo.sellerArea ? (
-                              <div style={styles.muted}>
-                                {sellerInfo.deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}: {sellerInfo.exactLocation}
-                              </div>
-                            ) : null}
                             <div style={styles.muted}>Toimitustapa: {sellerInfo.deliveryMethod || "-"}</div>
                             <div style={styles.muted}>Toimituskulu: {sellerInfo.deliveryCost !== "" && sellerInfo.deliveryCost != null ? `${sellerInfo.deliveryCost} €` : "-"}</div>
                             <div style={styles.muted}>Aikaisin toimitus: {sellerInfo.earliestDeliveryDate || "-"}</div>

@@ -113,7 +113,6 @@ Deno.serve(async (req) => {
     const area = String(offer.area || "-");
     const spot = String(offer.spot || "");
     const deliveryMethod = String(offer.delivery_method || "").trim();
-    const deliveryArea = String(offer.delivery_area || "").trim();
     const deliveryCost = offer.delivery_cost == null || offer.delivery_cost === "" ? "-" : `${offer.delivery_cost} €`;
     const earliestDeliveryDate = String(offer.earliest_delivery_date || "").trim();
     const coldTransport = offer.cold_transport ? "Kyllä" : "Ei";
@@ -146,7 +145,6 @@ Deno.serve(async (req) => {
       sellerCommercialFishingId ? `Kaupallisen kalastajan tunnus: ${sellerCommercialFishingId}` : null,
       `Toimituksen tila: ${fulfillmentStatus}`,
       deliveryMethod ? `Toimitustapa: ${deliveryMethod}` : null,
-      deliveryArea ? `${deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}: ${deliveryArea}` : null,
       `Toimituskulu: ${deliveryCost}`,
       `Aikaisin toimitus: ${earliestDeliveryDate || "-"}`,
       `Kylmäkuljetus: ${coldTransport}`,
@@ -174,7 +172,6 @@ Deno.serve(async (req) => {
           ${sellerCommercialFishingId ? `<strong>Kaupallisen kalastajan tunnus:</strong> ${sellerCommercialFishingId}<br />` : ""}
           <strong>Toimituksen tila:</strong> ${fulfillmentStatus}<br />
           ${deliveryMethod ? `<strong>Toimitustapa:</strong> ${deliveryMethod}<br />` : ""}
-          ${deliveryArea ? `<strong>${deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}:</strong> ${deliveryArea}<br />` : ""}
           <strong>Toimituskulu:</strong> ${deliveryCost}<br />
           <strong>Aikaisin toimitus:</strong> ${earliestDeliveryDate || "-"}<br />
           <strong>Kylmäkuljetus:</strong> ${coldTransport}<br />
