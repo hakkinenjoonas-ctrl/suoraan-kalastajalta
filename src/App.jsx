@@ -4028,6 +4028,10 @@ export default function App() {
     () => getMatchingAllowedRole(availableRoleOptions, profile),
     [availableRoleOptions, getMatchingAllowedRole, profile],
   );
+  const hasBuyerRoleOption = useMemo(
+    () => (availableRoleOptions || []).some((option) => option.role === "buyer"),
+    [availableRoleOptions],
+  );
   const commercialFishingVesselOptions = useMemo(
     () => getCommercialFishingVesselIds(profile),
     [profile],
@@ -6089,6 +6093,64 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
+  const handleRequestBuyerRole = async () => {
+    if (!profile?.id) return;
+    setAuthError("");
+    setAuthInfo("");
+
+    const normalizedEmail = normalizeEmail(profile.email || accountForm.contactEmail || "");
+    if (!normalizedEmail) {
+      setAuthError("Tililtä puuttuu sähköpostiosoite, joten ostajaroolia ei voi pyytää.");
+      return;
+    }
+
+    if (hasBuyerRoleOption) {
+      setAuthInfo("Sinulla on jo ostajarooli käytettävissä tällä sähköpostilla.");
+      return;
+    }
+
+    const matchingBuyer = buyers.find((buyer) => normalizeEmail(buyer.email) === normalizedEmail) || null;
+    const requestPayload = {
+      email: normalizedEmail,
+      display_name: profile.display_name || accountForm.displayName || normalizedEmail,
+      role: "buyer",
+      is_active: false,
+      buyer_id: matchingBuyer?.id || null,
+    };
+
+    const { data: existingAllowedUsers, error: existingAllowedError } = await findAllowedUsersByEmail(supabase, normalizedEmail);
+    if (existingAllowedError && existingAllowedError.code !== "PGRST116") {
+      if (isMissingRefreshTokenError(existingAllowedError)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(existingAllowedError.message);
+      return;
+    }
+
+    const existingBuyerRole = (existingAllowedUsers || []).find((item) => item.role === "buyer") || null;
+    if (existingBuyerRole?.is_active) {
+      setAuthInfo("Sinulle on jo lisätty ostajarooli. Kirjaudu ulos ja takaisin sisään tai vaihda roolia yläreunan valitsimesta.");
+      return;
+    }
+
+    const result = existingBuyerRole
+      ? await supabase.from("allowed_users").update(requestPayload).eq("id", existingBuyerRole.id)
+      : await supabase.from("allowed_users").insert(requestPayload);
+
+    if (result.error) {
+      if (isMissingRefreshTokenError(result.error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(result.error.message);
+      return;
+    }
+
+    setAuthInfo("Ostajaroolipyyntö lähetetty ownerille hyväksyttäväksi.");
+    setRefreshTick((prev) => prev + 1);
+  };
+
   const resetBuyerForm = () => {
     const nextForm = {
       id: "",
@@ -6315,6 +6377,65 @@ export default function App() {
       setUserMessage(error.message);
       return;
     }
+    setRefreshTick((prev) => prev + 1);
+  };
+
+  const handleApproveAllowedUser = async (row) => {
+    if (!row?.id) return;
+
+    let buyerId = row.buyer_id || null;
+    if (row.role === "buyer" && !buyerId) {
+      const normalizedEmail = normalizeEmail(row.email || "");
+      const existingBuyer = buyers.find((buyer) => normalizeEmail(buyer.email) === normalizedEmail);
+      if (existingBuyer) {
+        buyerId = existingBuyer.id;
+      } else {
+        const buyerPayload = {
+          company_name: row.display_name || normalizedEmail,
+          buyer_type: "ravintola",
+          contact_name: row.display_name || "",
+          email: normalizedEmail,
+          phone: "",
+          city: "",
+          is_active: true,
+          notes: "Luotu roolipyynnön hyväksynnässä.",
+          delivery_address: "",
+          delivery_postcode: "",
+          delivery_city: "",
+          billing_address: "",
+          billing_postcode: "",
+          billing_city: "",
+          billing_email: normalizedEmail,
+          business_id: "",
+        };
+        const { data: insertedBuyer, error: buyerInsertError } = await supabase.from("buyers").insert(buyerPayload).select("id").single();
+        if (buyerInsertError) {
+          if (isMissingRefreshTokenError(buyerInsertError)) {
+            await invalidateSession();
+            return;
+          }
+          setUserMessage(buyerInsertError.message);
+          return;
+        }
+        buyerId = insertedBuyer?.id || null;
+      }
+    }
+
+    const { error } = await supabase
+      .from("allowed_users")
+      .update({ is_active: true, buyer_id: row.role === "buyer" ? buyerId : null })
+      .eq("id", row.id);
+
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(error.message);
+      return;
+    }
+
+    setUserMessage(`Rooli ${roleLabel(row.role)} hyväksytty käyttäjälle ${row.display_name || row.email}.`);
     setRefreshTick((prev) => prev + 1);
   };
 
@@ -8873,6 +8994,17 @@ export default function App() {
                 <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveOwnDetails} disabled={accountSaving}>{accountSaving ? "Tallennetaan..." : "Tallenna tiedot"}</button>
               </div>
             </div>
+            {profile.role !== "owner" && !hasBuyerRoleOption ? (
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+                <strong>Pyydä lisäroolia</strong>
+                <div style={styles.muted}>Voit pyytää samalla sähköpostilla myös ostajaroolia. Owner hyväksyy pyynnön ennen kuin rooli tulee käyttöön.</div>
+                <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleRequestBuyerRole}>
+                    Pyydä ostajaroolia
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
               <strong>Vaihda salasana</strong>
               <div style={styles.field}>
@@ -9988,9 +10120,10 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               {allowedUsers.length === 0 ? <div style={styles.muted}>Ei vielä sallittuja käyttäjiä.</div> : (
                 (() => {
                   const userSections = [
+                    { title: "Roolipyynnöt", items: allowedUsers.filter((user) => !user.is_active) },
                     { title: "Ownerit", items: allowedUsers.filter((user) => user.role === "owner") },
-                    { title: "Ostajakäyttäjät", items: allowedUsers.filter((user) => user.role === "buyer") },
-                    { title: "Käyttäjät", items: allowedUsers.filter((user) => user.role !== "owner" && user.role !== "buyer") },
+                    { title: "Ostajakäyttäjät", items: allowedUsers.filter((user) => user.is_active && user.role === "buyer") },
+                    { title: "Käyttäjät", items: allowedUsers.filter((user) => user.is_active && user.role !== "owner" && user.role !== "buyer") },
                   ];
 
                   return userSections.map((section) => (
@@ -10014,7 +10147,11 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                                   </div>
                                 </div>
                                 <div style={styles.row}>
-                                  <button style={styles.button} onClick={() => toggleAllowedUserActive(user)}>{user.is_active ? "Poista käytöstä" : "Aktivoi"}</button>
+                                  {user.is_active ? (
+                                    <button style={styles.button} onClick={() => toggleAllowedUserActive(user)}>Poista käytöstä</button>
+                                  ) : (
+                                    <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => handleApproveAllowedUser(user)}>Hyväksy</button>
+                                  )}
                                   <button
                                     style={{ ...styles.button, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff1f2" }}
                                     onClick={() => deleteAllowedUser(user)}
