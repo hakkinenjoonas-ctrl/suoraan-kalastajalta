@@ -2533,6 +2533,17 @@ function WholesaleOffersView({
       ),
     };
   });
+  const offeredEntriesSummary = groupedBuyerOffers
+    .map(({ entry, buyerMatches, reservation }) => ({
+      id: entry.id,
+      species: formatSpeciesForSale(entry.species),
+      kilos: Number(entry.kilos || 0),
+      date: entry.date || "",
+      area: [entry.area, entry.municipality, entry.spot].filter(Boolean).join(" / "),
+      buyerCount: buyerMatches.length,
+      reservationStatus: reservation?.status || "",
+    }))
+    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
   const openBuyerOfferStatuses = ["sent", "viewed"];
 
   const buyerResponsePriority = {
@@ -2589,6 +2600,28 @@ function WholesaleOffersView({
           <div style={styles.muted}>Tarjous näkyy myös alempana ostajien vastauksissa ja erän omassa tarjouslistassa.</div>
         </div>
       ) : null}
+
+      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+        <strong>Myyntiin lähetetyt erät</strong>
+        <div style={styles.noticeInfo}>Tässä näkyvät kaikki myyntiin merkityt saaliit heti, vaikka yksikään ostaja ei olisi vielä vastannut tai tehnyt varausta.</div>
+        {offeredEntriesSummary.length === 0 ? (
+          <div style={styles.muted}>Ei vielä myyntiin merkittyjä eriä.</div>
+        ) : (
+          offeredEntriesSummary.map((item) => (
+            <div key={item.id} style={{ ...styles.entry, background: "#f8fafc" }}>
+              <div style={styles.entryBadges}>
+                <span style={styles.badge}>{item.species}</span>
+                <span style={styles.badge}>{item.kilos} kg</span>
+                {item.reservationStatus === "reserved" ? <span style={buyerStatusBadgeStyle("reserved", styles.badge)}>Varattu</span> : null}
+                {item.reservationStatus === "accepted" ? <span style={buyerStatusBadgeStyle("accepted", styles.badge)}>Myyty</span> : null}
+                {item.reservationStatus === "" ? <span style={styles.badge}>Odottaa ostajia</span> : null}
+              </div>
+              <div style={styles.muted}>{item.date || "-"} · {item.area || "-"}</div>
+              <div style={styles.muted}>Tarjous lähetetty {item.buyerCount} ostajalle</div>
+            </div>
+          ))
+        )}
+      </div>
 
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Ostajien vastaukset ja varaukset</strong>
