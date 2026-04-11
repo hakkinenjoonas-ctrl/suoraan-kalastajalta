@@ -20,6 +20,7 @@ import {
   ONBOARDING_GUIDE_STORAGE_PREFIX,
   PUSH_CHANNEL_ID,
   PUSH_SOUND_NAME,
+  alwaysSuggestedDestinationCities,
   defaultAreas,
   deliveryMethods,
   finlandMunicipalities,
@@ -27,6 +28,8 @@ import {
   fishSpeciesByName,
   fishSpeciesCatalog,
   gearTypes,
+  logisticsRegionCities,
+  municipalityRegionMap,
   pickupPoints,
   processedProductTypes,
   processingMethods,
@@ -35,7 +38,12 @@ import {
   transportModeLabels,
 } from "./lib/constants.js";
 import { createSpeciesRow, safeId, today } from "./lib/helpers.js";
-import { DEFAULT_PUBLIC_APP_URL, supabase } from "./lib/supabase.js";
+import {
+  DEFAULT_PUBLIC_APP_URL,
+  SUPABASE_PUBLISHABLE_KEY,
+  SUPABASE_URL,
+  supabase,
+} from "./lib/supabase.js";
 import {
   ANONYMOUS_SELLER_LABEL,
   buildRoleOptionLabel,
