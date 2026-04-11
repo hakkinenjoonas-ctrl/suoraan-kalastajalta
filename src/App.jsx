@@ -4032,6 +4032,10 @@ export default function App() {
     () => (availableRoleOptions || []).some((option) => option.role === "buyer"),
     [availableRoleOptions],
   );
+  const hasProcessorRoleOption = useMemo(
+    () => (availableRoleOptions || []).some((option) => option.role === "processor"),
+    [availableRoleOptions],
+  );
   const commercialFishingVesselOptions = useMemo(
     () => getCommercialFishingVesselIds(profile),
     [profile],
@@ -6093,19 +6097,30 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
-  const handleRequestBuyerRole = async () => {
+  const handleRequestAdditionalRole = async (requestedRole) => {
     if (!profile?.id) return;
     setAuthError("");
     setAuthInfo("");
 
     const normalizedEmail = normalizeEmail(profile.email || accountForm.contactEmail || "");
     if (!normalizedEmail) {
-      setAuthError("Tililtä puuttuu sähköpostiosoite, joten ostajaroolia ei voi pyytää.");
+      setAuthError("Tililtä puuttuu sähköpostiosoite, joten lisäroolia ei voi pyytää.");
       return;
     }
 
-    if (hasBuyerRoleOption) {
+    const role = requestedRole === "buyer" ? "buyer" : requestedRole === "processor" ? "processor" : "";
+    if (!role) {
+      setAuthError("Tuntematon roolipyyntö.");
+      return;
+    }
+
+    if (role === "buyer" && hasBuyerRoleOption) {
       setAuthInfo("Sinulla on jo ostajarooli käytettävissä tällä sähköpostilla.");
+      return;
+    }
+
+    if (role === "processor" && hasProcessorRoleOption) {
+      setAuthInfo("Sinulla on jo jalostajarooli käytettävissä tällä sähköpostilla.");
       return;
     }
 
@@ -6113,9 +6128,9 @@ export default function App() {
     const requestPayload = {
       email: normalizedEmail,
       display_name: profile.display_name || accountForm.displayName || normalizedEmail,
-      role: "buyer",
+      role,
       is_active: false,
-      buyer_id: matchingBuyer?.id || null,
+      buyer_id: role === "buyer" ? (matchingBuyer?.id || null) : null,
     };
 
     const { data: existingAllowedUsers, error: existingAllowedError } = await findAllowedUsersByEmail(supabase, normalizedEmail);
@@ -6128,14 +6143,18 @@ export default function App() {
       return;
     }
 
-    const existingBuyerRole = (existingAllowedUsers || []).find((item) => item.role === "buyer") || null;
-    if (existingBuyerRole?.is_active) {
-      setAuthInfo("Sinulle on jo lisätty ostajarooli. Kirjaudu ulos ja takaisin sisään tai vaihda roolia yläreunan valitsimesta.");
+    const existingRequestedRole = (existingAllowedUsers || []).find((item) => item.role === role) || null;
+    if (existingRequestedRole?.is_active) {
+      setAuthInfo(
+        role === "buyer"
+          ? "Sinulle on jo lisätty ostajarooli. Kirjaudu ulos ja takaisin sisään tai vaihda roolia yläreunan valitsimesta."
+          : "Sinulle on jo lisätty jalostajarooli. Kirjaudu ulos ja takaisin sisään tai vaihda roolia yläreunan valitsimesta."
+      );
       return;
     }
 
-    const result = existingBuyerRole
-      ? await supabase.from("allowed_users").update(requestPayload).eq("id", existingBuyerRole.id)
+    const result = existingRequestedRole
+      ? await supabase.from("allowed_users").update(requestPayload).eq("id", existingRequestedRole.id)
       : await supabase.from("allowed_users").insert(requestPayload);
 
     if (result.error) {
@@ -6147,7 +6166,11 @@ export default function App() {
       return;
     }
 
-    setAuthInfo("Ostajaroolipyyntö lähetetty ownerille hyväksyttäväksi.");
+    setAuthInfo(
+      role === "buyer"
+        ? "Ostajaroolipyyntö lähetetty ownerille hyväksyttäväksi."
+        : "Jalostajaroolipyyntö lähetetty ownerille hyväksyttäväksi."
+    );
     setRefreshTick((prev) => prev + 1);
   };
 
@@ -8994,14 +9017,21 @@ export default function App() {
                 <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveOwnDetails} disabled={accountSaving}>{accountSaving ? "Tallennetaan..." : "Tallenna tiedot"}</button>
               </div>
             </div>
-            {profile.role !== "owner" && !hasBuyerRoleOption ? (
+            {profile.role !== "owner" && (!hasBuyerRoleOption || !hasProcessorRoleOption) ? (
               <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
                 <strong>Pyydä lisäroolia</strong>
-                <div style={styles.muted}>Voit pyytää samalla sähköpostilla myös ostajaroolia. Owner hyväksyy pyynnön ennen kuin rooli tulee käyttöön.</div>
+                <div style={styles.muted}>Voit pyytää samalla sähköpostilla myös ostaja- tai jalostajaroolia. Owner hyväksyy pyynnön ennen kuin rooli tulee käyttöön.</div>
                 <div style={{ ...styles.row, justifyContent: "flex-end" }}>
-                  <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleRequestBuyerRole}>
-                    Pyydä ostajaroolia
-                  </button>
+                  {!hasBuyerRoleOption ? (
+                    <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => handleRequestAdditionalRole("buyer")}>
+                      Pyydä ostajaroolia
+                    </button>
+                  ) : null}
+                  {!hasProcessorRoleOption ? (
+                    <button style={styles.button} onClick={() => handleRequestAdditionalRole("processor")}>
+                      Pyydä jalostajaroolia
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : null}
