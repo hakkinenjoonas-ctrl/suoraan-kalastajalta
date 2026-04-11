@@ -6232,12 +6232,15 @@ export default function App() {
     }
 
     let error;
+    let savedBuyer = null;
     if (buyerForm.id) {
-      const result = await supabase.from("buyers").update(payload).eq("id", buyerForm.id);
+      const result = await supabase.from("buyers").update(payload).eq("id", buyerForm.id).select("*").single();
       error = result.error;
+      savedBuyer = result.data || null;
     } else {
-      const result = await supabase.from("buyers").insert(payload);
+      const result = await supabase.from("buyers").insert(payload).select("*").single();
       error = result.error;
+      savedBuyer = result.data || null;
     }
 
     if (error) {
@@ -6249,8 +6252,56 @@ export default function App() {
       return;
     }
 
+    const allowedPayload = {
+      email: payload.email,
+      display_name: payload.contact_name || payload.company_name,
+      role: "buyer",
+      is_active: Boolean(payload.is_active),
+      buyer_id: savedBuyer?.id || buyerForm.id || null,
+    };
+
+    if (allowedPayload.buyer_id) {
+      const [{ data: allowedByEmail, error: allowedByEmailError }, { data: allowedByBuyerId, error: allowedByBuyerIdError }] = await Promise.all([
+        findAllowedUsersByEmail(supabase, allowedPayload.email),
+        supabase.from("allowed_users").select("*").eq("role", "buyer").eq("buyer_id", allowedPayload.buyer_id),
+      ]);
+
+      const allowedLookupError = allowedByEmailError || allowedByBuyerIdError;
+      if (allowedLookupError && allowedLookupError.code !== "PGRST116") {
+        if (isMissingRefreshTokenError(allowedLookupError)) {
+          await invalidateSession();
+          return;
+        }
+        setUserMessage(`Ostaja tallennettiin, mutta buyer-roolin synkronointi epäonnistui: ${allowedLookupError.message}`);
+        return;
+      }
+
+      const existingBuyerAllowedRow = [...(allowedByBuyerId || []), ...(allowedByEmail || [])]
+        .find((row, index, rows) => (
+          rows.findIndex((candidate) => String(candidate.id) === String(row.id)) === index &&
+          row.role === "buyer" &&
+          (
+            String(row.buyer_id || "") === String(allowedPayload.buyer_id || "") ||
+            normalizeEmail(row.email) === allowedPayload.email
+          )
+        )) || null;
+
+      const allowedResult = existingBuyerAllowedRow
+        ? await supabase.from("allowed_users").update(allowedPayload).eq("id", existingBuyerAllowedRow.id)
+        : await supabase.from("allowed_users").insert(allowedPayload);
+
+      if (allowedResult.error) {
+        if (isMissingRefreshTokenError(allowedResult.error)) {
+          await invalidateSession();
+          return;
+        }
+        setUserMessage(`Ostaja tallennettiin, mutta buyer-roolin synkronointi epäonnistui: ${allowedResult.error.message}`);
+        return;
+      }
+    }
+
     resetBuyerForm();
-    setUserMessage(buyerForm.id ? "Ostajan tiedot päivitetty." : "Ostaja lisätty.");
+    setUserMessage(buyerForm.id ? "Ostajan tiedot päivitetty ja buyer-rooli synkronoitu käyttöoikeuksiin." : "Ostaja lisätty ja buyer-rooli tallennettu automaattisesti käyttöoikeuksiin.");
     setRefreshTick((prev) => prev + 1);
   };
 
