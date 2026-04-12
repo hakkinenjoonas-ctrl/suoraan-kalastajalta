@@ -12,6 +12,12 @@ import {
   isMissingRefreshTokenError,
 } from "./lib/auth.js";
 import {
+  buildPushEventHeadline,
+  buyerStatusLabel,
+  getAcceptedInvoiceSourceLabel,
+  offersShareSameLot,
+} from "./lib/offerLogic.js";
+import {
   CATCH_FORM_DEFAULTS_KEY,
   COMMISSION_RATE,
   CUSTOM_LAKE_AREA_OPTION,
@@ -309,41 +315,8 @@ function formatSourceBatchSummary(entry) {
   return [species, isCrayfishSpecies(entry.species) ? count : kilos, isCrayfishSpecies(entry.species) && kilos ? kilos : "", entry.batchId || ""].filter(Boolean).join(" · ");
 }
 
-function getOfferSpeciesHeadline(summary, options = {}) {
-  const hideTraceability = Boolean(options?.hideTraceability);
-  const firstLine = (String(summary || "Kalaerä").split("\n")[0] || "Kalaerä");
-  const sanitizedFirstLine = hideTraceability ? stripOfferTraceabilityText(firstLine) : firstLine;
-  return sanitizedFirstLine
-    .replace(/:\s*\d+(?:[.,]\d+)?\s*kg(?:\s*\([^)]*\))?$/i, "")
-    .trim() || "Kalaerä";
-}
-
 function isMixedOffer(offer) {
   return getOfferSummaryLines(offer?.species_summary).length > 1;
-}
-
-function normalizeOfferMatchValue(value) {
-  return String(value || "").trim();
-}
-
-function offersShareSameLot(left, right) {
-  if (!left || !right) return false;
-
-  const sameSeller = normalizeOfferMatchValue(left.seller_user_id) === normalizeOfferMatchValue(right.seller_user_id);
-  if (!sameSeller) return false;
-
-  const leftBatchId = normalizeOfferMatchValue(left.batch_id);
-  const rightBatchId = normalizeOfferMatchValue(right.batch_id);
-  if (leftBatchId && rightBatchId && leftBatchId === rightBatchId) {
-    return true;
-  }
-
-  return (
-    normalizeOfferMatchValue(left.species_summary) === normalizeOfferMatchValue(right.species_summary) &&
-    Number(left.total_kilos || 0) === Number(right.total_kilos || 0) &&
-    normalizeOfferMatchValue(left.area) === normalizeOfferMatchValue(right.area) &&
-    normalizeOfferMatchValue(left.spot) === normalizeOfferMatchValue(right.spot)
-  );
 }
 
 function billingMatchesDelivery(fields) {
@@ -1462,10 +1435,6 @@ function fulfillmentStatusLabel(status) {
   return "Yhteydenotto kesken";
 }
 
-function buildPushEventHeadline(offer) {
-  return getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true }) || "Kalaerä";
-}
-
 function getNotificationRouteTarget(data) {
   const route = String(data?.route || "");
   if (route === "billing") return "billing";
@@ -1725,12 +1694,6 @@ function calculateCommissionDetails(offer, commissionRate = 0.03) {
     tradeValue,
     commissionValue,
   };
-}
-
-function getAcceptedInvoiceSourceLabel(offer) {
-  if (offer?.counter_price_per_kg !== "" && offer?.counter_price_per_kg != null) return "Viimeisin hyväksytty vastatarjous";
-  if (offer?.reserved_kilos !== "" && offer?.reserved_kilos != null) return "Viimeisin hyväksytty varaus";
-  return "Hyväksytty tarjous";
 }
 
 async function exportSpreadsheet(filename, rows, sheetName = "Raportti") {
@@ -4316,18 +4279,6 @@ export default function App() {
     if (type === "tukku") return "Anonyymi tukku";
     if (type === "kauppa") return "Anonyymi kauppa";
     return "Anonyymi ostaja";
-  };
-
-  const buyerStatusLabel = (status) => {
-    if (status === "sent") return "Tarjous lähetetty";
-    if (status === "viewed") return "Avattu";
-    if (status === "countered") return "Vastatarjous";
-    if (status === "reserved") return "Varattu";
-    if (status === "accepted") return "Kauppa hyväksytty";
-    if (status === "sold") return "MYYTY";
-    if (status === "rejected") return "Hylätty";
-    if (status === "cancelled") return "Peruttu";
-    return status || "-";
   };
 
   const shouldRevealBuyerIdentity = (status) => status === "accepted";
