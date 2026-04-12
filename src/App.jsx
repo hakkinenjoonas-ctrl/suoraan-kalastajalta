@@ -5553,6 +5553,11 @@ export default function App() {
         await invalidateSession();
         return;
       }
+      const errorMessage = String(error.message || "");
+      if (errorMessage.toLowerCase().includes("failed to fetch")) {
+        setAuthError("Yhteys palvelimeen epäonnistui. Tarkista Android-emulaattorin verkkoyhteys ja kokeile uudelleen.");
+        return;
+      }
       setAuthError("Väärä sähköposti tai salasana – tai käyttäjää ei ole vielä rekisteröity.");
     }
   };
