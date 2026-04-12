@@ -15,6 +15,7 @@ import {
   buildPushEventHeadline,
   buyerStatusLabel,
   getAcceptedInvoiceSourceLabel,
+  getOfferSpeciesHeadline,
   offersShareSameLot,
 } from "./lib/offerLogic.js";
 import {
