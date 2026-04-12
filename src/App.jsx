@@ -2269,7 +2269,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
   );
 }
 
-function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, onForgotPassword, onResetRecoveredPassword, authError, authInfo }) {
+function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, onForgotPassword, onResetRecoveredPassword, authError, authInfo, authSubmitting }) {
   const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
     ? 172
     : typeof window !== "undefined" && window.innerWidth < 1024
@@ -2367,13 +2367,19 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
 
           {authMode === "signin" ? (
             <>
-              <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Kirjaudu sisään</button>
-              <button type="button" style={styles.button} onClick={onForgotPassword}>Unohditko salasanan?</button>
+              <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={onSignIn} disabled={authSubmitting}>
+                {authSubmitting ? "Kirjaudutaan..." : "Kirjaudu sisään"}
+              </button>
+              <button type="button" style={styles.button} onClick={onForgotPassword} disabled={authSubmitting}>Unohditko salasanan?</button>
             </>
           ) : authMode === "recovery" ? (
-            <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Tallenna uusi salasana</button>
+            <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={onResetRecoveredPassword} disabled={authSubmitting}>
+              {authSubmitting ? "Tallennetaan..." : "Tallenna uusi salasana"}
+            </button>
           ) : (
-            <button type="submit" style={{ ...styles.button, ...styles.primaryButton }}>Luo tunnus</button>
+            <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={onSignUp} disabled={authSubmitting}>
+              {authSubmitting ? "Luodaan..." : "Luo tunnus"}
+            </button>
           )}
 
           {authMode === "signup" ? <div style={styles.muted}>Rekisteröitymisen jälkeen owner hyväksyy käyttöoikeuden ennen kuin appi avautuu.</div> : null}
@@ -3764,6 +3770,7 @@ export default function App() {
   const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "", displayName: "", requestedRole: "member" });
   const [authError, setAuthError] = useState("");
   const [authInfo, setAuthInfo] = useState("");
+  const [authSubmitting, setAuthSubmitting] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [activeTab, setActiveTab] = useState("dashboard");
 
@@ -5558,107 +5565,142 @@ export default function App() {
   });
 
   const handleSignIn = async () => {
+    if (authSubmitting) return;
+    setAuthSubmitting(true);
     setAuthError("");
     setAuthInfo("");
-    const email = normalizeEmail(authForm.email);
-    const password = authForm.password;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      if (isMissingRefreshTokenError(error)) {
-        await invalidateSession();
-        return;
+    try {
+      const email = normalizeEmail(authForm.email);
+      const password = authForm.password;
+      const signInPromise = supabase.auth.signInWithPassword({ email, password });
+      const timeoutPromise = new Promise((_, reject) => {
+        window.setTimeout(() => reject(new Error("SIGN_IN_TIMEOUT")), isNativeCapacitorApp() ? 10000 : 12000);
+      });
+      const { error } = await Promise.race([signInPromise, timeoutPromise]);
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        const errorMessage = String(error.message || "");
+        if (errorMessage.toLowerCase().includes("failed to fetch")) {
+          setAuthError("Yhteys palvelimeen epäonnistui. Tarkista Android-emulaattorin verkkoyhteys ja kokeile uudelleen.");
+          return;
+        }
+        setAuthError("Väärä sähköposti tai salasana – tai käyttäjää ei ole vielä rekisteröity.");
       }
-      const errorMessage = String(error.message || "");
-      if (errorMessage.toLowerCase().includes("failed to fetch")) {
-        setAuthError("Yhteys palvelimeen epäonnistui. Tarkista Android-emulaattorin verkkoyhteys ja kokeile uudelleen.");
-        return;
+    } catch (error) {
+      const message = String(error?.message || error || "");
+      if (message.includes("SIGN_IN_TIMEOUT")) {
+        setAuthError("Kirjautuminen Androidissa kesti liian kauan. Tarkista verkkoyhteys ja kokeile uudelleen.");
+      } else {
+        setAuthError(message || "Kirjautuminen epäonnistui.");
       }
-      setAuthError("Väärä sähköposti tai salasana – tai käyttäjää ei ole vielä rekisteröity.");
+    } finally {
+      setAuthSubmitting(false);
     }
   };
 
   const handleSignUp = async () => {
+    if (authSubmitting) return;
+    setAuthSubmitting(true);
     setAuthError("");
     setAuthInfo("");
-    const email = normalizeEmail(authForm.email);
-    const password = authForm.password;
-    const displayName = authForm.displayName.trim();
-    const requestedRole = authForm.requestedRole === "buyer" ? "buyer" : authForm.requestedRole === "processor" ? "processor" : "member";
-    if (!email || !password || !displayName) {
-      setAuthError("Täytä sähköposti, salasana ja nimi.");
-      return;
-    }
-    const { error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName, requested_role: requestedRole } } });
-    if (error) {
-      if (isMissingRefreshTokenError(error)) {
-        await invalidateSession();
+    try {
+      const email = normalizeEmail(authForm.email);
+      const password = authForm.password;
+      const displayName = authForm.displayName.trim();
+      const requestedRole = authForm.requestedRole === "buyer" ? "buyer" : authForm.requestedRole === "processor" ? "processor" : "member";
+      if (!email || !password || !displayName) {
+        setAuthError("Täytä sähköposti, salasana ja nimi.");
         return;
       }
-      const message = String(error.message || "");
-      if (message.toLowerCase().includes("user already registered")) {
-        setAuthInfo("");
-        setAuthError("Tällä sähköpostilla on jo käyttäjätili. Et tarvitse uutta tiliä ostajaroolia varten. Kirjaudu sisään olemassa olevalla tunnuksella ja pyydä owneria lisäämään sinulle myös ostajarooli.");
-        setAuthMode("signin");
+      const { error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName, requested_role: requestedRole } } });
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        const message = String(error.message || "");
+        if (message.toLowerCase().includes("user already registered")) {
+          setAuthInfo("");
+          setAuthError("Tällä sähköpostilla on jo käyttäjätili. Et tarvitse uutta tiliä ostajaroolia varten. Kirjaudu sisään olemassa olevalla tunnuksella ja pyydä owneria lisäämään sinulle myös ostajarooli.");
+          setAuthMode("signin");
+          return;
+        }
+        setAuthError(error.message);
         return;
       }
-      setAuthError(error.message);
-      return;
+      setAuthInfo("Tunnus luotu ja lähetetty hyväksyttäväksi. Voit kirjautua sisään, mutta appi aukeaa vasta kun owner hyväksyy roolin.");
+      setAuthMode("signin");
+    } finally {
+      setAuthSubmitting(false);
     }
-    setAuthInfo("Tunnus luotu ja lähetetty hyväksyttäväksi. Voit kirjautua sisään, mutta appi aukeaa vasta kun owner hyväksyy roolin.");
-    setAuthMode("signin");
   };
 
   const handleForgotPassword = async () => {
+    if (authSubmitting) return;
+    setAuthSubmitting(true);
     setAuthError("");
     setAuthInfo("");
-    const email = normalizeEmail(authForm.email);
-    if (!email) {
-      setAuthError("Syötä sähköpostiosoite ennen salasanan palautusta.");
-      return;
-    }
-    const redirectTo = typeof window !== "undefined" ? window.location.origin : getPublicAppBaseUrl();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-    if (error) {
-      if (isMissingRefreshTokenError(error)) {
-        await invalidateSession();
+    try {
+      const email = normalizeEmail(authForm.email);
+      if (!email) {
+        setAuthError("Syötä sähköpostiosoite ennen salasanan palautusta.");
         return;
       }
-      setAuthError(error.message);
-      return;
+      const redirectTo = typeof window !== "undefined" ? window.location.origin : getPublicAppBaseUrl();
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        setAuthError(error.message);
+        return;
+      }
+      setAuthInfo("Salasanan palautuslinkki lähetettiin sähköpostiisi.");
+    } finally {
+      setAuthSubmitting(false);
     }
-    setAuthInfo("Salasanan palautuslinkki lähetettiin sähköpostiisi.");
   };
 
   const handleResetRecoveredPassword = async () => {
+    if (authSubmitting) return;
+    setAuthSubmitting(true);
     setAuthError("");
     setAuthInfo("");
-    const password = authForm.password;
-    const confirmPassword = authForm.confirmPassword;
-    if (!password || password.length < 8) {
-      setAuthError("Uuden salasanan pitää olla vähintään 8 merkkiä.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setAuthError("Salasanat eivät täsmää.");
-      return;
-    }
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) {
-      if (isMissingRefreshTokenError(error)) {
-        await invalidateSession();
+    try {
+      const password = authForm.password;
+      const confirmPassword = authForm.confirmPassword;
+      if (!password || password.length < 8) {
+        setAuthError("Uuden salasanan pitää olla vähintään 8 merkkiä.");
         return;
       }
-      setAuthError(error.message);
-      return;
+      if (password !== confirmPassword) {
+        setAuthError("Salasanat eivät täsmää.");
+        return;
+      }
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        setAuthError(error.message);
+        return;
+      }
+      await supabase.auth.signOut();
+      setSession(null);
+      setProfile(null);
+      setAvailableRoleOptions([]);
+      setRoleSelectionOpen(false);
+      setAuthForm((prev) => ({ ...prev, password: "", confirmPassword: "" }));
+      setAuthMode("signin");
+      setAuthInfo("Salasana vaihdettu. Kirjaudu nyt sisään uudella salasanalla.");
+    } finally {
+      setAuthSubmitting(false);
     }
-    await supabase.auth.signOut();
-    setSession(null);
-    setProfile(null);
-    setAvailableRoleOptions([]);
-    setRoleSelectionOpen(false);
-    setAuthForm((prev) => ({ ...prev, password: "", confirmPassword: "" }));
-    setAuthMode("signin");
-    setAuthInfo("Salasana vaihdettu. Kirjaudu nyt sisään uudella salasanalla.");
   };
 
   const handleLogout = async () => {
@@ -8191,7 +8233,7 @@ export default function App() {
   }
 
   if (authMode === "recovery" || !session || !profile) {
-    return <AuthView authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} onSignIn={handleSignIn} onSignUp={handleSignUp} onForgotPassword={handleForgotPassword} onResetRecoveredPassword={handleResetRecoveredPassword} authError={authError} authInfo={authInfo} />;
+    return <AuthView authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} onSignIn={handleSignIn} onSignUp={handleSignUp} onForgotPassword={handleForgotPassword} onResetRecoveredPassword={handleResetRecoveredPassword} authError={authError} authInfo={authInfo} authSubmitting={authSubmitting} />;
   }
 
   if (!profile.is_active && availableRoleOptions.length === 0) {
