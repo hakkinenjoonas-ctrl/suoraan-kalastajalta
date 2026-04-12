@@ -1,5 +1,10 @@
 {
   "appId": "fi.suoraankalastajalta.app",
   "appName": "Suoraan Kalastajalta",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
 }
