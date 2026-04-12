@@ -27,11 +27,14 @@ const preferenceStorage = {
   },
 };
 
+const nativeNoOpLock = async (_name, _timeout, fn) => await fn();
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
     storage: isNativeCapacitorRuntime() ? preferenceStorage : undefined,
+    lock: isNativeCapacitorRuntime() ? nativeNoOpLock : undefined,
   },
 });
