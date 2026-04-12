@@ -160,6 +160,33 @@ function buildProcessedPayload(
   };
 }
 
+function buildOfferFallbackPayload(offer: Record<string, unknown>, offers: Array<Record<string, unknown>>) {
+  const saleInfo = deriveSaleInfo(offers);
+  return {
+    batch_id: safeString(offer.batch_id),
+    status: saleInfo.status,
+    species: safeString(offer.species_summary).split("\n").filter(Boolean)[0] || "Kalaerä",
+    species_summary: safeString(offer.species_summary),
+    product_name: "",
+    processing_method: "",
+    catch_date: "",
+    production_date: "",
+    best_before_date: "",
+    area: safeString(offer.area),
+    municipality: "",
+    spot: safeString(offer.spot),
+    gear: safeString(offer.gear),
+    quantity: offer.total_kilos ?? "",
+    unit: "kg",
+    seller_name: safeString(offer.seller_name),
+    notes: safeString(offer.notes),
+    created_at: safeString(offer.created_at),
+    related_processing: null,
+    sale_info: saleInfo,
+    traceability_notice: "Erän tiedot näytetään tarjoukselta, koska alkuperäistä eräriviä ei löytynyt suoraan tietokannasta.",
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -230,6 +257,10 @@ Deno.serve(async (req) => {
       }
 
       return jsonResponse(200, buildProcessedPayload(processedEntries[0], offers || [], sourceBatches));
+    }
+
+    if (offers && offers.length > 0) {
+      return jsonResponse(200, buildOfferFallbackPayload(offers[0], offers));
     }
 
     return jsonResponse(404, { error: "Batch not found" });
