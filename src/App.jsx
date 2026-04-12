@@ -1727,6 +1727,17 @@ function runLocalTests() {
   }
 }
 
+async function getSessionWithTimeout(timeoutMs = 5000) {
+  return await Promise.race([
+    supabase.auth.getSession(),
+    new Promise((_, reject) => {
+      window.setTimeout(() => {
+        reject(new Error("SESSION_INIT_TIMEOUT"));
+      }, timeoutMs);
+    }),
+  ]);
+}
+
 function MunicipalitySelect({ value, onChange, placeholder = "Valitse paikkakunta" }) {
   return (
     <select style={styles.input} value={value} onChange={onChange}>
@@ -4565,7 +4576,7 @@ export default function App() {
 
     const init = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession();
+        const { data, error } = await getSessionWithTimeout(isNativeCapacitorApp() ? 6000 : 5000);
         if (error) {
           if (isMissingRefreshTokenError(error)) {
             await invalidateSession();
@@ -4578,6 +4589,10 @@ export default function App() {
       } catch (error) {
         if (isMissingRefreshTokenError(error)) {
           await invalidateSession();
+        } else if (String(error?.message || error) === "SESSION_INIT_TIMEOUT") {
+          await clearBrokenSession();
+          setSession(null);
+          setAuthError("Android-istunnon avaus kesti liian kauan. Sovellus siirtyi kirjautumisnäkymään, jotta voit jatkaa normaalisti.");
         } else {
           setAuthError(String(error?.message || error));
         }
