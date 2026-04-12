@@ -528,6 +528,14 @@ function canPrintCatchLabels(entry) {
   return Boolean(entry?.batchId && entry?.species && entry?.date);
 }
 
+function isEntryOfferedForSale(entry) {
+  return Boolean(
+    entry?.offerToShops ||
+    entry?.offerToRestaurants ||
+    entry?.offerToWholesalers,
+  );
+}
+
 function getCatchLabelScientificName(speciesValue) {
   const normalized = normalizeFishSpeciesLabel(speciesValue);
   return fishSpeciesByName[normalized]?.scientific || "";
@@ -9911,7 +9919,9 @@ export default function App() {
                         </div>
                       ) : null}
                       <div style={styles.muted}>Parasta ennen: {entry.bestBeforeDate || "-"}</div>
-                      <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                      {isEntryOfferedForSale(entry) ? (
+                        <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                      ) : null}
                       {entry.notes ? <div style={styles.muted}>{entry.notes}</div> : null}
                     </div>
                     <button style={styles.button} onClick={() => handleDeleteProcessedEntry(entry)}>Poista jaloste-erä</button>
@@ -9962,7 +9972,9 @@ export default function App() {
                           {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>Hinta ALV 0 %: {formatEntryPrice(entry.species, entry.pricePerKg)}</div> : null}
                           {entry.gearCount ? <div style={styles.muted}>Pyydysten määrä: {entry.gearCount}</div> : null}
                           {entry.fishingDurationDays ? <div style={styles.muted}>Pyyntiaika: {entry.fishingDurationDays}</div> : null}
-                          <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                          {isEntryOfferedForSale(entry) ? (
+                            <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                          ) : null}
                           {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                         </div>
                         <div style={styles.row}>
