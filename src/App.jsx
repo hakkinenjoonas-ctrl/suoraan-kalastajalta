@@ -4801,7 +4801,7 @@ export default function App() {
         };
         setProfile(normalizedProfile);
         setAvailableRoleOptions(activeAllowedRows);
-        setRoleSelectionOpen(activeAllowedRows.length > 1);
+        setRoleSelectionOpen(activeAllowedRows.length > 1 && !matchingAllowedRole);
         fisherInfoSyncingRef.current = true;
         setFisherInfoForm({
           commercialFishingId: profileToUse.commercial_fishing_id || "",
@@ -4844,7 +4844,7 @@ export default function App() {
       };
       setProfile(normalizedInsertedProfile);
       setAvailableRoleOptions(activeAllowedRows);
-      setRoleSelectionOpen(activeAllowedRows.length > 1);
+      setRoleSelectionOpen(false);
       if (!defaultAllowedRole) {
         setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
         await notifyOwnersAboutPendingApproval(insertedProfile);
