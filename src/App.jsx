@@ -5784,11 +5784,12 @@ export default function App() {
 
     setAccountSaving(true);
     try {
+      const normalizedVesselIds = parseCommercialFishingVesselIds(accountForm.commercialFishingVesselIdsText);
       const savedAccountForm = {
         ...accountForm,
         displayName,
         commercialFishingId: accountForm.commercialFishingId.trim(),
-        commercialFishingVesselId: accountForm.commercialFishingVesselId.trim(),
+        commercialFishingVesselId: accountForm.commercialFishingVesselId.trim() || normalizedVesselIds[0] || "",
         commercialFishingVesselIdsText: accountForm.commercialFishingVesselIdsText.trim(),
         vatLiable: Boolean(accountForm.vatLiable),
         vatNumber: String(accountForm.vatNumber || "").trim().toUpperCase(),
@@ -5837,8 +5838,8 @@ export default function App() {
             }
           : profile.role !== "buyer"
             ? {
-              commercial_fishing_vessel_id: accountForm.commercialFishingVesselId.trim() || null,
-              commercial_fishing_vessel_ids: parseCommercialFishingVesselIds(accountForm.commercialFishingVesselIdsText),
+              commercial_fishing_vessel_id: accountForm.commercialFishingVesselId.trim() || normalizedVesselIds[0] || null,
+              commercial_fishing_vessel_ids: normalizedVesselIds,
               commercial_fishing_id: accountForm.commercialFishingId.trim() || null,
               pickup_address: accountForm.pickupAddress.trim() || null,
               company_name: accountForm.companyName.trim() || null,
@@ -9026,10 +9027,6 @@ export default function App() {
                     <label>Kaupallisen kalastajan tunnus</label>
                     <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 12303" />
                   </div>
-                  <div style={styles.field}>
-                    <label>Ensisijainen kaupallisen kalastusaluksen tunnus</label>
-                    <input style={styles.input} value={accountForm.commercialFishingVesselId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselId: e.target.value }))} placeholder="Esim. FIN12345" />
-                  </div>
                   <div style={{ ...styles.field, ...styles.fieldFull }}>
                     <label>Kaupallisen kalastusaluksen tunnukset</label>
                     <textarea style={styles.textarea} value={accountForm.commercialFishingVesselIdsText} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselIdsText: e.target.value }))} placeholder={"Yksi tunnus per rivi\nEsim. FIN12345"} />
@@ -9042,6 +9039,19 @@ export default function App() {
                     <label>Y-tunnus</label>
                     <input style={styles.input} value={accountForm.businessId} onChange={(e) => setAccountForm((prev) => ({ ...prev, businessId: e.target.value }))} placeholder="1234567-8" />
                   </div>
+                  <div style={styles.field}>
+                    <label>Onko toiminta ALV-velvollista?</label>
+                    <select style={styles.input} value={accountForm.vatLiable ? "yes" : "no"} onChange={(e) => setAccountForm((prev) => ({ ...prev, vatLiable: e.target.value === "yes", ...(e.target.value === "yes" ? {} : { vatNumber: "" }) }))}>
+                      <option value="no">Ei</option>
+                      <option value="yes">Kyllä</option>
+                    </select>
+                  </div>
+                  {accountForm.vatLiable ? (
+                    <div style={styles.field}>
+                      <label>ALV-numero</label>
+                      <input style={styles.input} value={accountForm.vatNumber} onChange={(e) => setAccountForm((prev) => ({ ...prev, vatNumber: e.target.value.toUpperCase() }))} placeholder="Esim. FI12345678" />
+                    </div>
+                  ) : null}
                   <div style={styles.field}>
                     <label>Osoite</label>
                     <input style={styles.input} value={accountForm.address} onChange={(e) => setAccountForm((prev) => ({ ...prev, address: e.target.value, ...(accountBillingSameAsDelivery ? { billingAddress: e.target.value } : {}) }))} placeholder="Katuosoite" />
