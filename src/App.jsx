@@ -3936,6 +3936,8 @@ export default function App() {
     commercialFishingVesselId: "",
     commercialFishingVesselIdsText: "",
     commercialFishingId: "",
+    vatLiable: false,
+    vatNumber: "",
     pickupAddress: "",
     companyName: "",
     businessId: "",
@@ -5287,6 +5289,8 @@ export default function App() {
       commercialFishingVesselId: profile.commercial_fishing_vessel_id || vesselIds[0] || "",
       commercialFishingVesselIdsText: vesselIds.join("\n"),
       commercialFishingId: profile.commercial_fishing_id || "",
+      vatLiable: Boolean((profile.role === "buyer" ? buyerAccountData?.vat_liable : undefined) ?? profile.vat_liable),
+      vatNumber: (profile.role === "buyer" ? buyerAccountData?.vat_number : undefined) || profile.vat_number || "",
       pickupAddress: profile.pickup_address || "",
       companyName: buyerAccountData?.company_name || profile.company_name || "",
       businessId: buyerAccountData?.business_id || profile.business_id || "",
@@ -5773,6 +5777,10 @@ export default function App() {
       setAuthError("Täytä vähintään nimi.");
       return;
     }
+    if (accountForm.vatLiable && !String(accountForm.vatNumber || "").trim()) {
+      setAuthError("Täytä ALV-numero, jos toiminta on ALV-velvollista.");
+      return;
+    }
 
     setAccountSaving(true);
     try {
@@ -5782,6 +5790,8 @@ export default function App() {
         commercialFishingId: accountForm.commercialFishingId.trim(),
         commercialFishingVesselId: accountForm.commercialFishingVesselId.trim(),
         commercialFishingVesselIdsText: accountForm.commercialFishingVesselIdsText.trim(),
+        vatLiable: Boolean(accountForm.vatLiable),
+        vatNumber: String(accountForm.vatNumber || "").trim().toUpperCase(),
         companyName: accountForm.companyName.trim(),
         businessId: accountForm.businessId.trim(),
         address: accountForm.address.trim(),
@@ -5804,6 +5814,8 @@ export default function App() {
       };
       const profilePayload = {
         display_name: displayName,
+        vat_liable: Boolean(accountForm.vatLiable),
+        vat_number: accountForm.vatLiable ? (String(accountForm.vatNumber || "").trim().toUpperCase() || null) : null,
         ...(profile.role === "processor"
           ? {
               evira_facility_id: accountForm.eviraFacilityId.trim() || null,
@@ -5868,6 +5880,8 @@ export default function App() {
           company_name: accountForm.companyName.trim(),
           contact_name: accountForm.contactName.trim(),
           phone: accountForm.phone.trim(),
+          vat_liable: Boolean(accountForm.vatLiable),
+          vat_number: accountForm.vatLiable ? String(accountForm.vatNumber || "").trim().toUpperCase() : "",
           city: accountForm.city.trim(),
           delivery_address: accountForm.deliveryAddress.trim(),
           delivery_postcode: accountForm.deliveryPostcode.trim(),
@@ -8441,6 +8455,19 @@ export default function App() {
                       <input style={styles.input} value={accountForm.businessId} onChange={(e) => setAccountForm((prev) => ({ ...prev, businessId: e.target.value }))} placeholder="1234567-8" />
                     </div>
                     <div style={styles.field}>
+                      <label>Onko toiminta ALV-velvollista?</label>
+                      <select style={styles.input} value={accountForm.vatLiable ? "yes" : "no"} onChange={(e) => setAccountForm((prev) => ({ ...prev, vatLiable: e.target.value === "yes", ...(e.target.value === "yes" ? {} : { vatNumber: "" }) }))}>
+                        <option value="no">Ei</option>
+                        <option value="yes">Kyllä</option>
+                      </select>
+                    </div>
+                    {accountForm.vatLiable ? (
+                      <div style={styles.field}>
+                        <label>ALV-numero</label>
+                        <input style={styles.input} value={accountForm.vatNumber} onChange={(e) => setAccountForm((prev) => ({ ...prev, vatNumber: e.target.value.toUpperCase() }))} placeholder="Esim. FI12345678" />
+                      </div>
+                    ) : null}
+                    <div style={styles.field}>
                       <label>Lisätiedot</label>
                       <textarea style={styles.textarea} value={accountForm.notes} onChange={(e) => setAccountForm((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Toimitusohjeet, huomioita" />
                     </div>
@@ -8932,6 +8959,19 @@ export default function App() {
                     <label>Y-tunnus</label>
                     <input style={styles.input} value={accountForm.businessId} onChange={(e) => setAccountForm((prev) => ({ ...prev, businessId: e.target.value }))} placeholder="1234567-8" />
                   </div>
+                  <div style={styles.field}>
+                    <label>Onko toiminta ALV-velvollista?</label>
+                    <select style={styles.input} value={accountForm.vatLiable ? "yes" : "no"} onChange={(e) => setAccountForm((prev) => ({ ...prev, vatLiable: e.target.value === "yes", ...(e.target.value === "yes" ? {} : { vatNumber: "" }) }))}>
+                      <option value="no">Ei</option>
+                      <option value="yes">Kyllä</option>
+                    </select>
+                  </div>
+                  {accountForm.vatLiable ? (
+                    <div style={styles.field}>
+                      <label>ALV-numero</label>
+                      <input style={styles.input} value={accountForm.vatNumber} onChange={(e) => setAccountForm((prev) => ({ ...prev, vatNumber: e.target.value.toUpperCase() }))} placeholder="Esim. FI12345678" />
+                    </div>
+                  ) : null}
                   <div style={styles.field}>
                     <label>Osoite</label>
                     <input style={styles.input} value={accountForm.address} onChange={(e) => setAccountForm((prev) => ({ ...prev, address: e.target.value, ...(accountBillingSameAsDelivery ? { billingAddress: e.target.value } : {}) }))} placeholder="Katuosoite" />
