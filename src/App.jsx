@@ -1251,7 +1251,37 @@ function getRequestedOfferId() {
   return String(params.get("offer") || "").trim();
 }
 
-function getStoredCatchFormDefaults() {
+function getCatchFormDefaultsStorageKey(profileLike) {
+  const profileKey = String(profileLike?.id || profileLike?.email || "").trim().toLowerCase();
+  return profileKey ? `${CATCH_FORM_DEFAULTS_KEY}:${profileKey}` : CATCH_FORM_DEFAULTS_KEY;
+}
+
+function parseStoredCatchFormDefaults(raw) {
+  const parsed = raw ? JSON.parse(raw) : {};
+  return {
+    area: String(parsed?.area || "Saimaa"),
+    customLakeAreas: Array.isArray(parsed?.customLakeAreas) ? parsed.customLakeAreas.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    customSeaAreas: Array.isArray(parsed?.customSeaAreas) ? parsed.customSeaAreas.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    municipality: String(parsed?.municipality || ""),
+    landingPlace: String(parsed?.landingPlace || ""),
+    landingPlaces: Array.isArray(parsed?.landingPlaces) ? parsed.landingPlaces.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    deliveryDestinations: normalizeDestinationCities(parsed?.deliveryDestinations),
+    deliveryArea: String(parsed?.deliveryArea || ""),
+    gear: String(parsed?.gear || "Rysä"),
+    gearCount: String(parsed?.gearCount || ""),
+    gearCountOptions: Array.isArray(parsed?.gearCountOptions) ? parsed.gearCountOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    fishingDurationDays: String(parsed?.fishingDurationDays || ""),
+    fishingDurationOptions: Array.isArray(parsed?.fishingDurationOptions) ? parsed.fishingDurationOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    netHeight: String(parsed?.netHeight || ""),
+    netHeightOptions: Array.isArray(parsed?.netHeightOptions) ? parsed.netHeightOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    netMeshSize: String(parsed?.netMeshSize || ""),
+    netMeshSizeOptions: Array.isArray(parsed?.netMeshSizeOptions) ? parsed.netMeshSizeOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    fykeHeight: String(parsed?.fykeHeight || ""),
+    fykeHeightOptions: Array.isArray(parsed?.fykeHeightOptions) ? parsed.fykeHeightOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+  };
+}
+
+function getStoredCatchFormDefaults(profileLike = null) {
   if (typeof window === "undefined") {
     return {
       area: "Saimaa",
@@ -1271,29 +1301,9 @@ function getStoredCatchFormDefaults() {
     };
   }
   try {
-    const raw = window.localStorage.getItem(CATCH_FORM_DEFAULTS_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return {
-      area: String(parsed?.area || "Saimaa"),
-      customLakeAreas: Array.isArray(parsed?.customLakeAreas) ? parsed.customLakeAreas.map((item) => String(item || "").trim()).filter(Boolean) : [],
-      customSeaAreas: Array.isArray(parsed?.customSeaAreas) ? parsed.customSeaAreas.map((item) => String(item || "").trim()).filter(Boolean) : [],
-      municipality: String(parsed?.municipality || ""),
-      landingPlace: String(parsed?.landingPlace || ""),
-      landingPlaces: Array.isArray(parsed?.landingPlaces) ? parsed.landingPlaces.map((item) => String(item || "").trim()).filter(Boolean) : [],
-      deliveryDestinations: normalizeDestinationCities(parsed?.deliveryDestinations),
-      deliveryArea: String(parsed?.deliveryArea || ""),
-      gear: String(parsed?.gear || "Rysä"),
-      gearCount: String(parsed?.gearCount || ""),
-      gearCountOptions: Array.isArray(parsed?.gearCountOptions) ? parsed.gearCountOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
-      fishingDurationDays: String(parsed?.fishingDurationDays || ""),
-      fishingDurationOptions: Array.isArray(parsed?.fishingDurationOptions) ? parsed.fishingDurationOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
-      netHeight: String(parsed?.netHeight || ""),
-      netHeightOptions: Array.isArray(parsed?.netHeightOptions) ? parsed.netHeightOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
-      netMeshSize: String(parsed?.netMeshSize || ""),
-      netMeshSizeOptions: Array.isArray(parsed?.netMeshSizeOptions) ? parsed.netMeshSizeOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
-      fykeHeight: String(parsed?.fykeHeight || ""),
-      fykeHeightOptions: Array.isArray(parsed?.fykeHeightOptions) ? parsed.fykeHeightOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
-    };
+    const storageKey = getCatchFormDefaultsStorageKey(profileLike);
+    const raw = window.localStorage.getItem(storageKey);
+    return parseStoredCatchFormDefaults(raw);
   } catch {
     return {
       area: "Saimaa",
@@ -3973,6 +3983,45 @@ export default function App() {
   const accountFormSyncingRef = useRef(false);
   const fisherInfoSyncingRef = useRef(false);
   const accountFormInitializedRef = useRef(false);
+  const catchDefaultsStorageKeyRef = useRef(getCatchFormDefaultsStorageKey(null));
+
+  useEffect(() => {
+    const nextStorageKey = getCatchFormDefaultsStorageKey(profile);
+    if (catchDefaultsStorageKeyRef.current === nextStorageKey) return;
+
+    catchDefaultsStorageKeyRef.current = nextStorageKey;
+    const defaults = getStoredCatchFormDefaults(profile);
+
+    setForm((prev) => ({
+      ...prev,
+      area: defaults.area,
+      municipality: defaults.municipality,
+      landingPlace: defaults.landingPlace,
+      gearCount: defaults.gearCount,
+      fishingDurationDays: defaults.fishingDurationDays,
+      gear: defaults.gear,
+      netHeight: defaults.netHeight,
+      netMeshSize: defaults.netMeshSize,
+      fykeHeight: defaults.fykeHeight,
+      deliveryDestinations: defaults.deliveryDestinations || [],
+      deliveryArea: defaults.deliveryArea || "",
+    }));
+    setSavedCustomLakeAreas(defaults.customLakeAreas || []);
+    setSavedCustomSeaAreas(defaults.customSeaAreas || []);
+    setCatchAreaSelector(resolveAreaSelectorValue(defaults.area, defaults.customLakeAreas, defaults.customSeaAreas));
+    setSavedLandingPlaces(defaults.landingPlaces || []);
+    setSavedGearCountOptions(defaults.gearCountOptions || []);
+    setSavedFishingDurationOptions(defaults.fishingDurationOptions || []);
+    setSavedNetHeightOptions(defaults.netHeightOptions || []);
+    setSavedNetMeshSizeOptions(defaults.netMeshSizeOptions || []);
+    setSavedFykeHeightOptions(defaults.fykeHeightOptions || []);
+    setProcessedForm((prev) => ({
+      ...prev,
+      deliveryDestinations: defaults.deliveryDestinations || [],
+      deliveryArea: defaults.deliveryArea || "",
+    }));
+    setProcessedAreaSelector(resolveAreaSelectorValue("Saimaa", defaults.customLakeAreas, defaults.customSeaAreas));
+  }, [profile]);
   const fisherInfoInitializedRef = useRef(false);
 
   const getMatchingAllowedRole = useCallback((allowedRows, currentProfile) => {
@@ -5377,7 +5426,7 @@ export default function App() {
       const netHeightOptions = buildRememberedOptions(form.netHeight, savedNetHeightOptions);
       const netMeshSizeOptions = buildRememberedOptions(form.netMeshSize, savedNetMeshSizeOptions);
       const fykeHeightOptions = buildRememberedOptions(form.fykeHeight, savedFykeHeightOptions);
-      window.localStorage.setItem(CATCH_FORM_DEFAULTS_KEY, JSON.stringify({
+      window.localStorage.setItem(getCatchFormDefaultsStorageKey(profile), JSON.stringify({
         area: form.area || "Saimaa",
         customLakeAreas: savedCustomLakeAreas,
         customSeaAreas: savedCustomSeaAreas,
