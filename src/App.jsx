@@ -4766,17 +4766,19 @@ export default function App() {
       if (existingProfile) {
         let profileToUse = existingProfile;
         const matchingAllowedRole = getMatchingAllowedRole(activeAllowedRows, existingProfile);
-        const selectedAllowedRole = matchingAllowedRole || activeAllowedRows[0] || null;
+        const selectedAllowedRole = matchingAllowedRole || (activeAllowedRows.length === 1 ? activeAllowedRows[0] : null);
         if (!selectedAllowedRole) {
           const normalizedProfile = {
             ...profileToUse,
             email: (profileToUse.email || email || "").trim().toLowerCase(),
-            is_active: false,
+            is_active: activeAllowedRows.some((row) => row.is_active),
           };
           setProfile(normalizedProfile);
-          setAvailableRoleOptions([]);
-          setRoleSelectionOpen(false);
-          setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
+          setAvailableRoleOptions(activeAllowedRows);
+          setRoleSelectionOpen(activeAllowedRows.length > 1);
+          if (activeAllowedRows.length === 0) {
+            setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
+          }
           return;
         }
         if (
@@ -8378,6 +8380,24 @@ export default function App() {
               </div>
               <div style={styles.toolbar}>
                 <div style={styles.toolbarActions}>
+                  {availableRoleOptions.length > 1 ? (
+                    <select
+                      style={styles.input}
+                      value={activeRoleOption?.id || ""}
+                      onChange={(e) => {
+                        const selectedRole = availableRoleOptions.find((option) => String(option.id) === String(e.target.value));
+                        if (selectedRole) {
+                          handleRoleSelect(selectedRole);
+                        }
+                      }}
+                    >
+                      {availableRoleOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {buildRoleOptionLabel(option, buyers)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
                   <button type="button" style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
                   <button type="button" style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
                   <button type="button" style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
