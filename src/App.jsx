@@ -5779,6 +5779,9 @@ export default function App() {
       const savedAccountForm = {
         ...accountForm,
         displayName,
+        commercialFishingId: accountForm.commercialFishingId.trim(),
+        commercialFishingVesselId: accountForm.commercialFishingVesselId.trim(),
+        commercialFishingVesselIdsText: accountForm.commercialFishingVesselIdsText.trim(),
         companyName: accountForm.companyName.trim(),
         businessId: accountForm.businessId.trim(),
         address: accountForm.address.trim(),
@@ -5822,8 +5825,9 @@ export default function App() {
             }
           : profile.role !== "buyer"
             ? {
-              commercial_fishing_vessel_id: profile.commercial_fishing_vessel_id || null,
-              commercial_fishing_id: profile.commercial_fishing_id || null,
+              commercial_fishing_vessel_id: accountForm.commercialFishingVesselId.trim() || null,
+              commercial_fishing_vessel_ids: parseCommercialFishingVesselIds(accountForm.commercialFishingVesselIdsText),
+              commercial_fishing_id: accountForm.commercialFishingId.trim() || null,
               pickup_address: accountForm.pickupAddress.trim() || null,
               company_name: accountForm.companyName.trim() || null,
               business_id: accountForm.businessId.trim() || null,
@@ -8978,6 +8982,18 @@ export default function App() {
                 </>
               ) : (
                 <>
+                  <div style={styles.field}>
+                    <label>Kaupallisen kalastajan tunnus</label>
+                    <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 12303" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Ensisijainen kaupallisen kalastusaluksen tunnus</label>
+                    <input style={styles.input} value={accountForm.commercialFishingVesselId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselId: e.target.value }))} placeholder="Esim. FIN12345" />
+                  </div>
+                  <div style={{ ...styles.field, ...styles.fieldFull }}>
+                    <label>Kaupallisen kalastusaluksen tunnukset</label>
+                    <textarea style={styles.textarea} value={accountForm.commercialFishingVesselIdsText} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselIdsText: e.target.value }))} placeholder={"Yksi tunnus per rivi\nEsim. FIN12345"} />
+                  </div>
                   <div style={styles.field}>
                     <label>Yrityksen nimi</label>
                     <input style={styles.input} value={accountForm.companyName} onChange={(e) => setAccountForm((prev) => ({ ...prev, companyName: e.target.value }))} placeholder="Yrityksen nimi" />
