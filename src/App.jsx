@@ -4303,18 +4303,20 @@ export default function App() {
         removeHandles.push(registrationHandle);
 
         const registrationErrorHandle = await PushNotifications.addListener("registrationError", (error) => {
-          console.error("Push registration error:", error);
+          console.error("[PUSH] registrationError", JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+          }));
         });
         removeHandles.push(registrationErrorHandle);
 
         const receivedHandle = await PushNotifications.addListener("pushNotificationReceived", async (notification) => {
           if (cancelled) return;
-          console.log("pushNotificationReceived", {
+          console.log("[PUSH] pushNotificationReceived", JSON.stringify({
             nativePlatform: true,
             title: String(notification?.title || ""),
             body: String(notification?.body || ""),
             data: notification?.data || {},
-          });
+          }));
           const title = String(notification?.title || "Suoraan Kalastajalta");
           const body = String(notification?.body || "");
           const data = notification?.data || {};
@@ -4324,11 +4326,11 @@ export default function App() {
             foregroundNotificationRef.current.key === notificationKey &&
             now - foregroundNotificationRef.current.at < 1500
           ) {
-            console.log("pushNotificationReceived:duplicate-suppressed", {
+            console.log("[PUSH] duplicate-suppressed", JSON.stringify({
               title,
               body,
               data,
-            });
+            }));
             return;
           }
           foregroundNotificationRef.current = { key: notificationKey, at: now };
@@ -4345,41 +4347,43 @@ export default function App() {
                 extra: data,
               }],
             });
-            console.log("LocalNotifications.schedule:ok", {
+            console.log("[PUSH] LocalNotifications.schedule:ok", JSON.stringify({
               title,
               body,
               channelId: PUSH_CHANNEL_ID,
               data,
-            });
+            }));
           } catch (error) {
-            console.error("LocalNotifications.schedule:error", {
+            console.error("[PUSH] LocalNotifications.schedule:error", JSON.stringify({
               title,
               body,
               channelId: PUSH_CHANNEL_ID,
               data,
               error: error instanceof Error ? error.message : String(error),
-            });
+            }));
           }
         });
         removeHandles.push(receivedHandle);
 
         const actionHandle = await PushNotifications.addListener("pushNotificationActionPerformed", (result) => {
           if (cancelled) return;
-          console.log("pushNotificationActionPerformed", result?.notification?.data || {});
+          console.log("[PUSH] pushNotificationActionPerformed", JSON.stringify(result?.notification?.data || {}));
           handleNotificationNavigation(result?.notification?.data || {});
         });
         removeHandles.push(actionHandle);
 
         const localActionHandle = await LocalNotifications.addListener("localNotificationActionPerformed", (result) => {
           if (cancelled) return;
-          console.log("localNotificationActionPerformed", result?.notification?.extra || {});
+          console.log("[PUSH] localNotificationActionPerformed", JSON.stringify(result?.notification?.extra || {}));
           handleNotificationNavigation(result?.notification?.extra || {});
         });
         removeHandles.push(localActionHandle);
 
         await PushNotifications.register();
       } catch (error) {
-        console.error("Push notification setup failed:", error);
+        console.error("[PUSH] setup failed", JSON.stringify({
+          error: error instanceof Error ? error.message : String(error),
+        }));
       }
     };
 
