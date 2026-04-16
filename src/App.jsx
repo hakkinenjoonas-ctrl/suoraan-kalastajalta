@@ -4119,18 +4119,46 @@ export default function App() {
 
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
-    await invokeEdgeFunctionAuthenticated("send-push-notification", {
-      targetUserId: String(targetUserId || "").trim() || null,
-      targetBuyerId: String(targetBuyerId || "").trim() || null,
-      title: trimmedTitle,
-      body: trimmedBody,
-      eventType: String(eventType || "").trim() || "general",
-      data: {
-        route,
-        offerId: String(offerId || "").trim(),
-        batchId: String(batchId || "").trim(),
-      },
-    }, accessToken).catch(() => null);
+    try {
+      const result = await invokeEdgeFunctionAuthenticated("send-push-notification", {
+        targetUserId: String(targetUserId || "").trim() || null,
+        targetBuyerId: String(targetBuyerId || "").trim() || null,
+        title: trimmedTitle,
+        body: trimmedBody,
+        eventType: String(eventType || "").trim() || "general",
+        data: {
+          route,
+          offerId: String(offerId || "").trim(),
+          batchId: String(batchId || "").trim(),
+        },
+      }, accessToken);
+      const skipReason = String(result?.data?.reason || "").trim();
+      if (result?.error) {
+        console.warn("Push notification failed", {
+          targetUserId: String(targetUserId || "").trim() || null,
+          targetBuyerId: String(targetBuyerId || "").trim() || null,
+          eventType,
+          error: result.error,
+        });
+      } else if (result?.data?.skipped) {
+        console.warn("Push notification skipped", {
+          targetUserId: String(targetUserId || "").trim() || null,
+          targetBuyerId: String(targetBuyerId || "").trim() || null,
+          eventType,
+          reason: skipReason || "unknown",
+          tokens: result?.data?.tokens || 0,
+        });
+      }
+      return result;
+    } catch (error) {
+      console.warn("Push notification invocation threw", {
+        targetUserId: String(targetUserId || "").trim() || null,
+        targetBuyerId: String(targetBuyerId || "").trim() || null,
+        eventType,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { data: null, error };
+    }
   }, []);
 
   const notifyOwnersAboutPendingApproval = useCallback(async (pendingProfile) => {
@@ -6760,7 +6788,7 @@ export default function App() {
               describeOfferEmailError(error),
           });
         } else {
-          await sendPushEvent({
+          const pushResult = await sendPushEvent({
             targetBuyerId: recipient.buyer_id || "",
             title: "Uusi kalatarjous",
             body: `Sinulle on lähetetty uusi tarjous: ${buildPushEventHeadline({
@@ -6781,6 +6809,8 @@ export default function App() {
             channel: recipient.channel,
             offer_id: offerId,
             offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+            pushSkipped: Boolean(pushResult?.data?.skipped),
+            pushSkipReason: String(pushResult?.data?.reason || "").trim(),
             data,
           });
         }
@@ -7744,7 +7774,7 @@ export default function App() {
       );
       if (!error) {
         console.log("send-catch-offer-email ok", recipient.email, data);
-        await sendPushEvent({
+        const pushResult = await sendPushEvent({
           targetBuyerId: recipient.buyer_id || "",
           title: "Uusi kalatarjous",
           body: `Sinulle on lähetetty uusi tarjous: ${formState.productName || formState.productType || "Jaloste-erä"}.`,
@@ -7761,6 +7791,8 @@ export default function App() {
           channel: recipient.channel,
           offer_id: offerId,
           offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
+          pushSkipped: Boolean(pushResult?.data?.skipped),
+          pushSkipReason: String(pushResult?.data?.reason || "").trim(),
           data,
         });
       } else {
@@ -7938,9 +7970,13 @@ export default function App() {
           setAuthInfo(parts.join(String.fromCharCode(10)));
         } else {
           const sentLines = emailResult.sent.map((item) => `✔ ${item.company_name} (${item.email})`);
+          const skippedPushLines = emailResult.sent
+            .filter((item) => item.pushSkipped)
+            .map((item) => `• ${item.company_name} (${item.email}) – push skipattiin: ${item.pushSkipReason || "tuntematon syy"}`);
           const failedLines = emailResult.failed.map((item) => `✖ ${item.company_name} (${item.email}) – ${item.error}`);
           const parts = [`Saalis tallennettu. Tarjous lähetetty ${emailResult.sent.length} ostajalle.`];
           if (sentLines.length > 0) parts.push("", "Lähetetty:", ...sentLines);
+          if (skippedPushLines.length > 0) parts.push("", "Push-ilmoitus ei lähtenyt:", ...skippedPushLines);
           if (failedLines.length > 0) parts.push("", "Epäonnistui:", ...failedLines);
           if (failedLines.length > 0) {
             setAuthError(parts.join(String.fromCharCode(10)));
@@ -8151,9 +8187,13 @@ export default function App() {
           setAuthInfo(parts.join(String.fromCharCode(10)));
         } else {
           const sentLines = emailResult.sent.map((item) => `✔ ${item.company_name} (${item.email})`);
+          const skippedPushLines = emailResult.sent
+            .filter((item) => item.pushSkipped)
+            .map((item) => `• ${item.company_name} (${item.email}) – push skipattiin: ${item.pushSkipReason || "tuntematon syy"}`);
           const failedLines = emailResult.failed.map((item) => `✖ ${item.company_name} (${item.email}) – ${item.error}`);
           const parts = [`Jaloste-erä tallennettu. Tarjous lähetetty ${emailResult.sent.length} ostajalle.`];
           if (sentLines.length > 0) parts.push("", "Lähetetty:", ...sentLines);
+          if (skippedPushLines.length > 0) parts.push("", "Push-ilmoitus ei lähtenyt:", ...skippedPushLines);
           if (failedLines.length > 0) parts.push("", "Epäonnistui:", ...failedLines);
           if (failedLines.length > 0) {
             setAuthError(parts.join(String.fromCharCode(10)));

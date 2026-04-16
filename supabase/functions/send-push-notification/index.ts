@@ -138,11 +138,29 @@ Deno.serve(async (req) => {
     const data = typeof body.data === "object" && body.data ? body.data : {};
 
     if (!title || !messageBody) {
+      console.log("send-push-notification:invalid-payload", {
+        hasTitle: Boolean(title),
+        hasBody: Boolean(messageBody),
+      });
       return jsonResponse(400, { error: "Missing title or body" });
     }
     if (!targetUserId && !targetBuyerId) {
+      console.log("send-push-notification:missing-target", {
+        callerUserId: callerUserId || null,
+        eventType,
+      });
       return jsonResponse(400, { error: "Missing target user or buyer id" });
     }
+
+    console.log("send-push-notification:start", {
+      callerUserId: callerUserId || null,
+      targetUserId: targetUserId || null,
+      targetBuyerId: targetBuyerId || null,
+      eventType,
+      route: safeString(data.route),
+      offerId: safeString(data.offerId),
+      batchId: safeString(data.batchId),
+    });
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     let tokenQuery = adminClient
@@ -158,20 +176,50 @@ Deno.serve(async (req) => {
 
     const { data: tokenRows, error: tokenError } = await tokenQuery;
     if (tokenError) {
+      console.error("send-push-notification:token-query-error", {
+        targetUserId: targetUserId || null,
+        targetBuyerId: targetBuyerId || null,
+        eventType,
+        error: tokenError.message,
+      });
       return jsonResponse(500, { error: tokenError.message });
     }
 
     const tokens = Array.from(new Set((tokenRows || []).map((row) => safeString(row.token)).filter(Boolean)));
+    console.log("send-push-notification:tokens-resolved", {
+      targetUserId: targetUserId || null,
+      targetBuyerId: targetBuyerId || null,
+      eventType,
+      tokenCount: tokens.length,
+      tokenRowCount: (tokenRows || []).length,
+    });
     if (tokens.length === 0) {
+      console.warn("send-push-notification:skipped-no-tokens", {
+        targetUserId: targetUserId || null,
+        targetBuyerId: targetBuyerId || null,
+        eventType,
+      });
       return jsonResponse(200, { ok: true, skipped: true, reason: "no_tokens" });
     }
 
     if (!projectId) {
+      console.warn("send-push-notification:missing-fcm-project-id", {
+        targetUserId: targetUserId || null,
+        targetBuyerId: targetBuyerId || null,
+        eventType,
+        tokenCount: tokens.length,
+      });
       return jsonResponse(200, { ok: true, skipped: true, reason: "missing_fcm_project_id", tokens: tokens.length });
     }
 
     const accessToken = await getGoogleAccessToken();
     if (!accessToken) {
+      console.warn("send-push-notification:missing-fcm-credentials", {
+        targetUserId: targetUserId || null,
+        targetBuyerId: targetBuyerId || null,
+        eventType,
+        tokenCount: tokens.length,
+      });
       return jsonResponse(200, { ok: true, skipped: true, reason: "missing_fcm_credentials", tokens: tokens.length });
     }
 
@@ -232,6 +280,15 @@ Deno.serve(async (req) => {
         results.push({ ok: true, token, data: parsedBody });
       }
     }
+
+    console.log("send-push-notification:finished", {
+      targetUserId: targetUserId || null,
+      targetBuyerId: targetBuyerId || null,
+      eventType,
+      attempted: tokens.length,
+      delivered: results.filter((item) => item.ok).length,
+      failed: results.filter((item) => !item.ok).length,
+    });
 
     return jsonResponse(200, {
       ok: true,
