@@ -3819,6 +3819,7 @@ export default function App() {
       fykeHeight: defaults.fykeHeight,
       price_per_kg: "",
       notes: "",
+      listForSale: false,
       offerToShops: false,
       offerToRestaurants: false,
       offerToWholesalers: false,
@@ -3862,6 +3863,7 @@ export default function App() {
     packageSizeG: "",
     packageCount: "",
     notes: "",
+    listForSale: false,
     offerToShops: false,
     offerToRestaurants: false,
     offerToWholesalers: false,
@@ -4417,8 +4419,8 @@ export default function App() {
     if (matches.length === 0) return null;
     return matches.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
   };
-  const shouldSendOffer = form.offerToShops || form.offerToRestaurants || form.offerToWholesalers;
-  const shouldSendProcessedOffer = processedForm.offerToShops || processedForm.offerToRestaurants || processedForm.offerToWholesalers;
+  const shouldSendOffer = form.listForSale && (form.offerToShops || form.offerToRestaurants || form.offerToWholesalers);
+  const shouldSendProcessedOffer = processedForm.listForSale && (processedForm.offerToShops || processedForm.offerToRestaurants || processedForm.offerToWholesalers);
   const currentOriginCity = form.originCity || form.municipality || "";
   const currentProcessedOriginCity = processedForm.originCity || processedForm.municipality || "";
   const derivedDeliveryArea = form.deliveryPossible && form.deliveryMethod === "Kuljetus järjestetään"
@@ -7584,6 +7586,9 @@ export default function App() {
   };
 
   const sendProcessedOfferEmail = async ({ formState, profileState, batchId }) => {
+    if (!formState.listForSale) {
+      return { skipped: true, sent: [], failed: [], recipientAnalysis: { matching: [], excluded: [] } };
+    }
     const rows = [{ species: formState.productName || formState.productType || "Jaloste-erä", kilos: formState.kilos, count: formState.packageCount }];
     const recipientAnalysis = analyzeOfferRecipients({
       offerToShops: formState.offerToShops,
@@ -7805,7 +7810,7 @@ export default function App() {
       setAuthError("Täytä kappalemäärä kaikille täplärapu- ja jokirapuerille ennen saaliin tallennusta.");
       return;
     }
-    if (form.deliveryPossible && form.deliveryMethod === "Kuljetus järjestetään") {
+    if (form.listForSale && form.deliveryPossible && form.deliveryMethod === "Kuljetus järjestetään") {
       if (!currentOriginCity) {
         setAuthError("Valitse lähtöpaikka ennen toimitettavan erän tallennusta.");
         return;
@@ -7865,9 +7870,9 @@ export default function App() {
       return;
     }
     const payload = rowsWithBatchIds.map((row) => ({
-      offer_to_shops: form.offerToShops,
-      offer_to_restaurants: form.offerToRestaurants,
-      offer_to_wholesalers: form.offerToWholesalers,
+      offer_to_shops: form.listForSale ? form.offerToShops : false,
+      offer_to_restaurants: form.listForSale ? form.offerToRestaurants : false,
+      offer_to_wholesalers: form.listForSale ? form.offerToWholesalers : false,
       date: form.date,
       area: form.area,
       municipality: form.municipality,
@@ -7877,17 +7882,17 @@ export default function App() {
       kilos: Number(row.kilos || 0),
       count: Number(row.count || 0),
       gear: form.gear,
-      delivery_possible: Boolean(form.deliveryPossible),
-      delivery_method: form.deliveryMethod,
-      transport_mode: form.transportMode || null,
-      origin_point_id: form.originPointId || null,
-      transport_company_id: form.transportCompanyId || null,
-      pickup_address: resolvedPickupAddress || null,
-      delivery_destinations: form.deliveryDestinations,
-      delivery_area: derivedDeliveryArea,
-      delivery_cost: parseLocaleNumber(form.deliveryCost),
-      earliest_delivery_date: form.earliestDeliveryDate || null,
-      cold_transport: form.coldTransport,
+      delivery_possible: form.listForSale ? Boolean(form.deliveryPossible) : false,
+      delivery_method: form.listForSale ? form.deliveryMethod : null,
+      transport_mode: form.listForSale ? (form.transportMode || null) : null,
+      origin_point_id: form.listForSale ? (form.originPointId || null) : null,
+      transport_company_id: form.listForSale ? (form.transportCompanyId || null) : null,
+      pickup_address: form.listForSale ? (resolvedPickupAddress || null) : null,
+      delivery_destinations: form.listForSale ? form.deliveryDestinations : [],
+      delivery_area: form.listForSale ? derivedDeliveryArea : null,
+      delivery_cost: form.listForSale ? parseLocaleNumber(form.deliveryCost) : null,
+      earliest_delivery_date: form.listForSale ? (form.earliestDeliveryDate || null) : null,
+      cold_transport: form.listForSale ? form.coldTransport : false,
       commercial_fishing_id: profile.commercial_fishing_id || null,
       commercial_fishing_vessel_id: selectedVesselId || null,
       price_per_kg: parseLocaleNumber(row.price_per_kg),
@@ -7974,6 +7979,7 @@ export default function App() {
       notes: "",
       price_per_kg: "",
       date: today(),
+      listForSale: false,
       offerToShops: false,
       offerToRestaurants: false,
       offerToWholesalers: false,
@@ -8011,7 +8017,7 @@ export default function App() {
       setAuthError("Täytä jaloste-erälle vähintään tuotenimi ja määrä kiloina.");
       return;
     }
-    if (processedForm.deliveryPossible && processedForm.deliveryMethod === "Kuljetus järjestetään") {
+    if (processedForm.listForSale && processedForm.deliveryPossible && processedForm.deliveryMethod === "Kuljetus järjestetään") {
       if (!currentProcessedOriginCity) {
         setAuthError("Valitse lähtöpaikka ennen toimitettavan jaloste-erän tallennusta.");
         return;
@@ -8083,20 +8089,20 @@ export default function App() {
       package_size_g: processedForm.packageSizeG === "" ? null : Number(processedForm.packageSizeG),
       package_count: processedForm.packageCount === "" ? null : Number(processedForm.packageCount),
       notes: processedForm.notes,
-      offer_to_shops: processedForm.offerToShops,
-      offer_to_restaurants: processedForm.offerToRestaurants,
-      offer_to_wholesalers: processedForm.offerToWholesalers,
-      delivery_possible: Boolean(processedForm.deliveryPossible),
-      delivery_method: processedForm.deliveryMethod,
-      transport_mode: processedForm.transportMode || null,
-      origin_point_id: processedForm.originPointId || null,
-      transport_company_id: processedForm.transportCompanyId || null,
-      pickup_address: resolvedProcessedPickupAddress || null,
-      delivery_destinations: processedForm.deliveryDestinations,
-      delivery_area: derivedProcessedDeliveryArea,
-      delivery_cost: processedForm.deliveryCost === "" ? null : Number(processedForm.deliveryCost),
-      earliest_delivery_date: processedForm.earliestDeliveryDate || null,
-      cold_transport: processedForm.coldTransport,
+      offer_to_shops: processedForm.listForSale ? processedForm.offerToShops : false,
+      offer_to_restaurants: processedForm.listForSale ? processedForm.offerToRestaurants : false,
+      offer_to_wholesalers: processedForm.listForSale ? processedForm.offerToWholesalers : false,
+      delivery_possible: processedForm.listForSale ? Boolean(processedForm.deliveryPossible) : false,
+      delivery_method: processedForm.listForSale ? processedForm.deliveryMethod : null,
+      transport_mode: processedForm.listForSale ? (processedForm.transportMode || null) : null,
+      origin_point_id: processedForm.listForSale ? (processedForm.originPointId || null) : null,
+      transport_company_id: processedForm.listForSale ? (processedForm.transportCompanyId || null) : null,
+      pickup_address: processedForm.listForSale ? (resolvedProcessedPickupAddress || null) : null,
+      delivery_destinations: processedForm.listForSale ? processedForm.deliveryDestinations : [],
+      delivery_area: processedForm.listForSale ? derivedProcessedDeliveryArea : null,
+      delivery_cost: processedForm.listForSale && processedForm.deliveryCost !== "" ? Number(processedForm.deliveryCost) : null,
+      earliest_delivery_date: processedForm.listForSale ? (processedForm.earliestDeliveryDate || null) : null,
+      cold_transport: processedForm.listForSale ? processedForm.coldTransport : false,
       commercial_fishing_id: profile.commercial_fishing_id || null,
       owner_user_id: profile.id,
       owner_name: profile.display_name,
@@ -8181,6 +8187,7 @@ export default function App() {
       packageSizeG: "",
       packageCount: "",
       notes: "",
+      listForSale: false,
       offerToShops: false,
       offerToRestaurants: false,
       offerToWholesalers: false,
@@ -9375,6 +9382,27 @@ export default function App() {
                 <div style={styles.field}><label>Määrä kg</label><input style={styles.input} type="number" value={processedForm.kilos} onChange={(e) => setProcessedForm({ ...processedForm, kilos: e.target.value })} placeholder="0" /></div>
                 <div style={styles.field}><label>Pakkauskoko g</label><input style={styles.input} type="number" value={processedForm.packageSizeG} onChange={(e) => setProcessedForm({ ...processedForm, packageSizeG: e.target.value })} placeholder="Esim. 500" /></div>
                 <div style={styles.field}><label>Pakkausten määrä</label><input style={styles.input} type="number" value={processedForm.packageCount} onChange={(e) => setProcessedForm({ ...processedForm, packageCount: e.target.value })} placeholder="Esim. 40" /></div>
+                <div style={{ ...styles.field, ...styles.fieldFull }}>
+                  <label style={styles.checkboxCard}>
+                    <input
+                      type="checkbox"
+                      checked={processedForm.listForSale}
+                      onChange={(e) => setProcessedForm((prev) => ({
+                        ...prev,
+                        listForSale: e.target.checked,
+                        ...(e.target.checked ? {} : {
+                          offerToShops: false,
+                          offerToRestaurants: false,
+                          offerToWholesalers: false,
+                          deliveryPossible: false,
+                        }),
+                      }))}
+                    />
+                    Laita jaloste-erä myyntiin
+                  </label>
+                </div>
+                {processedForm.listForSale ? (
+                  <>
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={processedForm.earliestDeliveryDate} onChange={(e) => setProcessedForm({ ...processedForm, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={processedForm.coldTransport} onChange={(e) => setProcessedForm({ ...processedForm, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
@@ -9590,6 +9618,8 @@ export default function App() {
                     <label><input type="checkbox" checked={processedForm.offerToWholesalers} onChange={(e) => setProcessedForm({ ...processedForm, offerToWholesalers: e.target.checked })} /> Tukkuihin</label>
                   </div>
                 </div>
+                  </>
+                ) : null}
                 <div style={{ ...styles.field, ...styles.fieldFull }}><label>Lisätiedot</label><textarea style={styles.textarea} value={processedForm.notes} onChange={(e) => setProcessedForm({ ...processedForm, notes: e.target.value })} placeholder="Esim. allergeenit, säilytys, pakkausmuoto, toimitusrytmi" /></div>
               </div>
               <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveProcessed} disabled={saving}>{saving ? "Tallennetaan..." : shouldSendProcessedOffer ? "Tallenna jaloste-erä ja lähetä tarjous" : "Tallenna jaloste-erä"}</button></div>
@@ -9770,6 +9800,27 @@ export default function App() {
                     />
                   </div>
                 ) : null}
+                <div style={{ ...styles.field, ...styles.fieldFull }}>
+                  <label style={styles.checkboxCard}>
+                    <input
+                      type="checkbox"
+                      checked={form.listForSale}
+                      onChange={(e) => setForm((prev) => ({
+                        ...prev,
+                        listForSale: e.target.checked,
+                        ...(e.target.checked ? {} : {
+                          offerToShops: false,
+                          offerToRestaurants: false,
+                          offerToWholesalers: false,
+                          deliveryPossible: false,
+                        }),
+                      }))}
+                    />
+                    Laita kalaerä myyntiin
+                  </label>
+                </div>
+                {form.listForSale ? (
+                  <>
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
@@ -9997,6 +10048,8 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+                  </>
+                ) : null}
                 <div style={{ ...styles.field, ...styles.fieldFull }}><label>Lisätiedot</label><textarea style={styles.textarea} placeholder="Esim. laatu, jäähdytys, toimitus, huomioita" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
               </div>
               <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis"}</button></div>
