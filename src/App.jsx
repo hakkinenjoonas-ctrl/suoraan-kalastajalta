@@ -4309,6 +4309,12 @@ export default function App() {
 
         const receivedHandle = await PushNotifications.addListener("pushNotificationReceived", async (notification) => {
           if (cancelled) return;
+          console.log("pushNotificationReceived", {
+            nativePlatform: true,
+            title: String(notification?.title || ""),
+            body: String(notification?.body || ""),
+            data: notification?.data || {},
+          });
           const title = String(notification?.title || "Suoraan Kalastajalta");
           const body = String(notification?.body || "");
           const data = notification?.data || {};
@@ -4318,6 +4324,11 @@ export default function App() {
             foregroundNotificationRef.current.key === notificationKey &&
             now - foregroundNotificationRef.current.at < 1500
           ) {
+            console.log("pushNotificationReceived:duplicate-suppressed", {
+              title,
+              body,
+              data,
+            });
             return;
           }
           foregroundNotificationRef.current = { key: notificationKey, at: now };
@@ -4334,20 +4345,34 @@ export default function App() {
                 extra: data,
               }],
             });
-          } catch {
-            // ignore foreground local notification failure
+            console.log("LocalNotifications.schedule:ok", {
+              title,
+              body,
+              channelId: PUSH_CHANNEL_ID,
+              data,
+            });
+          } catch (error) {
+            console.error("LocalNotifications.schedule:error", {
+              title,
+              body,
+              channelId: PUSH_CHANNEL_ID,
+              data,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
         });
         removeHandles.push(receivedHandle);
 
         const actionHandle = await PushNotifications.addListener("pushNotificationActionPerformed", (result) => {
           if (cancelled) return;
+          console.log("pushNotificationActionPerformed", result?.notification?.data || {});
           handleNotificationNavigation(result?.notification?.data || {});
         });
         removeHandles.push(actionHandle);
 
         const localActionHandle = await LocalNotifications.addListener("localNotificationActionPerformed", (result) => {
           if (cancelled) return;
+          console.log("localNotificationActionPerformed", result?.notification?.extra || {});
           handleNotificationNavigation(result?.notification?.extra || {});
         });
         removeHandles.push(localActionHandle);
