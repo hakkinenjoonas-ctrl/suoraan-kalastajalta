@@ -6945,7 +6945,7 @@ export default function App() {
     }
 
     if (failed.length > 0 && sent.length === 0) {
-      throw new Error(failed.map((item) => `${item.company_name}: ${item.error}`).join(" | "));
+      throw new Error(`Tarjouksen lähetys epäonnistui ${failed.length} ostajalle.`);
     }
 
     return { skipped: false, sent, failed, recipientAnalysis };
@@ -7086,7 +7086,7 @@ export default function App() {
     }
 
     if (failed.length > 0 && sent.length === 0) {
-      throw new Error(failed.map((item) => `${item.company_name}: ${item.error}`).join(" | "));
+      throw new Error(`Tarjouksen lähetys epäonnistui ${failed.length} ostajalle.`);
     }
 
     return { skipped: false, sent, failed };
@@ -7939,7 +7939,7 @@ export default function App() {
     }
 
     if (failed.length > 0 && sent.length === 0) {
-      throw new Error(failed.map((item) => `${item.company_name}: ${item.error}`).join(" | "));
+      throw new Error(`Tarjouksen lähetys epäonnistui ${failed.length} ostajalle.`);
     }
 
     return { skipped: false, sent, failed, recipientAnalysis };

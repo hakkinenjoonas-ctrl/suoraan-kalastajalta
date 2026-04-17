@@ -309,7 +309,7 @@ export function OfferedEntriesDetailsSection({
                         <div>
                           <div style={styles.entryBadges}>
                             <span style={buyerStatusBadgeStyle(offer.status, styles.badge)}>{buyerStatusLabel(offer.status)}</span>
-                            <span style={styles.badge}>{offer.buyer_company_name || offer.buyer_email || buyerTypeLabel(offer.buyer_type)}</span>
+                            <span style={styles.badge}>{buyerTypeLabel(offer.buyer_type)}</span>
                             {offer.delivery_destination_city ? <span style={styles.badge}>{offer.delivery_destination_city}</span> : null}
                           </div>
                           <div style={styles.muted}>{formatOfferDate(offer.updated_at || offer.created_at)}</div>
@@ -325,12 +325,11 @@ export function OfferedEntriesDetailsSection({
                     <div style={styles.entryHeader}>
                       <div>
                         <div style={styles.entryBadges}>
-                          <span style={styles.badge}>{offer.company_name}</span>
+                          <span style={styles.badge}>Anonyymi ostajaehdokas</span>
                           <span style={styles.badge}>{euro(offer.offer_price_per_kg)} / kg</span>
-                          <span style={styles.badge}>{offer.contact_name}</span>
                           <span style={styles.badge}>{offer.status}</span>
                         </div>
-                        <div style={styles.muted}>{offer.contact_email}{offer.contact_phone ? ` · ${offer.contact_phone}` : ""}</div>
+                        <div style={styles.muted}>Tarjous on tallennettu anonyymisti ilman vastaanottajan tunnistetietoja tähän näkymään.</div>
                         {offer.message ? <div style={styles.muted}>{offer.message}</div> : null}
                       </div>
                       {profile?.role === "owner" || profile?.id === entry.ownerUserId ? (
