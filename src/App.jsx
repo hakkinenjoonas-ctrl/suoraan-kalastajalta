@@ -2906,10 +2906,6 @@ function ReportsView({ entries, processedEntries, offers }) {
     entry.notes,
   ]);
 
-  const totalKg = filteredEntries.reduce((sum, entry) => sum + Number(entry.kilos || 0), 0);
-  const totalProcessedKg = filteredProcessedEntries.reduce((sum, entry) => sum + Number(entry.kilos || 0), 0);
-  const saleCount = filteredEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers).length;
-  const processedSaleCount = filteredProcessedEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers).length;
   const reportDateLabel = reportStartDate || reportEndDate
     ? `${reportStartDate || "alku"} - ${reportEndDate || "tänään"}`
     : "kaikki";
@@ -2964,136 +2960,122 @@ function ReportsView({ entries, processedEntries, offers }) {
 
   return (
     <div style={styles.stack}>
-      <div style={styles.grid2}>
-        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-          <strong>Excel-raportit</strong>
-          <div style={styles.noticeInfo}>Valitse raportille aikaväli. Voit ladata Excelin tai lähettää sen sähköpostiin liitetiedostona.</div>
-          <div style={styles.grid2}>
-            <div style={styles.field}>
-              <label>Alkupäivä</label>
-              <input
-                style={styles.input}
-                type="date"
-                value={reportStartDate}
-                onChange={(e) => setReportStartDate(e.target.value)}
-                max={reportEndDate || undefined}
-              />
-            </div>
-            <div style={styles.field}>
-              <label>Loppupäivä</label>
-              <input
-                style={styles.input}
-                type="date"
-                value={reportEndDate}
-                onChange={(e) => setReportEndDate(e.target.value)}
-                min={reportStartDate || undefined}
-              />
-            </div>
-          </div>
+      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+        <strong>Excel-raportit</strong>
+        <div style={styles.noticeInfo}>Valitse raportille aikaväli. Voit ladata Excelin tai lähettää sen sähköpostiin liitetiedostona.</div>
+        <div style={styles.grid2}>
           <div style={styles.field}>
-            <label>Sähköposti raportin lähetykseen</label>
+            <label>Alkupäivä</label>
             <input
               style={styles.input}
-              type="email"
-              value={reportEmail}
-              onChange={(e) => setReportEmail(e.target.value)}
-              placeholder="esim. raportit@yritys.fi"
+              type="date"
+              value={reportStartDate}
+              onChange={(e) => setReportStartDate(e.target.value)}
+              max={reportEndDate || undefined}
             />
           </div>
-          <div style={styles.muted}>Valittu aikaväli: {reportDateLabel}</div>
-          <div style={styles.row}>
-            <button
-              style={{ ...styles.button, ...styles.primaryButton }}
-              onClick={() => { void exportSpreadsheet(`saaliit-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, catchReportRows, "Saalisraportti"); }}
-            >
-              Lataa saalisraportti Exceliin
-            </button>
-            <button
-              style={styles.button}
-              onClick={() => {
-                const filename = `saaliit-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
-                setReportSendingKey("catch");
-                void sendReportEmail({
-                  filename,
-                  rows: catchReportRows,
-                  sheetName: "Saalisraportti",
-                  reportLabel: "Saalisraportti",
-                })
-                  .then(() => setAuthInfo(`Saalisraportti lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
-                  .catch((error) => setAuthError(String(error?.message || error)))
-                  .finally(() => setReportSendingKey(""));
-              }}
-              disabled={reportSendingKey === "catch"}
-            >
-              {reportSendingKey === "catch" ? "Lähetetään..." : "Lähetä saalisraportti sähköpostiin"}
-            </button>
-          </div>
-          <div style={styles.row}>
-            <button
-              style={styles.button}
-              onClick={() => { void exportSpreadsheet(`tarjoukset-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, offerReportRows, "Tarjoukset"); }}
-            >
-              Lataa tarjousraportti Exceliin
-            </button>
-            <button
-              style={styles.button}
-              onClick={() => {
-                const filename = `tarjoukset-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
-                setReportSendingKey("offers");
-                void sendReportEmail({
-                  filename,
-                  rows: offerReportRows,
-                  sheetName: "Tarjoukset",
-                  reportLabel: "Tarjousraportti",
-                })
-                  .then(() => setAuthInfo(`Tarjousraportti lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
-                  .catch((error) => setAuthError(String(error?.message || error)))
-                  .finally(() => setReportSendingKey(""));
-              }}
-              disabled={reportSendingKey === "offers"}
-            >
-              {reportSendingKey === "offers" ? "Lähetetään..." : "Lähetä tarjousraportti sähköpostiin"}
-            </button>
-          </div>
-          <div style={styles.row}>
-            <button
-              style={styles.button}
-              onClick={() => { void exportSpreadsheet(`jaloste-erat-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, processedReportRows, "Jaloste-erat"); }}
-            >
-              Lataa jaloste-erät Exceliin
-            </button>
-            <button
-              style={styles.button}
-              onClick={() => {
-                const filename = `jaloste-erat-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
-                setReportSendingKey("processed");
-                void sendReportEmail({
-                  filename,
-                  rows: processedReportRows,
-                  sheetName: "Jaloste-erat",
-                  reportLabel: "Jaloste-eräraportti",
-                })
-                  .then(() => setAuthInfo(`Jaloste-eräraportti lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
-                  .catch((error) => setAuthError(String(error?.message || error)))
-                  .finally(() => setReportSendingKey(""));
-              }}
-              disabled={reportSendingKey === "processed"}
-            >
-              {reportSendingKey === "processed" ? "Lähetetään..." : "Lähetä jaloste-erät sähköpostiin"}
-            </button>
+          <div style={styles.field}>
+            <label>Loppupäivä</label>
+            <input
+              style={styles.input}
+              type="date"
+              value={reportEndDate}
+              onChange={(e) => setReportEndDate(e.target.value)}
+              min={reportStartDate || undefined}
+            />
           </div>
         </div>
-
-        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-          <strong>Raporttiyhteenveto</strong>
-          <div style={styles.entryBadges}>
-            <span style={styles.badge}>{totalKg.toFixed(1)} kg raakasaalista</span>
-            <span style={styles.badge}>{totalProcessedKg.toFixed(1)} kg jalosteita</span>
-            <span style={styles.badge}>{saleCount} saaliserää myynnissä</span>
-            <span style={styles.badge}>{processedSaleCount} jaloste-erää myynnissä</span>
-            <span style={styles.badge}>{filteredOffers.length} tarjousta</span>
-          </div>
-          <div style={styles.muted}>Raportit sisältävät valitun aikavälin erät ja tarjoukset.</div>
+        <div style={styles.field}>
+          <label>Sähköposti raportin lähetykseen</label>
+          <input
+            style={styles.input}
+            type="email"
+            value={reportEmail}
+            onChange={(e) => setReportEmail(e.target.value)}
+            placeholder="esim. raportit@yritys.fi"
+          />
+        </div>
+        <div style={styles.muted}>Valittu aikaväli: {reportDateLabel}</div>
+        <div style={styles.row}>
+          <button
+            style={{ ...styles.button, ...styles.primaryButton }}
+            onClick={() => { void exportSpreadsheet(`saaliit-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, catchReportRows, "Saalisraportti"); }}
+          >
+            Lataa saalisraportti Exceliin
+          </button>
+          <button
+            style={styles.button}
+            onClick={() => {
+              const filename = `saaliit-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
+              setReportSendingKey("catch");
+              void sendReportEmail({
+                filename,
+                rows: catchReportRows,
+                sheetName: "Saalisraportti",
+                reportLabel: "Saalisraportti",
+              })
+                .then(() => setAuthInfo(`Saalisraportti lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
+                .catch((error) => setAuthError(String(error?.message || error)))
+                .finally(() => setReportSendingKey(""));
+            }}
+            disabled={reportSendingKey === "catch"}
+          >
+            {reportSendingKey === "catch" ? "Lähetetään..." : "Lähetä saalisraportti sähköpostiin"}
+          </button>
+        </div>
+        <div style={styles.row}>
+          <button
+            style={styles.button}
+            onClick={() => { void exportSpreadsheet(`tarjoukset-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, offerReportRows, "Tarjoukset"); }}
+          >
+            Lataa tarjousraportti Exceliin
+          </button>
+          <button
+            style={styles.button}
+            onClick={() => {
+              const filename = `tarjoukset-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
+              setReportSendingKey("offers");
+              void sendReportEmail({
+                filename,
+                rows: offerReportRows,
+                sheetName: "Tarjoukset",
+                reportLabel: "Tarjousraportti",
+              })
+                .then(() => setAuthInfo(`Tarjousraportti lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
+                .catch((error) => setAuthError(String(error?.message || error)))
+                .finally(() => setReportSendingKey(""));
+            }}
+            disabled={reportSendingKey === "offers"}
+          >
+            {reportSendingKey === "offers" ? "Lähetetään..." : "Lähetä tarjousraportti sähköpostiin"}
+          </button>
+        </div>
+        <div style={styles.row}>
+          <button
+            style={styles.button}
+            onClick={() => { void exportSpreadsheet(`jaloste-erat-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, processedReportRows, "Jaloste-erat"); }}
+          >
+            Lataa jaloste-erät Exceliin
+          </button>
+          <button
+            style={styles.button}
+            onClick={() => {
+              const filename = `jaloste-erat-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
+              setReportSendingKey("processed");
+              void sendReportEmail({
+                filename,
+                rows: processedReportRows,
+                sheetName: "Jaloste-erat",
+                reportLabel: "Jaloste-eräraportti",
+              })
+                .then(() => setAuthInfo(`Jaloste-eräraportti lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
+                .catch((error) => setAuthError(String(error?.message || error)))
+                .finally(() => setReportSendingKey(""));
+            }}
+            disabled={reportSendingKey === "processed"}
+          >
+            {reportSendingKey === "processed" ? "Lähetetään..." : "Lähetä jaloste-erät sähköpostiin"}
+          </button>
         </div>
       </div>
 
