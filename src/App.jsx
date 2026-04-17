@@ -116,10 +116,35 @@ function getSpeciesPriceUnit(label) {
   return isCrayfishSpecies(label) ? "kpl" : "kg";
 }
 
+function normalizeSpeciesDisplayLabel(label) {
+  const raw = String(label || "").trim();
+  if (!raw) return "Muu";
+
+  const collapsed = raw.replace(/\s+/g, " ").trim();
+  const lowerCollapsed = collapsed.toLowerCase();
+  const sortedSpecies = [...fishSpeciesCatalog]
+    .map((item) => item.name_fi)
+    .sort((left, right) => right.length - left.length);
+
+  const matchedSpecies = sortedSpecies.find((speciesName) => {
+    const lowerSpecies = speciesName.toLowerCase();
+    return lowerCollapsed === lowerSpecies || lowerCollapsed.startsWith(`${lowerSpecies} `) || lowerCollapsed.startsWith(`${lowerSpecies},`);
+  });
+
+  if (!matchedSpecies) return collapsed;
+
+  const suffix = collapsed.slice(matchedSpecies.length).trim();
+  if (!suffix) return matchedSpecies;
+
+  if (suffix.startsWith(",")) {
+    return `${matchedSpecies}${suffix}`;
+  }
+
+  return `${matchedSpecies} ${suffix}`;
+}
+
 function formatSpeciesForSale(label) {
-  const metadata = getSpeciesMetadata(label);
-  if (!metadata?.scientific) return String(label || "").trim() || "Muu";
-  return `${metadata.name_fi} (${metadata.scientific})`;
+  return normalizeSpeciesDisplayLabel(label);
 }
 
 function formatSpeciesForLabelTitle(label) {

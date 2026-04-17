@@ -73,6 +73,12 @@ describe("offerLogic", () => {
       })).toBe("Ahven");
     });
 
+    it("preserves product variants in push headlines", () => {
+      expect(buildPushEventHeadline({
+        species_summary: "Kuha filee: 15 kg",
+      })).toBe("Kuha filee");
+    });
+
     it("returns a default headline when species summary is missing", () => {
       expect(buildPushEventHeadline({})).toBe("Kalaerä");
     });
