@@ -10107,7 +10107,7 @@ export default function App() {
                     <div key={row.id} style={{
                       ...speciesRow,
                       gridTemplateColumns: isCrayfishSpecies(getSpeciesRowLabel(row))
-                        ? "1.4fr 0.8fr 0.8fr auto"
+                        ? "1.4fr 0.8fr auto"
                         : speciesRow.gridTemplateColumns,
                     }}>
                       <div style={styles.field}>
