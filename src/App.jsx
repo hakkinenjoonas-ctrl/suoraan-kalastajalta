@@ -7517,19 +7517,20 @@ export default function App() {
   };
 
   const onReserve = async (offer) => {
-    const reserved = isMixedOffer(offer)
-      ? Number(offer.total_kilos || 0)
-      : buyerAction.reserved_kilos === ""
-      ? Number(offer.total_kilos || 0)
-      : Number(buyerAction.reserved_kilos);
-    const msg = buyerAction.buyer_message?.trim() || null;
+    const confirmed = typeof window === "undefined"
+      ? true
+      : window.confirm("Haluatko varmasti ostaa tämän kalaerän?");
+
+    if (!confirmed) return;
+
+    const reserved = Number(offer.total_kilos || 0);
     const ok = await buyerUpdateOffer(offer.id, {
       status: "reserved",
       reserved_kilos: reserved,
-      buyer_message: msg,
+      buyer_message: null,
     });
     if (ok) {
-      const updatedOffer = { ...offer, status: "reserved", reserved_kilos: reserved, buyer_message: msg };
+      const updatedOffer = { ...offer, status: "reserved", reserved_kilos: reserved, buyer_message: null };
       await sendBuyerResponseEmail(updatedOffer, "Ostaja varasi erän");
       await sendPushEvent({
         targetUserId: offer?.seller_user_id || "",
@@ -8797,7 +8798,6 @@ export default function App() {
                     const offerCatchDates = getOfferSummaryCatchDates(o.species_summary);
                     const buyerOfferActionsOpen = ["sent", "viewed", "countered"].includes(o.status);
                     const showCounterAction = isActive && buyerActionMode === "counter";
-                    const showReserveAction = isActive && buyerActionMode === "reserve";
                     return (
                       <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
                         <div style={{ marginBottom: 10 }}>
@@ -8889,20 +8889,18 @@ export default function App() {
                               <button
                                 style={{
                                   ...styles.button,
-                                  ...(showReserveAction ? styles.primaryButton : {}),
-                                  background: showReserveAction ? "#16a34a" : "#f0fdf4",
+                                  background: "#f0fdf4",
                                   borderColor: "#86efac",
-                                  color: showReserveAction ? "#fff" : "#166534",
+                                  color: "#166534",
                                 }}
-                                onClick={() => {
+                                onClick={async () => {
                                   if (o.status === "sent") {
-                                    buyerUpdateOffer(o.id, { status: "viewed" });
+                                    await buyerUpdateOffer(o.id, { status: "viewed" });
                                   }
-                                  setBuyerActionMode("reserve");
-                                  setBuyerActiveOfferId(isActive && buyerActionMode === "reserve" ? null : o.id);
+                                  await onReserve(o);
                                 }}
                               >
-                                {showReserveAction ? "Sulje varaus" : "Varaa erä"}
+                                Varaa erä
                               </button>
                             </>
                           ) : (
@@ -9007,33 +9005,6 @@ export default function App() {
                         </div>
                         <div style={styles.row}>
                           <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onSubmitCounter(o)}>Lähetä vastatarjous</button>
-                        </div>
-                        </>
-                        ) : null}
-                        {showReserveAction ? (
-                        <>
-                        {!mixedOffer ? (
-                          <div style={styles.field}>
-                            <label>Varaa kg (tyhjä = koko erä)</label>
-                            <input style={styles.input} type="number" value={buyerAction.reserved_kilos} onChange={(e) => setBuyerAction((p) => ({ ...p, reserved_kilos: e.target.value }))} placeholder={`Max ${o.total_kilos}`} />
-                          </div>
-                        ) : null}
-                        {mixedOffer ? (
-                          <div style={styles.noticeInfo}>
-                            Monilajinen erä varataan aina kokonaisuutena. Yksittäisiä kalalajeja ei voi varata erikseen tästä tarjouksesta.
-                          </div>
-                        ) : null}
-                        <div style={styles.field}>
-                          <label>Viesti myyjälle</label>
-                          <textarea
-                            style={styles.textarea}
-                            value={buyerAction.buyer_message}
-                            onChange={(e) => setBuyerAction((p) => ({ ...p, buyer_message: e.target.value }))}
-                            placeholder="Ohje: viesti myyjälle toimitetaan varauksen yhteydessä. Voit ilmoittaa esim. milloin tuotteen voi toimittaa."
-                          />
-                        </div>
-                        <div style={styles.row}>
-                          <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onReserve(o)}>{o.status === "reserved" ? "Päivitä varaus" : "Varaa erä"}</button>
                         </div>
                         </>
                         ) : null}
