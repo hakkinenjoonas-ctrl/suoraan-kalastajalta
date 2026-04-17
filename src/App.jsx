@@ -7723,6 +7723,18 @@ export default function App() {
       });
     }
 
+    if (status === "rejected") {
+      await sendPushEvent({
+        targetBuyerId: offer?.buyer_id || "",
+        title: "Tarjous hylätty",
+        body: `${offer?.seller_name || "Myyjä"} hylkäsi tarjouksen kaupasta ${buildPushEventHeadline({ ...offer, ...updatePayload })}.`,
+        eventType: "offer_rejected",
+        route: "offers",
+        offerId: offer?.id,
+        batchId: offer?.batch_id,
+      });
+    }
+
     await refreshBuyerOffers();
     setRefreshTick((prev) => prev + 1);
   };
