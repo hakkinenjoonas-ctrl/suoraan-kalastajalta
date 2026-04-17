@@ -297,6 +297,7 @@ export function OfferedEntriesDetailsSection({
                 <div style={styles.small}>Suorat tarjoukset tälle erälle: {entryOffers.length}</div>
                 <div style={styles.small}>Tarjous lähetetty {buyerMatches.length} ostajalle</div>
                 {reservation?.status === "reserved" ? <div style={styles.noticeInfo}>Erä on tällä hetkellä varattu. Voit hyväksyä varauksen tai hylätä sen ostajien vastauksista.</div> : null}
+                {reservation?.status === "reserved" ? <div style={styles.noticeInfo}>Ostajan nimi ja yhteystiedot näkyvät vasta, kun hyväksyt varauksen.</div> : null}
                 {reservation?.status === "accepted" ? <div style={styles.noticeSuccess}>Erä on merkitty myydyksi hyväksytyn varauksen perusteella.</div> : null}
                 <div style={styles.small}>Avoimia tarjouksia: {openBuyerOffers.length}</div>
                 {openBuyerOffers.length === 0 ? (
@@ -443,6 +444,12 @@ export function OfferedEntriesDetailsSection({
                             <div style={{ ...styles.entry, background: "#fff", padding: 12, marginBottom: 10 }}>
                               <div style={styles.muted}><strong>Ostajan viesti</strong></div>
                               <div>{offer.buyer_message}</div>
+                            </div>
+                          ) : null}
+
+                          {!revealIdentity ? (
+                            <div style={{ ...styles.noticeInfo, marginBottom: 10 }}>
+                              Ostajan tiedot avautuvat vasta, kun hyväksyt varauksen tai vastatarjouksen.
                             </div>
                           ) : null}
 

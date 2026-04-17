@@ -4500,6 +4500,13 @@ export default function App() {
     return "Anonyymi ostaja";
   };
 
+  const getBuyerPrivateUntilAcceptedLabel = (offer) => {
+    if (shouldRevealBuyerIdentity(offer?.status)) {
+      return offer?.buyer_company_name || offer?.buyer_email || "Ostaja";
+    }
+    return buyerTypeLabel(offer?.buyer_type);
+  };
+
   const shouldRevealBuyerIdentity = (status) => status === "accepted";
 
   const getSellerIdentityForBuyer = (offer) => {
@@ -7498,7 +7505,7 @@ export default function App() {
       await sendPushEvent({
         targetUserId: offer?.seller_user_id || "",
         title: "Uusi vastatarjous",
-        body: `${offer?.buyer_company_name || "Ostaja"} teki vastatarjouksen kaupasta ${buildPushEventHeadline(updatedOffer)}.`,
+        body: `${getBuyerPrivateUntilAcceptedLabel(updatedOffer)} teki vastatarjouksen kaupasta ${buildPushEventHeadline(updatedOffer)}.`,
         eventType: "buyer_countered",
         route: "offers",
         offerId: offer?.id,
@@ -7535,7 +7542,7 @@ export default function App() {
       await sendPushEvent({
         targetUserId: offer?.seller_user_id || "",
         title: "Erä varattu",
-        body: `${offer?.buyer_company_name || "Ostaja"} varasi erän ${buildPushEventHeadline(updatedOffer)}.`,
+        body: `${getBuyerPrivateUntilAcceptedLabel(updatedOffer)} varasi erän ${buildPushEventHeadline(updatedOffer)}.`,
         eventType: "buyer_reserved",
         route: "offers",
         offerId: offer?.id,
