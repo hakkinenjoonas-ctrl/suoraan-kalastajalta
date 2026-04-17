@@ -2137,7 +2137,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
       justifyContent: "center",
       padding: isMobile ? 8 : 20,
       zIndex: 2000,
-    }}>
+    }} onClick={onClose}>
       <div style={{
         ...styles.card,
         width: isMobile ? "calc(100vw - 16px)" : "min(980px, 100%)",
@@ -2145,7 +2145,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
         overflowY: "auto",
         overflowX: "hidden",
         padding: isMobile ? 14 : 24,
-      }}>
+      }} onClick={(event) => event.stopPropagation()}>
         <div style={styles.rowBetween}>
           <div>
             <strong style={{ fontSize: 22 }}>Tulosta etiketit</strong>
@@ -4175,6 +4175,7 @@ export default function App() {
   const fisherInfoSyncingRef = useRef(false);
   const accountFormInitializedRef = useRef(false);
   const catchDefaultsStorageKeyRef = useRef(getCatchFormDefaultsStorageKey(null));
+  const labelModalHistoryActiveRef = useRef(false);
 
   useEffect(() => {
     const nextStorageKey = getCatchFormDefaultsStorageKey(profile);
@@ -4213,6 +4214,40 @@ export default function App() {
     }));
     setProcessedAreaSelector(resolveAreaSelectorValue("Saimaa", defaults.customLakeAreas, defaults.customSeaAreas));
   }, [profile]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handlePopState = () => {
+      if (!labelPrintEntry) return;
+      labelModalHistoryActiveRef.current = false;
+      setLabelPrintEntry(null);
+    };
+
+    if (labelPrintEntry && !labelModalHistoryActiveRef.current) {
+      window.history.pushState({ labelPrintModal: true }, "");
+      labelModalHistoryActiveRef.current = true;
+      window.addEventListener("popstate", handlePopState);
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    }
+
+    if (!labelPrintEntry) {
+      labelModalHistoryActiveRef.current = false;
+    }
+
+    return undefined;
+  }, [labelPrintEntry]);
+
+  const closeLabelPrintModal = useCallback(() => {
+    if (typeof window !== "undefined" && labelModalHistoryActiveRef.current) {
+      labelModalHistoryActiveRef.current = false;
+      window.history.back();
+      return;
+    }
+    setLabelPrintEntry(null);
+  }, []);
   const fisherInfoInitializedRef = useRef(false);
 
   const getMatchingAllowedRole = useCallback((allowedRows, currentProfile) => {
@@ -8598,10 +8633,14 @@ export default function App() {
 
   const openCatchLabelPrintDialog = (entry, mode = "print") => {
     if (!entry) return;
-    if (mode === "pdf") {
+    const resolvedLabelCount = Math.max(1, Number(labelPrintCount || 1));
+    const resolvedPrintFormat = labelPrintFormat;
+    setLabelPrintEntry(null);
+
+    if (mode === "pdf" || (mode === "print" && isNativeCapacitorApp())) {
       void (async () => {
         try {
-          const doc = await buildCatchLabelPdf(entry, profile, labelPrintCount, labelPrintFormat);
+          const doc = await buildCatchLabelPdf(entry, profile, resolvedLabelCount, resolvedPrintFormat);
           await presentPdfDocument(doc, buildCatchLabelPdfFileName(entry));
         } catch (error) {
           console.error("Etiketti-PDF:n luonti epäonnistui:", error);
@@ -8610,7 +8649,7 @@ export default function App() {
       })();
       return;
     }
-    const html = buildCatchLabelPrintHtml(entry, profile, labelPrintCount, labelPrintFormat);
+    const html = buildCatchLabelPrintHtml(entry, profile, resolvedLabelCount, resolvedPrintFormat);
     const printWindow = window.open("", "_blank", "width=1200,height=900");
     if (!printWindow) {
       setAuthError("Tulostusikkunan avaaminen estettiin selaimessa.");
@@ -10744,7 +10783,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             setLabelCount={setLabelPrintCount}
             printFormat={labelPrintFormat}
             setPrintFormat={setLabelPrintFormat}
-            onClose={() => setLabelPrintEntry(null)}
+            onClose={closeLabelPrintModal}
             onGeneratePdf={() => openCatchLabelPrintDialog(labelPrintEntry, "pdf")}
             onPrint={() => openCatchLabelPrintDialog(labelPrintEntry, "print")}
           />
