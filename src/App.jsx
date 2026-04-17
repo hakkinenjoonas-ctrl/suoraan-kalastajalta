@@ -10103,36 +10103,43 @@ export default function App() {
                 )}
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
                   <div style={styles.rowBetween}><div><label>KALAERÄ</label></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
-                  {speciesRows.map((row, index) => (
-                    <div key={row.id} style={{
-                      ...speciesRow,
-                      gridTemplateColumns: isCrayfishSpecies(getSpeciesRowLabel(row))
-                        ? "1.4fr 0.8fr auto"
-                        : speciesRow.gridTemplateColumns,
-                    }}>
-                      <div style={styles.field}>
-                        <label>Laji {index + 1}</label>
-                        <FishSpeciesInput value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)} />
-                        {row.species === "Muu" ? <input style={{ ...styles.input, marginTop: 8 }} placeholder="Kirjoita kalalaji" value={row.customSpecies} onChange={(e) => updateSpeciesRow(row.id, "customSpecies", e.target.value)} /> : null}
+                  {speciesRows.map((row, index) => {
+                    const isCrayfishRow = isCrayfishSpecies(getSpeciesRowLabel(row));
+                    return (
+                      <div key={row.id} style={{
+                        ...speciesRow,
+                        ...(isCrayfishRow
+                          ? {
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "stretch",
+                            }
+                          : {}),
+                      }}>
+                        <div style={styles.field}>
+                          <label>Laji {index + 1}</label>
+                          <FishSpeciesInput value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)} />
+                          {row.species === "Muu" ? <input style={{ ...styles.input, marginTop: 8 }} placeholder="Kirjoita kalalaji" value={row.customSpecies} onChange={(e) => updateSpeciesRow(row.id, "customSpecies", e.target.value)} /> : null}
+                        </div>
+                        {!isCrayfishRow ? (
+                          <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
+                        ) : null}
+                        <div style={styles.field}>
+                          <label>{`Hinta ALV 0 % (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
+                          <input
+                            style={styles.input}
+                            type="text"
+                            inputMode="decimal"
+                            placeholder={isCrayfishRow ? "Esim. 2,00" : "Esim. 5,50"}
+                            value={row.price_per_kg}
+                            onChange={(e) => updateSpeciesRow(row.id, "price_per_kg", e.target.value)}
+                          />
+                        </div>
+                        <div style={styles.field}><label>{isCrayfishRow ? "Kpl (pakollinen)" : "Kpl"}</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
+                        <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
                       </div>
-                      {!isCrayfishSpecies(getSpeciesRowLabel(row)) ? (
-                        <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
-                      ) : null}
-                      <div style={styles.field}>
-                        <label>{`Hinta ALV 0 % (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
-                        <input
-                          style={styles.input}
-                          type="text"
-                          inputMode="decimal"
-                          placeholder={isCrayfishSpecies(getSpeciesRowLabel(row)) ? "Esim. 2,00" : "Esim. 5,50"}
-                          value={row.price_per_kg}
-                          onChange={(e) => updateSpeciesRow(row.id, "price_per_kg", e.target.value)}
-                        />
-                      </div>
-                      <div style={styles.field}><label>{isCrayfishSpecies(getSpeciesRowLabel(row)) ? "Kpl (pakollinen)" : "Kpl"}</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
-                      <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm((prev) => ({ ...prev, gear: e.target.value, netHeight: e.target.value === "Verkko" ? prev.netHeight : "", netMeshSize: e.target.value === "Verkko" ? prev.netMeshSize : "", fykeHeight: e.target.value === "Rysä" ? prev.fykeHeight : "" }))}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
                 <div style={styles.field}>
