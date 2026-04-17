@@ -1741,10 +1741,7 @@ function calculateCommissionDetails(offer, commissionRate = 0.03) {
 }
 
 async function exportSpreadsheet(filename, rows, sheetName = "Raportti") {
-  const worksheet = XLSX.utils.aoa_to_sheet(rows);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, String(sheetName || "Raportti").slice(0, 31));
-  const workbookArray = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const workbookArray = buildSpreadsheetArray(rows, sheetName);
   const blob = new Blob([workbookArray], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
@@ -1758,10 +1755,7 @@ async function exportSpreadsheet(filename, rows, sheetName = "Raportti") {
 }
 
 async function shareSpreadsheet(filename, rows, sheetName = "Raportti") {
-  const worksheet = XLSX.utils.aoa_to_sheet(rows);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, String(sheetName || "Raportti").slice(0, 31));
-  const workbookArray = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const workbookArray = buildSpreadsheetArray(rows, sheetName);
   const blob = new Blob([workbookArray], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
@@ -1772,6 +1766,13 @@ async function shareSpreadsheet(filename, rows, sheetName = "Raportti") {
     shareText: "Valitse sähköpostisovellus tai muu tapa jakaa raportti",
     dialogTitle: "Lähetä raportti",
   });
+}
+
+function buildSpreadsheetArray(rows, sheetName = "Raportti") {
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, String(sheetName || "Raportti").slice(0, 31));
+  return XLSX.write(workbook, { bookType: "xlsx", type: "array" });
 }
 
 function runLocalTests() {
@@ -2772,6 +2773,8 @@ function WholesaleOffersView({
 function ReportsView({ entries, processedEntries, offers }) {
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
+  const [reportEmail, setReportEmail] = useState("");
+  const [reportSendingKey, setReportSendingKey] = useState("");
 
   const isWithinReportRange = (value) => {
     const normalizedValue = String(value || "").trim().slice(0, 10);
@@ -2915,12 +2918,56 @@ function ReportsView({ entries, processedEntries, offers }) {
   const offerReportRows = [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows];
   const processedReportRows = [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows];
 
+  const resolveReportEmail = () => {
+    const existingEmail = normalizeEmail(reportEmail);
+    if (existingEmail) return existingEmail;
+    const promptedEmail = window.prompt("Anna sähköpostiosoite, johon raportti lähetetään:", "");
+    const normalizedPromptedEmail = normalizeEmail(promptedEmail);
+    if (!normalizedPromptedEmail) {
+      throw new Error("Lisää sähköpostiosoite, johon raportti lähetetään.");
+    }
+    setReportEmail(normalizedPromptedEmail);
+    return normalizedPromptedEmail;
+  };
+
+  const sendReportEmail = async ({ filename, rows, sheetName, reportLabel }) => {
+    const normalizedEmail = resolveReportEmail();
+
+    const workbookArray = buildSpreadsheetArray(rows, sheetName);
+    const blob = new Blob([workbookArray], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const dataUrl = await blobToDataUrl(blob);
+    const base64Content = String(dataUrl || "").split(",")[1] || "";
+    if (!base64Content) {
+      throw new Error("Raporttitiedoston muodostus epäonnistui.");
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) {
+      throw new Error("Istunto puuttuu. Kirjaudu uudelleen ennen raportin lähetystä.");
+    }
+
+    const result = await invokeEdgeFunctionAuthenticated("send-report-email", {
+      toEmail: normalizedEmail,
+      fileName: filename,
+      fileBase64: base64Content,
+      reportLabel,
+      dateRangeLabel: reportDateLabel,
+    }, accessToken);
+
+    if (result?.error) {
+      throw new Error(result.error.message || "Raportin lähetys epäonnistui.");
+    }
+  };
+
   return (
     <div style={styles.stack}>
       <div style={styles.grid2}>
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
           <strong>Excel-raportit</strong>
-          <div style={styles.noticeInfo}>Valitse raportille aikaväli. Voit ladata Excelin tai lähettää sen suoraan sähköpostiin jakovalikon kautta.</div>
+          <div style={styles.noticeInfo}>Valitse raportille aikaväli. Voit ladata Excelin tai lähettää sen sähköpostiin liitetiedostona.</div>
           <div style={styles.grid2}>
             <div style={styles.field}>
               <label>Alkupäivä</label>
@@ -2943,6 +2990,16 @@ function ReportsView({ entries, processedEntries, offers }) {
               />
             </div>
           </div>
+          <div style={styles.field}>
+            <label>Sähköposti raportin lähetykseen</label>
+            <input
+              style={styles.input}
+              type="email"
+              value={reportEmail}
+              onChange={(e) => setReportEmail(e.target.value)}
+              placeholder="esim. raportit@yritys.fi"
+            />
+          </div>
           <div style={styles.muted}>Valittu aikaväli: {reportDateLabel}</div>
           <div style={styles.row}>
             <button
@@ -2953,9 +3010,22 @@ function ReportsView({ entries, processedEntries, offers }) {
             </button>
             <button
               style={styles.button}
-              onClick={() => { void shareSpreadsheet(`saaliit-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, catchReportRows, "Saalisraportti"); }}
+              onClick={() => {
+                const filename = `saaliit-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
+                setReportSendingKey("catch");
+                void sendReportEmail({
+                  filename,
+                  rows: catchReportRows,
+                  sheetName: "Saalisraportti",
+                  reportLabel: "Saalisraportti",
+                })
+                  .then(() => setAuthInfo(`Saalisraportti lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
+                  .catch((error) => setAuthError(String(error?.message || error)))
+                  .finally(() => setReportSendingKey(""));
+              }}
+              disabled={reportSendingKey === "catch"}
             >
-              Lähetä saalisraportti sähköpostiin
+              {reportSendingKey === "catch" ? "Lähetetään..." : "Lähetä saalisraportti sähköpostiin"}
             </button>
           </div>
           <div style={styles.row}>
@@ -2967,9 +3037,22 @@ function ReportsView({ entries, processedEntries, offers }) {
             </button>
             <button
               style={styles.button}
-              onClick={() => { void shareSpreadsheet(`tarjoukset-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, offerReportRows, "Tarjoukset"); }}
+              onClick={() => {
+                const filename = `tarjoukset-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
+                setReportSendingKey("offers");
+                void sendReportEmail({
+                  filename,
+                  rows: offerReportRows,
+                  sheetName: "Tarjoukset",
+                  reportLabel: "Tarjousraportti",
+                })
+                  .then(() => setAuthInfo(`Tarjousraportti lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
+                  .catch((error) => setAuthError(String(error?.message || error)))
+                  .finally(() => setReportSendingKey(""));
+              }}
+              disabled={reportSendingKey === "offers"}
             >
-              Lähetä tarjousraportti sähköpostiin
+              {reportSendingKey === "offers" ? "Lähetetään..." : "Lähetä tarjousraportti sähköpostiin"}
             </button>
           </div>
           <div style={styles.row}>
@@ -2981,9 +3064,22 @@ function ReportsView({ entries, processedEntries, offers }) {
             </button>
             <button
               style={styles.button}
-              onClick={() => { void shareSpreadsheet(`jaloste-erat-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, processedReportRows, "Jaloste-erat"); }}
+              onClick={() => {
+                const filename = `jaloste-erat-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
+                setReportSendingKey("processed");
+                void sendReportEmail({
+                  filename,
+                  rows: processedReportRows,
+                  sheetName: "Jaloste-erat",
+                  reportLabel: "Jaloste-eräraportti",
+                })
+                  .then(() => setAuthInfo(`Jaloste-eräraportti lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
+                  .catch((error) => setAuthError(String(error?.message || error)))
+                  .finally(() => setReportSendingKey(""));
+              }}
+              disabled={reportSendingKey === "processed"}
             >
-              Lähetä jaloste-erät sähköpostiin
+              {reportSendingKey === "processed" ? "Lähetetään..." : "Lähetä jaloste-erät sähköpostiin"}
             </button>
           </div>
         </div>
