@@ -101,6 +101,7 @@ function getSpeciesMetadata(label) {
   const normalized = String(label || "")
     .split(",")[0]
     .replace(/\b(filee|filet|avattu|perattu|päätön|nyljetty)\b/gi, "")
+    .replace(/\b\d+\+\s*cm\b/gi, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -1562,6 +1563,7 @@ function normalizeFishSpeciesLabel(value) {
   return String(value || "")
     .split(",")[0]
     .replace(/\b(filee|filet|avattu|perattu|päätön|nyljetty)\b/gi, "")
+    .replace(/\b\d+\+\s*cm\b/gi, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -6003,7 +6005,14 @@ export default function App() {
   const updateSpeciesRow = (id, field, value) => setSpeciesRows((prev) => prev.map((row) => {
     if (row.id !== id) return row;
     if (field === "species") {
-      return { ...row, species: value, customSpecies: value === "Muu" ? row.customSpecies : "" };
+      const nextLabel = value === "Muu" ? row.customSpecies : value;
+      const crayfish = isCrayfishSpecies(nextLabel);
+      return {
+        ...row,
+        species: value,
+        kilos: crayfish ? "" : row.kilos,
+        customSpecies: value === "Muu" ? row.customSpecies : "",
+      };
     }
     return { ...row, [field]: value };
   }));
@@ -8195,10 +8204,10 @@ export default function App() {
     const validRows = speciesRows.filter((row) => {
       const kilos = Number(row.kilos || 0);
       const count = Number(row.count || 0);
-      return isCrayfishSpecies(getSpeciesRowLabel(row)) ? kilos > 0 || count > 0 : kilos > 0;
+      return isCrayfishSpecies(getSpeciesRowLabel(row)) ? count > 0 : kilos > 0;
     });
     if (!validRows.length) {
-      setAuthError("Täytä saaliille määrä ennen tallennusta. Ravuille vähintään kappalemäärä, muille lajeille vähintään kilot.");
+      setAuthError("Täytä saaliille määrä ennen tallennusta. Ravuille kappalemäärä, muille lajeille vähintään kilot.");
       return;
     }
     if (validRows.some((row) => row.species === "Muu" && !String(row.customSpecies || "").trim())) {
@@ -10095,13 +10104,20 @@ export default function App() {
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
                   <div style={styles.rowBetween}><div><label>KALAERÄ</label></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
                   {speciesRows.map((row, index) => (
-                    <div key={row.id} style={speciesRow}>
+                    <div key={row.id} style={{
+                      ...speciesRow,
+                      gridTemplateColumns: isCrayfishSpecies(getSpeciesRowLabel(row))
+                        ? "1.4fr 0.8fr 0.8fr auto"
+                        : speciesRow.gridTemplateColumns,
+                    }}>
                       <div style={styles.field}>
                         <label>Laji {index + 1}</label>
                         <FishSpeciesInput value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)} />
                         {row.species === "Muu" ? <input style={{ ...styles.input, marginTop: 8 }} placeholder="Kirjoita kalalaji" value={row.customSpecies} onChange={(e) => updateSpeciesRow(row.id, "customSpecies", e.target.value)} /> : null}
                       </div>
-                      <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
+                      {!isCrayfishSpecies(getSpeciesRowLabel(row)) ? (
+                        <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
+                      ) : null}
                       <div style={styles.field}>
                         <label>{`Hinta ALV 0 % (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
                         <input

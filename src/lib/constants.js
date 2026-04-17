@@ -37,13 +37,25 @@ export const fishSpeciesVariants = [
   "Lohi filee",
   "Siika filee",
   "Taimen filee",
+  "Täplärapu 10+ cm",
+  "Täplärapu 11+ cm",
+  "Täplärapu 12+ cm",
+  "Jokirapu 10+ cm",
+  "Jokirapu 11+ cm",
+  "Jokirapu 12+ cm",
 ];
 
 export const fishSpeciesByName = Object.fromEntries(
   fishSpeciesCatalog.map((item) => [item.name_fi.toLowerCase(), item])
 );
 
-export const fishSpecies = [...fishSpeciesCatalog.map((item) => item.name_fi), ...fishSpeciesVariants, "Muu"];
+export const fishSpecies = [
+  ...fishSpeciesCatalog
+    .map((item) => item.name_fi)
+    .filter((name) => name !== "Täplärapu" && name !== "Jokirapu"),
+  ...fishSpeciesVariants,
+  "Muu",
+];
 export const gearTypes = ["Rysä", "Paunetti/avorysä", "Verkko", "Katiska", "Merta", "Trooli", "Nuotta", "Vapaväline", "Muu"];
 export const CATCH_FORM_DEFAULTS_KEY = "catch_form_defaults_v1";
 export const ONBOARDING_GUIDE_MAX_VIEWS = 3;
