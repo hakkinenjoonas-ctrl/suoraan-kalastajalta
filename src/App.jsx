@@ -891,6 +891,16 @@ function shouldSkipDuplicateFilePresentation(fileName) {
   return false;
 }
 
+function isShareCancelledError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("share canceled") ||
+    message.includes("share cancelled") ||
+    message.includes("user canceled") ||
+    message.includes("user cancelled") ||
+    message.includes("cancelled") ||
+    message.includes("canceled");
+}
+
 async function presentFileBlob(blob, fileName, options = {}) {
   if (typeof window === "undefined") return;
   if (shouldSkipDuplicateFilePresentation(fileName)) return;
@@ -912,12 +922,19 @@ async function presentFileBlob(blob, fileName, options = {}) {
       recursive: true,
     });
 
-    await Share.share({
-      title: String(options.shareTitle || fileName),
-      text: String(options.shareText || "Avaa tai jaa tiedosto"),
-      url: uri,
-      dialogTitle: String(options.dialogTitle || fileName),
-    });
+    try {
+      await Share.share({
+        title: String(options.shareTitle || fileName),
+        text: String(options.shareText || "Avaa tai jaa tiedosto"),
+        url: uri,
+        dialogTitle: String(options.dialogTitle || fileName),
+      });
+    } catch (error) {
+      if (isShareCancelledError(error)) {
+        return;
+      }
+      throw error;
+    }
     return;
   }
 
