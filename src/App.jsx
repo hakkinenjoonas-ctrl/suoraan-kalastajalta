@@ -148,18 +148,11 @@ function formatSpeciesForSale(label) {
 }
 
 function formatSpeciesForLabelTitle(label) {
-  const raw = String(label || "").trim();
-  if (!raw) return "Muu";
+  const normalized = normalizeSpeciesDisplayLabel(label);
+  if (!normalized) return "Muu";
 
-  const [baseSpecies, ...variantParts] = raw.split(",");
-  const metadata = getSpeciesMetadata(baseSpecies);
-  const speciesName = metadata?.name_fi || String(baseSpecies || "").trim() || "Muu";
-  const variantText = variantParts
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join(", ");
-
-  return variantText ? `${speciesName}, ${variantText}` : speciesName;
+  const metadata = getSpeciesMetadata(normalized);
+  return metadata?.name_fi || normalized;
 }
 
 function formatSpeciesSummaryLine(label, kilos, count) {
@@ -567,10 +560,16 @@ function getCatchLabelScientificName(speciesValue) {
 }
 
 function getCatchLabelProductForm(speciesValue) {
-  const text = String(speciesValue || "").trim();
-  if (!text) return "";
-  const parts = text.split(",");
-  return parts.length > 1 ? parts.slice(1).join(",").trim() : "";
+  const normalized = normalizeSpeciesDisplayLabel(speciesValue);
+  if (!normalized) return "";
+
+  const metadata = getSpeciesMetadata(normalized);
+  const baseSpecies = String(metadata?.name_fi || "").trim();
+  if (!baseSpecies) return "";
+
+  const suffix = normalized.slice(baseSpecies.length).trim();
+  if (!suffix) return "";
+  return suffix.startsWith(",") ? suffix.slice(1).trim() : suffix;
 }
 
 function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
