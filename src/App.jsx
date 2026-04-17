@@ -1757,6 +1757,23 @@ async function exportSpreadsheet(filename, rows, sheetName = "Raportti") {
   });
 }
 
+async function shareSpreadsheet(filename, rows, sheetName = "Raportti") {
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, String(sheetName || "Raportti").slice(0, 31));
+  const workbookArray = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([workbookArray], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  await presentFileBlob(blob, filename, {
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    browserAction: isNativeCapacitorApp() ? "open" : "download",
+    shareTitle: filename,
+    shareText: "Valitse sähköpostisovellus tai muu tapa jakaa raportti",
+    dialogTitle: "Lähetä raportti",
+  });
+}
+
 function runLocalTests() {
   const tests = [
     { name: "Kuha on kalalistassa", pass: fishSpecies.includes("Kuha") },
@@ -2753,8 +2770,23 @@ function WholesaleOffersView({
 }
 
 function ReportsView({ entries, processedEntries, offers }) {
+  const [reportStartDate, setReportStartDate] = useState("");
+  const [reportEndDate, setReportEndDate] = useState("");
+
+  const isWithinReportRange = (value) => {
+    const normalizedValue = String(value || "").trim().slice(0, 10);
+    if (!normalizedValue) return !reportStartDate && !reportEndDate;
+    if (reportStartDate && normalizedValue < reportStartDate) return false;
+    if (reportEndDate && normalizedValue > reportEndDate) return false;
+    return true;
+  };
+
+  const filteredEntries = entries.filter((entry) => isWithinReportRange(entry.date));
+  const filteredProcessedEntries = processedEntries.filter((entry) => isWithinReportRange(entry.productionDate));
+  const filteredOffers = offers.filter((offer) => isWithinReportRange(offer.created_at));
+
   const catchSpeciesColumns = Array.from(new Set(
-    entries
+    filteredEntries
       .map((entry) => {
         const normalized = normalizeFishSpeciesLabel(entry.species);
         return fishSpeciesByName[normalized]?.name_fi || String(entry.species || "").split(",")[0].trim();
@@ -2769,7 +2801,7 @@ function ReportsView({ entries, processedEntries, offers }) {
     return orderA - orderB;
   });
 
-  const catchSessions = Object.values(entries.reduce((acc, entry) => {
+  const catchSessions = Object.values(filteredEntries.reduce((acc, entry) => {
     const vesselLabel = String(entry.commercialFishingVesselId || "").trim()
       || (String(entry.commercialFishingId || "").trim() ? "Kalastus ilman alusta" : "");
     const sessionKey = [
@@ -2839,7 +2871,7 @@ function ReportsView({ entries, processedEntries, offers }) {
     Array.from(new Set(session.batchIds)).join(", "),
   ]);
 
-  const offerRows = offers.map((offer) => [
+  const offerRows = filteredOffers.map((offer) => [
     offer.created_at || "",
     offer.company_name,
     offer.contact_name,
@@ -2850,7 +2882,7 @@ function ReportsView({ entries, processedEntries, offers }) {
     offer.message,
   ]);
 
-  const processedRows = processedEntries.map((entry) => [
+  const processedRows = filteredProcessedEntries.map((entry) => [
     entry.productionDate,
     entry.ownerName,
     entry.area,
@@ -2871,35 +2903,89 @@ function ReportsView({ entries, processedEntries, offers }) {
     entry.notes,
   ]);
 
-  const totalKg = entries.reduce((sum, entry) => sum + Number(entry.kilos || 0), 0);
-  const totalProcessedKg = processedEntries.reduce((sum, entry) => sum + Number(entry.kilos || 0), 0);
-  const saleCount = entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers).length;
-  const processedSaleCount = processedEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers).length;
+  const totalKg = filteredEntries.reduce((sum, entry) => sum + Number(entry.kilos || 0), 0);
+  const totalProcessedKg = filteredProcessedEntries.reduce((sum, entry) => sum + Number(entry.kilos || 0), 0);
+  const saleCount = filteredEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers).length;
+  const processedSaleCount = filteredProcessedEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers).length;
+  const reportDateLabel = reportStartDate || reportEndDate
+    ? `${reportStartDate || "alku"} - ${reportEndDate || "tänään"}`
+    : "kaikki";
+
+  const catchReportRows = [catchReportHeader, ...reportRows];
+  const offerReportRows = [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows];
+  const processedReportRows = [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows];
 
   return (
     <div style={styles.stack}>
       <div style={styles.grid2}>
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-        <strong>Excel-raportit</strong>
-        <div style={styles.noticeInfo}>Raportit ladataan nyt oikeina Excel-tiedostoina (.xlsx), jolloin ä ja ö näkyvät oikein.</div>
-        <button
-          style={{ ...styles.button, ...styles.primaryButton }}
-          onClick={() => { void exportSpreadsheet(`saaliit-${today()}.xlsx`, [catchReportHeader, ...reportRows], "Saalisraportti"); }}
-        >
-          Lataa saalisraportti Exceliin
-        </button>
-        <button
-          style={styles.button}
-          onClick={() => { void exportSpreadsheet(`tarjoukset-${today()}.xlsx`, [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows], "Tarjoukset"); }}
-        >
-          Lataa tarjousraportti Exceliin
-        </button>
-        <button
-          style={styles.button}
-          onClick={() => { void exportSpreadsheet(`jaloste-erat-${today()}.xlsx`, [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows], "Jaloste-erat"); }}
-        >
-          Lataa jaloste-erät Exceliin
-        </button>
+          <strong>Excel-raportit</strong>
+          <div style={styles.noticeInfo}>Valitse raportille aikaväli. Voit ladata Excelin tai lähettää sen suoraan sähköpostiin jakovalikon kautta.</div>
+          <div style={styles.grid2}>
+            <div style={styles.field}>
+              <label>Alkupäivä</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={reportStartDate}
+                onChange={(e) => setReportStartDate(e.target.value)}
+                max={reportEndDate || undefined}
+              />
+            </div>
+            <div style={styles.field}>
+              <label>Loppupäivä</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={reportEndDate}
+                onChange={(e) => setReportEndDate(e.target.value)}
+                min={reportStartDate || undefined}
+              />
+            </div>
+          </div>
+          <div style={styles.muted}>Valittu aikaväli: {reportDateLabel}</div>
+          <div style={styles.row}>
+            <button
+              style={{ ...styles.button, ...styles.primaryButton }}
+              onClick={() => { void exportSpreadsheet(`saaliit-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, catchReportRows, "Saalisraportti"); }}
+            >
+              Lataa saalisraportti Exceliin
+            </button>
+            <button
+              style={styles.button}
+              onClick={() => { void shareSpreadsheet(`saaliit-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, catchReportRows, "Saalisraportti"); }}
+            >
+              Lähetä saalisraportti sähköpostiin
+            </button>
+          </div>
+          <div style={styles.row}>
+            <button
+              style={styles.button}
+              onClick={() => { void exportSpreadsheet(`tarjoukset-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, offerReportRows, "Tarjoukset"); }}
+            >
+              Lataa tarjousraportti Exceliin
+            </button>
+            <button
+              style={styles.button}
+              onClick={() => { void shareSpreadsheet(`tarjoukset-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, offerReportRows, "Tarjoukset"); }}
+            >
+              Lähetä tarjousraportti sähköpostiin
+            </button>
+          </div>
+          <div style={styles.row}>
+            <button
+              style={styles.button}
+              onClick={() => { void exportSpreadsheet(`jaloste-erat-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, processedReportRows, "Jaloste-erat"); }}
+            >
+              Lataa jaloste-erät Exceliin
+            </button>
+            <button
+              style={styles.button}
+              onClick={() => { void shareSpreadsheet(`jaloste-erat-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, processedReportRows, "Jaloste-erat"); }}
+            >
+              Lähetä jaloste-erät sähköpostiin
+            </button>
+          </div>
         </div>
 
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
@@ -2909,9 +2995,9 @@ function ReportsView({ entries, processedEntries, offers }) {
             <span style={styles.badge}>{totalProcessedKg.toFixed(1)} kg jalosteita</span>
             <span style={styles.badge}>{saleCount} saaliserää myynnissä</span>
             <span style={styles.badge}>{processedSaleCount} jaloste-erää myynnissä</span>
-            <span style={styles.badge}>{offers.length} tarjousta</span>
+            <span style={styles.badge}>{filteredOffers.length} tarjousta</span>
           </div>
-          <div style={styles.muted}>Raportit sisältävät kaikki tällä hetkellä näkyvät erät ja tarjoukset.</div>
+          <div style={styles.muted}>Raportit sisältävät valitun aikavälin erät ja tarjoukset.</div>
         </div>
       </div>
 
