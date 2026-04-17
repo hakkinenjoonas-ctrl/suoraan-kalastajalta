@@ -4206,15 +4206,48 @@ export default function App() {
     if (pushRegistrationKeyRef.current === registrationKey) {
       return undefined;
     }
-    pushRegistrationKeyRef.current = registrationKey;
 
     let cancelled = false;
     const removeHandles = [];
+    let retryTimeoutId = null;
+
+    const clearRetryTimeout = () => {
+      if (retryTimeoutId != null && typeof window !== "undefined") {
+        window.clearTimeout(retryTimeoutId);
+      }
+      retryTimeoutId = null;
+    };
+
+    const resetRegistrationKey = () => {
+      if (pushRegistrationKeyRef.current === registrationKey) {
+        pushRegistrationKeyRef.current = "";
+      }
+    };
+
+    const scheduleRetry = (reason) => {
+      if (cancelled || typeof window === "undefined" || retryTimeoutId != null) return;
+      resetRegistrationKey();
+      console.warn("[PUSH] scheduling retry", JSON.stringify({
+        reason: String(reason || "unknown"),
+        registrationKey,
+      }));
+      retryTimeoutId = window.setTimeout(() => {
+        retryTimeoutId = null;
+        if (!cancelled) {
+          void registerPushNotifications();
+        }
+      }, 15000);
+    };
 
     const registerPushNotifications = async () => {
       try {
         const permissionStatus = await PushNotifications.requestPermissions();
         if (permissionStatus.receive !== "granted") {
+          resetRegistrationKey();
+          console.warn("[PUSH] permission not granted", JSON.stringify({
+            receive: permissionStatus.receive || "unknown",
+            registrationKey,
+          }));
           return;
         }
 
@@ -4254,51 +4287,95 @@ export default function App() {
 
         const registrationHandle = await PushNotifications.addListener("registration", async (token) => {
           if (cancelled || !token?.value) return;
-          let resolvedBuyerId = linkedBuyerRecord?.id || profile.buyer_id || null;
+          try {
+            let resolvedBuyerId = linkedBuyerRecord?.id || profile.buyer_id || null;
 
-          if (!resolvedBuyerId && profile.role === "buyer") {
-            const candidateEmails = Array.from(new Set([
-              normalizeEmail(profile.email),
-              normalizeEmail(session.user?.email),
-              normalizeEmail(profile.contact_email),
-              normalizeEmail(profile.billing_email),
-            ].filter(Boolean)));
+            if (!resolvedBuyerId && profile.role === "buyer") {
+              const candidateEmails = Array.from(new Set([
+                normalizeEmail(profile.email),
+                normalizeEmail(session.user?.email),
+                normalizeEmail(profile.contact_email),
+                normalizeEmail(profile.billing_email),
+              ].filter(Boolean)));
 
-            for (const candidateEmail of candidateEmails) {
-              const { data: buyerMatch } = await supabase
-                .from("buyers")
-                .select("id")
-                .or(`email.eq.${candidateEmail},billing_email.eq.${candidateEmail}`)
-                .limit(1)
-                .maybeSingle();
+              for (const candidateEmail of candidateEmails) {
+                const { data: buyerMatch, error: buyerMatchError } = await supabase
+                  .from("buyers")
+                  .select("id")
+                  .or(`email.eq.${candidateEmail},billing_email.eq.${candidateEmail}`)
+                  .limit(1)
+                  .maybeSingle();
 
-              if (buyerMatch?.id) {
-                resolvedBuyerId = buyerMatch.id;
-                break;
+                if (buyerMatchError) {
+                  console.error("[PUSH] buyer lookup failed", JSON.stringify({
+                    email: candidateEmail,
+                    error: buyerMatchError.message || String(buyerMatchError),
+                  }));
+                  continue;
+                }
+
+                if (buyerMatch?.id) {
+                  resolvedBuyerId = buyerMatch.id;
+                  break;
+                }
+              }
+
+              if (resolvedBuyerId && String(profile.buyer_id || "") !== String(resolvedBuyerId)) {
+                const { error: profileUpdateError } = await supabase
+                  .from("profiles")
+                  .update({ buyer_id: resolvedBuyerId })
+                  .eq("id", profile.id);
+
+                if (profileUpdateError) {
+                  console.error("[PUSH] buyer link profile update failed", JSON.stringify({
+                    profileId: profile.id,
+                    buyerId: resolvedBuyerId,
+                    error: profileUpdateError.message || String(profileUpdateError),
+                  }));
+                } else {
+                  setProfile((prev) => (prev ? { ...prev, buyer_id: resolvedBuyerId } : prev));
+                }
               }
             }
 
-            if (resolvedBuyerId && String(profile.buyer_id || "") !== String(resolvedBuyerId)) {
-              await supabase
-                .from("profiles")
-                .update({ buyer_id: resolvedBuyerId })
-                .eq("id", profile.id);
-              setProfile((prev) => (prev ? { ...prev, buyer_id: resolvedBuyerId } : prev));
-            }
-          }
+            const { error: upsertError } = await supabase
+              .from("app_push_tokens")
+              .upsert({
+                user_id: profile.id,
+                buyer_id: resolvedBuyerId,
+                role: profile.role || "member",
+                platform: "android",
+                token: token.value,
+                device_label: "android-app",
+                is_active: true,
+                last_seen_at: new Date().toISOString(),
+              }, { onConflict: "token" });
 
-          await supabase
-            .from("app_push_tokens")
-            .upsert({
-              user_id: profile.id,
-              buyer_id: resolvedBuyerId,
+            if (upsertError) {
+              console.error("[PUSH] token upsert failed", JSON.stringify({
+                profileId: profile.id,
+                buyerId: resolvedBuyerId,
+                role: profile.role || "member",
+                error: upsertError.message || String(upsertError),
+              }));
+              scheduleRetry("token_upsert_failed");
+              return;
+            }
+
+            pushRegistrationKeyRef.current = registrationKey;
+            console.log("[PUSH] token registered", JSON.stringify({
+              profileId: profile.id,
+              buyerId: resolvedBuyerId,
               role: profile.role || "member",
-              platform: "android",
-              token: token.value,
-              device_label: "android-app",
-              is_active: true,
-              last_seen_at: new Date().toISOString(),
-            }, { onConflict: "token" });
+              registrationKey,
+            }));
+          } catch (error) {
+            console.error("[PUSH] registration handler failed", JSON.stringify({
+              error: error instanceof Error ? error.message : String(error),
+              registrationKey,
+            }));
+            scheduleRetry("registration_handler_failed");
+          }
         });
         removeHandles.push(registrationHandle);
 
@@ -4306,6 +4383,7 @@ export default function App() {
           console.error("[PUSH] registrationError", JSON.stringify({
             error: error instanceof Error ? error.message : String(error),
           }));
+          scheduleRetry("registration_error");
         });
         removeHandles.push(registrationErrorHandle);
 
@@ -4381,9 +4459,11 @@ export default function App() {
 
         await PushNotifications.register();
       } catch (error) {
+        resetRegistrationKey();
         console.error("[PUSH] setup failed", JSON.stringify({
           error: error instanceof Error ? error.message : String(error),
         }));
+        scheduleRetry("setup_failed");
       }
     };
 
@@ -4391,6 +4471,8 @@ export default function App() {
 
     return () => {
       cancelled = true;
+      clearRetryTimeout();
+      resetRegistrationKey();
       removeHandles.forEach((handle) => {
         try {
           handle.remove();
