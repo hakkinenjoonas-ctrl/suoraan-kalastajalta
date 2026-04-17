@@ -8093,23 +8093,18 @@ export default function App() {
 
       if (shouldSendOffer) {
         if (emailResult.skipped) {
-          const excludedLines = (emailResult.recipientAnalysis?.excluded || []).map((item) => `• ${item.company_name} (${item.email}) – ${item.reason}`);
           const parts = ["Saalis tallennettu, mutta yhtään ostajaa ei täyttänyt tarjousehtoja."];
-          if (excludedLines.length > 0) {
-            parts.push("", "Pois rajatut ostajat:", ...excludedLines);
-          }
           setAuthInfo(parts.join(String.fromCharCode(10)));
         } else {
-          const sentLines = emailResult.sent.map((item) => `✔ ${item.company_name} (${item.email})`);
-          const skippedPushLines = emailResult.sent
-            .filter((item) => item.pushSkipped)
-            .map((item) => `• ${item.company_name} (${item.email}) – push skipattiin: ${item.pushSkipReason || "tuntematon syy"}`);
-          const failedLines = emailResult.failed.map((item) => `✖ ${item.company_name} (${item.email}) – ${item.error}`);
           const parts = [`Saalis tallennettu. Tarjous lähetetty ${emailResult.sent.length} ostajalle.`];
-          if (sentLines.length > 0) parts.push("", "Lähetetty:", ...sentLines);
-          if (skippedPushLines.length > 0) parts.push("", "Push-ilmoitus ei lähtenyt:", ...skippedPushLines);
-          if (failedLines.length > 0) parts.push("", "Epäonnistui:", ...failedLines);
-          if (failedLines.length > 0) {
+          const skippedPushCount = emailResult.sent.filter((item) => item.pushSkipped).length;
+          if (skippedPushCount > 0) {
+            parts.push("", `Push-ilmoitus ei lähtenyt ${skippedPushCount} ostajalle.`);
+          }
+          if (emailResult.failed.length > 0) {
+            parts.push("", `Tarjouksen lähetys epäonnistui ${emailResult.failed.length} ostajalle.`);
+          }
+          if (emailResult.failed.length > 0) {
             setAuthError(parts.join(String.fromCharCode(10)));
             setAuthInfo("");
           } else {
@@ -8310,23 +8305,18 @@ export default function App() {
       const emailResult = await sendProcessedOfferEmail({ formState: processedForm, profileState: profile, batchId });
       if (shouldSendProcessedOffer) {
         if (emailResult.skipped) {
-          const excludedLines = (emailResult.recipientAnalysis?.excluded || []).map((item) => `• ${item.company_name} (${item.email}) – ${item.reason}`);
           const parts = ["Jaloste-erä tallennettu, mutta yhtään ostajaa ei täyttänyt tarjousehtoja."];
-          if (excludedLines.length > 0) {
-            parts.push("", "Pois rajatut ostajat:", ...excludedLines);
-          }
           setAuthInfo(parts.join(String.fromCharCode(10)));
         } else {
-          const sentLines = emailResult.sent.map((item) => `✔ ${item.company_name} (${item.email})`);
-          const skippedPushLines = emailResult.sent
-            .filter((item) => item.pushSkipped)
-            .map((item) => `• ${item.company_name} (${item.email}) – push skipattiin: ${item.pushSkipReason || "tuntematon syy"}`);
-          const failedLines = emailResult.failed.map((item) => `✖ ${item.company_name} (${item.email}) – ${item.error}`);
           const parts = [`Jaloste-erä tallennettu. Tarjous lähetetty ${emailResult.sent.length} ostajalle.`];
-          if (sentLines.length > 0) parts.push("", "Lähetetty:", ...sentLines);
-          if (skippedPushLines.length > 0) parts.push("", "Push-ilmoitus ei lähtenyt:", ...skippedPushLines);
-          if (failedLines.length > 0) parts.push("", "Epäonnistui:", ...failedLines);
-          if (failedLines.length > 0) {
+          const skippedPushCount = emailResult.sent.filter((item) => item.pushSkipped).length;
+          if (skippedPushCount > 0) {
+            parts.push("", `Push-ilmoitus ei lähtenyt ${skippedPushCount} ostajalle.`);
+          }
+          if (emailResult.failed.length > 0) {
+            parts.push("", `Tarjouksen lähetys epäonnistui ${emailResult.failed.length} ostajalle.`);
+          }
+          if (emailResult.failed.length > 0) {
             setAuthError(parts.join(String.fromCharCode(10)));
             setAuthInfo("");
           } else {
