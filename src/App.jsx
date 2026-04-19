@@ -4663,6 +4663,7 @@ export default function App() {
                 title,
                 body,
                 channelId: PUSH_CHANNEL_ID,
+                smallIcon: "ic_stat_fish",
                 sound: PUSH_SOUND_NAME,
                 extra: data,
               }],
