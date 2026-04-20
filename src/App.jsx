@@ -3315,6 +3315,23 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
             <div style={styles.rowBetween}>
               <div>
                 <strong>{group.sellerLabel}</strong>
+                {(() => {
+                  const sellerOffer = group.offers[0] || {};
+                  const sellerBillingAddress = formatInvoicePartyAddress(
+                    sellerOffer.seller_address,
+                    sellerOffer.seller_postcode,
+                    sellerOffer.seller_city,
+                  );
+                  const sellerBillingParts = [
+                    sellerOffer.seller_business_id ? `Y-tunnus ${sellerOffer.seller_business_id}` : "",
+                    sellerOffer.seller_billing_email || sellerOffer.seller_email || "",
+                    sellerBillingAddress,
+                  ].filter(Boolean);
+
+                  return sellerBillingParts.length > 0
+                    ? <div style={styles.muted}>{sellerBillingParts.join(" · ")}</div>
+                    : null;
+                })()}
                 <div style={styles.muted}>Kuukausi: {group.monthKey}</div>
               </div>
               <button style={styles.button} onClick={() => exportBillingCsv(group)}>Vie laskutus CSV</button>
