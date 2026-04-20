@@ -4032,6 +4032,7 @@ export default function App() {
   const [buyerActionMode, setBuyerActionMode] = useState("counter");
   const [allowedUsers, setAllowedUsers] = useState([]);
   const [pendingProfiles, setPendingProfiles] = useState([]);
+  const [ownerUserProfiles, setOwnerUserProfiles] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [processorSourceEntries, setProcessorSourceEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5409,7 +5410,7 @@ export default function App() {
           { data: entryData, error: entryError },
           processedEntriesResult,
           { data: allowedData, error: allowedError },
-          pendingProfilesResult,
+          ownerProfilesResult,
           offerResult,
           buyersResult,
           buyerOffersResult,
@@ -5425,7 +5426,7 @@ export default function App() {
             ? supabase.from("allowed_users").select("*").order("created_at", { ascending: true })
             : Promise.resolve({ data: [], error: null }),
           profile.role === "owner"
-            ? supabase.from("profiles").select("*").eq("is_active", false).order("created_at", { ascending: false })
+            ? supabase.from("profiles").select("*").order("created_at", { ascending: false })
             : Promise.resolve({ data: [], error: null }),
           hasOffersTable
             ? supabase.from("wholesale_offers").select("*").order("created_at", { ascending: false })
@@ -5633,8 +5634,10 @@ export default function App() {
           }
           setAuthError(allowedError.message);
         } else {
-        setAllowedUsers(allowedData || []);
-        setPendingProfiles((pendingProfilesResult?.data || []).filter((row) => row.id !== profile.id));
+          const ownerProfilesData = ownerProfilesResult?.data || [];
+          setAllowedUsers(allowedData || []);
+          setPendingProfiles(ownerProfilesData.filter((row) => !row.is_active && row.id !== profile.id));
+          setOwnerUserProfiles(ownerProfilesData.filter((row) => row.is_active));
         }
 
         if (offerResult?.error && offerResult.error.code !== "PGRST116") {
@@ -10828,6 +10831,20 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                         </div>
                         {section.items.map((user) => {
                           const linkedBuyer = buyers.find((buyer) => buyer.id === user.buyer_id);
+                          const linkedProfile = ownerUserProfiles.find((profileRow) => (
+                            String(profileRow.id || "") === String(user.id || "") ||
+                            normalizeEmail(profileRow.email) === normalizeEmail(user.email)
+                          ));
+                          const profileSummary = [
+                            linkedProfile?.company_name,
+                            linkedProfile?.phone,
+                            linkedProfile?.city,
+                          ].filter(Boolean).join(" · ");
+                          const profileBillingLine = [
+                            linkedProfile?.billing_address,
+                            linkedProfile?.billing_postcode,
+                            linkedProfile?.billing_city,
+                          ].filter(Boolean).join(", ");
                           return (
                             <div key={user.id} style={styles.entry}>
                               <div style={styles.entryHeader}>
@@ -10839,6 +10856,17 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                                     <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
                                     {linkedBuyer ? <span style={styles.badge}>Ostaja: {linkedBuyer.company_name}</span> : null}
                                   </div>
+                                  {profileSummary ? <div style={styles.muted}>{profileSummary}</div> : null}
+                                  {linkedProfile?.address || linkedProfile?.postcode || linkedProfile?.city ? (
+                                    <div style={styles.muted}>
+                                      <strong>Osoite:</strong> {[linkedProfile?.address, linkedProfile?.postcode, linkedProfile?.city].filter(Boolean).join(", ")}
+                                    </div>
+                                  ) : null}
+                                  {profileBillingLine || linkedProfile?.billing_email || linkedProfile?.business_id ? (
+                                    <div style={styles.muted}>
+                                      <strong>Laskutus:</strong> {profileBillingLine || "-"}{linkedProfile?.billing_email ? ` · ${linkedProfile.billing_email}` : ""}{linkedProfile?.business_id ? ` · Y-tunnus ${linkedProfile.business_id}` : ""}
+                                    </div>
+                                  ) : null}
                                 </div>
                                 <div style={styles.row}>
                                   {user.is_active ? (
