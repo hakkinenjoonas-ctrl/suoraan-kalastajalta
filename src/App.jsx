@@ -901,6 +901,52 @@ function isShareCancelledError(error) {
     message.includes("canceled");
 }
 
+let foregroundNotificationAudioContext = null;
+
+async function triggerForegroundNotificationFeedback() {
+  if (typeof window === "undefined") return;
+
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate([0, 180, 90, 240]);
+    }
+  } catch {
+    // ignore vibration failures
+  }
+
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!foregroundNotificationAudioContext) {
+      foregroundNotificationAudioContext = new AudioContextClass();
+    }
+
+    const context = foregroundNotificationAudioContext;
+    if (context.state === "suspended") {
+      await context.resume();
+    }
+
+    const startAt = context.currentTime + 0.02;
+    const gainNode = context.createGain();
+    const oscillator = context.createOscillator();
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(932, startAt);
+    oscillator.frequency.exponentialRampToValueAtTime(740, startAt + 0.16);
+
+    gainNode.gain.setValueAtTime(0.0001, startAt);
+    gainNode.gain.exponentialRampToValueAtTime(0.09, startAt + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.22);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+    oscillator.start(startAt);
+    oscillator.stop(startAt + 0.24);
+  } catch {
+    // ignore foreground audio failures
+  }
+}
+
 async function presentFileBlob(blob, fileName, options = {}) {
   if (typeof window === "undefined") return;
   if (shouldSkipDuplicateFilePresentation(fileName)) return;
@@ -4656,6 +4702,7 @@ export default function App() {
           foregroundNotificationRef.current = { key: notificationKey, at: now };
 
           setAuthInfo(body || title);
+          await triggerForegroundNotificationFeedback();
           try {
             await LocalNotifications.schedule({
               notifications: [{
