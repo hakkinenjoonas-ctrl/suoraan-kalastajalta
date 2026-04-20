@@ -3904,7 +3904,7 @@ function SellerBillingView({
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
         <div>
           <strong>Pankkitiedot laskulle</strong>
-          <div style={styles.muted}>Nämä tallennetaan vain omiin profiilitietoihisi ja niitä käytetään laskusähköpostin muodostamiseen.</div>
+          <div style={styles.muted}>Nämä tallennetaan vain omiin profiilitietoihisi ja niitä käytetään laskusähköpostin muodostamiseen. Kaupan hyväksyntä estyy, jos pakolliset laskutustiedot puuttuvat.</div>
         </div>
         <div style={styles.grid2}>
           <div style={styles.field}>
@@ -4802,6 +4802,24 @@ export default function App() {
     const tradeValue = directTradeValue > 0 ? directTradeValue : summaryTradeValue;
     const commissionValue = tradeValue * COMMISSION_RATE;
     return { kilos, pricePerKg, tradeValue, commissionValue };
+  };
+
+  const getMissingSellerBillingFields = (profileLike) => {
+    const checks = [
+      { label: "yrityksen nimi", value: profileLike?.company_name || profileLike?.companyName },
+      { label: "Y-tunnus", value: profileLike?.business_id || profileLike?.businessId },
+      { label: "osoite", value: profileLike?.address },
+      { label: "postinumero", value: profileLike?.postcode },
+      { label: "kaupunki", value: profileLike?.city },
+      { label: "laskutusosoite", value: profileLike?.billing_address || profileLike?.billingAddress },
+      { label: "laskutuksen postinumero", value: profileLike?.billing_postcode || profileLike?.billingPostcode },
+      { label: "laskutuskaupunki", value: profileLike?.billing_city || profileLike?.billingCity },
+      { label: "laskutussähköposti", value: profileLike?.billing_email || profileLike?.billingEmail },
+    ];
+
+    return checks
+      .filter((item) => !String(item.value || "").trim())
+      .map((item) => item.label);
   };
 
   const normalizeBuyerType = (type) => {
@@ -7955,6 +7973,33 @@ export default function App() {
     let updatePayload = { status };
 
     if (status === "accepted") {
+      let sellerProfileForTrade = profile;
+
+      if (offer?.seller_user_id && String(offer.seller_user_id) !== String(profile?.id || "")) {
+        const { data: fetchedSellerProfile, error: fetchedSellerProfileError } = await supabase
+          .from("profiles")
+          .select("id, company_name, business_id, address, postcode, city, billing_address, billing_postcode, billing_city, billing_email, bank_account_iban")
+          .eq("id", offer.seller_user_id)
+          .maybeSingle();
+
+        if (fetchedSellerProfileError) {
+          if (isMissingRefreshTokenError(fetchedSellerProfileError)) {
+            await invalidateSession();
+            return;
+          }
+          setAuthError(fetchedSellerProfileError.message);
+          return;
+        }
+
+        sellerProfileForTrade = fetchedSellerProfile || null;
+      }
+
+      const missingSellerBillingFields = getMissingSellerBillingFields(sellerProfileForTrade);
+      if (missingSellerBillingFields.length > 0) {
+        setAuthError(`Kauppaa ei voi hyväksyä ennen kuin kalastajan laskutustiedot on tallennettu. Puuttuu: ${missingSellerBillingFields.join(", ")}.`);
+        return;
+      }
+
       let buyerRecord = buyers.find((buyer) => buyer.id === offer.buyer_id || buyer.email === (offer.buyer_email || "").toLowerCase());
 
       if (!buyerRecord && (offer.buyer_id || offer.buyer_email)) {
