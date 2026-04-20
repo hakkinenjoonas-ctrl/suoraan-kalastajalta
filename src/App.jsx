@@ -10877,6 +10877,12 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                 (() => {
                   const userSections = [
                     {
+                      title: "Roolipyynnöt ja ei-aktiiviset",
+                      description: "Hyväksyntää odottavat ja pois käytöstä olevat käyttäjät.",
+                      tone: { background: "#fff7ed", borderColor: "#fdba74", color: "#9a3412" },
+                      items: allowedUsers.filter((user) => !user.is_active),
+                    },
+                    {
                       title: "Kalastajat",
                       description: "Tarkein ryhma: aktiiviset kalastajakäyttäjät.",
                       tone: { background: "#eff6ff", borderColor: "#93c5fd", color: "#1d4ed8" },
@@ -10899,12 +10905,6 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                       description: "Ylläpitäjät ja omistajaroolit.",
                       tone: { background: "#faf5ff", borderColor: "#d8b4fe", color: "#7c3aed" },
                       items: allowedUsers.filter((user) => user.is_active && user.role === "owner"),
-                    },
-                    {
-                      title: "Roolipyynnöt ja ei-aktiiviset",
-                      description: "Hyväksyntää odottavat ja pois käytöstä olevat käyttäjät.",
-                      tone: { background: "#fff7ed", borderColor: "#fdba74", color: "#9a3412" },
-                      items: allowedUsers.filter((user) => !user.is_active),
                     },
                   ];
 
