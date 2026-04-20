@@ -9118,6 +9118,10 @@ export default function App() {
                               <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
                                 {getOfferSummaryLines(o.species_summary).length} lajia samassa erässä
                               </div>
+                            ) : visiblePrice !== "" && visiblePrice != null ? (
+                              <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
+                                Hinta ALV 0 %: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}
+                              </div>
                             ) : null}
                           </div>
                           {showTraceability && o.batch_id && !mixedOffer ? <div style={{ ...styles.muted, marginBottom: 8 }}><strong>Erätunnus:</strong> {o.batch_id}</div> : null}
@@ -9143,7 +9147,7 @@ export default function App() {
                               }) || "-"}
                             </div>
                             {!mixedOffer ? <div style={styles.muted}>Määrä: {getOfferQuantityDisplay(o)}</div> : null}
-                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}</div> : null}
+                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta ALV 0 %: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}</div> : null}
                             {!mixedOffer && offerCatchDates.length > 0 ? <div style={styles.muted}>Pyyntipäivämäärä: {offerCatchDates.join(", ")}</div> : null}
                             {ownDeliveryPrice != null ? <div style={styles.muted}>Toimitushinta omaan kaupunkiin ({o.delivery_destination_city || linkedBuyerRecord?.delivery_city || linkedBuyerRecord?.city || "-" }): {formatDeliveryPrice(ownDeliveryPrice)}</div> : null}
                             {ownTotalPrice != null ? <div style={styles.muted}>Kokonaishinta: {formatDeliveryPrice(ownTotalPrice)}</div> : null}
