@@ -4804,10 +4804,19 @@ export default function App() {
     return { kilos, pricePerKg, tradeValue, commissionValue };
   };
 
+  const normalizeBuyerType = (type) => {
+    const normalized = String(type || "").trim().toLowerCase();
+    if (normalized === "tukku") return "tukku";
+    if (normalized === "kauppa") return "kauppa";
+    if (normalized === "ravintola") return "ravintola";
+    return "";
+  };
+
   const buyerTypeLabel = (type) => {
-    if (type === "ravintola") return "Anonyymi ravintola";
-    if (type === "tukku") return "Anonyymi tukku";
-    if (type === "kauppa") return "Anonyymi kauppa";
+    const normalizedType = normalizeBuyerType(type);
+    if (normalizedType === "ravintola") return "Anonyymi ravintola";
+    if (normalizedType === "tukku") return "Anonyymi tukku";
+    if (normalizedType === "kauppa") return "Anonyymi kauppa";
     return "Anonyymi ostaja";
   };
 
@@ -4990,9 +4999,9 @@ export default function App() {
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
     const productTotal = getOfferProductTotal(rows);
     const selectedTypes = [];
-    if (offerFormState.offerToShops) selectedTypes.push("kauppa");
-    if (offerFormState.offerToRestaurants) selectedTypes.push("ravintola");
-    if (offerFormState.offerToWholesalers) selectedTypes.push("tukku");
+    if (offerFormState.offerToShops) selectedTypes.push(normalizeBuyerType("kauppa"));
+    if (offerFormState.offerToRestaurants) selectedTypes.push(normalizeBuyerType("ravintola"));
+    if (offerFormState.offerToWholesalers) selectedTypes.push(normalizeBuyerType("tukku"));
 
     const matching = [];
     const excluded = [];
@@ -5000,7 +5009,8 @@ export default function App() {
     (buyers || [])
       .filter((buyer) => buyer.is_active)
       .forEach((buyer) => {
-        if (!selectedTypes.includes(buyer.buyer_type)) return;
+        const buyerType = normalizeBuyerType(buyer.buyer_type);
+        if (!buyerType || !selectedTypes.includes(buyerType)) return;
         const minKg = buyer.min_kg == null || buyer.min_kg === "" ? null : Number(buyer.min_kg);
         const maxKg = buyer.max_kg == null || buyer.max_kg === "" ? null : Number(buyer.max_kg);
         const minOk = minKg == null || totalKilos >= minKg;
@@ -5008,7 +5018,7 @@ export default function App() {
         const recipient = {
           buyer_id: buyer.id,
           email: buyer.email,
-          channel: buyer.buyer_type,
+          channel: buyerType,
           company_name: buyer.company_name,
           contact_name: buyer.contact_name,
           destination_city: resolveBuyerDestinationCity(buyer),
@@ -5750,7 +5760,7 @@ export default function App() {
               delivery_cost: offer.delivery_cost == null ? "" : Number(offer.delivery_cost),
               earliest_delivery_date: offer.earliest_delivery_date || "",
               cold_transport: Boolean(offer.cold_transport),
-              buyer_type: buyer?.buyer_type || "",
+              buyer_type: normalizeBuyerType(buyer?.buyer_type) || "",
               buyer_company_name: buyer?.company_name || "",
               buyer_contact_name: buyer?.contact_name || "",
               buyer_phone: buyer?.phone || "",
@@ -5797,7 +5807,7 @@ export default function App() {
     const buyerAccountData = profile.role === "buyer" ? linkedBuyerRecord : null;
     const nextForm = {
       displayName: profile.display_name || "",
-      buyerType: buyerAccountData?.buyer_type || "ravintola",
+      buyerType: normalizeBuyerType(buyerAccountData?.buyer_type) || "ravintola",
       minKg: buyerAccountData?.min_kg == null ? "" : Number(buyerAccountData.min_kg),
       maxKg: buyerAccountData?.max_kg == null ? "" : Number(buyerAccountData.max_kg),
       eviraFacilityId: profile.evira_facility_id || "",
@@ -6404,7 +6414,7 @@ export default function App() {
       if (profile.role === "buyer" && linkedBuyerRecord?.id) {
         const buyerPayload = {
           company_name: accountForm.companyName.trim(),
-          buyer_type: String(accountForm.buyerType || "ravintola").trim() || "ravintola",
+          buyer_type: normalizeBuyerType(accountForm.buyerType) || "ravintola",
           contact_name: accountForm.contactName.trim(),
           phone: accountForm.phone.trim(),
           min_kg: accountForm.minKg === "" ? null : Number(accountForm.minKg),
@@ -6773,7 +6783,7 @@ export default function App() {
     const nextForm = {
       id: buyer.id,
       company_name: buyer.company_name || "",
-      buyer_type: buyer.buyer_type || "ravintola",
+      buyer_type: normalizeBuyerType(buyer.buyer_type) || "ravintola",
       contact_name: buyer.contact_name || "",
       email: buyer.email || "",
       phone: buyer.phone || "",
@@ -6861,7 +6871,7 @@ export default function App() {
     if (!profile || profile.role !== "owner") return;
     const payload = {
       company_name: buyerForm.company_name.trim(),
-      buyer_type: buyerForm.buyer_type,
+      buyer_type: normalizeBuyerType(buyerForm.buyer_type) || "ravintola",
       contact_name: buyerForm.contact_name.trim(),
       email: buyerForm.email.trim().toLowerCase(),
       phone: buyerForm.phone.trim(),
