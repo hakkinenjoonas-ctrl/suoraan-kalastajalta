@@ -72,8 +72,8 @@ export const transportModeLabels = {
 export const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Massa", "Pyörykät", "Pihvit", "Muu"];
 export const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Jauhatus", "Kypsennys", "Muu"];
 export const COMMISSION_RATE = 0.03;
-export const PUSH_CHANNEL_ID = "trade_events_waterdrop_v2";
-export const PUSH_SOUND_NAME = "waterdrop";
+export const PUSH_CHANNEL_ID = "trade_events_blop_v3";
+export const PUSH_SOUND_NAME = "blop";
 export const finlandMunicipalities = [
   "Akaa", "Alajärvi", "Alavieska", "Alavus", "Asikkala", "Askola", "Aura", "Brändö", "Eckerö", "Enonkoski",
   "Enontekiö", "Espoo", "Eura", "Eurajoki", "Evijärvi", "Finström", "Forssa", "Föglö", "Geta", "Haapajärvi",
