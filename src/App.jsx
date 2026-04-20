@@ -4215,6 +4215,9 @@ export default function App() {
   const pushRegistrationKeyRef = useRef("");
   const [accountForm, setAccountForm] = useState({
     displayName: "",
+    buyerType: "ravintola",
+    minKg: "",
+    maxKg: "",
     eviraFacilityId: "",
     commercialFishingVesselId: "",
     commercialFishingVesselIdsText: "",
@@ -5794,6 +5797,9 @@ export default function App() {
     const buyerAccountData = profile.role === "buyer" ? linkedBuyerRecord : null;
     const nextForm = {
       displayName: profile.display_name || "",
+      buyerType: buyerAccountData?.buyer_type || "ravintola",
+      minKg: buyerAccountData?.min_kg == null ? "" : Number(buyerAccountData.min_kg),
+      maxKg: buyerAccountData?.max_kg == null ? "" : Number(buyerAccountData.max_kg),
       eviraFacilityId: profile.evira_facility_id || "",
       commercialFishingVesselId: profile.commercial_fishing_vessel_id || vesselIds[0] || "",
       commercialFishingVesselIdsText: vesselIds.join("\n"),
@@ -6304,6 +6310,9 @@ export default function App() {
       const savedAccountForm = {
         ...accountForm,
         displayName,
+        buyerType: String(accountForm.buyerType || "ravintola").trim() || "ravintola",
+        minKg: accountForm.minKg === "" ? "" : Number(accountForm.minKg),
+        maxKg: accountForm.maxKg === "" ? "" : Number(accountForm.maxKg),
         commercialFishingId: accountForm.commercialFishingId.trim(),
         commercialFishingVesselId: accountForm.commercialFishingVesselId.trim() || normalizedVesselIds[0] || "",
         commercialFishingVesselIdsText: accountForm.commercialFishingVesselIdsText.trim(),
@@ -6395,8 +6404,11 @@ export default function App() {
       if (profile.role === "buyer" && linkedBuyerRecord?.id) {
         const buyerPayload = {
           company_name: accountForm.companyName.trim(),
+          buyer_type: String(accountForm.buyerType || "ravintola").trim() || "ravintola",
           contact_name: accountForm.contactName.trim(),
           phone: accountForm.phone.trim(),
+          min_kg: accountForm.minKg === "" ? null : Number(accountForm.minKg),
+          max_kg: accountForm.maxKg === "" ? null : Number(accountForm.maxKg),
           vat_liable: Boolean(accountForm.vatLiable),
           vat_number: accountForm.vatLiable ? String(accountForm.vatNumber || "").trim().toUpperCase() : "",
           city: accountForm.city.trim(),
@@ -9478,6 +9490,26 @@ export default function App() {
                 <label>Kirjautumissähköposti</label>
                 <input style={styles.input} value={profile.email || ""} disabled />
               </div>
+              {profile.role === "buyer" ? (
+                <>
+                  <div style={styles.field}>
+                    <label>Ryhmä</label>
+                    <select style={styles.input} value={accountForm.buyerType} onChange={(e) => setAccountForm((prev) => ({ ...prev, buyerType: e.target.value }))}>
+                      <option value="ravintola">Ravintola</option>
+                      <option value="tukku">Tukku</option>
+                      <option value="kauppa">Kauppa</option>
+                    </select>
+                  </div>
+                  <div style={styles.field}>
+                    <label>Min ostomäärä (kg)</label>
+                    <input style={styles.input} type="number" value={accountForm.minKg} onChange={(e) => setAccountForm((prev) => ({ ...prev, minKg: e.target.value }))} placeholder="Esim. 10" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Max ostomäärä (kg)</label>
+                    <input style={styles.input} type="number" value={accountForm.maxKg} onChange={(e) => setAccountForm((prev) => ({ ...prev, maxKg: e.target.value }))} placeholder="Esim. 200" />
+                  </div>
+                </>
+              ) : null}
               {profile.role === "processor" ? (
                 <>
                   <div style={styles.field}>
