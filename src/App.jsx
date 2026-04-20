@@ -3904,7 +3904,7 @@ function SellerBillingView({
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
         <div>
           <strong>Pankkitiedot laskulle</strong>
-          <div style={styles.muted}>Nämä tallennetaan vain omiin profiilitietoihisi ja niitä käytetään laskusähköpostin muodostamiseen. Kaupan hyväksyntä estyy, jos pakolliset laskutustiedot puuttuvat.</div>
+          <div style={styles.muted}>Nämä tallennetaan vain omiin profiilitietoihisi ja niitä käytetään laskusähköpostin muodostamiseen. Kaupan hyväksyntä estyy, jos pakolliset laskutustiedot puuttuvat. IBAN ei ole pakollinen kaupalle, mutta se tarvitaan jos lähetät laskuja suoraan sovelluksesta.</div>
         </div>
         <div style={styles.grid2}>
           <div style={styles.field}>
