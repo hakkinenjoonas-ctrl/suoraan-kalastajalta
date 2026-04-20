@@ -10895,12 +10895,6 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                       items: allowedUsers.filter((user) => user.is_active && user.role === "processor"),
                     },
                     {
-                      title: "Ostajakäyttäjät",
-                      description: "Aktiiviset sovellukseen liitetyt ostajakäyttäjät.",
-                      tone: { background: "#f8fafc", borderColor: "#cbd5e1", color: "#334155" },
-                      items: allowedUsers.filter((user) => user.is_active && user.role === "buyer"),
-                    },
-                    {
                       title: "Ownerit",
                       description: "Ylläpitäjät ja omistajaroolit.",
                       tone: { background: "#faf5ff", borderColor: "#d8b4fe", color: "#7c3aed" },
