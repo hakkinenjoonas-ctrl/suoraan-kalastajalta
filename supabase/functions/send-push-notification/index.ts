@@ -251,8 +251,9 @@ Deno.serve(async (req) => {
             android: {
               priority: "high",
               notification: {
-                channel_id: "trade_events_waterdrop",
-                sound: "waterdrop",
+                channel_id: "trade_events_blop_v3",
+                sound: "blop",
+                default_vibrate_timings: true,
               },
             },
           },
