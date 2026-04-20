@@ -10876,17 +10876,52 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               {allowedUsers.length === 0 ? <div style={styles.muted}>Ei vielä sallittuja käyttäjiä.</div> : (
                 (() => {
                   const userSections = [
-                    { title: "Roolipyynnöt", items: allowedUsers.filter((user) => !user.is_active) },
-                    { title: "Ownerit", items: allowedUsers.filter((user) => user.role === "owner") },
-                    { title: "Ostajakäyttäjät", items: allowedUsers.filter((user) => user.is_active && user.role === "buyer") },
-                    { title: "Käyttäjät", items: allowedUsers.filter((user) => user.is_active && user.role !== "owner" && user.role !== "buyer") },
+                    {
+                      title: "Kalastajat",
+                      description: "Tarkein ryhma: aktiiviset kalastajakäyttäjät.",
+                      tone: { background: "#eff6ff", borderColor: "#93c5fd", color: "#1d4ed8" },
+                      items: allowedUsers.filter((user) => user.is_active && user.role === "member"),
+                    },
+                    {
+                      title: "Jalostajat",
+                      description: "Aktiiviset jalostajaroolit.",
+                      tone: { background: "#f0fdf4", borderColor: "#86efac", color: "#166534" },
+                      items: allowedUsers.filter((user) => user.is_active && user.role === "processor"),
+                    },
+                    {
+                      title: "Ostajakäyttäjät",
+                      description: "Aktiiviset sovellukseen liitetyt ostajakäyttäjät.",
+                      tone: { background: "#f8fafc", borderColor: "#cbd5e1", color: "#334155" },
+                      items: allowedUsers.filter((user) => user.is_active && user.role === "buyer"),
+                    },
+                    {
+                      title: "Ownerit",
+                      description: "Ylläpitäjät ja omistajaroolit.",
+                      tone: { background: "#faf5ff", borderColor: "#d8b4fe", color: "#7c3aed" },
+                      items: allowedUsers.filter((user) => user.is_active && user.role === "owner"),
+                    },
+                    {
+                      title: "Roolipyynnöt ja ei-aktiiviset",
+                      description: "Hyväksyntää odottavat ja pois käytöstä olevat käyttäjät.",
+                      tone: { background: "#fff7ed", borderColor: "#fdba74", color: "#9a3412" },
+                      items: allowedUsers.filter((user) => !user.is_active),
+                    },
                   ];
 
                   return userSections.map((section) => (
                     section.items.length === 0 ? null : (
                       <div key={section.title} style={styles.stack}>
-                        <div style={{ ...styles.card, ...styles.sectionCard, padding: "12px 16px", background: "#f8fafc" }}>
-                          <strong>{section.title}</strong>
+                        <div
+                          style={{
+                            ...styles.card,
+                            ...styles.sectionCard,
+                            padding: "12px 16px",
+                            background: section.tone.background,
+                            borderColor: section.tone.borderColor,
+                          }}
+                        >
+                          <strong style={{ color: section.tone.color }}>{section.title} ({section.items.length})</strong>
+                          {section.description ? <div style={{ ...styles.muted, marginTop: 4 }}>{section.description}</div> : null}
                         </div>
                         {section.items.map((user) => {
                           const linkedBuyer = buyers.find((buyer) => buyer.id === user.buyer_id);
