@@ -672,23 +672,25 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           <div class="munbyn-body">
             <div class="munbyn-lines">
               ${label.catchDate ? `<div class="line catch-date"><strong>Pyyntipäivä:</strong> ${label.catchDate}</div>` : ""}
-              ${label.commercialFishingId ? `<div class="line"><strong>Kaupallisen kalastajan tunnus:</strong> ${label.commercialFishingId}</div>` : ""}
+              ${label.commercialFishingId ? `<div class="line"><strong>Kalastajatunnus:</strong> ${label.commercialFishingId}</div>` : ""}
               ${label.catchArea ? `<div class="line"><strong>Pyyntialue:</strong> ${label.catchArea}</div>` : ""}
               ${label.gearType ? `<div class="line"><strong>Pyyntimenetelmä:</strong> ${label.gearType}</div>` : ""}
               ${label.productForm ? `<div class="line"><strong>Tuote:</strong> ${label.productForm}</div>` : ""}
               <div class="line"><strong>Säilytys:</strong> 0–2 °C</div>
             </div>
 
-            <div class="munbyn-weight">
-              <span class="weight-label">Paino:</span>
-              <span class="weight-write"></span>
-              <span class="weight-unit">kg</span>
-            </div>
+            <div class="munbyn-footer">
+              <div class="munbyn-weight">
+                <span class="weight-label">Paino:</span>
+                <span class="weight-write"></span>
+                <span class="weight-unit">kg</span>
+              </div>
 
-            <div class="munbyn-supplier">
-              <div class="line"><strong>Toimittaja:</strong> ${label.supplier || "-"}</div>
-              ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
-              ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
+              <div class="munbyn-supplier">
+                <div class="line"><strong>Toimittaja:</strong> ${label.supplier || "-"}</div>
+                ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
+                ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
+              </div>
             </div>
           </div>
         </div>
@@ -714,66 +716,60 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           <meta charset="utf-8" />
           <title>Kalaetiketit ${String(entry?.batchId || "")}</title>
           <style>
-            @page { size: 102mm 152mm portrait; margin: 0; }
+            @page { size: 152mm 102mm landscape; margin: 0; }
             * { box-sizing: border-box; }
             body { margin: 0; font-family: Inter, Arial, sans-serif; background: #fff; color: #0f172a; }
             .munbyn-label {
-              position: relative;
-              width: 102mm;
-              height: 152mm;
+              width: 152mm;
+              height: 102mm;
+              padding: 6mm;
+              display: grid;
+              grid-template-columns: minmax(0, 1fr) 34mm;
+              gap: 4mm;
               overflow: hidden;
               page-break-after: always;
               background: #fff;
             }
-            .munbyn-rotated {
-              position: absolute;
-              top: 152mm;
-              left: 0;
-              width: 152mm;
-              height: 102mm;
-              padding: 6mm;
-              transform: rotate(-90deg);
-              transform-origin: top left;
-              display: grid;
-              grid-template-columns: 1fr 37mm;
-              gap: 5mm;
-              background: #fff;
-            }
             .munbyn-label:last-child { page-break-after: auto; }
             .munbyn-main { min-width: 0; display: flex; flex-direction: column; }
-            .munbyn-side { display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
-            .munbyn-header { display: flex; flex-direction: column; gap: 3mm; align-items: flex-start; }
+            .munbyn-side { display: flex; flex-direction: column; justify-content: space-between; align-items: center; min-width: 0; }
+            .munbyn-header { display: grid; grid-template-columns: minmax(0, 1fr) 52mm; gap: 3mm; align-items: start; }
             .munbyn-main-title { min-width: 0; flex: 1; }
-            .species { font-size: 19pt; font-weight: 800; line-height: 1.02; color: #0f172a; }
-            .scientific { margin-top: 1.4mm; font-size: 10pt; line-height: 1.18; color: #475569; }
+            .species { font-size: 18pt; font-weight: 800; line-height: 1.02; color: #0f172a; word-break: break-word; }
+            .scientific { margin-top: 1mm; font-size: 9pt; line-height: 1.15; color: #475569; word-break: break-word; }
             .munbyn-brand { width: 100%; display: flex; flex-direction: column; align-items: center; }
-            .munbyn-brand img { width: 23mm; height: 23mm; object-fit: contain; display: block; }
-            .munbyn-brand-text { margin-top: 0.8mm; font-size: 9.5pt; line-height: 1.05; font-weight: 800; text-align: center; color: #0f172a; }
+            .munbyn-brand img { width: 20mm; height: 20mm; object-fit: contain; display: block; }
+            .munbyn-brand-text { margin-top: 0.8mm; font-size: 8.5pt; line-height: 1.05; font-weight: 800; text-align: center; color: #0f172a; }
             .munbyn-batch {
               width: 100%;
-              padding: 2.6mm 3mm;
+              padding: 2.2mm 2.6mm;
               border: 0.45mm solid #93c5fd;
               border-radius: 2.4mm;
               background: #eff6ff;
-              font-size: 10.5pt;
+              font-size: 9pt;
               line-height: 1.15;
               font-weight: 800;
               color: #0f172a;
               overflow-wrap: anywhere;
               word-break: break-word;
             }
-            .munbyn-body { margin-top: 4mm; min-width: 0; display: flex; flex-direction: column; height: 100%; }
-            .munbyn-lines { min-width: 0; }
-            .line { font-size: 9.8pt; line-height: 1.24; color: #0f172a; margin-bottom: 1.2mm; word-break: break-word; }
-            .catch-date { font-size: 11pt; line-height: 1.2; font-weight: 700; }
-            .munbyn-weight { margin-top: 3mm; display: flex; align-items: flex-end; gap: 2mm; min-height: 10mm; }
-            .weight-label, .weight-unit { font-size: 11pt; font-weight: 800; color: #0f172a; white-space: nowrap; }
-            .weight-write { flex: 1; border-bottom: 0.8mm solid #0f172a; min-height: 7mm; }
-            .munbyn-supplier { margin-top: auto; min-width: 0; padding-top: 2mm; }
-            .munbyn-qr { width: 32mm; }
+            .munbyn-body { margin-top: 3mm; min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 2.5mm; height: 100%; }
+            .munbyn-lines { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3mm; row-gap: 1mm; align-content: start; }
+            .line { font-size: 8.4pt; line-height: 1.17; color: #0f172a; margin: 0; word-break: break-word; }
+            .catch-date { font-size: 9pt; line-height: 1.15; font-weight: 700; }
+            .munbyn-footer { min-width: 0; display: grid; grid-template-columns: 48mm minmax(0, 1fr); gap: 3mm; align-items: end; }
+            .munbyn-weight { display: flex; align-items: flex-end; gap: 1.6mm; min-height: 9mm; }
+            .weight-label, .weight-unit { font-size: 10pt; font-weight: 800; color: #0f172a; white-space: nowrap; }
+            .weight-write { flex: 1; border-bottom: 0.8mm solid #0f172a; min-height: 6mm; }
+            .munbyn-supplier {
+              min-width: 0;
+              padding: 2mm 2.4mm 0;
+              border-top: 0.35mm solid #cbd5e1;
+            }
+            .munbyn-qr { width: 30mm; }
             .munbyn-qr img {
-              width: 32mm;
-              height: 32mm;
+              width: 30mm;
+              height: 30mm;
               object-fit: contain;
               display: block;
               background: #fff;
@@ -783,7 +779,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             }
           </style>
         </head>
-        <body>${labels.map((label) => `<section class="munbyn-label"><div class="munbyn-rotated">${renderMunbynLabelContent(label)}</div></section>`).join("")}</body>
+        <body>${labels.map((label) => `<section class="munbyn-label">${renderMunbynLabelContent(label)}</section>`).join("")}</body>
       </html>
     `;
   }
