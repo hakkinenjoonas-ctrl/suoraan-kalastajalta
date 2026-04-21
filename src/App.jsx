@@ -1265,6 +1265,7 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
     label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
     label.productForm ? `Tuote: ${label.productForm}` : "",
+    label.boxLabel ? `Laatikko: ${label.boxLabel}` : "",
     "Säilytys: 0–2 °C",
   ].filter(Boolean);
 
@@ -1275,17 +1276,17 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   infoLines.forEach((line, index) => {
     const isCatchDate = index === 0;
     const useLeftColumn = index % 2 === 0;
-    fitCanvasFont(ctx, line, infoColumnWidth, isCatchDate ? 20 : 16, 11, isCatchDate ? "700" : "500");
+    fitCanvasFont(ctx, line, infoColumnWidth, isCatchDate ? 17 : 14, 10, isCatchDate ? "700" : "500");
     const wrappedLines = wrapCanvasText(ctx, line, infoColumnWidth, 2);
     const baseX = useLeftColumn ? left : left + infoColumnWidth + infoGap;
     const baseY = useLeftColumn ? leftInfoY : rightInfoY;
     wrappedLines.forEach((wrappedLine, wrappedIndex) => {
-      ctx.fillText(wrappedLine, baseX, baseY + (wrappedIndex * 16));
+      ctx.fillText(wrappedLine, baseX, baseY + (wrappedIndex * 13));
     });
     if (useLeftColumn) {
-      leftInfoY += wrappedLines.length * 16 + 6;
+      leftInfoY += wrappedLines.length * 13 + 4;
     } else {
-      rightInfoY += wrappedLines.length * 16 + 6;
+      rightInfoY += wrappedLines.length * 13 + 4;
     }
   });
 
