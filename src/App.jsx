@@ -1279,14 +1279,105 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
     const pageWidth = 102;
     const pageHeight = 152;
+    const padding = 5;
+    const contentWidth = pageWidth - (padding * 2);
+    const qrSize = 26;
+    const qrX = pageWidth - padding - qrSize;
+    const qrY = padding;
+    const logoAreaWidth = contentWidth - qrSize - 6;
+    const logoAspectRatio = Number(logoDimensions.width || 1) / Math.max(1, Number(logoDimensions.height || 1));
+    const logoWidth = Math.min(42, logoAreaWidth);
+    const logoHeight = Math.max(16, Math.min(28, logoWidth / Math.max(logoAspectRatio, 0.1)));
+
+    const drawMunbynLabel = (label, qrDataUrl) => {
+      doc.setFillColor(255, 255, 255);
+      doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+      if (logoDataUrl) {
+        doc.addImage(logoDataUrl, "PNG", padding, padding + 2, logoWidth, logoHeight);
+      }
+
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(203, 213, 225);
+      doc.roundedRect(qrX - 1.2, qrY - 1.2, qrSize + 2.4, qrSize + 2.4, 1.8, 1.8, "FD");
+      doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
+
+      let currentY = padding + 34;
+      doc.setTextColor(15, 23, 42);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      const speciesLines = doc.splitTextToSize(label.species || "-", contentWidth).slice(0, 2);
+      doc.text(speciesLines, padding, currentY);
+      currentY += speciesLines.length * 5.4;
+
+      if (label.scientificName) {
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(51, 65, 85);
+        doc.setFontSize(7.8);
+        const scientificLines = doc.splitTextToSize(label.scientificName, contentWidth).slice(0, 1);
+        doc.text(scientificLines, padding, currentY);
+        currentY += scientificLines.length * 4.2;
+      }
+
+      currentY += 1.2;
+      doc.setFillColor(239, 246, 255);
+      doc.setDrawColor(147, 197, 253);
+      doc.roundedRect(padding, currentY, contentWidth, 10, 1.8, 1.8, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(7.6);
+      const batchLines = doc.splitTextToSize(`Erätunnus: ${label.batchId || "-"}`, contentWidth - 4).slice(0, 2);
+      doc.text(batchLines, padding + 2, currentY + 3.2);
+      currentY += 13;
+
+      const infoLines = [
+        label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+        label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
+        label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
+        "Säilytys: 0–2 °C",
+        label.productForm ? `Tuote: ${label.productForm}` : "",
+        label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
+      ].filter(Boolean);
+
+      infoLines.forEach((line, index) => {
+        const isFirst = index === 0;
+        doc.setFont("helvetica", isFirst ? "bold" : "normal");
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(isFirst ? 8 : 7);
+        const wrapped = doc.splitTextToSize(line, contentWidth).slice(0, 2);
+        doc.text(wrapped, padding, currentY);
+        currentY += wrapped.length * (isFirst ? 4.1 : 3.7);
+      });
+
+      const weightY = pageHeight - 24;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.text("Paino:", padding, weightY);
+      doc.setLineWidth(0.5);
+      doc.line(padding + 12, weightY - 0.6, pageWidth - padding - 10, weightY - 0.6);
+      doc.text("kg", pageWidth - padding - 6, weightY);
+
+      const supplierLines = [
+        `Toimittaja: ${label.supplier || "-"}`,
+        label.supplierAddress || "",
+        label.supplierContact || "",
+      ].filter(Boolean);
+      let supplierY = pageHeight - 16;
+      for (let supplierIndex = supplierLines.length - 1; supplierIndex >= 0; supplierIndex -= 1) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.2);
+        const wrapped = doc.splitTextToSize(supplierLines[supplierIndex], contentWidth).slice(0, 2);
+        supplierY -= wrapped.length * 3.2;
+        doc.text(wrapped, padding, supplierY);
+      }
+    };
 
     for (let index = 0; index < labels.length; index += 1) {
       const label = labels[index];
       if (index > 0) {
         doc.addPage([102, 152], "portrait");
       }
-      const labelImage = await renderMunbynLabelCanvas(label, qrDataUrls[index], logoDataUrl);
-      doc.addImage(labelImage, "PNG", 0, 0, pageWidth, pageHeight, undefined, "FAST");
+      drawMunbynLabel(label, qrDataUrls[index]);
     }
 
     return doc;
