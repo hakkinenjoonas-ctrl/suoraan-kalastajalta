@@ -1117,18 +1117,28 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   }
 
   const pxPerMm = 8;
-  const width = Math.round(102 * pxPerMm);
-  const height = Math.round(152 * pxPerMm);
-  const padding = Math.round(5 * pxPerMm);
-  const contentWidth = width - (padding * 2);
-  const qrSize = Math.round(26 * pxPerMm);
-  const logoTargetWidth = Math.round(14 * pxPerMm) * 3;
+  const portraitWidth = Math.round(102 * pxPerMm);
+  const portraitHeight = Math.round(152 * pxPerMm);
+  const landscapeWidth = portraitHeight;
+  const landscapeHeight = portraitWidth;
+  const padding = Math.round(6 * pxPerMm);
+  const sideWidth = Math.round(30 * pxPerMm);
+  const contentGap = Math.round(4 * pxPerMm);
+  const mainWidth = landscapeWidth - (padding * 2) - sideWidth - contentGap;
+  const qrSize = Math.round(28 * pxPerMm);
+  const infoGap = Math.round(3 * pxPerMm);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas-kontekstia ei saatu avattua.");
+  const portraitCanvas = document.createElement("canvas");
+  portraitCanvas.width = portraitWidth;
+  portraitCanvas.height = portraitHeight;
+  const portraitCtx = portraitCanvas.getContext("2d");
+  if (!portraitCtx) throw new Error("Canvas-kontekstia ei saatu avattua.");
+
+  const landscapeCanvas = document.createElement("canvas");
+  landscapeCanvas.width = landscapeWidth;
+  landscapeCanvas.height = landscapeHeight;
+  const ctx = landscapeCanvas.getContext("2d");
+  if (!ctx) throw new Error("Vaakasuunnan canvas-kontekstia ei saatu avattua.");
 
   const [qrImage, logoImage] = await Promise.all([
     loadImageElement(qrDataUrl),
@@ -1136,19 +1146,31 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   ]);
 
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, landscapeWidth, landscapeHeight);
   ctx.textBaseline = "top";
+
   const left = padding;
   const top = padding;
-  const topRowHeight = Math.round(34 * pxPerMm);
-  const qrX = width - padding - qrSize;
-  const qrY = top;
+  const rightColumnX = landscapeWidth - padding - sideWidth;
+  const qrX = rightColumnX + Math.round((sideWidth - qrSize) / 2);
+  const qrY = landscapeHeight - padding - qrSize;
+  const sectionGap = Math.round(3 * pxPerMm);
+  const headerGap = Math.round(2 * pxPerMm);
 
   if (logoImage) {
     const aspect = (logoImage.naturalWidth || 1) / Math.max(1, logoImage.naturalHeight || 1);
-    const logoWidth = Math.min(logoTargetWidth, contentWidth - qrSize - 40);
-    const logoHeight = Math.max(54, Math.round(logoWidth / Math.max(aspect, 0.1)));
-    ctx.drawImage(logoImage, left, top + 6, logoWidth, logoHeight);
+    const logoWidth = Math.min(Math.round(20 * pxPerMm), sideWidth - Math.round(4 * pxPerMm));
+    const logoHeight = Math.max(Math.round(10 * pxPerMm), Math.round(logoWidth / Math.max(aspect, 0.1)));
+    const logoX = rightColumnX + Math.round((sideWidth - logoWidth) / 2);
+    const logoY = top + Math.round(1 * pxPerMm);
+    ctx.drawImage(logoImage, logoX, logoY, logoWidth, logoHeight);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "800 20px Arial";
+    ctx.textAlign = "center";
+    const brandCenterX = rightColumnX + Math.round(sideWidth / 2);
+    ctx.fillText("Suoraan", brandCenterX, logoY + logoHeight + 8);
+    ctx.fillText("Kalastajalta", brandCenterX, logoY + logoHeight + 30);
+    ctx.textAlign = "left";
   }
 
   ctx.fillStyle = "#ffffff";
@@ -1165,10 +1187,42 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   }
   ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
-  let currentY = topRowHeight + padding + 8;
+  const supplierLines = [
+    `Toimittaja: ${label.supplier || "-"}`,
+    label.supplierAddress || "",
+    label.supplierContact || "",
+  ].filter(Boolean);
+  const supplierFontMax = 15;
+  const supplierFontMin = 10;
+  const supplierLineGap = 4;
+  const supplierWidth = mainWidth;
+  const supplierWrappedLines = supplierLines.map((line, index) => {
+    fitCanvasFont(ctx, line, supplierWidth, supplierFontMax, supplierFontMin, index === 0 ? "700" : "500");
+    return {
+      font: ctx.font,
+      lines: wrapCanvasText(ctx, line, supplierWidth, 2),
+    };
+  });
+  const supplierHeight = supplierWrappedLines.reduce((sum, item) => sum + (item.lines.length * 14), 0)
+    + Math.max(0, supplierWrappedLines.length - 1) * supplierLineGap;
+  const supplierTop = landscapeHeight - padding - supplierHeight;
+  const weightY = supplierTop - Math.round(7 * pxPerMm);
+
+  const batchLabel = `Erätunnus: ${label.batchId || "-"}`;
+  ctx.font = "800 18px Arial";
+  const singleLineBatchWidth = Math.ceil(ctx.measureText(batchLabel).width) + 24;
+  const batchWidth = Math.max(
+    Math.round(54 * pxPerMm),
+    Math.min(Math.round(72 * pxPerMm), singleLineBatchWidth),
+  );
+  const speciesWidth = mainWidth - batchWidth - headerGap;
+  const batchX = left + speciesWidth + headerGap;
+  const batchY = top;
+
+  let currentY = top;
   ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, label.species || "-", contentWidth, 46, 28, "800");
-  const speciesLines = wrapCanvasText(ctx, label.species || "-", contentWidth, 2);
+  fitCanvasFont(ctx, label.species || "-", speciesWidth, 52, 30, "800");
+  const speciesLines = wrapCanvasText(ctx, label.species || "-", speciesWidth, 2);
   const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 40) * 1.04;
   speciesLines.forEach((line, index) => {
     ctx.fillText(line, left, currentY + (index * speciesLineHeight));
@@ -1177,79 +1231,99 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
 
   if (label.scientificName) {
     ctx.fillStyle = "#334155";
-    fitCanvasFont(ctx, label.scientificName, contentWidth, 22, 16, "600");
+    fitCanvasFont(ctx, label.scientificName, speciesWidth, 20, 14, "600");
     ctx.fillText(label.scientificName, left, currentY);
-    currentY += 28;
+    currentY += 24;
   }
 
-  const batchHeight = 44;
+  const batchAvailableWidth = batchWidth - 16;
   ctx.fillStyle = "#eff6ff";
   ctx.strokeStyle = "#93c5fd";
   ctx.lineWidth = 3;
+  fitCanvasFont(ctx, batchLabel, batchAvailableWidth, 18, 10, "800");
+  const batchLines = wrapCanvasText(ctx, batchLabel, batchAvailableWidth, 3);
+  const batchTextLineHeight = 14;
+  const batchHeight = Math.max(Math.round(12 * pxPerMm), 16 + (batchLines.length * batchTextLineHeight));
   if (ctx.roundRect) {
     ctx.beginPath();
-    ctx.roundRect(left, currentY, contentWidth, batchHeight, 14);
+    ctx.roundRect(batchX, batchY, batchWidth, batchHeight, 14);
     ctx.fill();
     ctx.stroke();
   } else {
-    ctx.fillRect(left, currentY, contentWidth, batchHeight);
-    ctx.strokeRect(left, currentY, contentWidth, batchHeight);
+    ctx.fillRect(batchX, batchY, batchWidth, batchHeight);
+    ctx.strokeRect(batchX, batchY, batchWidth, batchHeight);
   }
   ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, `Erätunnus: ${label.batchId || "-"}`, contentWidth - 16, 20, 13, "800");
-  ctx.fillText(`Erätunnus: ${label.batchId || "-"}`, left + 8, currentY + 10);
-  currentY += batchHeight + 10;
+  batchLines.forEach((line, index) => {
+    ctx.fillText(line, batchX + 8, batchY + 8 + (index * batchTextLineHeight));
+  });
+  currentY = Math.max(currentY + 8, top + batchHeight + sectionGap);
 
   const infoLines = [
     label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+    label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
     label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
     label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
+    label.productForm ? `Tuote: ${label.productForm}` : "",
     "Säilytys: 0–2 °C",
   ].filter(Boolean);
 
+  const infoColumnWidth = Math.floor((mainWidth - infoGap) / 2);
+  let leftInfoY = currentY;
+  let rightInfoY = currentY;
   ctx.fillStyle = "#0f172a";
   infoLines.forEach((line, index) => {
     const isCatchDate = index === 0;
-    fitCanvasFont(ctx, line, contentWidth, isCatchDate ? 22 : 19, 13, isCatchDate ? "700" : "500");
-    ctx.fillText(line, left, currentY);
-    currentY += isCatchDate ? 26 : 22;
+    const useLeftColumn = index % 2 === 0;
+    fitCanvasFont(ctx, line, infoColumnWidth, isCatchDate ? 20 : 16, 11, isCatchDate ? "700" : "500");
+    const wrappedLines = wrapCanvasText(ctx, line, infoColumnWidth, 2);
+    const baseX = useLeftColumn ? left : left + infoColumnWidth + infoGap;
+    const baseY = useLeftColumn ? leftInfoY : rightInfoY;
+    wrappedLines.forEach((wrappedLine, wrappedIndex) => {
+      ctx.fillText(wrappedLine, baseX, baseY + (wrappedIndex * 16));
+    });
+    if (useLeftColumn) {
+      leftInfoY += wrappedLines.length * 16 + 6;
+    } else {
+      rightInfoY += wrappedLines.length * 16 + 6;
+    }
   });
 
-  if (label.productForm) {
-    fitCanvasFont(ctx, `Tuote: ${label.productForm}`, contentWidth, 19, 13, "500");
-    ctx.fillText(`Tuote: ${label.productForm}`, left, currentY);
-    currentY += 22;
-  }
-
-  if (label.commercialFishingId) {
-    fitCanvasFont(ctx, `Kalastajatunnus: ${label.commercialFishingId}`, contentWidth, 19, 12, "500");
-    ctx.fillText(`Kalastajatunnus: ${label.commercialFishingId}`, left, currentY);
-    currentY += 22;
-  }
-
-  const weightY = height - padding - 120;
+  ctx.fillStyle = "#0f172a";
   ctx.font = "700 20px Arial";
   ctx.fillText("Paino:", left, weightY);
   ctx.beginPath();
   ctx.lineWidth = 4;
   ctx.moveTo(left + 78, weightY + 19);
-  ctx.lineTo(left + contentWidth - 52, weightY + 19);
+  ctx.lineTo(left + mainWidth - 40, weightY + 19);
   ctx.strokeStyle = "#0f172a";
   ctx.stroke();
-  ctx.fillText("kg", left + contentWidth - 34, weightY);
+  ctx.fillText("kg", left + mainWidth - 30, weightY);
 
-  const supplierLines = [
-    `Toimittaja: ${label.supplier || "-"}`,
-    label.supplierAddress || "",
-    label.supplierContact || "",
-  ].filter(Boolean);
-  const supplierBaseY = height - padding - (supplierLines.length * 18) - 10;
-  supplierLines.forEach((line, index) => {
-    fitCanvasFont(ctx, line, contentWidth, 18, 12, "500");
-    ctx.fillText(line, left, supplierBaseY + (index * 18));
+  ctx.beginPath();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#cbd5e1";
+  ctx.moveTo(left, supplierTop - 10);
+  ctx.lineTo(left + mainWidth, supplierTop - 10);
+  ctx.stroke();
+  let supplierY = supplierTop;
+  supplierWrappedLines.forEach((item) => {
+    ctx.font = item.font;
+    item.lines.forEach((wrappedLine, wrappedIndex) => {
+      ctx.fillText(wrappedLine, left, supplierY + (wrappedIndex * 14));
+    });
+    supplierY += item.lines.length * 14 + supplierLineGap;
   });
 
-  return canvas.toDataURL("image/png");
+  portraitCtx.fillStyle = "#ffffff";
+  portraitCtx.fillRect(0, 0, portraitWidth, portraitHeight);
+  portraitCtx.save();
+  portraitCtx.translate(0, portraitHeight);
+  portraitCtx.rotate(-Math.PI / 2);
+  portraitCtx.drawImage(landscapeCanvas, 0, 0, landscapeWidth, landscapeHeight);
+  portraitCtx.restore();
+
+  return portraitCanvas.toDataURL("image/png");
 }
 
 function buildCatchLabelPdfFileName(entry) {
@@ -1267,137 +1341,18 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
   if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
     const doc = new jsPDF({
-      orientation: "landscape",
+      orientation: "portrait",
       unit: "mm",
       format: [102, 152],
       compress: true,
     });
 
-    const pageWidth = 152;
-    const pageHeight = 102;
-    const padding = 6;
-    const sideWidth = 30;
-    const contentGap = 4;
-    const mainWidth = pageWidth - (padding * 2) - sideWidth - contentGap;
-    const rightColumnX = pageWidth - padding - sideWidth;
-    const qrSize = 28;
-    const qrX = rightColumnX + ((sideWidth - qrSize) / 2);
-    const qrY = pageHeight - padding - qrSize;
-    const logoAspectRatio = Number(logoDimensions.width || 1) / Math.max(1, Number(logoDimensions.height || 1));
-    const logoWidth = Math.min(20, sideWidth - 4);
-    const logoHeight = Math.max(10, Math.min(20, logoWidth / Math.max(logoAspectRatio, 0.1)));
-
-    const drawMunbynLabel = (label, qrDataUrl) => {
-      doc.setFillColor(255, 255, 255);
-      doc.rect(0, 0, pageWidth, pageHeight, "F");
-
-      if (logoDataUrl) {
-        doc.addImage(logoDataUrl, "PNG", rightColumnX + ((sideWidth - logoWidth) / 2), padding + 1, logoWidth, logoHeight);
-      }
-
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(203, 213, 225);
-      doc.roundedRect(qrX - 1.2, qrY - 1.2, qrSize + 2.4, qrSize + 2.4, 1.8, 1.8, "FD");
-      doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
-
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(15, 23, 42);
-      doc.setFontSize(7.4);
-      const brandCenterX = rightColumnX + (sideWidth / 2);
-      doc.text("Suoraan", brandCenterX, padding + logoHeight + 4.2, { align: "center" });
-      doc.text("Kalastajalta", brandCenterX, padding + logoHeight + 7.8, { align: "center" });
-
-      let currentY = padding + 1;
-      doc.setTextColor(15, 23, 42);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(13.2);
-      const speciesLines = doc.splitTextToSize(label.species || "-", mainWidth - 42).slice(0, 2);
-      doc.text(speciesLines, padding, currentY);
-      currentY += speciesLines.length * 5.1;
-
-      if (label.scientificName) {
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(51, 65, 85);
-        doc.setFontSize(7.4);
-        const scientificLines = doc.splitTextToSize(label.scientificName, mainWidth - 42).slice(0, 1);
-        doc.text(scientificLines, padding, currentY);
-        currentY += scientificLines.length * 3.8;
-      }
-
-      currentY += 1;
-      doc.setFillColor(239, 246, 255);
-      doc.setDrawColor(147, 197, 253);
-      doc.roundedRect(padding + mainWidth - 40, padding, 40, 10, 1.8, 1.8, "FD");
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(15, 23, 42);
-      doc.setFontSize(7.2);
-      const batchLines = doc.splitTextToSize(`Erätunnus: ${label.batchId || "-"}`, 36).slice(0, 2);
-      doc.text(batchLines, padding + mainWidth - 38, padding + 3.3);
-      currentY = Math.max(currentY, padding + 13);
-
-      const infoLines = [
-        label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
-        label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
-        label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
-        label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
-        label.productForm ? `Tuote: ${label.productForm}` : "",
-        "Säilytys: 0–2 °C",
-      ].filter(Boolean);
-
-      const infoColumnWidth = (mainWidth - 3) / 2;
-      let leftInfoY = currentY + 2;
-      let rightInfoY = currentY + 2;
-      infoLines.forEach((line, index) => {
-        const isFirst = index === 0;
-        const useLeftColumn = index % 2 === 0;
-        const targetX = useLeftColumn ? padding : padding + infoColumnWidth + 3;
-        const wrapped = doc.splitTextToSize(line, infoColumnWidth).slice(0, 2);
-        doc.setFont("helvetica", isFirst ? "bold" : "normal");
-        doc.setTextColor(15, 23, 42);
-        doc.setFontSize(isFirst ? 7.8 : 7);
-        doc.text(wrapped, targetX, useLeftColumn ? leftInfoY : rightInfoY);
-        if (useLeftColumn) {
-          leftInfoY += wrapped.length * 4.1;
-        } else {
-          rightInfoY += wrapped.length * 4.1;
-        }
-      });
-
-      const footerTopY = pageHeight - 24;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8.8);
-      doc.text("Paino:", padding, footerTopY);
-      doc.setLineWidth(0.5);
-      doc.line(padding + 12, footerTopY - 0.6, padding + 42, footerTopY - 0.6);
-      doc.text("kg", padding + 44, footerTopY);
-
-      const supplierLines = [
-        `Toimittaja: ${label.supplier || "-"}`,
-        label.supplierAddress || "",
-        label.supplierContact || "",
-      ].filter(Boolean);
-      const supplierX = padding + 50;
-      const supplierWidth = mainWidth - 50;
-      doc.setDrawColor(203, 213, 225);
-      doc.setLineWidth(0.2);
-      doc.line(supplierX, footerTopY - 5.5, padding + mainWidth, footerTopY - 5.5);
-
-      let supplierY = footerTopY - 1.5;
-      for (let supplierIndex = 0; supplierIndex < supplierLines.length; supplierIndex += 1) {
-        doc.setFont("helvetica", supplierIndex === 0 ? "bold" : "normal");
-        doc.setFontSize(6.5);
-        const wrapped = doc.splitTextToSize(supplierLines[supplierIndex], supplierWidth).slice(0, 2);
-        doc.text(wrapped, supplierX, supplierY);
-        supplierY += wrapped.length * 3.1;
-      }
-    };
-
     for (let index = 0; index < labels.length; index += 1) {
-      const label = labels[index];
       if (index > 0) {
-        doc.addPage([102, 152], "landscape");
+        doc.addPage([102, 152], "portrait");
       }
-      drawMunbynLabel(label, qrDataUrls[index]);
+      const labelImage = await renderMunbynLabelCanvas(labels[index], qrDataUrls[index], logoDataUrl);
+      doc.addImage(labelImage, "PNG", 0, 0, 102, 152, undefined, "FAST");
     }
 
     return doc;
