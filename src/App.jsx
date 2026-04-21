@@ -1121,13 +1121,12 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   }
 
   const pxPerMm = 8;
-  const width = Math.round(152 * pxPerMm);
-  const height = Math.round(102 * pxPerMm);
+  const width = Math.round(102 * pxPerMm);
+  const height = Math.round(152 * pxPerMm);
   const padding = Math.round(5 * pxPerMm);
-  const gap = Math.round(4 * pxPerMm);
-  const sideWidth = Math.round(31 * pxPerMm);
-  const mainWidth = width - (padding * 2) - sideWidth - gap;
-  const qrSize = Math.round(25 * pxPerMm);
+  const contentWidth = width - (padding * 2);
+  const qrSize = Math.round(26 * pxPerMm);
+  const logoTargetWidth = Math.round(14 * pxPerMm) * 3;
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -1143,132 +1142,118 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
   ctx.textBaseline = "top";
-
   const left = padding;
-  const sideX = left + mainWidth + gap;
-  const weightY = height - padding - 126;
-  const supplierBaseY = height - padding - 68;
+  const top = padding;
+  const topRowHeight = Math.round(34 * pxPerMm);
+  const qrX = width - padding - qrSize;
+  const qrY = top;
 
-  ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, label.species || "-", mainWidth, 52, 30, "800");
-  const speciesLines = wrapCanvasText(ctx, label.species || "-", mainWidth, 2);
-  const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 44) * 1.02;
-  speciesLines.forEach((line, index) => {
-    ctx.fillText(line, left, padding + (index * speciesLineHeight));
-  });
-  const speciesBlockHeight = speciesLines.length * speciesLineHeight;
-  let scientificBlockHeight = 0;
-  let contentY = padding + speciesBlockHeight + 6;
-
-  if (label.scientificName) {
-    ctx.font = "600 18px Arial";
-    ctx.fillStyle = "#334155";
-    const scientificLines = wrapCanvasText(ctx, label.scientificName, mainWidth, 1);
-    scientificLines.forEach((line, index) => {
-      ctx.fillText(line, left, contentY + (index * 20));
-    });
-    scientificBlockHeight = scientificLines.length * 20 + 4;
-    contentY += scientificBlockHeight;
+  if (logoImage) {
+    const aspect = (logoImage.naturalWidth || 1) / Math.max(1, logoImage.naturalHeight || 1);
+    const logoWidth = Math.min(logoTargetWidth, contentWidth - qrSize - 40);
+    const logoHeight = Math.max(54, Math.round(logoWidth / Math.max(aspect, 0.1)));
+    ctx.drawImage(logoImage, left, top + 6, logoWidth, logoHeight);
   }
 
-  contentY += 6;
-  const batchY = contentY;
-  const batchHeight = 38;
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "#cbd5e1";
+  ctx.lineWidth = 3;
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16, 10);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16);
+    ctx.strokeRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16);
+  }
+  ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+
+  let currentY = topRowHeight + padding + 8;
+  ctx.fillStyle = "#0f172a";
+  fitCanvasFont(ctx, label.species || "-", contentWidth, 46, 28, "800");
+  const speciesLines = wrapCanvasText(ctx, label.species || "-", contentWidth, 2);
+  const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 40) * 1.04;
+  speciesLines.forEach((line, index) => {
+    ctx.fillText(line, left, currentY + (index * speciesLineHeight));
+  });
+  currentY += speciesLines.length * speciesLineHeight + 6;
+
+  if (label.scientificName) {
+    ctx.fillStyle = "#334155";
+    fitCanvasFont(ctx, label.scientificName, contentWidth, 22, 16, "600");
+    ctx.fillText(label.scientificName, left, currentY);
+    currentY += 28;
+  }
+
+  const batchHeight = 44;
   ctx.fillStyle = "#eff6ff";
   ctx.strokeStyle = "#93c5fd";
   ctx.lineWidth = 3;
   if (ctx.roundRect) {
     ctx.beginPath();
-    ctx.roundRect(left, batchY, mainWidth, batchHeight, 16);
+    ctx.roundRect(left, currentY, contentWidth, batchHeight, 14);
     ctx.fill();
     ctx.stroke();
   } else {
-    ctx.fillRect(left, batchY, mainWidth, batchHeight);
-    ctx.strokeRect(left, batchY, mainWidth, batchHeight);
+    ctx.fillRect(left, currentY, contentWidth, batchHeight);
+    ctx.strokeRect(left, currentY, contentWidth, batchHeight);
   }
   ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, `Erätunnus: ${label.batchId || "-"}`, mainWidth - 18, 20, 13, "800");
-  ctx.fillText(`Erätunnus: ${label.batchId || "-"}`, left + 8, batchY + 9);
-  const infoStartY = batchY + batchHeight + 8;
+  fitCanvasFont(ctx, `Erätunnus: ${label.batchId || "-"}`, contentWidth - 16, 20, 13, "800");
+  ctx.fillText(`Erätunnus: ${label.batchId || "-"}`, left + 8, currentY + 10);
+  currentY += batchHeight + 10;
 
   const infoLines = [
     label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
     label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
     label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
-    label.productForm ? `Tuote: ${label.productForm}` : "",
     "Säilytys: 0–2 °C",
-    label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
   ].filter(Boolean);
 
   ctx.fillStyle = "#0f172a";
   infoLines.forEach((line, index) => {
-    const isCatchDate = index === 0 && line.startsWith("Pyyntipäivä:");
-    fitCanvasFont(ctx, line, mainWidth, isCatchDate ? 20 : 17, 12, isCatchDate ? "700" : "500");
-    ctx.fillText(line, left, infoStartY + (index * 20));
+    const isCatchDate = index === 0;
+    fitCanvasFont(ctx, line, contentWidth, isCatchDate ? 22 : 19, 13, isCatchDate ? "700" : "500");
+    ctx.fillText(line, left, currentY);
+    currentY += isCatchDate ? 26 : 22;
   });
+
+  if (label.productForm) {
+    fitCanvasFont(ctx, `Tuote: ${label.productForm}`, contentWidth, 19, 13, "500");
+    ctx.fillText(`Tuote: ${label.productForm}`, left, currentY);
+    currentY += 22;
+  }
+
+  if (label.commercialFishingId) {
+    fitCanvasFont(ctx, `Kalastajatunnus: ${label.commercialFishingId}`, contentWidth, 19, 12, "500");
+    ctx.fillText(`Kalastajatunnus: ${label.commercialFishingId}`, left, currentY);
+    currentY += 22;
+  }
+
+  const weightY = height - padding - 120;
+  ctx.font = "700 20px Arial";
+  ctx.fillText("Paino:", left, weightY);
+  ctx.beginPath();
+  ctx.lineWidth = 4;
+  ctx.moveTo(left + 78, weightY + 19);
+  ctx.lineTo(left + contentWidth - 52, weightY + 19);
+  ctx.strokeStyle = "#0f172a";
+  ctx.stroke();
+  ctx.fillText("kg", left + contentWidth - 34, weightY);
 
   const supplierLines = [
     `Toimittaja: ${label.supplier || "-"}`,
     label.supplierAddress || "",
     label.supplierContact || "",
   ].filter(Boolean);
-
-  ctx.font = "700 20px Arial";
-  ctx.fillText("Paino:", left, weightY);
-  ctx.beginPath();
-  ctx.lineWidth = 4;
-  ctx.moveTo(left + 78, weightY + 19);
-  ctx.lineTo(left + mainWidth - 52, weightY + 19);
-  ctx.strokeStyle = "#0f172a";
-  ctx.stroke();
-  ctx.fillText("kg", left + mainWidth - 34, weightY);
-
+  const supplierBaseY = height - padding - (supplierLines.length * 18) - 10;
   supplierLines.forEach((line, index) => {
-    fitCanvasFont(ctx, line, mainWidth, 18, 12, "500");
+    fitCanvasFont(ctx, line, contentWidth, 18, 12, "500");
     ctx.fillText(line, left, supplierBaseY + (index * 18));
   });
 
-  if (logoImage) {
-    const logoWidth = 110;
-    const logoHeight = Math.max(46, Math.round((logoImage.naturalHeight / Math.max(1, logoImage.naturalWidth)) * logoWidth));
-    const logoX = sideX + ((sideWidth - logoWidth) / 2);
-    const logoY = padding + 2;
-    ctx.drawImage(logoImage, logoX, logoY, logoWidth, logoHeight);
-    ctx.font = "800 17px Arial";
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#0f172a";
-    ctx.fillText("Suoraan", sideX + (sideWidth / 2), logoY + logoHeight + 8);
-    ctx.fillText("Kalastajalta", sideX + (sideWidth / 2), logoY + logoHeight + 26);
-    ctx.textAlign = "left";
-  }
-
-  const qrX = sideX + ((sideWidth - qrSize) / 2);
-  const qrY = height - padding - qrSize;
-  ctx.fillStyle = "#ffffff";
-  ctx.strokeStyle = "#cbd5e1";
-  ctx.lineWidth = 3;
-  if (ctx.roundRect) {
-    ctx.beginPath();
-    ctx.roundRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12, 10);
-    ctx.fill();
-    ctx.stroke();
-  } else {
-    ctx.fillRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12);
-    ctx.strokeRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12);
-  }
-  ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
-  const portraitCanvas = document.createElement("canvas");
-  portraitCanvas.width = height;
-  portraitCanvas.height = width;
-  const portraitCtx = portraitCanvas.getContext("2d");
-  if (!portraitCtx) throw new Error("Canvas-kontekstia ei saatu avattua.");
-  portraitCtx.fillStyle = "#ffffff";
-  portraitCtx.fillRect(0, 0, portraitCanvas.width, portraitCanvas.height);
-  portraitCtx.translate(0, portraitCanvas.height);
-  portraitCtx.rotate(-Math.PI / 2);
-  portraitCtx.drawImage(canvas, 0, 0);
-
-  return portraitCanvas.toDataURL("image/png");
+  return canvas.toDataURL("image/png");
 }
 
 function buildCatchLabelPdfFileName(entry) {
