@@ -1108,6 +1108,19 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       y: x,
     });
 
+    const drawRotatedFittedText = (text, x, y, maxWidth, fontSize, options = {}) => {
+      const content = String(text || "").trim();
+      if (!content) return fontSize;
+      let nextFontSize = fontSize;
+      doc.setFontSize(nextFontSize);
+      while (nextFontSize > 6.2 && doc.getTextWidth(content) > maxWidth) {
+        nextFontSize -= 0.4;
+        doc.setFontSize(nextFontSize);
+      }
+      drawRotatedText(content, x, y, options);
+      return nextFontSize;
+    };
+
     const drawRotatedText = (text, x, y, options = {}) => {
       const point = rotatePoint(x, y);
       doc.text(text, point.x, point.y, { angle: 90, ...options });
@@ -1140,41 +1153,37 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       const top = pagePadding;
       const sideX = left + mainWidth + gap;
       const batchBoxWidth = mainWidth;
-      const lineWidth = mainWidth - 6;
-      let currentY = top + 8;
+      const lineWidth = mainWidth - 4;
+      let currentY = top + 7;
 
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(22);
       doc.setTextColor(15, 23, 42);
-      const speciesLines = doc.splitTextToSize(label.species || "-", mainWidth);
+      const speciesLines = doc.splitTextToSize(label.species || "-", lineWidth).slice(0, 2);
+      doc.setFontSize(speciesLines.length > 1 ? 15.5 : 18);
       drawRotatedText(speciesLines, left, currentY);
-      currentY += speciesLines.length * 7.2;
+      currentY += speciesLines.length * 6.1;
 
       if (label.scientificName) {
         doc.setFont("helvetica", "normal");
         doc.setTextColor(71, 85, 105);
-        doc.setFontSize(10);
-        const scientificLines = doc.splitTextToSize(label.scientificName, mainWidth);
-        drawRotatedText(scientificLines, left, currentY);
-        currentY += scientificLines.length * 4.6;
+        drawRotatedFittedText(label.scientificName, left, currentY, lineWidth, 8.4);
+        currentY += 4.6;
         doc.setTextColor(15, 23, 42);
       }
 
-      currentY += 2.2;
+      currentY += 2;
       const batchText = `Erätunnus: ${label.batchId || "-"}`;
-      const batchTextLines = doc.splitTextToSize(batchText, batchBoxWidth - 4);
-      const batchBoxHeight = Math.max(10, 5 + (batchTextLines.length * 4.5));
+      const batchBoxHeight = 9.2;
       doc.setFillColor(239, 246, 255);
       doc.setDrawColor(147, 197, 253);
       drawRotatedRoundedRect(left, currentY - 4.3, batchBoxWidth, batchBoxHeight, 1.8, 1.8, "FD");
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      drawRotatedText(batchTextLines, left + 2, currentY + 2.1);
+      drawRotatedFittedText(batchText, left + 2, currentY + 2, batchBoxWidth - 4, 8.8);
       currentY += batchBoxHeight + 1;
 
       const lines = [
-        label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
-        label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
+        label.catchDate ? `Pyyntipvm: ${label.catchDate}` : "",
+        label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
         label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
         label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
         label.productForm ? `Tuote: ${label.productForm}` : "",
@@ -1182,12 +1191,10 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       ].filter(Boolean);
 
       lines.forEach((line) => {
-        const isCatchDateLine = line.startsWith("Pyyntipäivä:");
+        const isCatchDateLine = line.startsWith("Pyyntipvm:");
         doc.setFont("helvetica", isCatchDateLine ? "bold" : "normal");
-        doc.setFontSize(isCatchDateLine ? 11 : 9.8);
-        const wrapped = doc.splitTextToSize(line, lineWidth);
-        drawRotatedText(wrapped, left, currentY);
-        currentY += wrapped.length * (isCatchDateLine ? 5.2 : 4.5);
+        drawRotatedFittedText(line, left, currentY, lineWidth, isCatchDateLine ? 9.4 : 8.3);
+        currentY += isCatchDateLine ? 4.9 : 4.2;
       });
 
       const brandCenterX = sideX + (sideColumnWidth / 2);
@@ -1208,8 +1215,8 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
         `Toimittaja: ${label.supplier || "-"}`,
         label.supplierAddress || "",
         label.supplierContact || "",
-      ].filter(Boolean).flatMap((line) => doc.splitTextToSize(line, lineWidth));
-      const supplierLineHeight = 4.4;
+      ].filter(Boolean);
+      const supplierLineHeight = 3.8;
       const logicalSupplierStartY = logicalHeight - pagePadding - ((supplierLines.length - 1) * supplierLineHeight) - 2;
       const logicalWeightY = logicalSupplierStartY - 10;
 
@@ -1222,9 +1229,9 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       drawRotatedText("kg", left + mainWidth - 5, logicalWeightY);
 
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10.2);
+      doc.setFontSize(7.8);
       supplierLines.forEach((line, supplierIndex) => {
-        drawRotatedText(line, left, logicalSupplierStartY + (supplierIndex * supplierLineHeight));
+        drawRotatedFittedText(line, left, logicalSupplierStartY + (supplierIndex * supplierLineHeight), lineWidth, 7.8);
       });
 
       drawRotatedImage(qrDataUrls[index], "PNG", qrX, qrY, qrSize, qrSize);
