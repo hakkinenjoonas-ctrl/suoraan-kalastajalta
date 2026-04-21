@@ -1126,7 +1126,6 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   const contentGap = Math.round(4 * pxPerMm);
   const mainWidth = landscapeWidth - (padding * 2) - sideWidth - contentGap;
   const qrSize = Math.round(28 * pxPerMm);
-  const infoGap = Math.round(3 * pxPerMm);
 
   const portraitCanvas = document.createElement("canvas");
   portraitCanvas.width = portraitWidth;
@@ -1265,29 +1264,20 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
     label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
     label.productForm ? `Tuote: ${label.productForm}` : "",
-    label.boxLabel ? `Laatikko: ${label.boxLabel}` : "",
     "Säilytys: 0–2 °C",
   ].filter(Boolean);
 
-  const infoColumnWidth = Math.floor((mainWidth - infoGap) / 2);
-  let leftInfoY = currentY;
-  let rightInfoY = currentY;
+  const infoWidth = mainWidth;
+  let infoY = currentY;
   ctx.fillStyle = "#0f172a";
   infoLines.forEach((line, index) => {
     const isCatchDate = index === 0;
-    const useLeftColumn = index % 2 === 0;
-    fitCanvasFont(ctx, line, infoColumnWidth, isCatchDate ? 17 : 14, 10, isCatchDate ? "700" : "500");
-    const wrappedLines = wrapCanvasText(ctx, line, infoColumnWidth, 2);
-    const baseX = useLeftColumn ? left : left + infoColumnWidth + infoGap;
-    const baseY = useLeftColumn ? leftInfoY : rightInfoY;
+    fitCanvasFont(ctx, line, infoWidth, isCatchDate ? 17 : 14, 10, isCatchDate ? "700" : "500");
+    const wrappedLines = wrapCanvasText(ctx, line, infoWidth, 2);
     wrappedLines.forEach((wrappedLine, wrappedIndex) => {
-      ctx.fillText(wrappedLine, baseX, baseY + (wrappedIndex * 13));
+      ctx.fillText(wrappedLine, left, infoY + (wrappedIndex * 13));
     });
-    if (useLeftColumn) {
-      leftInfoY += wrappedLines.length * 13 + 4;
-    } else {
-      rightInfoY += wrappedLines.length * 13 + 4;
-    }
+    infoY += wrappedLines.length * 13 + 4;
   });
 
   ctx.fillStyle = "#0f172a";
