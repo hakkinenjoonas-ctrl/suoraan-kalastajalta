@@ -1063,6 +1063,201 @@ function loadImageDimensions(dataUrl) {
   });
 }
 
+function loadImageElement(dataUrl) {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || !dataUrl) {
+      reject(new Error("Kuvaa ei voitu ladata."));
+      return;
+    }
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Kuvaa ei voitu ladata."));
+    img.src = dataUrl;
+  });
+}
+
+function wrapCanvasText(ctx, text, maxWidth, maxLines = 2) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  const lines = [];
+  let currentLine = words[0];
+
+  for (let index = 1; index < words.length; index += 1) {
+    const nextLine = `${currentLine} ${words[index]}`;
+    if (ctx.measureText(nextLine).width <= maxWidth) {
+      currentLine = nextLine;
+      continue;
+    }
+    lines.push(currentLine);
+    currentLine = words[index];
+    if (lines.length >= maxLines - 1) break;
+  }
+
+  if (lines.length < maxLines) {
+    const remainingWords = words.slice(lines.join(" ").split(/\s+/).filter(Boolean).length);
+    const lastLine = remainingWords.length > 0 ? [currentLine, ...remainingWords.slice(1)].join(" ") : currentLine;
+    lines.push(lastLine);
+  }
+
+  if (lines.length > maxLines) return lines.slice(0, maxLines);
+  return lines;
+}
+
+function fitCanvasFont(ctx, text, maxWidth, startSize, minSize = 18, fontWeight = "600", fontFamily = "Arial") {
+  let size = startSize;
+  while (size > minSize) {
+    ctx.font = `${fontWeight} ${size}px ${fontFamily}`;
+    if (ctx.measureText(String(text || "")).width <= maxWidth) break;
+    size -= 1;
+  }
+  ctx.font = `${fontWeight} ${size}px ${fontFamily}`;
+  return size;
+}
+
+async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
+  if (typeof document === "undefined") {
+    throw new Error("Canvas-renderöinti ei ole käytettävissä.");
+  }
+
+  const pxPerMm = 8;
+  const width = Math.round(152 * pxPerMm);
+  const height = Math.round(102 * pxPerMm);
+  const padding = Math.round(6 * pxPerMm);
+  const gap = Math.round(5 * pxPerMm);
+  const sideWidth = Math.round(37 * pxPerMm);
+  const mainWidth = width - (padding * 2) - sideWidth - gap;
+  const qrSize = Math.round(32 * pxPerMm);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas-kontekstia ei saatu avattua.");
+
+  const [qrImage, logoImage] = await Promise.all([
+    loadImageElement(qrDataUrl),
+    logoDataUrl ? loadImageElement(logoDataUrl).catch(() => null) : Promise.resolve(null),
+  ]);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.textBaseline = "top";
+
+  let currentY = padding;
+  const left = padding;
+  const sideX = left + mainWidth + gap;
+
+  fitCanvasFont(ctx, label.species || "-", mainWidth, 68, 42, "800");
+  const speciesLines = wrapCanvasText(ctx, label.species || "-", mainWidth, 2);
+  const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 56) * 1.05;
+  ctx.fillStyle = "#0f172a";
+  speciesLines.forEach((line, index) => {
+    ctx.fillText(line, left, currentY + (index * speciesLineHeight));
+  });
+  currentY += speciesLines.length * speciesLineHeight + 10;
+
+  if (label.scientificName) {
+    ctx.font = `500 28px Arial`;
+    ctx.fillStyle = "#475569";
+    const scientificLines = wrapCanvasText(ctx, label.scientificName, mainWidth, 2);
+    scientificLines.forEach((line, index) => {
+      ctx.fillText(line, left, currentY + (index * 32));
+    });
+    currentY += scientificLines.length * 32 + 12;
+  }
+
+  const batchHeight = 72;
+  ctx.fillStyle = "#eff6ff";
+  ctx.strokeStyle = "#93c5fd";
+  ctx.lineWidth = 3;
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(left, currentY, mainWidth, batchHeight, 16);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillRect(left, currentY, mainWidth, batchHeight);
+    ctx.strokeRect(left, currentY, mainWidth, batchHeight);
+  }
+  ctx.fillStyle = "#0f172a";
+  fitCanvasFont(ctx, `Erätunnus: ${label.batchId || "-"}`, mainWidth - 28, 34, 22, "800");
+  ctx.fillText(`Erätunnus: ${label.batchId || "-"}`, left + 14, currentY + 18);
+  currentY += batchHeight + 18;
+
+  const infoLines = [
+    label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+    label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
+    label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
+    label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
+    label.productForm ? `Tuote: ${label.productForm}` : "",
+    "Säilytys: 0–2 °C",
+  ].filter(Boolean);
+
+  ctx.fillStyle = "#0f172a";
+  infoLines.forEach((line, index) => {
+    const isCatchDate = index === 0 && line.startsWith("Pyyntipäivä:");
+    fitCanvasFont(ctx, line, mainWidth, isCatchDate ? 36 : 31, 20, isCatchDate ? "700" : "500");
+    ctx.fillText(line, left, currentY);
+    currentY += isCatchDate ? 42 : 36;
+  });
+
+  const supplierLines = [
+    `Toimittaja: ${label.supplier || "-"}`,
+    label.supplierAddress || "",
+    label.supplierContact || "",
+  ].filter(Boolean);
+
+  const supplierBaseY = height - padding - (supplierLines.length * 28) - 10;
+  const weightY = supplierBaseY - 54;
+  ctx.font = "700 30px Arial";
+  ctx.fillText("Paino:", left, weightY);
+  ctx.beginPath();
+  ctx.lineWidth = 4;
+  ctx.moveTo(left + 120, weightY + 28);
+  ctx.lineTo(left + mainWidth - 82, weightY + 28);
+  ctx.strokeStyle = "#0f172a";
+  ctx.stroke();
+  ctx.fillText("kg", left + mainWidth - 56, weightY);
+
+  supplierLines.forEach((line, index) => {
+    fitCanvasFont(ctx, line, mainWidth, 28, 18, "500");
+    ctx.fillText(line, left, supplierBaseY + (index * 28));
+  });
+
+  if (logoImage) {
+    const logoWidth = 184;
+    const logoHeight = Math.max(80, Math.round((logoImage.naturalHeight / Math.max(1, logoImage.naturalWidth)) * logoWidth));
+    const logoX = sideX + ((sideWidth - logoWidth) / 2);
+    const logoY = padding + 8;
+    ctx.drawImage(logoImage, logoX, logoY, logoWidth, logoHeight);
+    ctx.font = "800 26px Arial";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#0f172a";
+    ctx.fillText("Suoraan", sideX + (sideWidth / 2), logoY + logoHeight + 12);
+    ctx.fillText("Kalastajalta", sideX + (sideWidth / 2), logoY + logoHeight + 42);
+    ctx.textAlign = "left";
+  }
+
+  const qrX = sideX + ((sideWidth - qrSize) / 2);
+  const qrY = height - padding - qrSize;
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "#cbd5e1";
+  ctx.lineWidth = 3;
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16, 12);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16);
+    ctx.strokeRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16);
+  }
+  ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+
+  return canvas.toDataURL("image/png");
+}
+
 function buildCatchLabelPdfFileName(entry) {
   return `kalaetiketit-${String(entry?.batchId || "era").replace(/[^a-zA-Z0-9-_]+/g, "_")}.pdf`;
 }
@@ -1086,167 +1281,15 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
     const pageWidth = 102;
     const pageHeight = 152;
-    const logicalWidth = 152;
-    const logicalHeight = 102;
-    const pagePadding = 6;
-    const sideColumnWidth = 37;
-    const gap = 5;
-    const mainWidth = logicalWidth - (pagePadding * 2) - sideColumnWidth - gap;
-    const qrSize = 32;
-    const logoMaxWidth = 23;
-    const logoMaxHeight = 23;
-    const logoAspectRatio = Number(logoDimensions.width || 1) / Number(logoDimensions.height || 1);
-    const logoWidth = logoAspectRatio >= 1
-      ? logoMaxWidth
-      : Math.min(logoMaxWidth, logoMaxHeight * logoAspectRatio);
-    const logoHeight = logoAspectRatio >= 1
-      ? Math.min(logoMaxHeight, logoMaxWidth / logoAspectRatio)
-      : logoMaxHeight;
 
-    const rotatePoint = (x, y) => ({
-      x: pageWidth - y,
-      y: x,
-    });
-
-    const drawRotatedFittedText = (text, x, y, maxWidth, fontSize, options = {}) => {
-      const content = String(text || "").trim();
-      if (!content) return fontSize;
-      let nextFontSize = fontSize;
-      doc.setFontSize(nextFontSize);
-      while (nextFontSize > 6.2 && doc.getTextWidth(content) > maxWidth) {
-        nextFontSize -= 0.4;
-        doc.setFontSize(nextFontSize);
-      }
-      drawRotatedText(content, x, y, options);
-      return nextFontSize;
-    };
-
-    const drawRotatedText = (text, x, y, options = {}) => {
-      const point = rotatePoint(x, y);
-      doc.text(text, point.x, point.y, { angle: 90, ...options });
-    };
-
-    const drawRotatedTextBlock = (lines, x, y, lineHeight, options = {}) => {
-      const items = Array.isArray(lines) ? lines : [lines];
-      items.forEach((line, index) => {
-        drawRotatedText(String(line || ""), x, y + (index * lineHeight), options);
-      });
-    };
-
-    const drawRotatedLine = (x1, y1, x2, y2) => {
-      const start = rotatePoint(x1, y1);
-      const end = rotatePoint(x2, y2);
-      doc.line(start.x, start.y, end.x, end.y);
-    };
-
-    const drawRotatedRoundedRect = (x, y, w, h, rx, ry, style) => {
-      const rectX = pageWidth - y - h;
-      const rectY = x;
-      doc.roundedRect(rectX, rectY, h, w, rx, ry, style);
-    };
-
-    const drawRotatedImage = (imageData, format, x, y, w, h) => {
-      const imageX = pageWidth - y - h;
-      const imageY = x;
-      doc.addImage(imageData, format, imageX, imageY, h, w, undefined, undefined, 90);
-    };
-
-    labels.forEach((label, index) => {
+    for (let index = 0; index < labels.length; index += 1) {
+      const label = labels[index];
       if (index > 0) {
         doc.addPage([102, 152], "portrait");
       }
-
-      const left = pagePadding;
-      const top = pagePadding;
-      const sideX = left + mainWidth + gap;
-      const batchBoxWidth = mainWidth;
-      const lineWidth = mainWidth - 4;
-      let currentY = top + 7;
-
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(15, 23, 42);
-      const speciesLines = doc.splitTextToSize(label.species || "-", lineWidth).slice(0, 2);
-      doc.setFontSize(speciesLines.length > 1 ? 15.5 : 18);
-      drawRotatedTextBlock(speciesLines, left, currentY, 6.1);
-      currentY += speciesLines.length * 6.1;
-
-      if (label.scientificName) {
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(71, 85, 105);
-        const scientificLines = doc.splitTextToSize(label.scientificName, lineWidth).slice(0, 2);
-        doc.setFontSize(scientificLines.length > 1 ? 7.6 : 8.4);
-        drawRotatedTextBlock(scientificLines, left, currentY, 3.8);
-        currentY += scientificLines.length * 3.8;
-        doc.setTextColor(15, 23, 42);
-      }
-
-      currentY += 2;
-      const batchText = `Erätunnus: ${label.batchId || "-"}`;
-      const batchBoxHeight = 9.2;
-      doc.setFillColor(239, 246, 255);
-      doc.setDrawColor(147, 197, 253);
-      drawRotatedRoundedRect(left, currentY - 4.3, batchBoxWidth, batchBoxHeight, 1.8, 1.8, "FD");
-      doc.setFont("helvetica", "bold");
-      drawRotatedFittedText(batchText, left + 2, currentY + 2, batchBoxWidth - 5, 7.9);
-      currentY += batchBoxHeight + 1;
-
-      const lines = [
-        label.catchDate ? `Pyyntipvm: ${label.catchDate}` : "",
-        label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
-        label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
-        label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
-        label.productForm ? `Tuote: ${label.productForm}` : "",
-        "Säilytys: 0–2 °C",
-      ].filter(Boolean);
-
-      lines.forEach((line) => {
-        const isCatchDateLine = line.startsWith("Pyyntipvm:");
-        doc.setFont("helvetica", isCatchDateLine ? "bold" : "normal");
-        const wrapped = doc.splitTextToSize(line, lineWidth).slice(0, 2);
-        doc.setFontSize(isCatchDateLine ? 8.8 : 7.9);
-        drawRotatedTextBlock(wrapped, left, currentY, isCatchDateLine ? 4.2 : 3.8);
-        currentY += wrapped.length * (isCatchDateLine ? 4.2 : 3.8);
-      });
-
-      const brandCenterX = sideX + (sideColumnWidth / 2);
-      const brandLogoX = brandCenterX - (logoWidth / 2);
-      const brandLogoY = top + 1;
-      if (logoDataUrl) {
-        drawRotatedImage(logoDataUrl, "PNG", brandLogoX, brandLogoY, logoWidth, logoHeight);
-      }
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9.5);
-      doc.setTextColor(15, 23, 42);
-      drawRotatedText("Suoraan", brandCenterX, brandLogoY + logoHeight + 3, { align: "center" });
-      drawRotatedText("Kalastajalta", brandCenterX, brandLogoY + logoHeight + 7.2, { align: "center" });
-
-      const qrX = sideX + ((sideColumnWidth - qrSize) / 2);
-      const qrY = logicalHeight - pagePadding - qrSize;
-      const supplierLines = [
-        `Toimittaja: ${label.supplier || "-"}`,
-        label.supplierAddress || "",
-        label.supplierContact || "",
-      ].filter(Boolean);
-      const supplierLineHeight = 3.8;
-      const logicalSupplierStartY = logicalHeight - pagePadding - ((supplierLines.length - 1) * supplierLineHeight) - 2;
-      const logicalWeightY = logicalSupplierStartY - 10;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      drawRotatedText("Paino:", left, logicalWeightY);
-      doc.setLineWidth(0.8);
-      doc.setDrawColor(15, 23, 42);
-      drawRotatedLine(left + 15, logicalWeightY + 0.4, left + mainWidth - 8, logicalWeightY + 0.4);
-      drawRotatedText("kg", left + mainWidth - 5, logicalWeightY);
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(7.8);
-      supplierLines.forEach((line, supplierIndex) => {
-        drawRotatedFittedText(line, left, logicalSupplierStartY + (supplierIndex * supplierLineHeight), lineWidth, 7.8);
-      });
-
-      drawRotatedImage(qrDataUrls[index], "PNG", qrX, qrY, qrSize, qrSize);
-    });
+      const labelImage = await renderMunbynLabelCanvas(label, qrDataUrls[index], logoDataUrl);
+      doc.addImage(labelImage, "PNG", 0, pageHeight, pageHeight, pageWidth, undefined, "FAST", 270);
+    }
 
     return doc;
   }
