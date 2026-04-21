@@ -1254,8 +1254,18 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     ctx.strokeRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16);
   }
   ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+  const portraitCanvas = document.createElement("canvas");
+  portraitCanvas.width = height;
+  portraitCanvas.height = width;
+  const portraitCtx = portraitCanvas.getContext("2d");
+  if (!portraitCtx) throw new Error("Canvas-kontekstia ei saatu avattua.");
+  portraitCtx.fillStyle = "#ffffff";
+  portraitCtx.fillRect(0, 0, portraitCanvas.width, portraitCanvas.height);
+  portraitCtx.translate(0, portraitCanvas.height);
+  portraitCtx.rotate(-Math.PI / 2);
+  portraitCtx.drawImage(canvas, 0, 0);
 
-  return canvas.toDataURL("image/png");
+  return portraitCanvas.toDataURL("image/png");
 }
 
 function buildCatchLabelPdfFileName(entry) {
@@ -1288,7 +1298,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
         doc.addPage([102, 152], "portrait");
       }
       const labelImage = await renderMunbynLabelCanvas(label, qrDataUrls[index], logoDataUrl);
-      doc.addImage(labelImage, "PNG", 0, pageHeight, pageHeight, pageWidth, undefined, "FAST", 270);
+      doc.addImage(labelImage, "PNG", 0, 0, pageWidth, pageHeight, undefined, "FAST");
     }
 
     return doc;
