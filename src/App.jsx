@@ -1126,6 +1126,13 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       doc.text(text, point.x, point.y, { angle: 90, ...options });
     };
 
+    const drawRotatedTextBlock = (lines, x, y, lineHeight, options = {}) => {
+      const items = Array.isArray(lines) ? lines : [lines];
+      items.forEach((line, index) => {
+        drawRotatedText(String(line || ""), x, y + (index * lineHeight), options);
+      });
+    };
+
     const drawRotatedLine = (x1, y1, x2, y2) => {
       const start = rotatePoint(x1, y1);
       const end = rotatePoint(x2, y2);
@@ -1160,14 +1167,16 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       doc.setTextColor(15, 23, 42);
       const speciesLines = doc.splitTextToSize(label.species || "-", lineWidth).slice(0, 2);
       doc.setFontSize(speciesLines.length > 1 ? 15.5 : 18);
-      drawRotatedText(speciesLines, left, currentY);
+      drawRotatedTextBlock(speciesLines, left, currentY, 6.1);
       currentY += speciesLines.length * 6.1;
 
       if (label.scientificName) {
         doc.setFont("helvetica", "normal");
         doc.setTextColor(71, 85, 105);
-        drawRotatedFittedText(label.scientificName, left, currentY, lineWidth, 8.4);
-        currentY += 4.6;
+        const scientificLines = doc.splitTextToSize(label.scientificName, lineWidth).slice(0, 2);
+        doc.setFontSize(scientificLines.length > 1 ? 7.6 : 8.4);
+        drawRotatedTextBlock(scientificLines, left, currentY, 3.8);
+        currentY += scientificLines.length * 3.8;
         doc.setTextColor(15, 23, 42);
       }
 
@@ -1178,7 +1187,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       doc.setDrawColor(147, 197, 253);
       drawRotatedRoundedRect(left, currentY - 4.3, batchBoxWidth, batchBoxHeight, 1.8, 1.8, "FD");
       doc.setFont("helvetica", "bold");
-      drawRotatedFittedText(batchText, left + 2, currentY + 2, batchBoxWidth - 4, 8.8);
+      drawRotatedFittedText(batchText, left + 2, currentY + 2, batchBoxWidth - 5, 7.9);
       currentY += batchBoxHeight + 1;
 
       const lines = [
@@ -1193,8 +1202,10 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       lines.forEach((line) => {
         const isCatchDateLine = line.startsWith("Pyyntipvm:");
         doc.setFont("helvetica", isCatchDateLine ? "bold" : "normal");
-        drawRotatedFittedText(line, left, currentY, lineWidth, isCatchDateLine ? 9.4 : 8.3);
-        currentY += isCatchDateLine ? 4.9 : 4.2;
+        const wrapped = doc.splitTextToSize(line, lineWidth).slice(0, 2);
+        doc.setFontSize(isCatchDateLine ? 8.8 : 7.9);
+        drawRotatedTextBlock(wrapped, left, currentY, isCatchDateLine ? 4.2 : 3.8);
+        currentY += wrapped.length * (isCatchDateLine ? 4.2 : 3.8);
       });
 
       const brandCenterX = sideX + (sideColumnWidth / 2);
