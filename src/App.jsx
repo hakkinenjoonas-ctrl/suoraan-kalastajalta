@@ -659,8 +659,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
   });
 
   if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
-    const renderMunbynLabel = (label) => `
-      <section class="munbyn-label">
+    const renderMunbynLabelContent = (label) => `
         <div class="munbyn-main">
           <div class="munbyn-header">
             <div class="munbyn-main-title">
@@ -706,7 +705,6 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
           </div>
         </div>
-      </section>
     `;
 
     return `
@@ -716,18 +714,30 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           <meta charset="utf-8" />
           <title>Kalaetiketit ${String(entry?.batchId || "")}</title>
           <style>
-            @page { size: 152mm 102mm landscape; margin: 0; }
+            @page { size: 102mm 152mm portrait; margin: 0; }
             * { box-sizing: border-box; }
             body { margin: 0; font-family: Inter, Arial, sans-serif; background: #fff; color: #0f172a; }
             .munbyn-label {
+              position: relative;
+              width: 102mm;
+              height: 152mm;
+              overflow: hidden;
+              page-break-after: always;
+              background: #fff;
+            }
+            .munbyn-rotated {
+              position: absolute;
+              top: 152mm;
+              left: 0;
               width: 152mm;
               height: 102mm;
               padding: 6mm;
-              page-break-after: always;
-              background: #fff;
+              transform: rotate(-90deg);
+              transform-origin: top left;
               display: grid;
               grid-template-columns: 1fr 37mm;
               gap: 5mm;
+              background: #fff;
             }
             .munbyn-label:last-child { page-break-after: auto; }
             .munbyn-main { min-width: 0; display: flex; flex-direction: column; }
@@ -773,7 +783,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             }
           </style>
         </head>
-        <body>${labels.map((label) => renderMunbynLabel(label)).join("")}</body>
+        <body>${labels.map((label) => `<section class="munbyn-label"><div class="munbyn-rotated">${renderMunbynLabelContent(label)}</div></section>`).join("")}</body>
       </html>
     `;
   }
@@ -1068,18 +1078,20 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
   if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
     const doc = new jsPDF({
-      orientation: "landscape",
+      orientation: "portrait",
       unit: "mm",
       format: [102, 152],
       compress: true,
     });
 
-    const pageWidth = 152;
-    const pageHeight = 102;
+    const pageWidth = 102;
+    const pageHeight = 152;
+    const logicalWidth = 152;
+    const logicalHeight = 102;
     const pagePadding = 6;
     const sideColumnWidth = 37;
     const gap = 5;
-    const mainWidth = pageWidth - (pagePadding * 2) - sideColumnWidth - gap;
+    const mainWidth = logicalWidth - (pagePadding * 2) - sideColumnWidth - gap;
     const qrSize = 32;
     const logoMaxWidth = 23;
     const logoMaxHeight = 23;
@@ -1091,9 +1103,37 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       ? Math.min(logoMaxHeight, logoMaxWidth / logoAspectRatio)
       : logoMaxHeight;
 
+    const rotatePoint = (x, y) => ({
+      x: pageWidth - y,
+      y: x,
+    });
+
+    const drawRotatedText = (text, x, y, options = {}) => {
+      const point = rotatePoint(x, y);
+      doc.text(text, point.x, point.y, { angle: 90, ...options });
+    };
+
+    const drawRotatedLine = (x1, y1, x2, y2) => {
+      const start = rotatePoint(x1, y1);
+      const end = rotatePoint(x2, y2);
+      doc.line(start.x, start.y, end.x, end.y);
+    };
+
+    const drawRotatedRoundedRect = (x, y, w, h, rx, ry, style) => {
+      const rectX = pageWidth - y - h;
+      const rectY = x;
+      doc.roundedRect(rectX, rectY, h, w, rx, ry, style);
+    };
+
+    const drawRotatedImage = (imageData, format, x, y, w, h) => {
+      const imageX = pageWidth - y - h;
+      const imageY = x;
+      doc.addImage(imageData, format, imageX, imageY, h, w, undefined, undefined, 90);
+    };
+
     labels.forEach((label, index) => {
       if (index > 0) {
-        doc.addPage([152, 102], "landscape");
+        doc.addPage([102, 152], "portrait");
       }
 
       const left = pagePadding;
@@ -1107,7 +1147,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       doc.setFontSize(22);
       doc.setTextColor(15, 23, 42);
       const speciesLines = doc.splitTextToSize(label.species || "-", mainWidth);
-      doc.text(speciesLines, left, currentY);
+      drawRotatedText(speciesLines, left, currentY);
       currentY += speciesLines.length * 7.2;
 
       if (label.scientificName) {
@@ -1115,7 +1155,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
         doc.setTextColor(71, 85, 105);
         doc.setFontSize(10);
         const scientificLines = doc.splitTextToSize(label.scientificName, mainWidth);
-        doc.text(scientificLines, left, currentY);
+        drawRotatedText(scientificLines, left, currentY);
         currentY += scientificLines.length * 4.6;
         doc.setTextColor(15, 23, 42);
       }
@@ -1126,10 +1166,10 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       const batchBoxHeight = Math.max(10, 5 + (batchTextLines.length * 4.5));
       doc.setFillColor(239, 246, 255);
       doc.setDrawColor(147, 197, 253);
-      doc.roundedRect(left, currentY - 4.3, batchBoxWidth, batchBoxHeight, 1.8, 1.8, "FD");
+      drawRotatedRoundedRect(left, currentY - 4.3, batchBoxWidth, batchBoxHeight, 1.8, 1.8, "FD");
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
-      doc.text(batchTextLines, left + 2, currentY + 2.1);
+      drawRotatedText(batchTextLines, left + 2, currentY + 2.1);
       currentY += batchBoxHeight + 1;
 
       const lines = [
@@ -1146,7 +1186,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
         doc.setFont("helvetica", isCatchDateLine ? "bold" : "normal");
         doc.setFontSize(isCatchDateLine ? 11 : 9.8);
         const wrapped = doc.splitTextToSize(line, lineWidth);
-        doc.text(wrapped, left, currentY);
+        drawRotatedText(wrapped, left, currentY);
         currentY += wrapped.length * (isCatchDateLine ? 5.2 : 4.5);
       });
 
@@ -1154,40 +1194,40 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       const brandLogoX = brandCenterX - (logoWidth / 2);
       const brandLogoY = top + 1;
       if (logoDataUrl) {
-        doc.addImage(logoDataUrl, "PNG", brandLogoX, brandLogoY, logoWidth, logoHeight);
+        drawRotatedImage(logoDataUrl, "PNG", brandLogoX, brandLogoY, logoWidth, logoHeight);
       }
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9.5);
       doc.setTextColor(15, 23, 42);
-      doc.text("Suoraan", brandCenterX, brandLogoY + logoHeight + 3, { align: "center" });
-      doc.text("Kalastajalta", brandCenterX, brandLogoY + logoHeight + 7.2, { align: "center" });
+      drawRotatedText("Suoraan", brandCenterX, brandLogoY + logoHeight + 3, { align: "center" });
+      drawRotatedText("Kalastajalta", brandCenterX, brandLogoY + logoHeight + 7.2, { align: "center" });
 
       const qrX = sideX + ((sideColumnWidth - qrSize) / 2);
-      const qrY = pageHeight - pagePadding - qrSize;
+      const qrY = logicalHeight - pagePadding - qrSize;
       const supplierLines = [
         `Toimittaja: ${label.supplier || "-"}`,
         label.supplierAddress || "",
         label.supplierContact || "",
       ].filter(Boolean).flatMap((line) => doc.splitTextToSize(line, lineWidth));
       const supplierLineHeight = 4.4;
-      const supplierStartY = pageHeight - pagePadding - ((supplierLines.length - 1) * supplierLineHeight) - 2;
-      const weightY = supplierStartY - 10;
+      const logicalSupplierStartY = logicalHeight - pagePadding - ((supplierLines.length - 1) * supplierLineHeight) - 2;
+      const logicalWeightY = logicalSupplierStartY - 10;
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
-      doc.text("Paino:", left, weightY);
+      drawRotatedText("Paino:", left, logicalWeightY);
       doc.setLineWidth(0.8);
       doc.setDrawColor(15, 23, 42);
-      doc.line(left + 15, weightY + 0.4, left + mainWidth - 8, weightY + 0.4);
-      doc.text("kg", left + mainWidth - 5, weightY);
+      drawRotatedLine(left + 15, logicalWeightY + 0.4, left + mainWidth - 8, logicalWeightY + 0.4);
+      drawRotatedText("kg", left + mainWidth - 5, logicalWeightY);
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10.2);
       supplierLines.forEach((line, supplierIndex) => {
-        doc.text(line, left, supplierStartY + (supplierIndex * supplierLineHeight));
+        drawRotatedText(line, left, logicalSupplierStartY + (supplierIndex * supplierLineHeight));
       });
 
-      doc.addImage(qrDataUrls[index], "PNG", qrX, qrY, qrSize, qrSize);
+      drawRotatedImage(qrDataUrls[index], "PNG", qrX, qrY, qrSize, qrSize);
     });
 
     return doc;
