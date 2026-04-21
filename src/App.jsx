@@ -661,42 +661,46 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
   if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
     const renderMunbynLabel = (label) => `
       <section class="munbyn-label">
-        <div class="munbyn-header">
-          <div class="munbyn-main-title">
-            <div class="species">${label.species || "-"}</div>
-            ${label.scientificName ? `<div class="scientific">${label.scientificName}</div>` : ""}
+        <div class="munbyn-main">
+          <div class="munbyn-header">
+            <div class="munbyn-main-title">
+              <div class="species">${label.species || "-"}</div>
+              ${label.scientificName ? `<div class="scientific">${label.scientificName}</div>` : ""}
+            </div>
+            <div class="munbyn-batch">Erätunnus: ${label.batchId || "-"}</div>
           </div>
+
+          <div class="munbyn-body">
+            <div class="munbyn-lines">
+              ${label.catchDate ? `<div class="line catch-date"><strong>Pyyntipäivä:</strong> ${label.catchDate}</div>` : ""}
+              ${label.commercialFishingId ? `<div class="line"><strong>Kaupallisen kalastajan tunnus:</strong> ${label.commercialFishingId}</div>` : ""}
+              ${label.catchArea ? `<div class="line"><strong>Pyyntialue:</strong> ${label.catchArea}</div>` : ""}
+              ${label.gearType ? `<div class="line"><strong>Pyyntimenetelmä:</strong> ${label.gearType}</div>` : ""}
+              ${label.productForm ? `<div class="line"><strong>Tuote:</strong> ${label.productForm}</div>` : ""}
+              <div class="line"><strong>Säilytys:</strong> 0–2 °C</div>
+            </div>
+
+            <div class="munbyn-weight">
+              <span class="weight-label">Paino:</span>
+              <span class="weight-write"></span>
+              <span class="weight-unit">kg</span>
+            </div>
+
+            <div class="munbyn-supplier">
+              <div class="line"><strong>Toimittaja:</strong> ${label.supplier || "-"}</div>
+              ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
+              ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
+            </div>
+          </div>
+        </div>
+
+        <div class="munbyn-side">
           <div class="munbyn-brand">
             <img src="${label.logoUrl}" alt="Suoraan Kalastajalta" />
             <div class="munbyn-brand-text">
               <div>Suoraan</div>
               <div>Kalastajalta</div>
             </div>
-          </div>
-        </div>
-
-        <div class="munbyn-batch">Erätunnus: ${label.batchId || "-"}</div>
-
-        <div class="munbyn-lines">
-          ${label.catchDate ? `<div class="line catch-date"><strong>Pyyntipäivä:</strong> ${label.catchDate}</div>` : ""}
-          ${label.commercialFishingId ? `<div class="line"><strong>Kaupallisen kalastajan tunnus:</strong> ${label.commercialFishingId}</div>` : ""}
-          ${label.catchArea ? `<div class="line"><strong>Pyyntialue:</strong> ${label.catchArea}</div>` : ""}
-          ${label.gearType ? `<div class="line"><strong>Pyyntimenetelmä:</strong> ${label.gearType}</div>` : ""}
-          ${label.productForm ? `<div class="line"><strong>Tuote:</strong> ${label.productForm}</div>` : ""}
-          <div class="line"><strong>Säilytys:</strong> 0–2 °C</div>
-        </div>
-
-        <div class="munbyn-weight">
-          <span class="weight-label">Paino:</span>
-          <span class="weight-write"></span>
-          <span class="weight-unit">kg</span>
-        </div>
-
-        <div class="munbyn-footer">
-          <div class="munbyn-supplier">
-            <div class="line"><strong>Toimittaja:</strong> ${label.supplier || "-"}</div>
-            ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
-            ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
           </div>
           <div class="munbyn-qr">
             <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
@@ -712,57 +716,60 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           <meta charset="utf-8" />
           <title>Kalaetiketit ${String(entry?.batchId || "")}</title>
           <style>
-            @page { size: 102mm 152mm portrait; margin: 0; }
+            @page { size: 152mm 102mm landscape; margin: 0; }
             * { box-sizing: border-box; }
             body { margin: 0; font-family: Inter, Arial, sans-serif; background: #fff; color: #0f172a; }
             .munbyn-label {
-              width: 102mm;
-              height: 152mm;
-              padding: 8mm 7mm 7mm;
+              width: 152mm;
+              height: 102mm;
+              padding: 6mm;
               page-break-after: always;
               background: #fff;
-              display: flex;
-              flex-direction: column;
+              display: grid;
+              grid-template-columns: 1fr 37mm;
+              gap: 5mm;
             }
             .munbyn-label:last-child { page-break-after: auto; }
-            .munbyn-header { display: flex; justify-content: space-between; gap: 6mm; align-items: flex-start; }
+            .munbyn-main { min-width: 0; display: flex; flex-direction: column; }
+            .munbyn-side { display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
+            .munbyn-header { display: flex; flex-direction: column; gap: 3mm; align-items: flex-start; }
             .munbyn-main-title { min-width: 0; flex: 1; }
-            .species { font-size: 22pt; font-weight: 800; line-height: 1.02; color: #0f172a; }
-            .scientific { margin-top: 1.8mm; font-size: 11pt; line-height: 1.18; color: #475569; }
-            .munbyn-brand { flex: 0 0 30mm; display: flex; flex-direction: column; align-items: center; }
-            .munbyn-brand img { width: 24mm; height: 24mm; object-fit: contain; display: block; }
-            .munbyn-brand-text { margin-top: 0.6mm; font-size: 11pt; line-height: 1.05; font-weight: 800; text-align: center; color: #0f172a; }
+            .species { font-size: 19pt; font-weight: 800; line-height: 1.02; color: #0f172a; }
+            .scientific { margin-top: 1.4mm; font-size: 10pt; line-height: 1.18; color: #475569; }
+            .munbyn-brand { width: 100%; display: flex; flex-direction: column; align-items: center; }
+            .munbyn-brand img { width: 23mm; height: 23mm; object-fit: contain; display: block; }
+            .munbyn-brand-text { margin-top: 0.8mm; font-size: 9.5pt; line-height: 1.05; font-weight: 800; text-align: center; color: #0f172a; }
             .munbyn-batch {
-              margin-top: 7mm;
-              padding: 3mm 3.2mm;
+              width: 100%;
+              padding: 2.6mm 3mm;
               border: 0.45mm solid #93c5fd;
               border-radius: 2.4mm;
               background: #eff6ff;
-              font-size: 11pt;
+              font-size: 10.5pt;
               line-height: 1.15;
               font-weight: 800;
               color: #0f172a;
               overflow-wrap: anywhere;
               word-break: break-word;
             }
-            .munbyn-lines { margin-top: 6mm; }
-            .line { font-size: 10.5pt; line-height: 1.3; color: #0f172a; margin-bottom: 1.8mm; word-break: break-word; }
-            .catch-date { font-size: 13pt; line-height: 1.22; font-weight: 700; }
-            .munbyn-weight { margin-top: 7mm; display: flex; align-items: flex-end; gap: 2mm; min-height: 12mm; }
+            .munbyn-body { margin-top: 4mm; min-width: 0; display: flex; flex-direction: column; height: 100%; }
+            .munbyn-lines { min-width: 0; }
+            .line { font-size: 9.8pt; line-height: 1.24; color: #0f172a; margin-bottom: 1.2mm; word-break: break-word; }
+            .catch-date { font-size: 11pt; line-height: 1.2; font-weight: 700; }
+            .munbyn-weight { margin-top: 3mm; display: flex; align-items: flex-end; gap: 2mm; min-height: 10mm; }
             .weight-label, .weight-unit { font-size: 11pt; font-weight: 800; color: #0f172a; white-space: nowrap; }
-            .weight-write { flex: 1; border-bottom: 0.8mm solid #0f172a; min-height: 9mm; }
-            .munbyn-footer { margin-top: auto; display: flex; justify-content: space-between; gap: 5mm; align-items: flex-end; }
-            .munbyn-supplier { min-width: 0; flex: 1; }
-            .munbyn-qr { flex: 0 0 34mm; }
+            .weight-write { flex: 1; border-bottom: 0.8mm solid #0f172a; min-height: 7mm; }
+            .munbyn-supplier { margin-top: auto; min-width: 0; padding-top: 2mm; }
+            .munbyn-qr { width: 32mm; }
             .munbyn-qr img {
-              width: 34mm;
-              height: 34mm;
+              width: 32mm;
+              height: 32mm;
               object-fit: contain;
               display: block;
               background: #fff;
               border: 0.45mm solid #cbd5e1;
               border-radius: 2mm;
-              padding: 1.3mm;
+              padding: 1mm;
             }
           </style>
         </head>
@@ -1061,19 +1068,21 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
   if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
     const doc = new jsPDF({
-      orientation: "portrait",
+      orientation: "landscape",
       unit: "mm",
       format: [102, 152],
       compress: true,
     });
 
-    const pageWidth = 102;
-    const pageHeight = 152;
-    const pagePaddingX = 7;
-    const topPadding = 8;
-    const qrSize = 34;
-    const logoMaxWidth = 24;
-    const logoMaxHeight = 24;
+    const pageWidth = 152;
+    const pageHeight = 102;
+    const pagePadding = 6;
+    const sideColumnWidth = 37;
+    const gap = 5;
+    const mainWidth = pageWidth - (pagePadding * 2) - sideColumnWidth - gap;
+    const qrSize = 32;
+    const logoMaxWidth = 23;
+    const logoMaxHeight = 23;
     const logoAspectRatio = Number(logoDimensions.width || 1) / Number(logoDimensions.height || 1);
     const logoWidth = logoAspectRatio >= 1
       ? logoMaxWidth
@@ -1084,44 +1093,34 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
     labels.forEach((label, index) => {
       if (index > 0) {
-        doc.addPage([102, 152], "portrait");
+        doc.addPage([152, 102], "landscape");
       }
 
-      const left = pagePaddingX;
-      const right = pageWidth - pagePaddingX;
-      const brandCenterX = right - 15;
-      const brandLogoX = brandCenterX - (logoWidth / 2);
-      const brandLogoY = topPadding;
-      const titleWidth = 58;
-      const batchBoxWidth = Math.max(46, brandLogoX - left - 3);
-      let currentY = 16;
-
-      if (logoDataUrl) {
-        doc.addImage(logoDataUrl, "PNG", brandLogoX, brandLogoY, logoWidth, logoHeight);
-      }
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(15, 23, 42);
-      doc.setFontSize(11);
-      doc.text("Suoraan", brandCenterX, brandLogoY + logoHeight + 3, { align: "center" });
-      doc.text("Kalastajalta", brandCenterX, brandLogoY + logoHeight + 8, { align: "center" });
+      const left = pagePadding;
+      const top = pagePadding;
+      const sideX = left + mainWidth + gap;
+      const batchBoxWidth = mainWidth;
+      const lineWidth = mainWidth - 6;
+      let currentY = top + 8;
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(22);
-      const speciesLines = doc.splitTextToSize(label.species || "-", titleWidth);
+      doc.setTextColor(15, 23, 42);
+      const speciesLines = doc.splitTextToSize(label.species || "-", mainWidth);
       doc.text(speciesLines, left, currentY);
-      currentY += speciesLines.length * 8;
+      currentY += speciesLines.length * 7.2;
 
       if (label.scientificName) {
         doc.setFont("helvetica", "normal");
         doc.setTextColor(71, 85, 105);
         doc.setFontSize(10);
-        const scientificLines = doc.splitTextToSize(label.scientificName, titleWidth);
+        const scientificLines = doc.splitTextToSize(label.scientificName, mainWidth);
         doc.text(scientificLines, left, currentY);
-        currentY += scientificLines.length * 4.8;
+        currentY += scientificLines.length * 4.6;
         doc.setTextColor(15, 23, 42);
       }
 
-      currentY += 2.5;
+      currentY += 2.2;
       const batchText = `Erätunnus: ${label.batchId || "-"}`;
       const batchTextLines = doc.splitTextToSize(batchText, batchBoxWidth - 4);
       const batchBoxHeight = Math.max(10, 5 + (batchTextLines.length * 4.5));
@@ -1145,30 +1144,42 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       lines.forEach((line) => {
         const isCatchDateLine = line.startsWith("Pyyntipäivä:");
         doc.setFont("helvetica", isCatchDateLine ? "bold" : "normal");
-        doc.setFontSize(isCatchDateLine ? 13 : 10.5);
-        const wrapped = doc.splitTextToSize(line, 84);
+        doc.setFontSize(isCatchDateLine ? 11 : 9.8);
+        const wrapped = doc.splitTextToSize(line, lineWidth);
         doc.text(wrapped, left, currentY);
-        currentY += wrapped.length * (isCatchDateLine ? 6.2 : 5.2);
+        currentY += wrapped.length * (isCatchDateLine ? 5.2 : 4.5);
       });
 
-      const qrX = right - qrSize;
-      const qrY = pageHeight - 41;
+      const brandCenterX = sideX + (sideColumnWidth / 2);
+      const brandLogoX = brandCenterX - (logoWidth / 2);
+      const brandLogoY = top + 1;
+      if (logoDataUrl) {
+        doc.addImage(logoDataUrl, "PNG", brandLogoX, brandLogoY, logoWidth, logoHeight);
+      }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text("Suoraan", brandCenterX, brandLogoY + logoHeight + 3, { align: "center" });
+      doc.text("Kalastajalta", brandCenterX, brandLogoY + logoHeight + 7.2, { align: "center" });
+
+      const qrX = sideX + ((sideColumnWidth - qrSize) / 2);
+      const qrY = pageHeight - pagePadding - qrSize;
       const supplierLines = [
         `Toimittaja: ${label.supplier || "-"}`,
         label.supplierAddress || "",
         label.supplierContact || "",
-      ].filter(Boolean).flatMap((line) => doc.splitTextToSize(line, 47));
+      ].filter(Boolean).flatMap((line) => doc.splitTextToSize(line, lineWidth));
       const supplierLineHeight = 4.4;
-      const supplierStartY = pageHeight - 10 - ((supplierLines.length - 1) * supplierLineHeight);
-      const weightY = supplierStartY - 16;
+      const supplierStartY = pageHeight - pagePadding - ((supplierLines.length - 1) * supplierLineHeight) - 2;
+      const weightY = supplierStartY - 10;
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
       doc.text("Paino:", left, weightY);
       doc.setLineWidth(0.8);
       doc.setDrawColor(15, 23, 42);
-      doc.line(left + 15, weightY + 0.4, qrX - 3, weightY + 0.4);
-      doc.text("kg", qrX - 1.8, weightY);
+      doc.line(left + 15, weightY + 0.4, left + mainWidth - 8, weightY + 0.4);
+      doc.text("kg", left + mainWidth - 5, weightY);
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10.2);
