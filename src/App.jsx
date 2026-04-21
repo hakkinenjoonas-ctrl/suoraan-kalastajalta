@@ -1267,30 +1267,32 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
   if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
     const doc = new jsPDF({
-      orientation: "portrait",
+      orientation: "landscape",
       unit: "mm",
       format: [102, 152],
       compress: true,
     });
 
-    const pageWidth = 102;
-    const pageHeight = 152;
-    const padding = 5;
-    const contentWidth = pageWidth - (padding * 2);
-    const qrSize = 26;
-    const qrX = pageWidth - padding - qrSize;
-    const qrY = padding;
-    const logoAreaWidth = contentWidth - qrSize - 6;
+    const pageWidth = 152;
+    const pageHeight = 102;
+    const padding = 6;
+    const sideWidth = 30;
+    const contentGap = 4;
+    const mainWidth = pageWidth - (padding * 2) - sideWidth - contentGap;
+    const rightColumnX = pageWidth - padding - sideWidth;
+    const qrSize = 28;
+    const qrX = rightColumnX + ((sideWidth - qrSize) / 2);
+    const qrY = pageHeight - padding - qrSize;
     const logoAspectRatio = Number(logoDimensions.width || 1) / Math.max(1, Number(logoDimensions.height || 1));
-    const logoWidth = Math.min(42, logoAreaWidth);
-    const logoHeight = Math.max(16, Math.min(28, logoWidth / Math.max(logoAspectRatio, 0.1)));
+    const logoWidth = Math.min(20, sideWidth - 4);
+    const logoHeight = Math.max(10, Math.min(20, logoWidth / Math.max(logoAspectRatio, 0.1)));
 
     const drawMunbynLabel = (label, qrDataUrl) => {
       doc.setFillColor(255, 255, 255);
       doc.rect(0, 0, pageWidth, pageHeight, "F");
 
       if (logoDataUrl) {
-        doc.addImage(logoDataUrl, "PNG", padding, padding + 2, logoWidth, logoHeight);
+        doc.addImage(logoDataUrl, "PNG", rightColumnX + ((sideWidth - logoWidth) / 2), padding + 1, logoWidth, logoHeight);
       }
 
       doc.setFillColor(255, 255, 255);
@@ -1298,80 +1300,102 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       doc.roundedRect(qrX - 1.2, qrY - 1.2, qrSize + 2.4, qrSize + 2.4, 1.8, 1.8, "FD");
       doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
 
-      let currentY = padding + 34;
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(7.4);
+      const brandCenterX = rightColumnX + (sideWidth / 2);
+      doc.text("Suoraan", brandCenterX, padding + logoHeight + 4.2, { align: "center" });
+      doc.text("Kalastajalta", brandCenterX, padding + logoHeight + 7.8, { align: "center" });
+
+      let currentY = padding + 1;
       doc.setTextColor(15, 23, 42);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      const speciesLines = doc.splitTextToSize(label.species || "-", contentWidth).slice(0, 2);
+      doc.setFontSize(13.2);
+      const speciesLines = doc.splitTextToSize(label.species || "-", mainWidth - 42).slice(0, 2);
       doc.text(speciesLines, padding, currentY);
-      currentY += speciesLines.length * 5.4;
+      currentY += speciesLines.length * 5.1;
 
       if (label.scientificName) {
         doc.setFont("helvetica", "normal");
         doc.setTextColor(51, 65, 85);
-        doc.setFontSize(7.8);
-        const scientificLines = doc.splitTextToSize(label.scientificName, contentWidth).slice(0, 1);
+        doc.setFontSize(7.4);
+        const scientificLines = doc.splitTextToSize(label.scientificName, mainWidth - 42).slice(0, 1);
         doc.text(scientificLines, padding, currentY);
-        currentY += scientificLines.length * 4.2;
+        currentY += scientificLines.length * 3.8;
       }
 
-      currentY += 1.2;
+      currentY += 1;
       doc.setFillColor(239, 246, 255);
       doc.setDrawColor(147, 197, 253);
-      doc.roundedRect(padding, currentY, contentWidth, 10, 1.8, 1.8, "FD");
+      doc.roundedRect(padding + mainWidth - 40, padding, 40, 10, 1.8, 1.8, "FD");
       doc.setFont("helvetica", "bold");
       doc.setTextColor(15, 23, 42);
-      doc.setFontSize(7.6);
-      const batchLines = doc.splitTextToSize(`Erätunnus: ${label.batchId || "-"}`, contentWidth - 4).slice(0, 2);
-      doc.text(batchLines, padding + 2, currentY + 3.2);
-      currentY += 13;
+      doc.setFontSize(7.2);
+      const batchLines = doc.splitTextToSize(`Erätunnus: ${label.batchId || "-"}`, 36).slice(0, 2);
+      doc.text(batchLines, padding + mainWidth - 38, padding + 3.3);
+      currentY = Math.max(currentY, padding + 13);
 
       const infoLines = [
         label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+        label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
         label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
         label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
-        "Säilytys: 0–2 °C",
         label.productForm ? `Tuote: ${label.productForm}` : "",
-        label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
+        "Säilytys: 0–2 °C",
       ].filter(Boolean);
 
+      const infoColumnWidth = (mainWidth - 3) / 2;
+      let leftInfoY = currentY + 2;
+      let rightInfoY = currentY + 2;
       infoLines.forEach((line, index) => {
         const isFirst = index === 0;
+        const useLeftColumn = index % 2 === 0;
+        const targetX = useLeftColumn ? padding : padding + infoColumnWidth + 3;
+        const wrapped = doc.splitTextToSize(line, infoColumnWidth).slice(0, 2);
         doc.setFont("helvetica", isFirst ? "bold" : "normal");
         doc.setTextColor(15, 23, 42);
-        doc.setFontSize(isFirst ? 8 : 7);
-        const wrapped = doc.splitTextToSize(line, contentWidth).slice(0, 2);
-        doc.text(wrapped, padding, currentY);
-        currentY += wrapped.length * (isFirst ? 4.1 : 3.7);
+        doc.setFontSize(isFirst ? 7.8 : 7);
+        doc.text(wrapped, targetX, useLeftColumn ? leftInfoY : rightInfoY);
+        if (useLeftColumn) {
+          leftInfoY += wrapped.length * 4.1;
+        } else {
+          rightInfoY += wrapped.length * 4.1;
+        }
       });
 
-      const weightY = pageHeight - 24;
+      const footerTopY = pageHeight - 24;
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(8.5);
-      doc.text("Paino:", padding, weightY);
+      doc.setFontSize(8.8);
+      doc.text("Paino:", padding, footerTopY);
       doc.setLineWidth(0.5);
-      doc.line(padding + 12, weightY - 0.6, pageWidth - padding - 10, weightY - 0.6);
-      doc.text("kg", pageWidth - padding - 6, weightY);
+      doc.line(padding + 12, footerTopY - 0.6, padding + 42, footerTopY - 0.6);
+      doc.text("kg", padding + 44, footerTopY);
 
       const supplierLines = [
         `Toimittaja: ${label.supplier || "-"}`,
         label.supplierAddress || "",
         label.supplierContact || "",
       ].filter(Boolean);
-      let supplierY = pageHeight - 16;
-      for (let supplierIndex = supplierLines.length - 1; supplierIndex >= 0; supplierIndex -= 1) {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(6.2);
-        const wrapped = doc.splitTextToSize(supplierLines[supplierIndex], contentWidth).slice(0, 2);
-        supplierY -= wrapped.length * 3.2;
-        doc.text(wrapped, padding, supplierY);
+      const supplierX = padding + 50;
+      const supplierWidth = mainWidth - 50;
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.2);
+      doc.line(supplierX, footerTopY - 5.5, padding + mainWidth, footerTopY - 5.5);
+
+      let supplierY = footerTopY - 1.5;
+      for (let supplierIndex = 0; supplierIndex < supplierLines.length; supplierIndex += 1) {
+        doc.setFont("helvetica", supplierIndex === 0 ? "bold" : "normal");
+        doc.setFontSize(6.5);
+        const wrapped = doc.splitTextToSize(supplierLines[supplierIndex], supplierWidth).slice(0, 2);
+        doc.text(wrapped, supplierX, supplierY);
+        supplierY += wrapped.length * 3.1;
       }
     };
 
     for (let index = 0; index < labels.length; index += 1) {
       const label = labels[index];
       if (index > 0) {
-        doc.addPage([102, 152], "portrait");
+        doc.addPage([102, 152], "landscape");
       }
       drawMunbynLabel(label, qrDataUrls[index]);
     }
@@ -2382,7 +2406,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const isMunbynFormat = printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6;
   const previewBaseWidth = isMunbynFormat ? 320 : 420;
-  const previewBaseHeight = isMunbynFormat ? (previewBaseWidth * 152) / 102 : (previewBaseWidth * 57) / 105;
+  const previewBaseHeight = isMunbynFormat ? (previewBaseWidth * 102) / 152 : (previewBaseWidth * 57) / 105;
   const previewScale = isMobile && typeof window !== "undefined"
     ? Math.min(1, Math.max(0.5, (window.innerWidth - 52) / previewBaseWidth))
     : 1;
@@ -2497,51 +2521,55 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
               <div style={{
                 width: previewBaseWidth,
                 minWidth: previewBaseWidth,
-                aspectRatio: isMunbynFormat ? "102 / 152" : "105 / 57",
+                aspectRatio: isMunbynFormat ? "152 / 102" : "105 / 57",
                 background: "#fff",
                 padding: isMunbynFormat ? 20 : 14,
                 display: "grid",
-                gridTemplateColumns: isMunbynFormat ? "1fr" : "1fr 96px",
+                gridTemplateColumns: isMunbynFormat ? "1fr 88px" : "1fr 96px",
                 gap: isMunbynFormat ? 14 : 12,
                 transform: `scale(${previewScale})`,
                 transformOrigin: "top center",
               }}>
                 {isMunbynFormat ? (
                   <>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.03 }}>{previewLabel.species}</div>
-                        {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
+                    <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", alignItems: "start", gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.03 }}>{previewLabel.species}</div>
+                          {previewLabel.scientificName ? <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.15, padding: "8px 10px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 10, overflowWrap: "anywhere", wordBreak: "break-word" }}>Erätunnus: {previewLabel.batchId}</div>
                       </div>
-                      <div style={{ width: 96, display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 78, height: 78, objectFit: "contain", marginBottom: 0 }} />
-                        <div style={{ fontSize: 12, lineHeight: 1.05, fontWeight: 800, textAlign: "center", color: "#0f172a" }}>
+                      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 12, rowGap: 6, fontSize: 11, lineHeight: 1.2 }}>
+                        {previewLabel.catchDate ? <div style={{ fontSize: 12, lineHeight: 1.2, fontWeight: 700 }}><strong>Pyyntipäivä:</strong> {previewLabel.catchDate}</div> : null}
+                        {previewLabel.commercialFishingId ? <div><strong>Kalastajatunnus:</strong> {previewLabel.commercialFishingId}</div> : null}
+                        {previewLabel.catchArea ? <div><strong>Pyyntialue:</strong> {previewLabel.catchArea}</div> : null}
+                        {previewLabel.gearType ? <div><strong>Pyyntimenetelmä:</strong> {previewLabel.gearType}</div> : null}
+                        {previewLabel.productForm ? <div><strong>Tuote:</strong> {previewLabel.productForm}</div> : null}
+                        <div><strong>Säilytys:</strong> 0–2 °C</div>
+                      </div>
+                      <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "92px 1fr", gap: 12, alignItems: "end" }}>
+                        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, minHeight: 28 }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>Paino:</span>
+                          <span style={{ flex: 1, borderBottom: "3px solid #0f172a", height: 20 }} />
+                          <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>kg</span>
+                        </div>
+                        <div style={{ minWidth: 0, fontSize: 11, lineHeight: 1.2, borderTop: "1px solid #cbd5e1", paddingTop: 8 }}>
+                          <div><strong>Toimittaja:</strong> {previewLabel.supplier}</div>
+                          {previewLabel.supplierAddress ? <div>{previewLabel.supplierAddress}</div> : null}
+                          {previewLabel.supplierContact ? <div>{previewLabel.supplierContact}</div> : null}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ width: 88, display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                      <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 2 }}>
+                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 54, height: 54, objectFit: "contain", marginBottom: 0 }} />
+                        <div style={{ fontSize: 10, lineHeight: 1.05, fontWeight: 800, textAlign: "center", color: "#0f172a", marginTop: 2 }}>
                           <div>Suoraan</div>
                           <div>Kalastajalta</div>
                         </div>
                       </div>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.15, padding: "10px 12px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 10, overflowWrap: "anywhere", wordBreak: "break-word" }}>Erätunnus: {previewLabel.batchId}</div>
-                    <div style={{ fontSize: 12, lineHeight: 1.3 }}>
-                      {previewLabel.catchDate ? <div style={{ fontSize: 14, lineHeight: 1.22, fontWeight: 700 }}><strong>Pyyntipäivä:</strong> {previewLabel.catchDate}</div> : null}
-                      {previewLabel.commercialFishingId ? <div><strong>Kaupallisen kalastajan tunnus:</strong> {previewLabel.commercialFishingId}</div> : null}
-                      {previewLabel.catchArea ? <div><strong>Pyyntialue:</strong> {previewLabel.catchArea}</div> : null}
-                      {previewLabel.gearType ? <div><strong>Pyyntimenetelmä:</strong> {previewLabel.gearType}</div> : null}
-                      {previewLabel.productForm ? <div><strong>Tuote:</strong> {previewLabel.productForm}</div> : null}
-                      <div><strong>Säilytys:</strong> 0–2 °C</div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginTop: 4, minHeight: 36 }}>
-                      <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>Paino:</span>
-                      <span style={{ flex: 1, borderBottom: "3px solid #0f172a", height: 26 }} />
-                      <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>kg</span>
-                    </div>
-                    <div style={{ marginTop: "auto", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
-                      <div style={{ minWidth: 0, flex: 1, fontSize: 12, lineHeight: 1.2 }}>
-                        <div><strong>Toimittaja:</strong> {previewLabel.supplier}</div>
-                        {previewLabel.supplierAddress ? <div>{previewLabel.supplierAddress}</div> : null}
-                        {previewLabel.supplierContact ? <div>{previewLabel.supplierContact}</div> : null}
-                      </div>
-                      <img src={previewQrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 108, height: 108, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff", flexShrink: 0 }} />
+                      <img src={previewQrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 82, height: 82, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff", flexShrink: 0 }} />
                     </div>
                   </>
                 ) : (
