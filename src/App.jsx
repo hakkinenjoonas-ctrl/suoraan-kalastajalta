@@ -1123,11 +1123,11 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   const pxPerMm = 8;
   const width = Math.round(152 * pxPerMm);
   const height = Math.round(102 * pxPerMm);
-  const padding = Math.round(6 * pxPerMm);
-  const gap = Math.round(5 * pxPerMm);
-  const sideWidth = Math.round(37 * pxPerMm);
+  const padding = Math.round(5 * pxPerMm);
+  const gap = Math.round(4 * pxPerMm);
+  const sideWidth = Math.round(31 * pxPerMm);
   const mainWidth = width - (padding * 2) - sideWidth - gap;
-  const qrSize = Math.round(32 * pxPerMm);
+  const qrSize = Math.round(25 * pxPerMm);
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -1148,26 +1148,26 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   const left = padding;
   const sideX = left + mainWidth + gap;
 
-  fitCanvasFont(ctx, label.species || "-", mainWidth, 68, 42, "800");
+  fitCanvasFont(ctx, label.species || "-", mainWidth, 56, 34, "800");
   const speciesLines = wrapCanvasText(ctx, label.species || "-", mainWidth, 2);
-  const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 56) * 1.05;
+  const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 48) * 1.02;
   ctx.fillStyle = "#0f172a";
   speciesLines.forEach((line, index) => {
     ctx.fillText(line, left, currentY + (index * speciesLineHeight));
   });
-  currentY += speciesLines.length * speciesLineHeight + 10;
+  currentY += speciesLines.length * speciesLineHeight + 6;
 
   if (label.scientificName) {
-    ctx.font = `500 28px Arial`;
+    ctx.font = `500 22px Arial`;
     ctx.fillStyle = "#475569";
-    const scientificLines = wrapCanvasText(ctx, label.scientificName, mainWidth, 2);
+    const scientificLines = wrapCanvasText(ctx, label.scientificName, mainWidth, 1);
     scientificLines.forEach((line, index) => {
-      ctx.fillText(line, left, currentY + (index * 32));
+      ctx.fillText(line, left, currentY + (index * 24));
     });
-    currentY += scientificLines.length * 32 + 12;
+    currentY += scientificLines.length * 24 + 8;
   }
 
-  const batchHeight = 72;
+  const batchHeight = 52;
   ctx.fillStyle = "#eff6ff";
   ctx.strokeStyle = "#93c5fd";
   ctx.lineWidth = 3;
@@ -1181,9 +1181,9 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     ctx.strokeRect(left, currentY, mainWidth, batchHeight);
   }
   ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, `Erätunnus: ${label.batchId || "-"}`, mainWidth - 28, 34, 22, "800");
-  ctx.fillText(`Erätunnus: ${label.batchId || "-"}`, left + 14, currentY + 18);
-  currentY += batchHeight + 18;
+  fitCanvasFont(ctx, `Erätunnus: ${label.batchId || "-"}`, mainWidth - 20, 25, 16, "800");
+  ctx.fillText(`Erätunnus: ${label.batchId || "-"}`, left + 10, currentY + 13);
+  currentY += batchHeight + 10;
 
   const infoLines = [
     label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
@@ -1197,9 +1197,9 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   ctx.fillStyle = "#0f172a";
   infoLines.forEach((line, index) => {
     const isCatchDate = index === 0 && line.startsWith("Pyyntipäivä:");
-    fitCanvasFont(ctx, line, mainWidth, isCatchDate ? 36 : 31, 20, isCatchDate ? "700" : "500");
+    fitCanvasFont(ctx, line, mainWidth, isCatchDate ? 28 : 24, 16, isCatchDate ? "700" : "500");
     ctx.fillText(line, left, currentY);
-    currentY += isCatchDate ? 42 : 36;
+    currentY += isCatchDate ? 30 : 26;
   });
 
   const supplierLines = [
@@ -1208,34 +1208,34 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     label.supplierContact || "",
   ].filter(Boolean);
 
-  const supplierBaseY = height - padding - (supplierLines.length * 28) - 10;
-  const weightY = supplierBaseY - 54;
-  ctx.font = "700 30px Arial";
+  const supplierBaseY = height - padding - (supplierLines.length * 22) - 6;
+  const weightY = supplierBaseY - 40;
+  ctx.font = "700 24px Arial";
   ctx.fillText("Paino:", left, weightY);
   ctx.beginPath();
   ctx.lineWidth = 4;
-  ctx.moveTo(left + 120, weightY + 28);
-  ctx.lineTo(left + mainWidth - 82, weightY + 28);
+  ctx.moveTo(left + 96, weightY + 23);
+  ctx.lineTo(left + mainWidth - 62, weightY + 23);
   ctx.strokeStyle = "#0f172a";
   ctx.stroke();
-  ctx.fillText("kg", left + mainWidth - 56, weightY);
+  ctx.fillText("kg", left + mainWidth - 42, weightY);
 
   supplierLines.forEach((line, index) => {
-    fitCanvasFont(ctx, line, mainWidth, 28, 18, "500");
-    ctx.fillText(line, left, supplierBaseY + (index * 28));
+    fitCanvasFont(ctx, line, mainWidth, 21, 14, "500");
+    ctx.fillText(line, left, supplierBaseY + (index * 22));
   });
 
   if (logoImage) {
-    const logoWidth = 184;
-    const logoHeight = Math.max(80, Math.round((logoImage.naturalHeight / Math.max(1, logoImage.naturalWidth)) * logoWidth));
+    const logoWidth = 128;
+    const logoHeight = Math.max(56, Math.round((logoImage.naturalHeight / Math.max(1, logoImage.naturalWidth)) * logoWidth));
     const logoX = sideX + ((sideWidth - logoWidth) / 2);
-    const logoY = padding + 8;
+    const logoY = padding + 6;
     ctx.drawImage(logoImage, logoX, logoY, logoWidth, logoHeight);
-    ctx.font = "800 26px Arial";
+    ctx.font = "800 19px Arial";
     ctx.textAlign = "center";
     ctx.fillStyle = "#0f172a";
-    ctx.fillText("Suoraan", sideX + (sideWidth / 2), logoY + logoHeight + 12);
-    ctx.fillText("Kalastajalta", sideX + (sideWidth / 2), logoY + logoHeight + 42);
+    ctx.fillText("Suoraan", sideX + (sideWidth / 2), logoY + logoHeight + 10);
+    ctx.fillText("Kalastajalta", sideX + (sideWidth / 2), logoY + logoHeight + 32);
     ctx.textAlign = "left";
   }
 
@@ -1246,12 +1246,12 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   ctx.lineWidth = 3;
   if (ctx.roundRect) {
     ctx.beginPath();
-    ctx.roundRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16, 12);
+    ctx.roundRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12, 10);
     ctx.fill();
     ctx.stroke();
   } else {
-    ctx.fillRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16);
-    ctx.strokeRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16);
+    ctx.fillRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12);
+    ctx.strokeRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12);
   }
   ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
   const portraitCanvas = document.createElement("canvas");
