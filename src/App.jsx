@@ -1158,19 +1158,22 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   });
   const speciesBlockHeight = speciesLines.length * speciesLineHeight;
   let scientificBlockHeight = 0;
+  let contentY = padding + speciesBlockHeight + 6;
 
   if (label.scientificName) {
-    ctx.font = "600 22px Arial";
+    ctx.font = "600 18px Arial";
     ctx.fillStyle = "#334155";
     const scientificLines = wrapCanvasText(ctx, label.scientificName, mainWidth, 1);
     scientificLines.forEach((line, index) => {
-      ctx.fillText(line, left, padding + speciesBlockHeight + 8 + (index * 24));
+      ctx.fillText(line, left, contentY + (index * 20));
     });
-    scientificBlockHeight = scientificLines.length * 24 + 8;
+    scientificBlockHeight = scientificLines.length * 20 + 4;
+    contentY += scientificBlockHeight;
   }
 
-  const batchY = padding + speciesBlockHeight + scientificBlockHeight + 18;
-  const batchHeight = 46;
+  contentY += 6;
+  const batchY = contentY;
+  const batchHeight = 38;
   ctx.fillStyle = "#eff6ff";
   ctx.strokeStyle = "#93c5fd";
   ctx.lineWidth = 3;
@@ -1184,9 +1187,9 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     ctx.strokeRect(left, batchY, mainWidth, batchHeight);
   }
   ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, `Erätunnus: ${label.batchId || "-"}`, mainWidth - 20, 23, 15, "800");
-  ctx.fillText(`Erätunnus: ${label.batchId || "-"}`, left + 10, batchY + 11);
-  const infoStartY = batchY + batchHeight + 12;
+  fitCanvasFont(ctx, `Erätunnus: ${label.batchId || "-"}`, mainWidth - 18, 20, 13, "800");
+  ctx.fillText(`Erätunnus: ${label.batchId || "-"}`, left + 8, batchY + 9);
+  const infoStartY = batchY + batchHeight + 8;
 
   const infoLines = [
     label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
@@ -1200,8 +1203,8 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   ctx.fillStyle = "#0f172a";
   infoLines.forEach((line, index) => {
     const isCatchDate = index === 0 && line.startsWith("Pyyntipäivä:");
-    fitCanvasFont(ctx, line, mainWidth, isCatchDate ? 24 : 21, 15, isCatchDate ? "700" : "500");
-    ctx.fillText(line, left, infoStartY + (index * 26));
+    fitCanvasFont(ctx, line, mainWidth, isCatchDate ? 20 : 17, 12, isCatchDate ? "700" : "500");
+    ctx.fillText(line, left, infoStartY + (index * 20));
   });
 
   const supplierLines = [
@@ -1210,15 +1213,15 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     label.supplierContact || "",
   ].filter(Boolean);
 
-  ctx.font = "700 24px Arial";
+  ctx.font = "700 20px Arial";
   ctx.fillText("Paino:", left, weightY);
   ctx.beginPath();
   ctx.lineWidth = 4;
-  ctx.moveTo(left + 96, weightY + 23);
-  ctx.lineTo(left + mainWidth - 62, weightY + 23);
+  ctx.moveTo(left + 78, weightY + 19);
+  ctx.lineTo(left + mainWidth - 52, weightY + 19);
   ctx.strokeStyle = "#0f172a";
   ctx.stroke();
-  ctx.fillText("kg", left + mainWidth - 42, weightY);
+  ctx.fillText("kg", left + mainWidth - 34, weightY);
 
   supplierLines.forEach((line, index) => {
     fitCanvasFont(ctx, line, mainWidth, 18, 12, "500");
