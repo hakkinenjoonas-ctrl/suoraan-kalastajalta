@@ -1413,6 +1413,7 @@ function parseStoredCatchFormDefaults(raw) {
   const parsed = raw ? JSON.parse(raw) : {};
   return {
     area: String(parsed?.area || "Saimaa"),
+    waterType: String(parsed?.waterType || ""),
     customLakeAreas: Array.isArray(parsed?.customLakeAreas) ? parsed.customLakeAreas.map((item) => String(item || "").trim()).filter(Boolean) : [],
     customSeaAreas: Array.isArray(parsed?.customSeaAreas) ? parsed.customSeaAreas.map((item) => String(item || "").trim()).filter(Boolean) : [],
     municipality: String(parsed?.municipality || ""),
@@ -1438,6 +1439,7 @@ function getStoredCatchFormDefaults(profileLike = null) {
   if (typeof window === "undefined") {
     return {
       area: "Saimaa",
+      waterType: "",
       customLakeAreas: [],
       customSeaAreas: [],
       municipality: "",
@@ -1460,6 +1462,7 @@ function getStoredCatchFormDefaults(profileLike = null) {
   } catch {
     return {
       area: "Saimaa",
+      waterType: "",
       customLakeAreas: [],
       customSeaAreas: [],
       municipality: "",
@@ -4117,6 +4120,7 @@ export default function App() {
     return {
       date: today(),
       area: defaults.area,
+      waterType: defaults.waterType || "",
       municipality: defaults.municipality,
       landingPlace: defaults.landingPlace,
       gearCount: defaults.gearCount,
@@ -4315,6 +4319,7 @@ export default function App() {
     setForm((prev) => ({
       ...prev,
       area: defaults.area,
+      waterType: defaults.waterType || String(profile?.water_type || "").trim(),
       municipality: defaults.municipality,
       landingPlace: defaults.landingPlace,
       gearCount: defaults.gearCount,
@@ -5548,6 +5553,7 @@ export default function App() {
             originCity: entry.origin_city || entry.municipality || "",
             spot: entry.spot || "",
             species: entry.species,
+            waterType: entry.water_type || "",
             kilos: Number(entry.kilos || 0),
             count: Number(entry.count || 0),
             gear: entry.gear,
@@ -5622,6 +5628,7 @@ export default function App() {
                 municipality: entry.municipality || "",
                 spot: entry.spot || "",
                 species: entry.species,
+                waterType: entry.water_type || "",
                 kilos: Number(entry.kilos || 0),
                 count: Number(entry.count || 0),
                 gear: entry.gear,
@@ -5933,7 +5940,7 @@ export default function App() {
 
   useEffect(() => {
     if (!labelPrintEntry) return;
-    setLabelPrintWaterType(String(profile?.water_type || "").trim());
+    setLabelPrintWaterType(String(labelPrintEntry?.waterType || profile?.water_type || "").trim());
   }, [labelPrintEntry, profile?.water_type]);
 
   useEffect(() => {
@@ -5972,6 +5979,7 @@ export default function App() {
       const fykeHeightOptions = buildRememberedOptions(form.fykeHeight, savedFykeHeightOptions);
       window.localStorage.setItem(getCatchFormDefaultsStorageKey(profile), JSON.stringify({
         area: form.area || "Saimaa",
+        waterType: form.waterType || "",
         customLakeAreas: savedCustomLakeAreas,
         customSeaAreas: savedCustomSeaAreas,
         municipality: form.municipality || "",
@@ -6026,6 +6034,7 @@ export default function App() {
     }
   }, [
     form.area,
+    form.waterType,
     catchAreaSelector,
     form.municipality,
     form.landingPlace,
@@ -8481,6 +8490,7 @@ export default function App() {
       origin_city: form.originCity || form.municipality || null,
       spot: form.spot,
       species: getSpeciesRowLabel(row),
+      water_type: form.waterType || null,
       kilos: Number(row.kilos || 0),
       count: Number(row.count || 0),
       gear: form.gear,
@@ -8504,7 +8514,17 @@ export default function App() {
       owner_name: profile.display_name,
     }));
 
-    const { error } = await supabase.from("catch_entries").insert(payload);
+    let insertError = null;
+    const { error: initialInsertError } = await supabase.from("catch_entries").insert(payload);
+    insertError = initialInsertError;
+
+    if (insertError && String(insertError.message || "").includes("water_type")) {
+      const fallbackPayload = payload.map(({ water_type, ...rest }) => rest);
+      const { error: fallbackInsertError } = await supabase.from("catch_entries").insert(fallbackPayload);
+      insertError = fallbackInsertError;
+    }
+
+    const error = insertError;
     if (error) {
       setSaving(false);
       if (isMissingRefreshTokenError(error)) {
@@ -8521,6 +8541,23 @@ export default function App() {
       }
       setAuthError(error.message);
       return;
+    }
+
+    const normalizedWaterType = String(form.waterType || "").trim();
+    if (normalizedWaterType && normalizedWaterType !== String(profile?.water_type || "").trim()) {
+      const { data: updatedProfile, error: profileUpdateError } = await supabase
+        .from("profiles")
+        .update({ water_type: normalizedWaterType })
+        .eq("id", profile.id)
+        .select("*")
+        .single();
+
+      if (!profileUpdateError && updatedProfile) {
+        setProfile((prev) => ({
+          ...(prev || {}),
+          ...updatedProfile,
+        }));
+      }
     }
 
     try {
@@ -8569,6 +8606,7 @@ export default function App() {
     setForm((prev) => ({
       ...prev,
       originCity: prev.originCity || prev.municipality || "",
+      waterType: prev.waterType || "",
       landingPlace: prev.landingPlace || "",
       gearCount: prev.gearCount || "",
       fishingDurationDays: prev.fishingDurationDays || "",
@@ -8851,8 +8889,8 @@ export default function App() {
     const resolvedLabelCount = Math.max(1, Number(labelPrintCount || 1));
     const resolvedPrintFormat = labelPrintFormat;
     const resolvedWaterType = resolvedPrintFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6
-      ? String(labelPrintWaterType || profile?.water_type || "").trim()
-      : String(profile?.water_type || "").trim();
+      ? String(labelPrintWaterType || entry?.waterType || profile?.water_type || "").trim()
+      : String(entry?.waterType || profile?.water_type || "").trim();
     const labelData = buildCatchLabelData(entry, profile, 1, resolvedLabelCount, { waterType: resolvedWaterType });
 
     if (!labelData.species || !labelData.batchId || !labelData.supplier) {
@@ -10387,6 +10425,14 @@ export default function App() {
                   })}
                 </div>
                 <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm((prev) => ({ ...prev, gear: e.target.value, netHeight: e.target.value === "Verkko" ? prev.netHeight : "", netMeshSize: e.target.value === "Verkko" ? prev.netMeshSize : "", fykeHeight: e.target.value === "Rysä" ? prev.fykeHeight : "" }))}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
+                <div style={styles.field}>
+                  <label>Vesityyppi</label>
+                  <select style={styles.input} value={form.waterType} onChange={(e) => setForm((prev) => ({ ...prev, waterType: e.target.value }))}>
+                    <option value="">Valitse</option>
+                    <option value={WATER_TYPE_FRESH}>Makea vesi</option>
+                    <option value={WATER_TYPE_SEA}>Meri</option>
+                  </select>
+                </div>
                 <div style={styles.field}>
                   <label>Pyydysten määrä</label>
                   <RememberedTextInput
