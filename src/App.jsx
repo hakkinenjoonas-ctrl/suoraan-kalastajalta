@@ -5940,7 +5940,12 @@ export default function App() {
 
   useEffect(() => {
     if (!labelPrintEntry) return;
-    setLabelPrintWaterType(String(labelPrintEntry?.waterType || profile?.water_type || "").trim());
+    setLabelPrintWaterType(String(
+      labelPrintEntry?.waterType ||
+      profile?.water_type ||
+      getStoredCatchFormDefaults(profile).waterType ||
+      ""
+    ).trim());
   }, [labelPrintEntry, profile?.water_type]);
 
   useEffect(() => {
@@ -8888,9 +8893,10 @@ export default function App() {
     if (!entry) return;
     const resolvedLabelCount = Math.max(1, Number(labelPrintCount || 1));
     const resolvedPrintFormat = labelPrintFormat;
+    const storedCatchDefaults = getStoredCatchFormDefaults(profile);
     const resolvedWaterType = resolvedPrintFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6
-      ? String(labelPrintWaterType || entry?.waterType || profile?.water_type || "").trim()
-      : String(entry?.waterType || profile?.water_type || "").trim();
+      ? String(labelPrintWaterType || entry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim()
+      : String(entry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim();
     const labelData = buildCatchLabelData(entry, profile, 1, resolvedLabelCount, { waterType: resolvedWaterType });
 
     if (!labelData.species || !labelData.batchId || !labelData.supplier) {
