@@ -706,8 +706,8 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           <meta charset="utf-8" />
           <title>Kalaetiketit ${String(entry?.batchId || "")}</title>
           <style>
-            @page { size: 152mm 102mm landscape; margin: 0; }
-            html, body { width: 152mm; height: 102mm; margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; background: #fff; }
+            @page { size: 102mm 152mm portrait; margin: 0; }
+            html, body { width: 102mm; height: 152mm; margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; background: #fff; }
             * { box-sizing: border-box; }
             .thermal-label-page { page-break-after: always; }
             .thermal-label-page:last-child { page-break-after: auto; }
@@ -1054,16 +1054,12 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   const width = Math.round(THERMAL_LABEL_4X6_SIZE_MM.width * pxPerMm);
   const height = Math.round(THERMAL_LABEL_4X6_SIZE_MM.height * pxPerMm);
   const padding = Math.round(6 * pxPerMm);
-  const gap = Math.round(4 * pxPerMm);
-  const brandHeight = Math.round(22 * pxPerMm);
-  const bodyTop = padding + brandHeight + gap;
-  const leftWidth = Math.round(42 * pxPerMm);
-  const centerWidth = Math.round(38 * pxPerMm);
-  const rightWidth = width - (padding * 2) - leftWidth - centerWidth - (gap * 2);
-  const leftX = padding;
-  const centerX = leftX + leftWidth + gap;
-  const rightX = centerX + centerWidth + gap;
-  const qrSize = Math.round(34 * pxPerMm);
+  const gap = Math.round(3 * pxPerMm);
+  const brandHeight = Math.round(20 * pxPerMm);
+  const speciesHeight = Math.round(34 * pxPerMm);
+  const batchHeight = Math.round(22 * pxPerMm);
+  const qrSize = Math.round(30 * pxPerMm);
+  const top = padding;
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -1082,25 +1078,101 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
 
   if (logoImage) {
     const aspect = (logoImage.naturalWidth || 1) / Math.max(1, logoImage.naturalHeight || 1);
-    const logoWidth = Math.min(Math.round(22 * pxPerMm), Math.round(brandHeight * Math.max(aspect, 0.75)));
-    const logoHeight = Math.max(Math.round(14 * pxPerMm), Math.round(logoWidth / Math.max(aspect, 0.1)));
+    const logoWidth = Math.min(Math.round(16 * pxPerMm), Math.round(brandHeight * Math.max(aspect, 0.7)));
+    const logoHeight = Math.max(Math.round(12 * pxPerMm), Math.round(logoWidth / Math.max(aspect, 0.1)));
     const logoX = padding;
-    const logoY = padding + Math.round((brandHeight - logoHeight) / 2);
+    const logoY = top + Math.round((brandHeight - logoHeight) / 2);
     ctx.drawImage(logoImage, logoX, logoY, logoWidth, logoHeight);
     ctx.fillStyle = "#0f172a";
-    ctx.font = "900 34px Arial";
-    ctx.fillText("Suoraan Kalastajalta", logoX + logoWidth + Math.round(4 * pxPerMm), padding + Math.round(1 * pxPerMm));
+    ctx.font = "900 26px Arial";
+    ctx.fillText("Suoraan Kalastajalta", logoX + logoWidth + Math.round(3 * pxPerMm), top + Math.round(1 * pxPerMm));
     ctx.fillStyle = "#475569";
-    ctx.font = "600 16px Arial";
-    ctx.fillText("Kotimainen kala suoraan pyytäjältä", logoX + logoWidth + Math.round(4 * pxPerMm), padding + Math.round(8 * pxPerMm));
+    ctx.font = "600 12px Arial";
+    ctx.fillText("Kotimainen kala suoraan pyytäjältä", logoX + logoWidth + Math.round(3 * pxPerMm), top + Math.round(7 * pxPerMm));
   } else {
     ctx.fillStyle = "#0f172a";
-    ctx.font = "900 34px Arial";
-    ctx.fillText("Suoraan Kalastajalta", padding, padding + Math.round(1 * pxPerMm));
+    ctx.font = "900 26px Arial";
+    ctx.fillText("Suoraan Kalastajalta", padding, top + Math.round(1 * pxPerMm));
   }
 
-  const qrX = rightX;
-  const qrY = bodyTop;
+  let currentY = top + brandHeight + gap;
+  ctx.fillStyle = "#0f172a";
+  fitCanvasFont(ctx, label.species || "-", width - (padding * 2), 40, 24, "900");
+  const speciesLines = wrapCanvasText(ctx, label.species || "-", width - (padding * 2), 2);
+  const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 28) * 1.02;
+  speciesLines.forEach((line, index) => {
+    ctx.fillText(line, padding, currentY + (index * speciesLineHeight));
+  });
+  currentY += speciesLines.length * speciesLineHeight + 6;
+
+  if (label.scientificName) {
+    ctx.fillStyle = "#475569";
+    fitCanvasFont(ctx, label.scientificName, width - (padding * 2), 18, 12, "600");
+    const scientificLines = wrapCanvasText(ctx, label.scientificName, width - (padding * 2), 2);
+    scientificLines.forEach((line, index) => {
+      ctx.fillText(line, padding, currentY + (index * 15));
+    });
+    currentY += scientificLines.length * 15 + 8;
+  }
+
+  const infoLines = [
+    label.productionMethodText || "",
+    label.catchArea || "",
+    label.gearType ? `Pyydys: ${label.gearType}` : "",
+  ].filter(Boolean);
+  ctx.fillStyle = "#0f172a";
+  infoLines.forEach((line) => {
+    fitCanvasFont(ctx, line, width - (padding * 2), 14, 10, "600");
+    const wrapped = wrapCanvasText(ctx, line, width - (padding * 2), 2);
+    wrapped.forEach((wrappedLine, index) => {
+      ctx.fillText(wrappedLine, padding, currentY + (index * 12));
+    });
+    currentY += wrapped.length * 12 + 6;
+  });
+
+  currentY = Math.max(currentY, top + brandHeight + speciesHeight);
+
+  ctx.fillStyle = "#eff6ff";
+  ctx.strokeStyle = "#93c5fd";
+  ctx.lineWidth = 3;
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(padding, currentY, width - (padding * 2), batchHeight, 14);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillRect(padding, currentY, width - (padding * 2), batchHeight);
+    ctx.strokeRect(padding, currentY, width - (padding * 2), batchHeight);
+  }
+  ctx.fillStyle = "#475569";
+  ctx.font = "700 12px Arial";
+  ctx.fillText("ERÄTUNNUS", padding + 10, currentY + 8);
+  ctx.fillStyle = "#0f172a";
+  fitCanvasFont(ctx, label.batchId || "-", width - (padding * 2) - 20, 20, 11, "900");
+  const batchLines = wrapCanvasText(ctx, label.batchId || "-", width - (padding * 2) - 20, 3);
+  batchLines.forEach((line, index) => {
+    ctx.fillText(line, padding + 10, currentY + 24 + (index * 16));
+  });
+  currentY += batchHeight + gap;
+
+  const metaLeftWidth = width - (padding * 2) - qrSize - gap;
+  const middleLines = [
+    `Pyyntipäivä: ${label.catchDate || "-"}`,
+    `Pakkauspäivä: ${label.packDate || "-"}`,
+    `Paino: ${label.weightText || "-"}`,
+  ];
+  ctx.fillStyle = "#0f172a";
+  middleLines.forEach((line) => {
+    fitCanvasFont(ctx, line, metaLeftWidth, 16, 11, "700");
+    const wrapped = wrapCanvasText(ctx, line, metaLeftWidth, 2);
+    wrapped.forEach((wrappedLine, index) => {
+      ctx.fillText(wrappedLine, padding, currentY + (index * 14));
+    });
+    currentY += wrapped.length * 14 + 6;
+  });
+
+  const qrX = width - padding - qrSize;
+  const qrY = currentY - Math.round(48 * pxPerMm / 8);
   ctx.fillStyle = "#ffffff";
   ctx.strokeStyle = "#cbd5e1";
   ctx.lineWidth = 3;
@@ -1115,101 +1187,28 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   }
   ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
-  let leftY = bodyTop;
-  ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, label.species || "-", leftWidth, 44, 28, "900");
-  const speciesLines = wrapCanvasText(ctx, label.species || "-", leftWidth, 2);
-  const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 32) * 1.02;
-  speciesLines.forEach((line, index) => {
-    ctx.fillText(line, leftX, leftY + (index * speciesLineHeight));
-  });
-  leftY += speciesLines.length * speciesLineHeight + 8;
-
-  if (label.scientificName) {
-    ctx.fillStyle = "#475569";
-    fitCanvasFont(ctx, label.scientificName, leftWidth, 20, 13, "600");
-    const scientificLines = wrapCanvasText(ctx, label.scientificName, leftWidth, 2);
-    scientificLines.forEach((line, index) => {
-      ctx.fillText(line, leftX, leftY + (index * 16));
-    });
-    leftY += scientificLines.length * 16 + 12;
-  }
-
-  const leftInfoLines = [
-    label.productionMethodText || "",
-    label.catchArea || "",
-    label.gearType ? `Pyydys: ${label.gearType}` : "",
-  ].filter(Boolean);
-  ctx.fillStyle = "#0f172a";
-  leftInfoLines.forEach((line) => {
-    fitCanvasFont(ctx, line, leftWidth, 16, 10, "600");
-    const wrapped = wrapCanvasText(ctx, line, leftWidth, 3);
-    wrapped.forEach((wrappedLine, index) => {
-      ctx.fillText(wrappedLine, leftX, leftY + (index * 14));
-    });
-    leftY += wrapped.length * 14 + 8;
-  });
-
-  const batchBoxHeight = Math.round(24 * pxPerMm);
-  ctx.fillStyle = "#eff6ff";
-  ctx.strokeStyle = "#93c5fd";
-  ctx.lineWidth = 3;
-  if (ctx.roundRect) {
-    ctx.beginPath();
-    ctx.roundRect(centerX, bodyTop, centerWidth, batchBoxHeight, 14);
-    ctx.fill();
-    ctx.stroke();
-  } else {
-    ctx.fillRect(centerX, bodyTop, centerWidth, batchBoxHeight);
-    ctx.strokeRect(centerX, bodyTop, centerWidth, batchBoxHeight);
-  }
-  ctx.fillStyle = "#475569";
-  ctx.font = "700 14px Arial";
-  ctx.fillText("ERÄTUNNUS", centerX + 10, bodyTop + 8);
-  ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, label.batchId || "-", centerWidth - 20, 24, 12, "900");
-  const batchLines = wrapCanvasText(ctx, label.batchId || "-", centerWidth - 20, 3);
-  batchLines.forEach((line, index) => {
-    ctx.fillText(line, centerX + 10, bodyTop + 30 + (index * 18));
-  });
-
-  let centerY = bodyTop + batchBoxHeight + Math.round(4 * pxPerMm);
-  const middleLines = [
-    `Pyyntipäivä: ${label.catchDate || "-"}`,
-    `Pakkauspäivä: ${label.packDate || "-"}`,
-    `Paino: ${label.weightText || "-"}`,
-  ];
-  middleLines.forEach((line) => {
-    fitCanvasFont(ctx, line, centerWidth, 18, 11, "700");
-    const wrapped = wrapCanvasText(ctx, line, centerWidth, 2);
-    wrapped.forEach((wrappedLine, index) => {
-      ctx.fillText(wrappedLine, centerX, centerY + (index * 15));
-    });
-    centerY += wrapped.length * 15 + 10;
-  });
-
-  const supplierStartY = qrY + qrSize + Math.round(4 * pxPerMm);
+  const supplierStartY = Math.max(qrY + qrSize + gap, currentY + gap);
   ctx.beginPath();
   ctx.lineWidth = 2;
   ctx.strokeStyle = "#cbd5e1";
-  ctx.moveTo(rightX, supplierStartY - 8);
-  ctx.lineTo(rightX + rightWidth, supplierStartY - 8);
+  ctx.moveTo(padding, supplierStartY - 8);
+  ctx.lineTo(width - padding, supplierStartY - 8);
   ctx.stroke();
 
-  const rightLines = [
+  const supplierLines = [
     `Toimittaja: ${label.supplier || "-"}`,
     label.supplierAddress || "",
     label.supplierContact || "",
     label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
   ].filter(Boolean);
-  let rightY = supplierStartY;
-  rightLines.forEach((line, index) => {
-    fitCanvasFont(ctx, line, rightWidth, index === 0 ? 17 : 15, 10, index === 0 ? "700" : "500");
-    const wrapped = wrapCanvasText(ctx, line, rightWidth, 3);
+  let supplierY = supplierStartY;
+  supplierLines.forEach((line, index) => {
+    fitCanvasFont(ctx, line, width - (padding * 2), index === 0 ? 15 : 13, 10, index === 0 ? "700" : "500");
+    const wrapped = wrapCanvasText(ctx, line, width - (padding * 2), 3);
     wrapped.forEach((wrappedLine, wrappedIndex) => {
-      ctx.fillText(wrappedLine, rightX, rightY + (wrappedIndex * 13));
+      ctx.fillText(wrappedLine, padding, supplierY + (wrappedIndex * 12));
     });
-    rightY += wrapped.length * 13 + 7;
+    supplierY += wrapped.length * 12 + 6;
   });
 
   return canvas.toDataURL("image/png");
@@ -1230,7 +1229,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
   if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
     const doc = new jsPDF({
-      orientation: "landscape",
+      orientation: "portrait",
       unit: "mm",
       format: [THERMAL_LABEL_4X6_SIZE_MM.width, THERMAL_LABEL_4X6_SIZE_MM.height],
       compress: true,
@@ -1238,7 +1237,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
     for (let index = 0; index < labels.length; index += 1) {
       if (index > 0) {
-        doc.addPage([THERMAL_LABEL_4X6_SIZE_MM.width, THERMAL_LABEL_4X6_SIZE_MM.height], "landscape");
+        doc.addPage([THERMAL_LABEL_4X6_SIZE_MM.width, THERMAL_LABEL_4X6_SIZE_MM.height], "portrait");
       }
       const labelImage = await renderMunbynLabelCanvas(labels[index], qrDataUrls[index], logoDataUrl);
       doc.addImage(labelImage, "PNG", 0, 0, THERMAL_LABEL_4X6_SIZE_MM.width, THERMAL_LABEL_4X6_SIZE_MM.height, undefined, "FAST");
@@ -2255,7 +2254,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const isMunbynFormat = printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6;
   const previewBaseWidth = isMunbynFormat ? 320 : 420;
-  const previewBaseHeight = isMunbynFormat ? (previewBaseWidth * 102) / 152 : (previewBaseWidth * 57) / 105;
+  const previewBaseHeight = isMunbynFormat ? (previewBaseWidth * 152) / 102 : (previewBaseWidth * 57) / 105;
   const previewScale = isMobile && typeof window !== "undefined"
     ? Math.min(1, Math.max(0.5, (window.innerWidth - 52) / previewBaseWidth))
     : 1;
@@ -2380,7 +2379,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
               <div style={{
                 width: previewBaseWidth,
                 minWidth: previewBaseWidth,
-                aspectRatio: isMunbynFormat ? "152 / 102" : "105 / 57",
+                aspectRatio: isMunbynFormat ? "102 / 152" : "105 / 57",
                 background: "#fff",
                 padding: isMunbynFormat ? 0 : 14,
                 display: "grid",

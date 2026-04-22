@@ -1,8 +1,8 @@
 import React from "react";
 
 export const THERMAL_LABEL_4X6_SIZE_MM = {
-  width: 152,
-  height: 102,
+  width: 102,
+  height: 152,
 };
 
 const palette = {
@@ -16,8 +16,8 @@ const palette = {
 
 const styles = {
   root: {
-    width: "152mm",
-    height: "102mm",
+    width: "102mm",
+    height: "152mm",
     margin: 0,
     padding: "6mm",
     overflow: "hidden",
@@ -26,26 +26,26 @@ const styles = {
     color: palette.text,
     fontFamily: "Inter, Arial, sans-serif",
     display: "grid",
-    gridTemplateRows: "22mm 1fr",
-    gap: "4mm",
+    gridTemplateRows: "20mm auto 1fr auto",
+    gap: "3mm",
   },
   brandRow: {
     display: "grid",
-    gridTemplateColumns: "26mm 1fr",
-    gap: "4mm",
+    gridTemplateColumns: "18mm 1fr",
+    gap: "3mm",
     alignItems: "center",
     minHeight: 0,
   },
   brandLogoWrap: {
-    width: "26mm",
-    height: "22mm",
+    width: "18mm",
+    height: "18mm",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
   },
   brandLogo: {
-    width: "20mm",
-    height: "20mm",
+    width: "16mm",
+    height: "16mm",
     objectFit: "contain",
     display: "block",
   },
@@ -56,21 +56,21 @@ const styles = {
     justifyContent: "center",
   },
   brandTitle: {
-    fontSize: "16pt",
+    fontSize: "13pt",
     fontWeight: 900,
     lineHeight: 1,
     letterSpacing: "-0.02em",
   },
   brandSubtitle: {
     marginTop: "1.2mm",
-    fontSize: "8pt",
+    fontSize: "7pt",
     lineHeight: 1.15,
     color: palette.muted,
   },
   contentRow: {
     display: "grid",
-    gridTemplateColumns: "1.15fr 0.95fr 1.1fr",
-    gap: "4mm",
+    gridTemplateColumns: "1fr",
+    gap: "3mm",
     minHeight: 0,
   },
   panel: {
@@ -80,7 +80,7 @@ const styles = {
     flexDirection: "column",
   },
   species: {
-    fontSize: "19pt",
+    fontSize: "18pt",
     fontWeight: 900,
     lineHeight: 0.98,
     textTransform: "uppercase",
@@ -96,12 +96,12 @@ const styles = {
     wordBreak: "break-word",
   },
   infoBlock: {
-    marginTop: "3mm",
+    marginTop: "2mm",
     display: "grid",
     gap: "1.3mm",
   },
   infoLine: {
-    fontSize: "8.5pt",
+    fontSize: "8pt",
     lineHeight: 1.15,
     wordBreak: "break-word",
   },
@@ -109,7 +109,8 @@ const styles = {
     fontWeight: 800,
   },
   batchBox: {
-    padding: "2.6mm 3mm",
+    marginTop: "1mm",
+    padding: "2.4mm 2.8mm",
     border: `0.45mm solid ${palette.accentBorder}`,
     borderRadius: "2.6mm",
     background: palette.accentBg,
@@ -124,18 +125,18 @@ const styles = {
   },
   batchValue: {
     marginTop: "1mm",
-    fontSize: "12pt",
+    fontSize: "11pt",
     lineHeight: 1.05,
     fontWeight: 900,
     wordBreak: "break-word",
   },
   middleInfo: {
-    marginTop: "3mm",
+    marginTop: "2mm",
     display: "grid",
-    gap: "1.8mm",
+    gap: "1.2mm",
   },
   middleInfoLine: {
-    fontSize: "9pt",
+    fontSize: "8.3pt",
     lineHeight: 1.16,
     wordBreak: "break-word",
   },
@@ -144,13 +145,14 @@ const styles = {
   },
   qrWrap: {
     display: "grid",
-    gridTemplateRows: "36mm 1fr",
+    gridTemplateColumns: "30mm 1fr",
     gap: "3mm",
     minHeight: 0,
+    alignItems: "start",
   },
   qrBox: {
-    width: "36mm",
-    height: "36mm",
+    width: "30mm",
+    height: "30mm",
     border: `0.45mm solid ${palette.border}`,
     borderRadius: "2mm",
     padding: "1.2mm",
@@ -168,12 +170,13 @@ const styles = {
     minHeight: 0,
     paddingTop: "2mm",
     borderTop: `0.35mm solid ${palette.border}`,
-    display: "grid",
+    display: "flex",
+    flexDirection: "column",
     gap: "1.2mm",
-    alignContent: "start",
+    justifyContent: "flex-start",
   },
   supplierLine: {
-    fontSize: "8.3pt",
+    fontSize: "7.8pt",
     lineHeight: 1.12,
     wordBreak: "break-word",
   },
@@ -230,7 +233,8 @@ export default function ThermalLabel4x6({ label }) {
           </div>
         </div>
 
-        <div style={styles.qrWrap}>
+        <div style={{ ...styles.panel, marginTop: "auto" }}>
+          <div style={styles.qrWrap}>
           <div style={styles.qrBox}>
             {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
           </div>
@@ -240,6 +244,7 @@ export default function ThermalLabel4x6({ label }) {
             {label.supplierAddress ? <div style={styles.supplierLine}>{label.supplierAddress}</div> : null}
             {label.supplierContact ? <div style={styles.supplierLine}>{label.supplierContact}</div> : null}
             {label.commercialFishingId ? <div style={styles.supplierLine}><strong>Kalastajatunnus:</strong> {label.commercialFishingId}</div> : null}
+          </div>
           </div>
         </div>
       </div>
