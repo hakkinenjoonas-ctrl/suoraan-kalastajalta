@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { PushNotifications } from "@capacitor/push-notifications";
@@ -75,6 +76,7 @@ import {
   OfferedEntriesSummarySection,
   WholesaleOffersOverviewSection,
 } from "./components/wholesaleOffersSections.jsx";
+import ThermalLabel4x6, { THERMAL_LABEL_4X6_SIZE_MM } from "./components/ThermalLabel4x6.jsx";
 
 function getPublicAppBaseUrl() {
   const configuredUrl = typeof import.meta !== "undefined" ? import.meta.env?.VITE_PUBLIC_APP_URL : "";
@@ -547,6 +549,24 @@ function canPrintCatchLabels(entry) {
   return Boolean(entry?.batchId && entry?.species && entry?.date);
 }
 
+const WATER_TYPE_FRESH = "makea";
+const WATER_TYPE_SEA = "meri";
+
+function getCatchWaterTypeLabel(value) {
+  return value === WATER_TYPE_SEA ? "Meri" : value === WATER_TYPE_FRESH ? "Makea vesi" : "";
+}
+
+function buildCatchProductionMethodText(waterType, catchArea) {
+  const area = String(catchArea || "").trim();
+  if (waterType === WATER_TYPE_FRESH) {
+    return area ? `Pyydetty makeasta vedestä - Suomi, ${area}` : "Pyydetty makeasta vedestä";
+  }
+  if (waterType === WATER_TYPE_SEA) {
+    return area ? `Pyydetty merestä - FAO 27, Itämeri (${area})` : "Pyydetty merestä - FAO 27, Itämeri";
+  }
+  return "";
+}
+
 function isEntryOfferedForSale(entry) {
   return Boolean(
     entry?.offerToShops ||
@@ -573,10 +593,18 @@ function getCatchLabelProductForm(speciesValue) {
   return suffix.startsWith(",") ? suffix.slice(1).trim() : suffix;
 }
 
-function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
+function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options = {}) {
   const species = formatSpeciesForLabelTitle(entry?.species || "");
   const scientificName = getCatchLabelScientificName(entry?.species);
   const productForm = getCatchLabelProductForm(entry?.species);
+  const catchArea = [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / ");
+  const waterType = String(
+    options?.waterType ||
+    entry?.waterType ||
+    profileLike?.water_type ||
+    profileLike?.waterType ||
+    "",
+  ).trim();
   const supplierNameParts = [
     String(profileLike?.company_name || profileLike?.companyName || "").trim(),
     String(entry?.ownerName || profileLike?.display_name || "").trim(),
@@ -591,6 +619,10 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
     String(profileLike?.contact_email || profileLike?.email || "").trim(),
     String(profileLike?.phone || "").trim(),
   ].filter(Boolean).join(" · ");
+  const packDate = String(entry?.packDate || entry?.createdAt || "").slice(0, 10).trim();
+  const weightText = entry?.kilos != null && String(entry.kilos).trim() !== ""
+    ? `${Number(entry.kilos)} kg`
+    : "";
   const boxLabel = `${boxNumber}/${totalBoxes}`;
 
   return {
@@ -599,9 +631,14 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes) {
     batchId: String(entry?.batchId || "").trim(),
     commercialFishingId: String(entry?.commercialFishingId || profileLike?.commercial_fishing_id || profileLike?.commercialFishingId || "").trim(),
     catchDate: String(entry?.date || "").trim(),
-    catchArea: [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / "),
+    packDate,
+    catchArea,
     gearType: String(entry?.gear || "").trim(),
     productForm,
+    waterType,
+    waterTypeLabel: getCatchWaterTypeLabel(waterType),
+    productionMethodText: buildCatchProductionMethodText(waterType, catchArea),
+    weightText,
     supplier,
     supplierAddress,
     supplierContact,
@@ -613,12 +650,15 @@ function getCatchLabelQrImageUrl(labelData) {
   const qrLines = [
     labelData.species || "-",
     labelData.catchDate ? `Pyyntipäivä: ${labelData.catchDate}` : "",
+    labelData.packDate ? `Pakkauspäivä: ${labelData.packDate}` : "",
     labelData.batchId ? `Erätunnus: ${labelData.batchId}` : "",
     labelData.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${labelData.commercialFishingId}` : "",
     labelData.scientificName ? `Tieteellinen nimi: ${labelData.scientificName}` : "",
+    labelData.productionMethodText || "",
     labelData.catchArea ? `Pyyntialue: ${labelData.catchArea}` : "",
     labelData.gearType ? `Pyyntimenetelmä: ${labelData.gearType}` : "",
     labelData.productForm ? `Tuote: ${labelData.productForm}` : "",
+    labelData.weightText ? `Paino: ${labelData.weightText}` : "",
     `Toimittaja: ${labelData.supplier || "-"}`,
     labelData.supplierAddress ? `Osoite: ${labelData.supplierAddress}` : "",
     labelData.supplierContact ? `Yhteystiedot: ${labelData.supplierContact}` : "",
@@ -659,56 +699,6 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
   });
 
   if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
-    const renderMunbynLabelContent = (label) => `
-        <div class="munbyn-main">
-          <div class="munbyn-header">
-            <div class="munbyn-main-title">
-              <div class="species">${label.species || "-"}</div>
-              ${label.scientificName ? `<div class="scientific">${label.scientificName}</div>` : ""}
-            </div>
-            <div class="munbyn-batch">Erätunnus: ${label.batchId || "-"}</div>
-          </div>
-
-          <div class="munbyn-body">
-            <div class="munbyn-lines">
-              ${label.catchDate ? `<div class="line catch-date"><strong>Pyyntipäivä:</strong> ${label.catchDate}</div>` : ""}
-              ${label.commercialFishingId ? `<div class="line"><strong>Kalastajatunnus:</strong> ${label.commercialFishingId}</div>` : ""}
-              ${label.catchArea ? `<div class="line"><strong>Pyyntialue:</strong> ${label.catchArea}</div>` : ""}
-              ${label.gearType ? `<div class="line"><strong>Pyyntimenetelmä:</strong> ${label.gearType}</div>` : ""}
-              ${label.productForm ? `<div class="line"><strong>Tuote:</strong> ${label.productForm}</div>` : ""}
-              <div class="line"><strong>Säilytys:</strong> 0–2 °C</div>
-            </div>
-
-            <div class="munbyn-footer">
-              <div class="munbyn-weight">
-                <span class="weight-label">Paino:</span>
-                <span class="weight-write"></span>
-                <span class="weight-unit">kg</span>
-              </div>
-
-              <div class="munbyn-supplier">
-                <div class="line"><strong>Toimittaja:</strong> ${label.supplier || "-"}</div>
-                ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
-                ${label.supplierContact ? `<div class="line">${label.supplierContact}</div>` : ""}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="munbyn-side">
-          <div class="munbyn-brand">
-            <img src="${label.logoUrl}" alt="Suoraan Kalastajalta" />
-            <div class="munbyn-brand-text">
-              <div>Suoraan</div>
-              <div>Kalastajalta</div>
-            </div>
-          </div>
-          <div class="munbyn-qr">
-            <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
-          </div>
-        </div>
-    `;
-
     return `
       <!doctype html>
       <html lang="fi">
@@ -717,69 +707,13 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           <title>Kalaetiketit ${String(entry?.batchId || "")}</title>
           <style>
             @page { size: 152mm 102mm landscape; margin: 0; }
+            html, body { width: 152mm; height: 102mm; margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; background: #fff; }
             * { box-sizing: border-box; }
-            body { margin: 0; font-family: Inter, Arial, sans-serif; background: #fff; color: #0f172a; }
-            .munbyn-label {
-              width: 152mm;
-              height: 102mm;
-              padding: 6mm;
-              display: grid;
-              grid-template-columns: minmax(0, 1fr) 34mm;
-              gap: 4mm;
-              overflow: hidden;
-              page-break-after: always;
-              background: #fff;
-            }
-            .munbyn-label:last-child { page-break-after: auto; }
-            .munbyn-main { min-width: 0; display: flex; flex-direction: column; }
-            .munbyn-side { display: flex; flex-direction: column; justify-content: space-between; align-items: center; min-width: 0; }
-            .munbyn-header { display: grid; grid-template-columns: minmax(0, 1fr) 52mm; gap: 3mm; align-items: start; }
-            .munbyn-main-title { min-width: 0; flex: 1; }
-            .species { font-size: 18pt; font-weight: 800; line-height: 1.02; color: #0f172a; word-break: break-word; }
-            .scientific { margin-top: 1mm; font-size: 9pt; line-height: 1.15; color: #475569; word-break: break-word; }
-            .munbyn-brand { width: 100%; display: flex; flex-direction: column; align-items: center; }
-            .munbyn-brand img { width: 20mm; height: 20mm; object-fit: contain; display: block; }
-            .munbyn-brand-text { margin-top: 0.8mm; font-size: 8.5pt; line-height: 1.05; font-weight: 800; text-align: center; color: #0f172a; }
-            .munbyn-batch {
-              width: 100%;
-              padding: 2.2mm 2.6mm;
-              border: 0.45mm solid #93c5fd;
-              border-radius: 2.4mm;
-              background: #eff6ff;
-              font-size: 9pt;
-              line-height: 1.15;
-              font-weight: 800;
-              color: #0f172a;
-              overflow-wrap: anywhere;
-              word-break: break-word;
-            }
-            .munbyn-body { margin-top: 3mm; min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 2.5mm; height: 100%; }
-            .munbyn-lines { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3mm; row-gap: 1mm; align-content: start; }
-            .line { font-size: 8.4pt; line-height: 1.17; color: #0f172a; margin: 0; word-break: break-word; }
-            .catch-date { font-size: 9pt; line-height: 1.15; font-weight: 700; }
-            .munbyn-footer { min-width: 0; display: grid; grid-template-columns: 48mm minmax(0, 1fr); gap: 3mm; align-items: end; }
-            .munbyn-weight { display: flex; align-items: flex-end; gap: 1.6mm; min-height: 9mm; }
-            .weight-label, .weight-unit { font-size: 10pt; font-weight: 800; color: #0f172a; white-space: nowrap; }
-            .weight-write { flex: 1; border-bottom: 0.8mm solid #0f172a; min-height: 6mm; }
-            .munbyn-supplier {
-              min-width: 0;
-              padding: 2mm 2.4mm 0;
-              border-top: 0.35mm solid #cbd5e1;
-            }
-            .munbyn-qr { width: 30mm; }
-            .munbyn-qr img {
-              width: 30mm;
-              height: 30mm;
-              object-fit: contain;
-              display: block;
-              background: #fff;
-              border: 0.45mm solid #cbd5e1;
-              border-radius: 2mm;
-              padding: 1mm;
-            }
+            .thermal-label-page { page-break-after: always; }
+            .thermal-label-page:last-child { page-break-after: auto; }
           </style>
         </head>
-        <body>${labels.map((label) => `<section class="munbyn-label">${renderMunbynLabelContent(label)}</section>`).join("")}</body>
+        <body>${labels.map((label) => `<section class="thermal-label-page">${renderToStaticMarkup(<ThermalLabel4x6 label={label} />)}</section>`).join("")}</body>
       </html>
     `;
   }
@@ -1117,27 +1051,25 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   }
 
   const pxPerMm = 8;
-  const portraitWidth = Math.round(102 * pxPerMm);
-  const portraitHeight = Math.round(152 * pxPerMm);
-  const landscapeWidth = portraitHeight;
-  const landscapeHeight = portraitWidth;
+  const width = Math.round(THERMAL_LABEL_4X6_SIZE_MM.width * pxPerMm);
+  const height = Math.round(THERMAL_LABEL_4X6_SIZE_MM.height * pxPerMm);
   const padding = Math.round(6 * pxPerMm);
-  const sideWidth = Math.round(30 * pxPerMm);
-  const contentGap = Math.round(4 * pxPerMm);
-  const mainWidth = landscapeWidth - (padding * 2) - sideWidth - contentGap;
-  const qrSize = Math.round(28 * pxPerMm);
+  const gap = Math.round(4 * pxPerMm);
+  const brandHeight = Math.round(22 * pxPerMm);
+  const bodyTop = padding + brandHeight + gap;
+  const leftWidth = Math.round(42 * pxPerMm);
+  const centerWidth = Math.round(38 * pxPerMm);
+  const rightWidth = width - (padding * 2) - leftWidth - centerWidth - (gap * 2);
+  const leftX = padding;
+  const centerX = leftX + leftWidth + gap;
+  const rightX = centerX + centerWidth + gap;
+  const qrSize = Math.round(34 * pxPerMm);
 
-  const portraitCanvas = document.createElement("canvas");
-  portraitCanvas.width = portraitWidth;
-  portraitCanvas.height = portraitHeight;
-  const portraitCtx = portraitCanvas.getContext("2d");
-  if (!portraitCtx) throw new Error("Canvas-kontekstia ei saatu avattua.");
-
-  const landscapeCanvas = document.createElement("canvas");
-  landscapeCanvas.width = landscapeWidth;
-  landscapeCanvas.height = landscapeHeight;
-  const ctx = landscapeCanvas.getContext("2d");
-  if (!ctx) throw new Error("Vaakasuunnan canvas-kontekstia ei saatu avattua.");
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas-kontekstia ei saatu avattua.");
 
   const [qrImage, logoImage] = await Promise.all([
     loadImageElement(qrDataUrl),
@@ -1145,33 +1077,30 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   ]);
 
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, landscapeWidth, landscapeHeight);
+  ctx.fillRect(0, 0, width, height);
   ctx.textBaseline = "top";
-
-  const left = padding;
-  const top = padding;
-  const rightColumnX = landscapeWidth - padding - sideWidth;
-  const qrX = rightColumnX + Math.round((sideWidth - qrSize) / 2);
-  const qrY = landscapeHeight - padding - qrSize;
-  const sectionGap = Math.round(3 * pxPerMm);
-  const headerGap = Math.round(2 * pxPerMm);
 
   if (logoImage) {
     const aspect = (logoImage.naturalWidth || 1) / Math.max(1, logoImage.naturalHeight || 1);
-    const logoWidth = Math.min(Math.round(20 * pxPerMm), sideWidth - Math.round(4 * pxPerMm));
-    const logoHeight = Math.max(Math.round(10 * pxPerMm), Math.round(logoWidth / Math.max(aspect, 0.1)));
-    const logoX = rightColumnX + Math.round((sideWidth - logoWidth) / 2);
-    const logoY = top + Math.round(1 * pxPerMm);
+    const logoWidth = Math.min(Math.round(22 * pxPerMm), Math.round(brandHeight * Math.max(aspect, 0.75)));
+    const logoHeight = Math.max(Math.round(14 * pxPerMm), Math.round(logoWidth / Math.max(aspect, 0.1)));
+    const logoX = padding;
+    const logoY = padding + Math.round((brandHeight - logoHeight) / 2);
     ctx.drawImage(logoImage, logoX, logoY, logoWidth, logoHeight);
     ctx.fillStyle = "#0f172a";
-    ctx.font = "800 20px Arial";
-    ctx.textAlign = "center";
-    const brandCenterX = rightColumnX + Math.round(sideWidth / 2);
-    ctx.fillText("Suoraan", brandCenterX, logoY + logoHeight + 8);
-    ctx.fillText("Kalastajalta", brandCenterX, logoY + logoHeight + 30);
-    ctx.textAlign = "left";
+    ctx.font = "900 34px Arial";
+    ctx.fillText("Suoraan Kalastajalta", logoX + logoWidth + Math.round(4 * pxPerMm), padding + Math.round(1 * pxPerMm));
+    ctx.fillStyle = "#475569";
+    ctx.font = "600 16px Arial";
+    ctx.fillText("Kotimainen kala suoraan pyytäjältä", logoX + logoWidth + Math.round(4 * pxPerMm), padding + Math.round(8 * pxPerMm));
+  } else {
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "900 34px Arial";
+    ctx.fillText("Suoraan Kalastajalta", padding, padding + Math.round(1 * pxPerMm));
   }
 
+  const qrX = rightX;
+  const qrY = bodyTop;
   ctx.fillStyle = "#ffffff";
   ctx.strokeStyle = "#cbd5e1";
   ctx.lineWidth = 3;
@@ -1186,135 +1115,104 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   }
   ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
-  const supplierLines = [
-    `Toimittaja: ${label.supplier || "-"}`,
-    label.supplierAddress || "",
-    label.supplierContact || "",
-  ].filter(Boolean);
-  const supplierFontMax = 15;
-  const supplierFontMin = 10;
-  const supplierLineGap = 4;
-  const supplierWidth = mainWidth;
-  const supplierWrappedLines = supplierLines.map((line, index) => {
-    fitCanvasFont(ctx, line, supplierWidth, supplierFontMax, supplierFontMin, index === 0 ? "700" : "500");
-    return {
-      font: ctx.font,
-      lines: wrapCanvasText(ctx, line, supplierWidth, 2),
-    };
-  });
-  const supplierHeight = supplierWrappedLines.reduce((sum, item) => sum + (item.lines.length * 14), 0)
-    + Math.max(0, supplierWrappedLines.length - 1) * supplierLineGap;
-  const supplierTop = landscapeHeight - padding - supplierHeight;
-  const weightY = supplierTop - Math.round(7 * pxPerMm);
-
-  const batchLabel = `Erätunnus: ${label.batchId || "-"}`;
-  ctx.font = "800 18px Arial";
-  const singleLineBatchWidth = Math.ceil(ctx.measureText(batchLabel).width) + 24;
-  const batchWidth = Math.max(
-    Math.round(54 * pxPerMm),
-    Math.min(Math.round(72 * pxPerMm), singleLineBatchWidth),
-  );
-  const speciesWidth = mainWidth - batchWidth - headerGap;
-  const batchX = left + speciesWidth + headerGap;
-  const batchY = top;
-
-  let currentY = top;
+  let leftY = bodyTop;
   ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, label.species || "-", speciesWidth, 52, 30, "800");
-  const speciesLines = wrapCanvasText(ctx, label.species || "-", speciesWidth, 2);
-  const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 40) * 1.04;
+  fitCanvasFont(ctx, label.species || "-", leftWidth, 44, 28, "900");
+  const speciesLines = wrapCanvasText(ctx, label.species || "-", leftWidth, 2);
+  const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 32) * 1.02;
   speciesLines.forEach((line, index) => {
-    ctx.fillText(line, left, currentY + (index * speciesLineHeight));
+    ctx.fillText(line, leftX, leftY + (index * speciesLineHeight));
   });
-  currentY += speciesLines.length * speciesLineHeight + 6;
+  leftY += speciesLines.length * speciesLineHeight + 8;
 
   if (label.scientificName) {
-    ctx.fillStyle = "#334155";
-    fitCanvasFont(ctx, label.scientificName, speciesWidth, 20, 14, "600");
-    ctx.fillText(label.scientificName, left, currentY);
-    currentY += 24;
+    ctx.fillStyle = "#475569";
+    fitCanvasFont(ctx, label.scientificName, leftWidth, 20, 13, "600");
+    const scientificLines = wrapCanvasText(ctx, label.scientificName, leftWidth, 2);
+    scientificLines.forEach((line, index) => {
+      ctx.fillText(line, leftX, leftY + (index * 16));
+    });
+    leftY += scientificLines.length * 16 + 12;
   }
 
-  const batchAvailableWidth = batchWidth - 16;
+  const leftInfoLines = [
+    label.productionMethodText || "",
+    label.catchArea || "",
+    label.gearType ? `Pyydys: ${label.gearType}` : "",
+  ].filter(Boolean);
+  ctx.fillStyle = "#0f172a";
+  leftInfoLines.forEach((line) => {
+    fitCanvasFont(ctx, line, leftWidth, 16, 10, "600");
+    const wrapped = wrapCanvasText(ctx, line, leftWidth, 3);
+    wrapped.forEach((wrappedLine, index) => {
+      ctx.fillText(wrappedLine, leftX, leftY + (index * 14));
+    });
+    leftY += wrapped.length * 14 + 8;
+  });
+
+  const batchBoxHeight = Math.round(24 * pxPerMm);
   ctx.fillStyle = "#eff6ff";
   ctx.strokeStyle = "#93c5fd";
   ctx.lineWidth = 3;
-  fitCanvasFont(ctx, batchLabel, batchAvailableWidth, 18, 10, "800");
-  const batchLines = wrapCanvasText(ctx, batchLabel, batchAvailableWidth, 3);
-  const batchTextLineHeight = 14;
-  const batchHeight = Math.max(Math.round(12 * pxPerMm), 16 + (batchLines.length * batchTextLineHeight));
   if (ctx.roundRect) {
     ctx.beginPath();
-    ctx.roundRect(batchX, batchY, batchWidth, batchHeight, 14);
+    ctx.roundRect(centerX, bodyTop, centerWidth, batchBoxHeight, 14);
     ctx.fill();
     ctx.stroke();
   } else {
-    ctx.fillRect(batchX, batchY, batchWidth, batchHeight);
-    ctx.strokeRect(batchX, batchY, batchWidth, batchHeight);
+    ctx.fillRect(centerX, bodyTop, centerWidth, batchBoxHeight);
+    ctx.strokeRect(centerX, bodyTop, centerWidth, batchBoxHeight);
   }
+  ctx.fillStyle = "#475569";
+  ctx.font = "700 14px Arial";
+  ctx.fillText("ERÄTUNNUS", centerX + 10, bodyTop + 8);
   ctx.fillStyle = "#0f172a";
+  fitCanvasFont(ctx, label.batchId || "-", centerWidth - 20, 24, 12, "900");
+  const batchLines = wrapCanvasText(ctx, label.batchId || "-", centerWidth - 20, 3);
   batchLines.forEach((line, index) => {
-    ctx.fillText(line, batchX + 8, batchY + 8 + (index * batchTextLineHeight));
+    ctx.fillText(line, centerX + 10, bodyTop + 30 + (index * 18));
   });
-  currentY = Math.max(currentY + 8, top + batchHeight + sectionGap);
 
-  const infoLines = [
-    label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
-    label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
-    label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
-    label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
-    label.productForm ? `Tuote: ${label.productForm}` : "",
-    "Säilytys: 0–2 °C",
-  ].filter(Boolean);
-
-  const infoWidth = mainWidth;
-  let infoY = currentY;
-  ctx.fillStyle = "#0f172a";
-  infoLines.forEach((line, index) => {
-    const isCatchDate = index === 0;
-    fitCanvasFont(ctx, line, infoWidth, isCatchDate ? 17 : 14, 10, isCatchDate ? "700" : "500");
-    const wrappedLines = wrapCanvasText(ctx, line, infoWidth, 2);
-    wrappedLines.forEach((wrappedLine, wrappedIndex) => {
-      ctx.fillText(wrappedLine, left, infoY + (wrappedIndex * 13));
+  let centerY = bodyTop + batchBoxHeight + Math.round(4 * pxPerMm);
+  const middleLines = [
+    `Pyyntipäivä: ${label.catchDate || "-"}`,
+    `Pakkauspäivä: ${label.packDate || "-"}`,
+    `Paino: ${label.weightText || "-"}`,
+  ];
+  middleLines.forEach((line) => {
+    fitCanvasFont(ctx, line, centerWidth, 18, 11, "700");
+    const wrapped = wrapCanvasText(ctx, line, centerWidth, 2);
+    wrapped.forEach((wrappedLine, index) => {
+      ctx.fillText(wrappedLine, centerX, centerY + (index * 15));
     });
-    infoY += wrappedLines.length * 13 + 4;
+    centerY += wrapped.length * 15 + 10;
   });
 
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "700 20px Arial";
-  ctx.fillText("Paino:", left, weightY);
-  ctx.beginPath();
-  ctx.lineWidth = 4;
-  ctx.moveTo(left + 78, weightY + 19);
-  ctx.lineTo(left + mainWidth - 40, weightY + 19);
-  ctx.strokeStyle = "#0f172a";
-  ctx.stroke();
-  ctx.fillText("kg", left + mainWidth - 30, weightY);
-
+  const supplierStartY = qrY + qrSize + Math.round(4 * pxPerMm);
   ctx.beginPath();
   ctx.lineWidth = 2;
   ctx.strokeStyle = "#cbd5e1";
-  ctx.moveTo(left, supplierTop - 10);
-  ctx.lineTo(left + mainWidth, supplierTop - 10);
+  ctx.moveTo(rightX, supplierStartY - 8);
+  ctx.lineTo(rightX + rightWidth, supplierStartY - 8);
   ctx.stroke();
-  let supplierY = supplierTop;
-  supplierWrappedLines.forEach((item) => {
-    ctx.font = item.font;
-    item.lines.forEach((wrappedLine, wrappedIndex) => {
-      ctx.fillText(wrappedLine, left, supplierY + (wrappedIndex * 14));
+
+  const rightLines = [
+    `Toimittaja: ${label.supplier || "-"}`,
+    label.supplierAddress || "",
+    label.supplierContact || "",
+    label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
+  ].filter(Boolean);
+  let rightY = supplierStartY;
+  rightLines.forEach((line, index) => {
+    fitCanvasFont(ctx, line, rightWidth, index === 0 ? 17 : 15, 10, index === 0 ? "700" : "500");
+    const wrapped = wrapCanvasText(ctx, line, rightWidth, 3);
+    wrapped.forEach((wrappedLine, wrappedIndex) => {
+      ctx.fillText(wrappedLine, rightX, rightY + (wrappedIndex * 13));
     });
-    supplierY += item.lines.length * 14 + supplierLineGap;
+    rightY += wrapped.length * 13 + 7;
   });
 
-  portraitCtx.fillStyle = "#ffffff";
-  portraitCtx.fillRect(0, 0, portraitWidth, portraitHeight);
-  portraitCtx.save();
-  portraitCtx.translate(0, portraitHeight);
-  portraitCtx.rotate(-Math.PI / 2);
-  portraitCtx.drawImage(landscapeCanvas, 0, 0, landscapeWidth, landscapeHeight);
-  portraitCtx.restore();
-
-  return portraitCanvas.toDataURL("image/png");
+  return canvas.toDataURL("image/png");
 }
 
 function buildCatchLabelPdfFileName(entry) {
@@ -1332,18 +1230,18 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
 
   if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
     const doc = new jsPDF({
-      orientation: "portrait",
+      orientation: "landscape",
       unit: "mm",
-      format: [102, 152],
+      format: [THERMAL_LABEL_4X6_SIZE_MM.width, THERMAL_LABEL_4X6_SIZE_MM.height],
       compress: true,
     });
 
     for (let index = 0; index < labels.length; index += 1) {
       if (index > 0) {
-        doc.addPage([102, 152], "portrait");
+        doc.addPage([THERMAL_LABEL_4X6_SIZE_MM.width, THERMAL_LABEL_4X6_SIZE_MM.height], "landscape");
       }
       const labelImage = await renderMunbynLabelCanvas(labels[index], qrDataUrls[index], logoDataUrl);
-      doc.addImage(labelImage, "PNG", 0, 0, 102, 152, undefined, "FAST");
+      doc.addImage(labelImage, "PNG", 0, 0, THERMAL_LABEL_4X6_SIZE_MM.width, THERMAL_LABEL_4X6_SIZE_MM.height, undefined, "FAST");
     }
 
     return doc;
@@ -2343,12 +2241,14 @@ function PublicBatchView({ batchId, data, loading, error }) {
   );
 }
 
-function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, printFormat, setPrintFormat, onClose, onGeneratePdf, onPrint }) {
+function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint }) {
   if (!entry) return null;
 
-  const previewLabel = buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)));
-  const previewQrImageUrl = getCatchLabelQrImageUrl(previewLabel);
-  const previewLogoUrl = getAppLogoUrl();
+  const previewLabel = {
+    ...buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType }),
+    qrImageUrl: getCatchLabelQrImageUrl(buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType })),
+    logoUrl: getAppLogoUrl(),
+  };
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const isMunbynFormat = printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6;
   const previewBaseWidth = isMunbynFormat ? 320 : 420;
@@ -2399,6 +2299,16 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
               <label>Erätunnus</label>
               <input style={styles.input} value={entry.batchId || "-"} disabled />
             </div>
+            {isMunbynFormat ? (
+              <div style={styles.field}>
+                <label>Vesityyppi</label>
+                <select style={styles.input} value={waterType} onChange={(e) => setWaterType(e.target.value)}>
+                  <option value="">Valitse ennen tulostusta</option>
+                  <option value={WATER_TYPE_FRESH}>Makea vesi</option>
+                  <option value={WATER_TYPE_SEA}>Meri</option>
+                </select>
+              </div>
+            ) : null}
             <div style={styles.field}>
               <label>Laatikoiden määrä</label>
               <input
@@ -2469,55 +2379,15 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                 minWidth: previewBaseWidth,
                 aspectRatio: isMunbynFormat ? "152 / 102" : "105 / 57",
                 background: "#fff",
-                padding: isMunbynFormat ? 20 : 14,
+                padding: isMunbynFormat ? 0 : 14,
                 display: "grid",
-                gridTemplateColumns: isMunbynFormat ? "1fr 88px" : "1fr 96px",
+                gridTemplateColumns: isMunbynFormat ? "1fr" : "1fr 96px",
                 gap: isMunbynFormat ? 14 : 12,
                 transform: `scale(${previewScale})`,
                 transformOrigin: "top center",
               }}>
                 {isMunbynFormat ? (
-                  <>
-                    <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", alignItems: "start", gap: 12 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.03 }}>{previewLabel.species}</div>
-                          {previewLabel.scientificName ? <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
-                        </div>
-                        <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.15, padding: "8px 10px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 10, overflowWrap: "anywhere", wordBreak: "break-word" }}>Erätunnus: {previewLabel.batchId}</div>
-                      </div>
-                      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 12, rowGap: 6, fontSize: 11, lineHeight: 1.2 }}>
-                        {previewLabel.catchDate ? <div style={{ fontSize: 12, lineHeight: 1.2, fontWeight: 700 }}><strong>Pyyntipäivä:</strong> {previewLabel.catchDate}</div> : null}
-                        {previewLabel.commercialFishingId ? <div><strong>Kalastajatunnus:</strong> {previewLabel.commercialFishingId}</div> : null}
-                        {previewLabel.catchArea ? <div><strong>Pyyntialue:</strong> {previewLabel.catchArea}</div> : null}
-                        {previewLabel.gearType ? <div><strong>Pyyntimenetelmä:</strong> {previewLabel.gearType}</div> : null}
-                        {previewLabel.productForm ? <div><strong>Tuote:</strong> {previewLabel.productForm}</div> : null}
-                        <div><strong>Säilytys:</strong> 0–2 °C</div>
-                      </div>
-                      <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "92px 1fr", gap: 12, alignItems: "end" }}>
-                        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, minHeight: 28 }}>
-                          <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>Paino:</span>
-                          <span style={{ flex: 1, borderBottom: "3px solid #0f172a", height: 20 }} />
-                          <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>kg</span>
-                        </div>
-                        <div style={{ minWidth: 0, fontSize: 11, lineHeight: 1.2, borderTop: "1px solid #cbd5e1", paddingTop: 8 }}>
-                          <div><strong>Toimittaja:</strong> {previewLabel.supplier}</div>
-                          {previewLabel.supplierAddress ? <div>{previewLabel.supplierAddress}</div> : null}
-                          {previewLabel.supplierContact ? <div>{previewLabel.supplierContact}</div> : null}
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ width: 88, display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                      <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 2 }}>
-                        <img src={previewLogoUrl} alt="Suoraan Kalastajalta" style={{ width: 54, height: 54, objectFit: "contain", marginBottom: 0 }} />
-                        <div style={{ fontSize: 10, lineHeight: 1.05, fontWeight: 800, textAlign: "center", color: "#0f172a", marginTop: 2 }}>
-                          <div>Suoraan</div>
-                          <div>Kalastajalta</div>
-                        </div>
-                      </div>
-                      <img src={previewQrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 82, height: 82, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff", flexShrink: 0 }} />
-                    </div>
-                  </>
+                  <ThermalLabel4x6 label={previewLabel} />
                 ) : (
                   <>
                     <div style={{ display: "flex", flexDirection: "column", paddingLeft: 12, minWidth: 0 }}>
@@ -4410,6 +4280,7 @@ export default function App() {
     bankBic: "",
     contactEmail: "",
     phone: "",
+    waterType: "",
     contactName: "",
     deliveryAddress: "",
     deliveryPostcode: "",
@@ -4426,6 +4297,7 @@ export default function App() {
   const [labelPrintEntry, setLabelPrintEntry] = useState(null);
   const [labelPrintCount, setLabelPrintCount] = useState(10);
   const [labelPrintFormat, setLabelPrintFormat] = useState(CATCH_LABEL_FORMAT_MUNBYN_4X6);
+  const [labelPrintWaterType, setLabelPrintWaterType] = useState("");
   const [onboardingGuideState, setOnboardingGuideState] = useState({ views: 0, hiddenForever: false, visible: false });
   const accountFormSyncingRef = useRef(false);
   const fisherInfoSyncingRef = useRef(false);
@@ -4502,6 +4374,7 @@ export default function App() {
       window.history.back();
       return;
     }
+    setLabelPrintWaterType("");
     setLabelPrintEntry(null);
   }, []);
   const fisherInfoInitializedRef = useRef(false);
@@ -5669,6 +5542,7 @@ export default function App() {
             id: entry.id,
             batchId: entry.batch_id,
             date: entry.date,
+            createdAt: entry.created_at || "",
             area: entry.area,
             municipality: entry.municipality || "",
             originCity: entry.origin_city || entry.municipality || "",
@@ -5743,6 +5617,7 @@ export default function App() {
                 id: entry.id,
                 batchId: entry.batch_id,
                 date: entry.date,
+                createdAt: entry.created_at || "",
                 area: entry.area,
                 municipality: entry.municipality || "",
                 spot: entry.spot || "",
@@ -6020,6 +5895,7 @@ export default function App() {
       bankBic: profile.bank_bic || "",
       contactEmail: profile.contact_email || profile.email || "",
       phone: buyerAccountData?.phone || profile.phone || "",
+      waterType: profile.water_type || "",
       contactName: buyerAccountData?.contact_name || "",
       deliveryAddress: buyerAccountData?.delivery_address || "",
       deliveryPostcode: buyerAccountData?.delivery_postcode || "",
@@ -6054,6 +5930,11 @@ export default function App() {
     }
     setAccountFormDirty(true);
   }, [accountForm]);
+
+  useEffect(() => {
+    if (!labelPrintEntry) return;
+    setLabelPrintWaterType(String(profile?.water_type || "").trim());
+  }, [labelPrintEntry, profile?.water_type]);
 
   useEffect(() => {
     if (!fisherInfoInitializedRef.current) {
@@ -6531,6 +6412,7 @@ export default function App() {
         bankBic: accountForm.bankBic.trim(),
         contactEmail: accountForm.contactEmail.trim().toLowerCase(),
         phone: accountForm.phone.trim(),
+        waterType: String(accountForm.waterType || "").trim(),
         contactName: accountForm.contactName.trim(),
         deliveryAddress: accountForm.deliveryAddress.trim(),
         deliveryPostcode: accountForm.deliveryPostcode.trim(),
@@ -6559,6 +6441,7 @@ export default function App() {
               bank_bic: accountForm.bankBic.trim() || null,
               contact_email: accountForm.contactEmail.trim().toLowerCase() || null,
               phone: accountForm.phone.trim() || null,
+              water_type: accountForm.waterType || null,
             }
           : profile.role !== "buyer"
             ? {
@@ -6580,6 +6463,7 @@ export default function App() {
               bank_bic: accountForm.bankBic.trim() || null,
               contact_email: accountForm.contactEmail.trim().toLowerCase() || null,
               phone: accountForm.phone.trim() || null,
+              water_type: accountForm.waterType || null,
             }
           : linkedBuyerRecord?.id
             ? { buyer_id: linkedBuyerRecord.id }
@@ -8966,12 +8850,27 @@ export default function App() {
     if (!entry) return;
     const resolvedLabelCount = Math.max(1, Number(labelPrintCount || 1));
     const resolvedPrintFormat = labelPrintFormat;
+    const resolvedWaterType = resolvedPrintFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6
+      ? String(labelPrintWaterType || profile?.water_type || "").trim()
+      : String(profile?.water_type || "").trim();
+    const labelData = buildCatchLabelData(entry, profile, 1, resolvedLabelCount, { waterType: resolvedWaterType });
+
+    if (!labelData.species || !labelData.batchId || !labelData.supplier) {
+      setAuthError("Etikettiä ei voi tulostaa ennen kuin kalalaji, erätunnus ja toimittaja ovat täytetty.");
+      return;
+    }
+
+    if (resolvedPrintFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6 && !resolvedWaterType) {
+      setAuthError("Valitse vesityyppi ennen MUNBYN 4x6 -etiketin tulostusta.");
+      return;
+    }
+
     setLabelPrintEntry(null);
 
     if (mode === "pdf" || (mode === "print" && isNativeCapacitorApp())) {
       void (async () => {
         try {
-          const doc = await buildCatchLabelPdf(entry, profile, resolvedLabelCount, resolvedPrintFormat);
+          const doc = await buildCatchLabelPdf(entry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat);
           await presentPdfDocument(doc, buildCatchLabelPdfFileName(entry));
         } catch (error) {
           console.error("Etiketti-PDF:n luonti epäonnistui:", error);
@@ -8980,7 +8879,7 @@ export default function App() {
       })();
       return;
     }
-    const html = buildCatchLabelPrintHtml(entry, profile, resolvedLabelCount, resolvedPrintFormat);
+    const html = buildCatchLabelPrintHtml(entry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat);
     const printWindow = window.open("", "_blank", "width=1200,height=900");
     if (!printWindow) {
       setAuthError("Tulostusikkunan avaaminen estettiin selaimessa.");
@@ -9810,6 +9709,14 @@ export default function App() {
                     <label>Puhelinnumero</label>
                     <input style={styles.input} value={accountForm.phone} onChange={(e) => setAccountForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Puhelinnumero" />
                   </div>
+                  <div style={styles.field}>
+                    <label>Vesityyppi etiketeille</label>
+                    <select style={styles.input} value={accountForm.waterType} onChange={(e) => setAccountForm((prev) => ({ ...prev, waterType: e.target.value }))}>
+                      <option value="">Valitse</option>
+                      <option value={WATER_TYPE_FRESH}>Makea vesi</option>
+                      <option value={WATER_TYPE_SEA}>Meri</option>
+                    </select>
+                  </div>
                 </>
               ) : (
                 <>
@@ -9888,6 +9795,14 @@ export default function App() {
                   <div style={styles.field}>
                     <label>Puhelinnumero</label>
                     <input style={styles.input} value={accountForm.phone} onChange={(e) => setAccountForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Puhelinnumero" />
+                  </div>
+                  <div style={styles.field}>
+                    <label>Vesityyppi etiketeille</label>
+                    <select style={styles.input} value={accountForm.waterType} onChange={(e) => setAccountForm((prev) => ({ ...prev, waterType: e.target.value }))}>
+                      <option value="">Valitse</option>
+                      <option value={WATER_TYPE_FRESH}>Makea vesi</option>
+                      <option value={WATER_TYPE_SEA}>Meri</option>
+                    </select>
                   </div>
                 </>
               )}
@@ -11206,6 +11121,8 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             setLabelCount={setLabelPrintCount}
             printFormat={labelPrintFormat}
             setPrintFormat={setLabelPrintFormat}
+            waterType={labelPrintWaterType}
+            setWaterType={setLabelPrintWaterType}
             onClose={closeLabelPrintModal}
             onGeneratePdf={() => openCatchLabelPrintDialog(labelPrintEntry, "pdf")}
             onPrint={() => openCatchLabelPrintDialog(labelPrintEntry, "print")}

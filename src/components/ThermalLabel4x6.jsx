@@ -1,0 +1,248 @@
+import React from "react";
+
+export const THERMAL_LABEL_4X6_SIZE_MM = {
+  width: 152,
+  height: 102,
+};
+
+const palette = {
+  text: "#0f172a",
+  muted: "#475569",
+  border: "#cbd5e1",
+  accentBorder: "#93c5fd",
+  accentBg: "#eff6ff",
+  bg: "#ffffff",
+};
+
+const styles = {
+  root: {
+    width: "152mm",
+    height: "102mm",
+    margin: 0,
+    padding: "6mm",
+    overflow: "hidden",
+    boxSizing: "border-box",
+    background: palette.bg,
+    color: palette.text,
+    fontFamily: "Inter, Arial, sans-serif",
+    display: "grid",
+    gridTemplateRows: "22mm 1fr",
+    gap: "4mm",
+  },
+  brandRow: {
+    display: "grid",
+    gridTemplateColumns: "26mm 1fr",
+    gap: "4mm",
+    alignItems: "center",
+    minHeight: 0,
+  },
+  brandLogoWrap: {
+    width: "26mm",
+    height: "22mm",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandLogo: {
+    width: "20mm",
+    height: "20mm",
+    objectFit: "contain",
+    display: "block",
+  },
+  brandTextWrap: {
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+  },
+  brandTitle: {
+    fontSize: "16pt",
+    fontWeight: 900,
+    lineHeight: 1,
+    letterSpacing: "-0.02em",
+  },
+  brandSubtitle: {
+    marginTop: "1.2mm",
+    fontSize: "8pt",
+    lineHeight: 1.15,
+    color: palette.muted,
+  },
+  contentRow: {
+    display: "grid",
+    gridTemplateColumns: "1.15fr 0.95fr 1.1fr",
+    gap: "4mm",
+    minHeight: 0,
+  },
+  panel: {
+    minWidth: 0,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+  species: {
+    fontSize: "19pt",
+    fontWeight: 900,
+    lineHeight: 0.98,
+    textTransform: "uppercase",
+    letterSpacing: "-0.02em",
+    wordBreak: "break-word",
+  },
+  scientific: {
+    marginTop: "1.2mm",
+    fontSize: "9pt",
+    lineHeight: 1.15,
+    color: palette.muted,
+    fontStyle: "italic",
+    wordBreak: "break-word",
+  },
+  infoBlock: {
+    marginTop: "3mm",
+    display: "grid",
+    gap: "1.3mm",
+  },
+  infoLine: {
+    fontSize: "8.5pt",
+    lineHeight: 1.15,
+    wordBreak: "break-word",
+  },
+  infoStrong: {
+    fontWeight: 800,
+  },
+  batchBox: {
+    padding: "2.6mm 3mm",
+    border: `0.45mm solid ${palette.accentBorder}`,
+    borderRadius: "2.6mm",
+    background: palette.accentBg,
+  },
+  batchLabel: {
+    fontSize: "8pt",
+    lineHeight: 1.1,
+    fontWeight: 700,
+    color: palette.muted,
+    textTransform: "uppercase",
+    letterSpacing: "0.03em",
+  },
+  batchValue: {
+    marginTop: "1mm",
+    fontSize: "12pt",
+    lineHeight: 1.05,
+    fontWeight: 900,
+    wordBreak: "break-word",
+  },
+  middleInfo: {
+    marginTop: "3mm",
+    display: "grid",
+    gap: "1.8mm",
+  },
+  middleInfoLine: {
+    fontSize: "9pt",
+    lineHeight: 1.16,
+    wordBreak: "break-word",
+  },
+  weightValue: {
+    fontWeight: 900,
+  },
+  qrWrap: {
+    display: "grid",
+    gridTemplateRows: "36mm 1fr",
+    gap: "3mm",
+    minHeight: 0,
+  },
+  qrBox: {
+    width: "36mm",
+    height: "36mm",
+    border: `0.45mm solid ${palette.border}`,
+    borderRadius: "2mm",
+    padding: "1.2mm",
+    background: "#fff",
+    justifySelf: "start",
+  },
+  qrImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    display: "block",
+  },
+  supplierBox: {
+    minWidth: 0,
+    minHeight: 0,
+    paddingTop: "2mm",
+    borderTop: `0.35mm solid ${palette.border}`,
+    display: "grid",
+    gap: "1.2mm",
+    alignContent: "start",
+  },
+  supplierLine: {
+    fontSize: "8.3pt",
+    lineHeight: 1.12,
+    wordBreak: "break-word",
+  },
+};
+
+function renderInfoLine(label, value, strong = false) {
+  if (!value) return null;
+  return (
+    <div style={styles.infoLine}>
+      <span style={strong ? styles.infoStrong : undefined}>{label}</span>
+      {label ? " " : ""}
+      <span>{value}</span>
+    </div>
+  );
+}
+
+export default function ThermalLabel4x6({ label }) {
+  if (!label) return null;
+
+  return (
+    <div style={styles.root}>
+      <div style={styles.brandRow}>
+        <div style={styles.brandLogoWrap}>
+          {label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={styles.brandLogo} /> : null}
+        </div>
+        <div style={styles.brandTextWrap}>
+          <div style={styles.brandTitle}>Suoraan Kalastajalta</div>
+          <div style={styles.brandSubtitle}>Kotimainen kala suoraan pyytäjältä</div>
+        </div>
+      </div>
+
+      <div style={styles.contentRow}>
+        <div style={styles.panel}>
+          <div style={styles.species}>{label.species || "-"}</div>
+          {label.scientificName ? <div style={styles.scientific}>{label.scientificName}</div> : null}
+
+          <div style={styles.infoBlock}>
+            {renderInfoLine("", label.productionMethodText)}
+            {renderInfoLine("", label.catchArea)}
+            {renderInfoLine("Pyydys:", label.gearType)}
+          </div>
+        </div>
+
+        <div style={styles.panel}>
+          <div style={styles.batchBox}>
+            <div style={styles.batchLabel}>Erätunnus</div>
+            <div style={styles.batchValue}>{label.batchId || "-"}</div>
+          </div>
+
+          <div style={styles.middleInfo}>
+            <div style={styles.middleInfoLine}><strong>Pyyntipäivä:</strong> {label.catchDate || "-"}</div>
+            <div style={styles.middleInfoLine}><strong>Pakkauspäivä:</strong> {label.packDate || "-"}</div>
+            <div style={styles.middleInfoLine}><strong>Paino:</strong> <span style={styles.weightValue}>{label.weightText || "-"}</span></div>
+          </div>
+        </div>
+
+        <div style={styles.qrWrap}>
+          <div style={styles.qrBox}>
+            {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
+          </div>
+
+          <div style={styles.supplierBox}>
+            <div style={styles.supplierLine}><strong>Toimittaja:</strong> {label.supplier || "-"}</div>
+            {label.supplierAddress ? <div style={styles.supplierLine}>{label.supplierAddress}</div> : null}
+            {label.supplierContact ? <div style={styles.supplierLine}>{label.supplierContact}</div> : null}
+            {label.commercialFishingId ? <div style={styles.supplierLine}><strong>Kalastajatunnus:</strong> {label.commercialFishingId}</div> : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
