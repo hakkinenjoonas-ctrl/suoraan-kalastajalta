@@ -76,7 +76,7 @@ import {
   OfferedEntriesSummarySection,
   WholesaleOffersOverviewSection,
 } from "./components/wholesaleOffersSections.jsx";
-import ThermalLabel4x6, { THERMAL_LABEL_4X6_SIZE_MM } from "./components/ThermalLabel4x6.jsx";
+import ThermalLabel4x6Portrait, { THERMAL_LABEL_4X6_SIZE_MM } from "./components/ThermalLabel4x6Portrait.jsx";
 
 function getPublicAppBaseUrl() {
   const configuredUrl = typeof import.meta !== "undefined" ? import.meta.env?.VITE_PUBLIC_APP_URL : "";
@@ -713,7 +713,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             .thermal-label-page:last-child { page-break-after: auto; }
           </style>
         </head>
-        <body>${labels.map((label) => `<section class="thermal-label-page">${renderToStaticMarkup(<ThermalLabel4x6 label={label} />)}</section>`).join("")}</body>
+        <body>${labels.map((label) => `<section class="thermal-label-page">${renderToStaticMarkup(<ThermalLabel4x6Portrait label={label} />)}</section>`).join("")}</body>
       </html>
     `;
   }
@@ -2389,7 +2389,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                 transformOrigin: "top center",
               }}>
                 {isMunbynFormat ? (
-                  <ThermalLabel4x6 label={previewLabel} />
+                  <ThermalLabel4x6Portrait label={previewLabel} />
                 ) : (
                   <>
                     <div style={{ display: "flex", flexDirection: "column", paddingLeft: 12, minWidth: 0 }}>
