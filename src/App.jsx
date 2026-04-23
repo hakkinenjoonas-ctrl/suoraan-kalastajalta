@@ -77,6 +77,8 @@ import {
   OfferedEntriesSummarySection,
   WholesaleOffersOverviewSection,
 } from "./components/wholesaleOffersSections.jsx";
+import ProcessedLabel4x3, { PROCESSED_LABEL_4X3_SIZE_MM } from "./components/ProcessedLabel4x3.jsx";
+import ProcessedLabel4x6, { PROCESSED_LABEL_4X6_SIZE_MM } from "./components/ProcessedLabel4x6.jsx";
 import ThermalLabel4x3, { THERMAL_LABEL_4X3_SIZE_MM } from "./components/ThermalLabel4x3.jsx";
 import ThermalLabel4x6Portrait, { THERMAL_LABEL_4X6_SIZE_MM } from "./components/ThermalLabel4x6Portrait.jsx";
 
@@ -686,6 +688,94 @@ function getCatchLabelQrImageUrl(labelData) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrLines.join("\n"))}`;
 }
 
+function getProcessedLabelProductState(entry) {
+  const explicitValue = String(
+    entry?.productState ||
+    entry?.product_state ||
+    entry?.productStateText ||
+    "",
+  ).trim();
+  if (explicitValue) return explicitValue;
+
+  const productType = String(entry?.productType || entry?.product_type || "").toLowerCase();
+  const processingMethod = String(entry?.processingMethod || entry?.processing_method || "").toLowerCase();
+  if (productType.includes("pakaste") || processingMethod.includes("pakast")) {
+    return "Pakastettu";
+  }
+  return "";
+}
+
+function buildProcessedLabelData(entry, profileLike) {
+  const operatorName = String(
+    profileLike?.company_name ||
+    profileLike?.companyName ||
+    profileLike?.display_name ||
+    profileLike?.displayName ||
+    profileLike?.email ||
+    "",
+  ).trim();
+  const operatorAddress = [
+    String(profileLike?.address || "").trim(),
+    [String(profileLike?.postcode || "").trim(), String(profileLike?.city || "").trim()].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+  const establishmentNumber = String(
+    profileLike?.evira_facility_id ||
+    profileLike?.eviraFacilityId ||
+    "",
+  ).trim();
+  if (!establishmentNumber) {
+    console.warn("Processed label missing evira_facility_id", {
+      profileId: profileLike?.id || null,
+      batchId: entry?.batchId || null,
+    });
+  }
+
+  const packageSizeG = entry?.packageSizeG === "" || entry?.packageSizeG == null ? null : Number(entry.packageSizeG);
+  const kilos = entry?.kilos === "" || entry?.kilos == null ? null : Number(entry.kilos);
+  const netWeightText = packageSizeG != null && Number.isFinite(packageSizeG)
+    ? `${packageSizeG} g`
+    : kilos != null && Number.isFinite(kilos)
+      ? `${kilos} kg`
+      : "";
+
+  const dateValue = String(entry?.useByDate || entry?.use_by_date || entry?.bestBeforeDate || entry?.best_before_date || "").trim();
+  const dateLabel = String(entry?.useByDate || entry?.use_by_date || "").trim() ? "Viimeinen kayttopaiva" : "Parasta ennen";
+  const catchAreaText = [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / ");
+
+  return {
+    productName: String(entry?.productName || entry?.product_name || "").trim(),
+    speciesSummary: String(entry?.speciesSummary || entry?.species_summary || "").trim(),
+    productType: String(entry?.productType || entry?.product_type || "").trim(),
+    processingMethod: String(entry?.processingMethod || entry?.processing_method || "").trim(),
+    netWeightText,
+    dateLabel,
+    dateValue,
+    storageText: String(entry?.storageInstructions || entry?.storage_instructions || entry?.storageText || "").trim(),
+    batchId: String(entry?.batchId || entry?.batch_id || "").trim(),
+    operatorName,
+    operatorAddress,
+    establishmentNumber,
+    catchAreaText,
+    productStateText: getProcessedLabelProductState(entry),
+    ingredientsText: String(entry?.ingredients || entry?.ingredientsText || "").trim(),
+    allergensText: String(entry?.allergens || entry?.allergensText || "").trim(),
+    qrImageUrl: entry?.batchId ? getBatchQrImageUrl(entry.batchId) : "",
+    logoUrl: getAppLogoUrl(),
+  };
+}
+
+function renderProcessedLabelByFormat(printFormat, label) {
+  if (printFormat === PROCESSED_LABEL_FORMAT_4X3) {
+    return <ProcessedLabel4x3 label={label} />;
+  }
+  return <ProcessedLabel4x6 label={label} />;
+}
+
+function getProcessedLabelSizeMm(printFormat) {
+  if (printFormat === PROCESSED_LABEL_FORMAT_4X3) return PROCESSED_LABEL_4X3_SIZE_MM;
+  return PROCESSED_LABEL_4X6_SIZE_MM;
+}
+
 function getAppLogoUrl() {
   if (typeof window === "undefined") return "/logo.png";
   return new URL("/logo.png", window.location.origin).toString();
@@ -694,6 +784,8 @@ function getAppLogoUrl() {
 const CATCH_LABEL_FORMAT_APLI_1278 = "apli_1278";
 const CATCH_LABEL_FORMAT_MUNBYN_4X3 = "munbyn_4x3";
 const CATCH_LABEL_FORMAT_MUNBYN_4X6 = "munbyn_4x6";
+const PROCESSED_LABEL_FORMAT_4X3 = "processed_4x3";
+const PROCESSED_LABEL_FORMAT_4X6 = "processed_4x6";
 
 function isThermalCatchLabelFormat(printFormat) {
   return printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6 || printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3;
@@ -1141,8 +1233,94 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl, printForma
   }
 }
 
+async function renderProcessedLabelCanvas(label, printFormat) {
+  if (typeof document === "undefined") {
+    throw new Error("Jaloste-etiketin kuvarenderointi ei ole kaytettavissa.");
+  }
+
+  const labelSize = getProcessedLabelSizeMm(printFormat);
+  const host = document.createElement("div");
+  host.style.position = "fixed";
+  host.style.left = "-10000px";
+  host.style.top = "0";
+  host.style.width = `${labelSize.width}mm`;
+  host.style.height = `${labelSize.height}mm`;
+  host.style.margin = "0";
+  host.style.padding = "0";
+  host.style.overflow = "hidden";
+  host.style.background = "#ffffff";
+  host.innerHTML = renderToStaticMarkup(renderProcessedLabelByFormat(printFormat, label));
+  document.body.appendChild(host);
+
+  try {
+    const images = Array.from(host.querySelectorAll("img"));
+    await Promise.all(images.map((image) => {
+      if (image.complete) return Promise.resolve();
+      return new Promise((resolve) => {
+        image.onload = resolve;
+        image.onerror = resolve;
+      });
+    }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    const canvas = await html2canvas(host.firstElementChild || host, {
+      backgroundColor: "#ffffff",
+      scale: 3,
+      useCORS: true,
+      logging: false,
+      width: host.firstElementChild?.offsetWidth || host.offsetWidth,
+      height: host.firstElementChild?.offsetHeight || host.offsetHeight,
+      windowWidth: host.firstElementChild?.scrollWidth || host.scrollWidth,
+      windowHeight: host.firstElementChild?.scrollHeight || host.scrollHeight,
+    });
+    return canvas.toDataURL("image/png");
+  } finally {
+    host.remove();
+  }
+}
+
 function buildCatchLabelPdfFileName(entry) {
   return `kalaetiketit-${String(entry?.batchId || "era").replace(/[^a-zA-Z0-9-_]+/g, "_")}.pdf`;
+}
+
+function buildProcessedLabelPdfFileName(entry, printFormat) {
+  const sizeLabel = printFormat === PROCESSED_LABEL_FORMAT_4X3 ? "4x3" : "4x6";
+  return `jaloste-etiketti-${sizeLabel}-${String(entry?.batchId || entry?.productName || "era").replace(/[^a-zA-Z0-9-_]+/g, "_")}.pdf`;
+}
+
+function buildProcessedLabelPrintHtml(entry, profileLike, printFormat) {
+  const label = buildProcessedLabelData(entry, profileLike);
+  const labelSize = getProcessedLabelSizeMm(printFormat);
+
+  return `
+    <!doctype html>
+    <html lang="fi">
+      <head>
+        <meta charset="utf-8" />
+        <title>Jaloste-etiketti ${String(entry?.batchId || "")}</title>
+        <style>
+          @page { size: ${labelSize.width}mm ${labelSize.height}mm; margin: 0; }
+          html, body { width: ${labelSize.width}mm; height: ${labelSize.height}mm; margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; background: #fff; }
+          * { box-sizing: border-box; }
+        </style>
+      </head>
+      <body>${renderToStaticMarkup(renderProcessedLabelByFormat(printFormat, label))}</body>
+    </html>
+  `;
+}
+
+async function buildProcessedLabelPdf(entry, profileLike, printFormat) {
+  const label = buildProcessedLabelData(entry, profileLike);
+  const labelSize = getProcessedLabelSizeMm(printFormat);
+  const labelImage = await renderProcessedLabelCanvas(label, printFormat);
+  const doc = new jsPDF({
+    orientation: labelSize.width > labelSize.height ? "landscape" : "portrait",
+    unit: "mm",
+    format: [labelSize.width, labelSize.height],
+    compress: true,
+  });
+  doc.addImage(labelImage, "PNG", 0, 0, labelSize.width, labelSize.height, undefined, "FAST");
+  return doc;
 }
 
 async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = CATCH_LABEL_FORMAT_APLI_1278) {
@@ -8810,6 +8988,67 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
+  const openProcessedLabelPrint = (entry, printFormat, mode = "print") => {
+    if (!entry || !profile) return;
+
+    if (!entry.productName && !entry.batchId) {
+      setAuthError("Jaloste-etikettiä ei voi tulostaa ilman tuotenimeä tai erätunnusta.");
+      return;
+    }
+
+    if (mode === "pdf" || (mode === "print" && isNativeCapacitorApp())) {
+      void (async () => {
+        try {
+          const doc = await buildProcessedLabelPdf(entry, profile, printFormat);
+          await presentPdfDocument(doc, buildProcessedLabelPdfFileName(entry, printFormat));
+        } catch (error) {
+          console.error("Jaloste-etiketti-PDF:n luonti epäonnistui:", error);
+          setAuthError(`Jaloste-etiketti-PDF:n luonti epäonnistui: ${String(error?.message || error)}`);
+        }
+      })();
+      return;
+    }
+
+    const html = buildProcessedLabelPrintHtml(entry, profile, printFormat);
+    const printWindow = window.open("", "_blank", "width=1200,height=900");
+    if (!printWindow) {
+      setAuthError("Tulostusikkunan avaaminen estettiin selaimessa.");
+      return;
+    }
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const blobUrl = window.URL.createObjectURL(blob);
+    let cleanedUp = false;
+
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(blobUrl);
+      }, 2000);
+    };
+
+    printWindow.onload = () => {
+      window.setTimeout(() => {
+        try {
+          printWindow.focus();
+          printWindow.print();
+        } catch (error) {
+          console.error("Jaloste-etikettien tulostus epäonnistui:", error);
+        } finally {
+          cleanup();
+        }
+      }, mode === "pdf" ? 450 : 300);
+    };
+
+    try {
+      printWindow.location.href = blobUrl;
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
+  };
+
   const handleDeleteEntry = async (entry) => {
     const ok = window.confirm(`Poistetaanko saalistieto: ${formatSpeciesForSale(entry.species)} ${entry.kilos} kg / ${entry.date}?`);
     if (!ok) return;
@@ -10746,7 +10985,11 @@ export default function App() {
                       ) : null}
                       {entry.notes ? <div style={styles.muted}>{entry.notes}</div> : null}
                     </div>
-                    <button style={styles.button} onClick={() => handleDeleteProcessedEntry(entry)}>Poista jaloste-erä</button>
+                    <div style={{ ...styles.stack, gap: 8, alignItems: "flex-end" }}>
+                      <button style={styles.button} onClick={() => openProcessedLabelPrint(entry, PROCESSED_LABEL_FORMAT_4X3)}>Tulosta 4x3 etiketti</button>
+                      <button style={styles.button} onClick={() => openProcessedLabelPrint(entry, PROCESSED_LABEL_FORMAT_4X6)}>Tulosta 4x6 etiketti</button>
+                      <button style={styles.button} onClick={() => handleDeleteProcessedEntry(entry)}>Poista jaloste-erä</button>
+                    </div>
                   </div>
                 </div>
               ))}
