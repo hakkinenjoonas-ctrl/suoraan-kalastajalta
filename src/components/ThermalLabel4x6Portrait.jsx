@@ -148,10 +148,10 @@ const styles = {
   footer: {
     display: "grid",
     gridTemplateRows: "auto 1fr",
-    gap: "2mm",
+    gap: "1.2mm",
     alignItems: "start",
     minHeight: 0,
-    paddingTop: "2.2mm",
+    paddingTop: "1.2mm",
     borderTop: `0.5mm solid ${palette.border}`,
   },
   footerContent: {
@@ -232,6 +232,7 @@ export default function ThermalLabel4x6Portrait({ label }) {
           <InfoLine label="Pyyntipäivä" value={label.catchDate} emphasis />
           <InfoLine label="Kaupallisen kalastajan tunnus" value={label.commercialFishingId} />
           <InfoLine label="Tuote" value={label.productForm} />
+          <InfoLine value={label.productStateText} />
           <InfoLine label="Säilytys" value="0-2 °C" />
         </div>
 
