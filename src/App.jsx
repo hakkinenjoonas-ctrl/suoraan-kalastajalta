@@ -1063,9 +1063,9 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   const gap = mm(2);
   const innerWidth = width - (padding * 2);
   const brandHeight = mm(21);
-  const speciesHeight = mm(24);
-  const originHeight = mm(24);
-  const batchHeight = mm(31);
+  const speciesHeight = mm(23);
+  const originHeight = mm(37);
+  const batchHeight = mm(18);
   const footerTop = padding + brandHeight + gap + speciesHeight + gap + originHeight + gap + batchHeight + gap;
   const qrSize = mm(30);
 
@@ -1156,7 +1156,9 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   const infoLines = [
     label.productionMethodText || "",
     label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
-    label.gearType ? `Pyydys: ${label.gearType}` : "",
+    label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
+    label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+    label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
     label.productForm ? `Tuote: ${label.productForm}` : "",
     "Säilytys: 0-2 °C",
   ].filter(Boolean);
@@ -1165,7 +1167,7 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     infoY = drawWrapped(line, padding, infoY, innerWidth, {
       maxSize: 13,
       minSize: 10,
-      weight: line.startsWith("Pyydetty") ? "700" : "600",
+      weight: line.startsWith("Pyyntipäivä") ? "800" : line.startsWith("Pyydetty") ? "700" : "600",
       maxLines: line.startsWith("Pyydetty") ? 2 : 1,
       after: mm(0.6),
     });
@@ -1178,7 +1180,7 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   ctx.fillStyle = "#eff6ff";
   ctx.strokeStyle = "#94a3b8";
   ctx.lineWidth = 3;
-  const batchBoxHeight = mm(16);
+  const batchBoxHeight = mm(12);
   if (ctx.roundRect) {
     ctx.beginPath();
     ctx.roundRect(padding, currentY, innerWidth, batchBoxHeight, mm(2.5));
@@ -1198,20 +1200,7 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     ctx.fillText(line, padding + mm(2), currentY + mm(5.5) + (index * 16));
   });
 
-  let metaY = currentY + batchBoxHeight + mm(1.5);
-  const middleLines = [
-    `Pyyntipäivä: ${label.catchDate || "-"}`,
-    `Pakkauspäivä: ${label.packDate || "-"}`,
-  ];
-  middleLines.forEach((line) => {
-    metaY = drawWrapped(line, padding, metaY, innerWidth, {
-      maxSize: 15,
-      minSize: 11,
-      weight: "700",
-      maxLines: 1,
-      after: mm(0.4),
-    });
-  });
+  let metaY = currentY + batchBoxHeight + mm(2);
   ctx.fillStyle = "#0f172a";
   ctx.font = "800 15px Arial";
   const weightY = metaY + mm(0.2);
@@ -1223,14 +1212,6 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   ctx.lineTo(width - padding - mm(11), weightY + mm(3.4));
   ctx.stroke();
   ctx.fillText("kg", width - padding - mm(8), weightY);
-  metaY = weightY + mm(6);
-  metaY = drawWrapped(`Laatikko: ${label.boxLabel || "-"}`, padding, metaY, innerWidth, {
-    maxSize: 15,
-    minSize: 11,
-    weight: "700",
-    maxLines: 1,
-    after: mm(0.4),
-  });
 
   drawDivider(footerTop - mm(1));
   const qrX = padding;
@@ -1257,10 +1238,9 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   ctx.fillText("TOIMITTAJA", supplierX, supplierY);
   supplierY += mm(4);
   const supplierLines = [
-    label.supplier || "-",
+    `Toimittaja: ${label.supplier || "-"}`,
     label.supplierAddress || "",
     label.supplierContact || "",
-    label.commercialFishingId ? `Kalastajatunnus: ${label.commercialFishingId}` : "",
   ].filter(Boolean);
   supplierLines.forEach((line, index) => {
     supplierY = drawWrapped(line, supplierX, supplierY, supplierWidth, {
