@@ -20,15 +20,15 @@ const styles = {
     width: "102mm",
     height: "152mm",
     margin: 0,
-    padding: "6mm",
+    padding: "5mm",
     overflow: "hidden",
     boxSizing: "border-box",
     background: palette.background,
     color: palette.text,
     fontFamily: "\"Avenir Next\", \"Helvetica Neue\", Arial, sans-serif",
-    display: "grid",
-    gridTemplateRows: "26mm 26mm 22mm 28mm 1fr",
-    gap: "2.5mm",
+    display: "flex",
+    flexDirection: "column",
+    gap: "2mm",
   },
   section: {
     minWidth: 0,
@@ -36,22 +36,23 @@ const styles = {
   },
   brand: {
     display: "grid",
-    gridTemplateColumns: "20mm 1fr",
-    gap: "3.5mm",
+    gridTemplateColumns: "18mm 1fr",
+    gap: "3mm",
     alignItems: "center",
-    paddingBottom: "2mm",
+    flex: "0 0 21mm",
+    paddingBottom: "1.4mm",
     borderBottom: `0.45mm solid ${palette.border}`,
   },
   logoWrap: {
-    width: "20mm",
-    height: "20mm",
+    width: "18mm",
+    height: "18mm",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
   },
   logo: {
-    width: "18mm",
-    height: "18mm",
+    width: "16.5mm",
+    height: "16.5mm",
     objectFit: "contain",
     display: "block",
   },
@@ -62,14 +63,14 @@ const styles = {
     justifyContent: "center",
   },
   brandTitle: {
-    fontSize: "15pt",
+    fontSize: "14.2pt",
     lineHeight: 0.95,
     fontWeight: 900,
     letterSpacing: "-0.03em",
   },
   brandSubtitle: {
-    marginTop: "1.2mm",
-    fontSize: "7.2pt",
+    marginTop: "1mm",
+    fontSize: "7pt",
     lineHeight: 1.15,
     color: palette.muted,
     fontWeight: 600,
@@ -78,11 +79,12 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
-    paddingBottom: "1mm",
+    flex: "0 0 24mm",
+    paddingBottom: "1.2mm",
     borderBottom: `0.35mm solid ${palette.border}`,
   },
   species: {
-    fontSize: "24pt",
+    fontSize: "25pt",
     lineHeight: 0.95,
     fontWeight: 900,
     textTransform: "uppercase",
@@ -90,8 +92,8 @@ const styles = {
     wordBreak: "break-word",
   },
   scientific: {
-    marginTop: "1.6mm",
-    fontSize: "9pt",
+    marginTop: "1.2mm",
+    fontSize: "8.7pt",
     lineHeight: 1.15,
     color: palette.muted,
     fontStyle: "italic",
@@ -100,23 +102,25 @@ const styles = {
   originSection: {
     display: "grid",
     alignContent: "start",
-    gap: "1.2mm",
-    paddingTop: "0.8mm",
-    paddingBottom: "1.5mm",
+    flex: "0 0 24mm",
+    gap: "0.9mm",
+    paddingTop: "0.6mm",
+    paddingBottom: "1.2mm",
     borderBottom: `0.35mm solid ${palette.border}`,
   },
   bodyLine: {
-    fontSize: "8.7pt",
-    lineHeight: 1.18,
+    fontSize: "8.2pt",
+    lineHeight: 1.12,
     wordBreak: "break-word",
   },
   batchSection: {
     display: "grid",
     gridTemplateRows: "auto auto",
-    gap: "2mm",
+    flex: "0 0 31mm",
+    gap: "1.6mm",
   },
   batchBox: {
-    padding: "2.6mm 3mm",
+    padding: "2mm 2.6mm",
     border: `0.5mm solid ${palette.strongBorder}`,
     borderRadius: "2.8mm",
     background: palette.accentSoft,
@@ -130,33 +134,35 @@ const styles = {
     letterSpacing: "0.05em",
   },
   batchValue: {
-    marginTop: "1.2mm",
-    fontSize: "12pt",
+    marginTop: "1mm",
+    fontSize: "11.2pt",
     lineHeight: 1.05,
     fontWeight: 900,
     wordBreak: "break-word",
   },
   metaGrid: {
     display: "grid",
-    gap: "1.1mm",
+    gap: "0.8mm",
   },
   metaLine: {
-    fontSize: "8.4pt",
-    lineHeight: 1.15,
+    fontSize: "8pt",
+    lineHeight: 1.1,
     wordBreak: "break-word",
   },
   footer: {
     display: "grid",
-    gridTemplateColumns: "33mm 1fr",
+    gridTemplateColumns: "30mm 1fr",
     gap: "3mm",
     alignItems: "start",
-    paddingTop: "2mm",
+    flex: "1 1 auto",
+    minHeight: "34mm",
+    paddingTop: "1.6mm",
     borderTop: `0.45mm solid ${palette.border}`,
   },
   qrFrame: {
-    width: "33mm",
-    height: "33mm",
-    padding: "1.3mm",
+    width: "30mm",
+    height: "30mm",
+    padding: "1mm",
     border: `0.45mm solid ${palette.border}`,
     borderRadius: "2.4mm",
     background: "#fff",
@@ -172,7 +178,7 @@ const styles = {
     minWidth: 0,
     display: "grid",
     alignContent: "start",
-    gap: "1.1mm",
+    gap: "0.8mm",
   },
   supplierTitle: {
     fontSize: "8pt",
@@ -183,8 +189,8 @@ const styles = {
     color: palette.muted,
   },
   supplierLine: {
-    fontSize: "7.9pt",
-    lineHeight: 1.16,
+    fontSize: "7.4pt",
+    lineHeight: 1.1,
     wordBreak: "break-word",
   },
 };
@@ -223,6 +229,8 @@ export default function ThermalLabel4x6Portrait({ label }) {
         {renderLine(label.productionMethodText, "production")}
         {renderLine(label.catchArea, "catchArea")}
         {renderLine(label.gearType, "gear", "Pyydys:")}
+        {renderLine(label.productForm, "productForm", "Tuote:")}
+        {renderLine("0-2 °C", "storage", "Säilytys:")}
       </section>
 
       <section style={{ ...styles.section, ...styles.batchSection }}>
@@ -234,6 +242,7 @@ export default function ThermalLabel4x6Portrait({ label }) {
           <div style={styles.metaLine}><strong>Pyyntipäivä:</strong> {label.catchDate || "-"}</div>
           <div style={styles.metaLine}><strong>Pakkauspäivä:</strong> {label.packDate || "-"}</div>
           <div style={styles.metaLine}><strong>Paino:</strong> {label.weightText || "-"}</div>
+          <div style={styles.metaLine}><strong>Laatikko:</strong> {label.boxLabel || "-"}</div>
         </div>
       </section>
 
