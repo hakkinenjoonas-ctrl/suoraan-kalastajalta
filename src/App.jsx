@@ -577,7 +577,13 @@ function isEntryOfferedForSale(entry) {
 
 function getCatchLabelScientificName(speciesValue) {
   const normalized = normalizeFishSpeciesLabel(speciesValue);
-  return fishSpeciesByName[normalized]?.scientific || "";
+  if (fishSpeciesByName[normalized]?.scientific) {
+    return fishSpeciesByName[normalized].scientific;
+  }
+
+  const labelTitle = formatSpeciesForLabelTitle(speciesValue);
+  const normalizedTitle = normalizeFishSpeciesLabel(labelTitle);
+  return fishSpeciesByName[normalizedTitle]?.scientific || "";
 }
 
 function getCatchLabelProductForm(speciesValue) {
@@ -658,7 +664,6 @@ function getCatchLabelQrImageUrl(labelData) {
     labelData.catchArea ? `Pyyntialue: ${labelData.catchArea}` : "",
     labelData.gearType ? `Pyyntimenetelmä: ${labelData.gearType}` : "",
     labelData.productForm ? `Tuote: ${labelData.productForm}` : "",
-    labelData.weightText ? `Paino: ${labelData.weightText}` : "",
     `Toimittaja: ${labelData.supplier || "-"}`,
     labelData.supplierAddress ? `Osoite: ${labelData.supplierAddress}` : "",
     labelData.supplierContact ? `Yhteystiedot: ${labelData.supplierContact}` : "",
@@ -1111,14 +1116,14 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     const logoY = currentY + Math.round((brandHeight - logoHeight) / 2) - mm(0.5);
     ctx.drawImage(logoImage, logoX, logoY, logoWidth, logoHeight);
     ctx.fillStyle = "#0f172a";
-    ctx.font = "900 28px Arial";
+    ctx.font = "900 32px Arial";
     ctx.fillText("Suoraan Kalastajalta", logoX + logoWidth + mm(3), currentY + mm(2));
     ctx.fillStyle = "#475569";
-    ctx.font = "600 13px Arial";
+    ctx.font = "600 15px Arial";
     ctx.fillText("Kotimainen kala suoraan pyytäjältä", logoX + logoWidth + mm(3), currentY + mm(8.2));
   } else {
     ctx.fillStyle = "#0f172a";
-    ctx.font = "900 28px Arial";
+    ctx.font = "900 32px Arial";
     ctx.fillText("Suoraan Kalastajalta", padding, currentY + mm(2));
   }
 
@@ -1127,7 +1132,7 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   currentY += gap;
 
   ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, label.species || "-", innerWidth, 42, 26, "900");
+  fitCanvasFont(ctx, label.species || "-", innerWidth, 52, 30, "900");
   const speciesLines = wrapCanvasText(ctx, label.species || "-", innerWidth, 2);
   const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 30) * 0.98;
   speciesLines.forEach((line, index) => {
@@ -1136,11 +1141,11 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
 
   if (label.scientificName) {
     ctx.fillStyle = "#475569";
-    fitCanvasFont(ctx, label.scientificName, innerWidth, 17, 11, "600");
+    fitCanvasFont(ctx, label.scientificName, innerWidth, 22, 13, "600");
     const scientificLines = wrapCanvasText(ctx, label.scientificName, innerWidth, 2);
     const scientificY = currentY + mm(1) + (speciesLines.length * speciesLineHeight) + mm(1);
     scientificLines.forEach((line, index) => {
-      ctx.fillText(line, padding, scientificY + (index * 14));
+      ctx.fillText(line, padding, scientificY + (index * 17));
     });
   }
 
@@ -1159,7 +1164,7 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   infoLines.forEach((line) => {
     infoY = drawWrapped(line, padding, infoY, innerWidth, {
       maxSize: 13,
-      minSize: 9,
+      minSize: 10,
       weight: line.startsWith("Pyydetty") ? "700" : "600",
       maxLines: line.startsWith("Pyydetty") ? 2 : 1,
       after: mm(0.6),
@@ -1184,10 +1189,10 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
     ctx.strokeRect(padding, currentY, innerWidth, batchBoxHeight);
   }
   ctx.fillStyle = "#475569";
-  ctx.font = "700 12px Arial";
+  ctx.font = "700 14px Arial";
   ctx.fillText("ERÄTUNNUS", padding + mm(2), currentY + mm(1.6));
   ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, label.batchId || "-", innerWidth - mm(4), 20, 11, "900");
+  fitCanvasFont(ctx, label.batchId || "-", innerWidth - mm(4), 26, 14, "900");
   const batchLines = wrapCanvasText(ctx, label.batchId || "-", innerWidth - mm(4), 2);
   batchLines.forEach((line, index) => {
     ctx.fillText(line, padding + mm(2), currentY + mm(5.5) + (index * 16));
@@ -1197,17 +1202,34 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   const middleLines = [
     `Pyyntipäivä: ${label.catchDate || "-"}`,
     `Pakkauspäivä: ${label.packDate || "-"}`,
-    `Paino: ${label.weightText || "-"}`,
-    `Laatikko: ${label.boxLabel || "-"}`,
   ];
   middleLines.forEach((line) => {
     metaY = drawWrapped(line, padding, metaY, innerWidth, {
-      maxSize: 13,
-      minSize: 10,
+      maxSize: 15,
+      minSize: 11,
       weight: "700",
       maxLines: 1,
       after: mm(0.4),
     });
+  });
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "800 15px Arial";
+  const weightY = metaY + mm(0.2);
+  ctx.fillText("Paino:", padding, weightY);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#0f172a";
+  ctx.beginPath();
+  ctx.moveTo(padding + mm(15), weightY + mm(3.4));
+  ctx.lineTo(width - padding - mm(11), weightY + mm(3.4));
+  ctx.stroke();
+  ctx.fillText("kg", width - padding - mm(8), weightY);
+  metaY = weightY + mm(6);
+  metaY = drawWrapped(`Laatikko: ${label.boxLabel || "-"}`, padding, metaY, innerWidth, {
+    maxSize: 15,
+    minSize: 11,
+    weight: "700",
+    maxLines: 1,
+    after: mm(0.4),
   });
 
   drawDivider(footerTop - mm(1));
@@ -1231,7 +1253,7 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   const supplierWidth = width - padding - supplierX;
   let supplierY = qrY;
   ctx.fillStyle = "#475569";
-  ctx.font = "800 12px Arial";
+  ctx.font = "800 14px Arial";
   ctx.fillText("TOIMITTAJA", supplierX, supplierY);
   supplierY += mm(4);
   const supplierLines = [
@@ -1242,8 +1264,8 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   ].filter(Boolean);
   supplierLines.forEach((line, index) => {
     supplierY = drawWrapped(line, supplierX, supplierY, supplierWidth, {
-      maxSize: index === 0 ? 12 : 11,
-      minSize: 8,
+      maxSize: index === 0 ? 14 : 12,
+      minSize: 9,
       weight: index === 0 ? "800" : "500",
       maxLines: index === 0 ? 2 : 3,
       after: mm(0.4),

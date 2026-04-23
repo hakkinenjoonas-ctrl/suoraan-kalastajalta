@@ -63,14 +63,14 @@ const styles = {
     justifyContent: "center",
   },
   brandTitle: {
-    fontSize: "14.2pt",
+    fontSize: "16pt",
     lineHeight: 0.95,
     fontWeight: 900,
     letterSpacing: "-0.03em",
   },
   brandSubtitle: {
     marginTop: "1mm",
-    fontSize: "7pt",
+    fontSize: "8pt",
     lineHeight: 1.15,
     color: palette.muted,
     fontWeight: 600,
@@ -84,7 +84,7 @@ const styles = {
     borderBottom: `0.35mm solid ${palette.border}`,
   },
   species: {
-    fontSize: "25pt",
+    fontSize: "31pt",
     lineHeight: 0.95,
     fontWeight: 900,
     textTransform: "uppercase",
@@ -93,7 +93,7 @@ const styles = {
   },
   scientific: {
     marginTop: "1.2mm",
-    fontSize: "8.7pt",
+    fontSize: "11pt",
     lineHeight: 1.15,
     color: palette.muted,
     fontStyle: "italic",
@@ -109,7 +109,7 @@ const styles = {
     borderBottom: `0.35mm solid ${palette.border}`,
   },
   bodyLine: {
-    fontSize: "8.2pt",
+    fontSize: "9.6pt",
     lineHeight: 1.12,
     wordBreak: "break-word",
   },
@@ -135,7 +135,7 @@ const styles = {
   },
   batchValue: {
     marginTop: "1mm",
-    fontSize: "11.2pt",
+    fontSize: "14pt",
     lineHeight: 1.05,
     fontWeight: 900,
     wordBreak: "break-word",
@@ -145,7 +145,7 @@ const styles = {
     gap: "0.8mm",
   },
   metaLine: {
-    fontSize: "8pt",
+    fontSize: "9.4pt",
     lineHeight: 1.1,
     wordBreak: "break-word",
   },
@@ -181,7 +181,7 @@ const styles = {
     gap: "0.8mm",
   },
   supplierTitle: {
-    fontSize: "8pt",
+    fontSize: "9pt",
     lineHeight: 1.1,
     fontWeight: 800,
     textTransform: "uppercase",
@@ -189,9 +189,22 @@ const styles = {
     color: palette.muted,
   },
   supplierLine: {
-    fontSize: "7.4pt",
+    fontSize: "8.4pt",
     lineHeight: 1.1,
     wordBreak: "break-word",
+  },
+  weightLine: {
+    display: "grid",
+    gridTemplateColumns: "auto 1fr auto",
+    alignItems: "end",
+    gap: "2mm",
+    fontSize: "9.4pt",
+    lineHeight: 1.1,
+    fontWeight: 800,
+  },
+  weightWriteLine: {
+    height: "4.2mm",
+    borderBottom: `0.45mm solid ${palette.text}`,
   },
 };
 
@@ -241,7 +254,11 @@ export default function ThermalLabel4x6Portrait({ label }) {
         <div style={styles.metaGrid}>
           <div style={styles.metaLine}><strong>Pyyntipäivä:</strong> {label.catchDate || "-"}</div>
           <div style={styles.metaLine}><strong>Pakkauspäivä:</strong> {label.packDate || "-"}</div>
-          <div style={styles.metaLine}><strong>Paino:</strong> {label.weightText || "-"}</div>
+          <div style={styles.weightLine}>
+            <span>Paino:</span>
+            <span style={styles.weightWriteLine} />
+            <span>kg</span>
+          </div>
           <div style={styles.metaLine}><strong>Laatikko:</strong> {label.boxLabel || "-"}</div>
         </div>
       </section>
