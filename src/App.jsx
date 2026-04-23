@@ -2272,7 +2272,10 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                     <button
                       key={formatOption.value}
                       type="button"
-                      onClick={() => setPrintFormat(formatOption.value)}
+                      onClick={() => {
+                        setPrintFormat(formatOption.value);
+                        setLabelCount(isThermalCatchLabelFormat(formatOption.value) ? 1 : 10);
+                      }}
                       style={{
                         ...styles.button,
                         ...(isActive ? styles.primaryButton : {}),
@@ -10797,7 +10800,7 @@ export default function App() {
                           {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                         </div>
                         <div style={styles.row}>
-                          {canPrintCatchLabels(entry) ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(10); }}>Tulosta etiketit</button> : null}
+                          {canPrintCatchLabels(entry) ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); }}>Tulosta etiketit</button> : null}
                           <button style={styles.button} onClick={() => handleDeleteEntry(entry)}>Poista saalistieto</button>
                         </div>
                       </div>
