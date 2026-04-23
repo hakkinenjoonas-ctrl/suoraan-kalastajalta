@@ -4,6 +4,7 @@ import { Directory, Filesystem } from "@capacitor/filesystem";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Share } from "@capacitor/share";
+import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
 import {
@@ -1052,207 +1053,52 @@ function fitCanvasFont(ctx, text, maxWidth, startSize, minSize = 18, fontWeight 
 
 async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   if (typeof document === "undefined") {
-    throw new Error("Canvas-renderöinti ei ole käytettävissä.");
+    throw new Error("Etiketin kuvarenderöinti ei ole käytettävissä.");
   }
 
-  const pxPerMm = 8;
-  const mm = (value) => Math.round(value * pxPerMm);
-  const width = Math.round(THERMAL_LABEL_4X6_SIZE_MM.width * pxPerMm);
-  const height = Math.round(THERMAL_LABEL_4X6_SIZE_MM.height * pxPerMm);
-  const padding = mm(5);
-  const gap = mm(2);
-  const innerWidth = width - (padding * 2);
-  const brandHeight = mm(21);
-  const speciesHeight = mm(23);
-  const originHeight = mm(37);
-  const batchHeight = mm(18);
-  const footerTop = padding + brandHeight + gap + speciesHeight + gap + originHeight + gap + batchHeight + gap;
-  const qrSize = mm(30);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas-kontekstia ei saatu avattua.");
-
-  const [qrImage, logoImage] = await Promise.all([
-    loadImageElement(qrDataUrl),
-    logoDataUrl ? loadImageElement(logoDataUrl).catch(() => null) : Promise.resolve(null),
-  ]);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
-  ctx.textBaseline = "top";
-
-  const drawDivider = (y, lineWidth = 2) => {
-    ctx.beginPath();
-    ctx.lineWidth = lineWidth;
-    ctx.strokeStyle = "#cbd5e1";
-    ctx.moveTo(padding, y);
-    ctx.lineTo(width - padding, y);
-    ctx.stroke();
+  const printableLabel = {
+    ...label,
+    qrImageUrl: qrDataUrl,
+    logoUrl: logoDataUrl || label.logoUrl || getAppLogoUrl(),
   };
+  const host = document.createElement("div");
+  host.style.position = "fixed";
+  host.style.left = "-10000px";
+  host.style.top = "0";
+  host.style.width = `${THERMAL_LABEL_4X6_SIZE_MM.width}mm`;
+  host.style.height = `${THERMAL_LABEL_4X6_SIZE_MM.height}mm`;
+  host.style.margin = "0";
+  host.style.padding = "0";
+  host.style.overflow = "hidden";
+  host.style.background = "#ffffff";
+  host.innerHTML = renderToStaticMarkup(<ThermalLabel4x6Portrait label={printableLabel} />);
+  document.body.appendChild(host);
 
-  const drawWrapped = (text, x, y, maxWidth, options = {}) => {
-    if (!text) return y;
-    fitCanvasFont(ctx, text, maxWidth, options.maxSize || 14, options.minSize || 9, options.weight || "600");
-    ctx.fillStyle = options.color || "#0f172a";
-    const fontSize = Number(ctx.font.match(/(\d+)/)?.[1] || options.maxSize || 12);
-    const lineHeight = Math.round(fontSize * (options.lineHeight || 1.12));
-    const lines = wrapCanvasText(ctx, text, maxWidth, options.maxLines || 2);
-    lines.forEach((line, index) => {
-      ctx.fillText(line, x, y + (index * lineHeight));
+  try {
+    const images = Array.from(host.querySelectorAll("img"));
+    await Promise.all(images.map((image) => {
+      if (image.complete) return Promise.resolve();
+      return new Promise((resolve) => {
+        image.onload = resolve;
+        image.onerror = resolve;
+      });
+    }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    const canvas = await html2canvas(host.firstElementChild || host, {
+      backgroundColor: "#ffffff",
+      scale: 3,
+      useCORS: true,
+      logging: false,
+      width: host.firstElementChild?.offsetWidth || host.offsetWidth,
+      height: host.firstElementChild?.offsetHeight || host.offsetHeight,
+      windowWidth: host.firstElementChild?.scrollWidth || host.scrollWidth,
+      windowHeight: host.firstElementChild?.scrollHeight || host.scrollHeight,
     });
-    return y + (lines.length * lineHeight) + (options.after || mm(0.7));
-  };
-
-  let currentY = padding;
-
-  if (logoImage) {
-    const aspect = (logoImage.naturalWidth || 1) / Math.max(1, logoImage.naturalHeight || 1);
-    const logoWidth = Math.min(mm(16.5), Math.round(mm(17) * Math.max(aspect, 0.7)));
-    const logoHeight = Math.min(mm(16.5), Math.round(logoWidth / Math.max(aspect, 0.1)));
-    const logoX = padding;
-    const logoY = currentY + Math.round((brandHeight - logoHeight) / 2) - mm(0.5);
-    ctx.drawImage(logoImage, logoX, logoY, logoWidth, logoHeight);
-    ctx.fillStyle = "#0f172a";
-    ctx.font = "900 32px Arial";
-    ctx.fillText("Suoraan Kalastajalta", logoX + logoWidth + mm(3), currentY + mm(2));
-    ctx.fillStyle = "#475569";
-    ctx.font = "600 15px Arial";
-    ctx.fillText("Kotimainen kala suoraan pyytäjältä", logoX + logoWidth + mm(3), currentY + mm(8.2));
-  } else {
-    ctx.fillStyle = "#0f172a";
-    ctx.font = "900 32px Arial";
-    ctx.fillText("Suoraan Kalastajalta", padding, currentY + mm(2));
+    return canvas.toDataURL("image/png");
+  } finally {
+    host.remove();
   }
-
-  currentY += brandHeight;
-  drawDivider(currentY);
-  currentY += gap;
-
-  ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, label.species || "-", innerWidth, 52, 30, "900");
-  const speciesLines = wrapCanvasText(ctx, label.species || "-", innerWidth, 2);
-  const speciesLineHeight = Number(ctx.font.match(/(\d+)/)?.[1] || 30) * 0.98;
-  speciesLines.forEach((line, index) => {
-    ctx.fillText(line, padding, currentY + mm(1) + (index * speciesLineHeight));
-  });
-
-  if (label.scientificName) {
-    ctx.fillStyle = "#475569";
-    fitCanvasFont(ctx, label.scientificName, innerWidth, 22, 13, "600");
-    const scientificLines = wrapCanvasText(ctx, label.scientificName, innerWidth, 2);
-    const scientificY = currentY + mm(1) + (speciesLines.length * speciesLineHeight) + mm(1);
-    scientificLines.forEach((line, index) => {
-      ctx.fillText(line, padding, scientificY + (index * 17));
-    });
-  }
-
-  currentY += speciesHeight;
-  drawDivider(currentY);
-  currentY += gap;
-
-  const infoLines = [
-    label.productionMethodText || "",
-    label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
-    label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
-    label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
-    label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
-    label.productForm ? `Tuote: ${label.productForm}` : "",
-    "Säilytys: 0-2 °C",
-  ].filter(Boolean);
-  let infoY = currentY + mm(0.5);
-  infoLines.forEach((line) => {
-    infoY = drawWrapped(line, padding, infoY, innerWidth, {
-      maxSize: 13,
-      minSize: 10,
-      weight: line.startsWith("Pyyntipäivä") ? "800" : line.startsWith("Pyydetty") ? "700" : "600",
-      maxLines: line.startsWith("Pyydetty") ? 2 : 1,
-      after: mm(0.6),
-    });
-  });
-
-  currentY += originHeight;
-  drawDivider(currentY);
-  currentY += gap;
-
-  ctx.fillStyle = "#eff6ff";
-  ctx.strokeStyle = "#94a3b8";
-  ctx.lineWidth = 3;
-  const batchBoxHeight = mm(12);
-  if (ctx.roundRect) {
-    ctx.beginPath();
-    ctx.roundRect(padding, currentY, innerWidth, batchBoxHeight, mm(2.5));
-    ctx.fill();
-    ctx.stroke();
-  } else {
-    ctx.fillRect(padding, currentY, innerWidth, batchBoxHeight);
-    ctx.strokeRect(padding, currentY, innerWidth, batchBoxHeight);
-  }
-  ctx.fillStyle = "#475569";
-  ctx.font = "700 14px Arial";
-  ctx.fillText("ERÄTUNNUS", padding + mm(2), currentY + mm(1.6));
-  ctx.fillStyle = "#0f172a";
-  fitCanvasFont(ctx, label.batchId || "-", innerWidth - mm(4), 26, 14, "900");
-  const batchLines = wrapCanvasText(ctx, label.batchId || "-", innerWidth - mm(4), 2);
-  batchLines.forEach((line, index) => {
-    ctx.fillText(line, padding + mm(2), currentY + mm(5.5) + (index * 16));
-  });
-
-  let metaY = currentY + batchBoxHeight + mm(2);
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "800 15px Arial";
-  const weightY = metaY + mm(0.2);
-  ctx.fillText("Paino:", padding, weightY);
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = "#0f172a";
-  ctx.beginPath();
-  ctx.moveTo(padding + mm(15), weightY + mm(3.4));
-  ctx.lineTo(width - padding - mm(11), weightY + mm(3.4));
-  ctx.stroke();
-  ctx.fillText("kg", width - padding - mm(8), weightY);
-
-  drawDivider(footerTop - mm(1));
-  const qrX = padding;
-  const qrY = footerTop + mm(1.2);
-  ctx.fillStyle = "#ffffff";
-  ctx.strokeStyle = "#cbd5e1";
-  ctx.lineWidth = 3;
-  if (ctx.roundRect) {
-    ctx.beginPath();
-    ctx.roundRect(qrX, qrY, qrSize, qrSize, mm(2));
-    ctx.fill();
-    ctx.stroke();
-  } else {
-    ctx.fillRect(qrX, qrY, qrSize, qrSize);
-    ctx.strokeRect(qrX, qrY, qrSize, qrSize);
-  }
-  ctx.drawImage(qrImage, qrX + mm(1), qrY + mm(1), qrSize - mm(2), qrSize - mm(2));
-
-  const supplierX = qrX + qrSize + mm(3);
-  const supplierWidth = width - padding - supplierX;
-  let supplierY = qrY;
-  ctx.fillStyle = "#475569";
-  ctx.font = "800 14px Arial";
-  ctx.fillText("TOIMITTAJA", supplierX, supplierY);
-  supplierY += mm(4);
-  const supplierLines = [
-    `Toimittaja: ${label.supplier || "-"}`,
-    label.supplierAddress || "",
-    label.supplierContact || "",
-  ].filter(Boolean);
-  supplierLines.forEach((line, index) => {
-    supplierY = drawWrapped(line, supplierX, supplierY, supplierWidth, {
-      maxSize: index === 0 ? 14 : 12,
-      minSize: 9,
-      weight: index === 0 ? "800" : "500",
-      maxLines: index === 0 ? 2 : 3,
-      after: mm(0.4),
-    });
-  });
-
-  return canvas.toDataURL("image/png");
 }
 
 function buildCatchLabelPdfFileName(entry) {
