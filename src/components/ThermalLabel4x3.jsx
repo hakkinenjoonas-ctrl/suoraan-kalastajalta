@@ -26,166 +26,129 @@ const styles = {
     color: palette.text,
     fontFamily: "\"Avenir Next\", \"Helvetica Neue\", Arial, sans-serif",
     display: "grid",
-    gridTemplateRows: "13mm 1fr",
-    gap: "2.2mm",
+    gridTemplateColumns: "1fr 26mm",
+    gap: "3mm",
   },
-  brand: {
-    display: "grid",
-    gridTemplateColumns: "17mm 1fr",
-    gap: "2.4mm",
-    alignItems: "center",
-    paddingBottom: "1.5mm",
-    borderBottom: `0.45mm solid ${palette.border}`,
-    minWidth: 0,
-  },
-  logoWrap: {
-    width: "17mm",
-    height: "12mm",
+  left: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    background: "#ffffff",
-  },
-  logo: {
-    width: "16mm",
-    height: "auto",
-    maxWidth: "16mm",
-    maxHeight: "12mm",
-    objectFit: "contain",
-    display: "block",
-  },
-  brandTitle: {
-    fontSize: "12.2pt",
-    lineHeight: 0.95,
-    fontWeight: 900,
-    letterSpacing: "-0.03em",
-    wordBreak: "break-word",
-  },
-  brandSubtitle: {
-    marginTop: "0.7mm",
-    fontSize: "6.6pt",
-    lineHeight: 1.05,
-    color: palette.muted,
-    fontWeight: 700,
-  },
-  content: {
-    display: "grid",
-    gridTemplateColumns: "1.1fr 0.95fr 31mm",
-    gap: "2.4mm",
-    minHeight: 0,
-    minWidth: 0,
-  },
-  block: {
+    flexDirection: "column",
     minWidth: 0,
     minHeight: 0,
   },
   species: {
-    fontSize: "22pt",
-    lineHeight: 0.9,
+    fontSize: "18pt",
     fontWeight: 900,
-    letterSpacing: "-0.04em",
+    lineHeight: 0.95,
+    letterSpacing: "-0.03em",
     wordBreak: "break-word",
   },
   scientific: {
-    marginTop: "0.8mm",
-    fontSize: "8.6pt",
-    lineHeight: 1.02,
+    marginTop: "0.9mm",
+    fontSize: "7.8pt",
+    lineHeight: 1.05,
     color: palette.muted,
     fontStyle: "italic",
-    fontWeight: 600,
-    wordBreak: "break-word",
-  },
-  infoGrid: {
-    marginTop: "1.5mm",
-    display: "grid",
-    gap: "0.65mm",
-  },
-  line: {
-    fontSize: "7.2pt",
-    lineHeight: 1.04,
-    wordBreak: "break-word",
-  },
-  catchDate: {
-    fontSize: "7.8pt",
-    lineHeight: 1.04,
-    fontWeight: 900,
     wordBreak: "break-word",
   },
   batchBox: {
+    marginTop: "2mm",
     padding: "1.8mm 2.2mm",
     border: `0.4mm solid ${palette.accentBorder}`,
     borderRadius: "2mm",
     background: palette.accentBg,
   },
-  batchLabel: {
-    fontSize: "6.9pt",
-    lineHeight: 1,
-    fontWeight: 900,
-    color: palette.muted,
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-  },
-  batchValue: {
-    marginTop: "0.8mm",
-    fontSize: "10.5pt",
-    lineHeight: 0.98,
+  batchText: {
+    fontSize: "10pt",
+    lineHeight: 1.02,
     fontWeight: 900,
     wordBreak: "break-word",
   },
-  metaGrid: {
-    marginTop: "1.5mm",
+  infoBlock: {
+    marginTop: "2mm",
     display: "grid",
-    gap: "0.7mm",
+    gap: "0.65mm",
   },
-  rightColumn: {
+  line: {
+    fontSize: "7.1pt",
+    lineHeight: 1.05,
+    wordBreak: "break-word",
+  },
+  catchDate: {
+    fontSize: "8pt",
+    lineHeight: 1.08,
+    fontWeight: 900,
+    wordBreak: "break-word",
+  },
+  weightLine: {
     display: "grid",
-    gridTemplateRows: "31mm 1fr",
-    gap: "1.5mm",
+    gridTemplateColumns: "auto 1fr auto",
+    alignItems: "end",
+    gap: "1.2mm",
+    marginTop: "1.7mm",
+    fontSize: "7.4pt",
+    lineHeight: 1,
+    fontWeight: 900,
+  },
+  weightWriteLine: {
+    height: "4.2mm",
+    borderBottom: `0.5mm solid ${palette.text}`,
+  },
+  supplierBlock: {
+    marginTop: "auto",
+    paddingTop: "1.4mm",
+    borderTop: `0.35mm solid ${palette.border}`,
+    display: "grid",
+    gap: "0.6mm",
+  },
+  supplierLine: {
+    fontSize: "6.6pt",
+    lineHeight: 1.05,
+    wordBreak: "break-word",
+  },
+  right: {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    alignItems: "center",
     minHeight: 0,
   },
+  brandBlock: {
+    width: "100%",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    paddingTop: "0.4mm",
+  },
+  logo: {
+    width: "14mm",
+    height: "auto",
+    maxWidth: "14mm",
+    maxHeight: "14mm",
+    objectFit: "contain",
+    display: "block",
+  },
+  brandText: {
+    marginTop: "0.5mm",
+    fontSize: "6.5pt",
+    lineHeight: 1.02,
+    fontWeight: 700,
+    textAlign: "center",
+    color: palette.text,
+  },
   qrFrame: {
-    width: "31mm",
-    height: "31mm",
-    padding: "0.8mm",
+    width: "26mm",
+    height: "26mm",
     border: `0.4mm solid ${palette.border}`,
-    borderRadius: "2mm",
+    borderRadius: "1.8mm",
+    padding: "0.8mm",
     background: "#fff",
     boxSizing: "border-box",
-    justifySelf: "end",
   },
   qrImage: {
     width: "100%",
     height: "100%",
     objectFit: "contain",
     display: "block",
-  },
-  supplierBlock: {
-    minWidth: 0,
-    display: "grid",
-    alignContent: "start",
-    gap: "0.65mm",
-    paddingTop: "1.2mm",
-    borderTop: `0.35mm solid ${palette.border}`,
-  },
-  supplierLine: {
-    fontSize: "6.6pt",
-    lineHeight: 1.04,
-    wordBreak: "break-word",
-  },
-  weightLine: {
-    display: "grid",
-    gridTemplateColumns: "auto 1fr auto",
-    gap: "1.2mm",
-    alignItems: "end",
-    marginTop: "1mm",
-    fontSize: "7.6pt",
-    lineHeight: 1,
-    fontWeight: 900,
-  },
-  weightWriteLine: {
-    height: "4mm",
-    borderBottom: `0.5mm solid ${palette.text}`,
   },
 };
 
@@ -204,60 +167,52 @@ export default function ThermalLabel4x3({ label }) {
 
   return (
     <div style={styles.root}>
-      <section style={styles.brand}>
-        <div style={styles.logoWrap}>
-          {label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={styles.logo} /> : null}
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={styles.brandTitle}>Suoraan Kalastajalta</div>
-          <div style={styles.brandSubtitle}>Kotimainen kala suoraan pyytäjältä</div>
-        </div>
-      </section>
-
-      <section style={styles.content}>
-        <div style={styles.block}>
+      <div style={styles.left}>
+        <div>
           <div style={styles.species}>{label.species || "-"}</div>
           {label.scientificName ? <div style={styles.scientific}>{label.scientificName}</div> : null}
-
-          <div style={styles.infoGrid}>
-            <InfoLine value={label.productionMethodText} />
-            <InfoLine label="Pyyntialue" value={label.catchArea} />
-            <InfoLine label="Pyyntimenetelmä" value={label.gearType} />
-            <InfoLine label="Pyyntipäivä" value={label.catchDate} emphasis />
-          </div>
-        </div>
-
-        <div style={styles.block}>
           <div style={styles.batchBox}>
-            <div style={styles.batchLabel}>Erätunnus</div>
-            <div style={styles.batchValue}>{label.batchId || "-"}</div>
-          </div>
-
-          <div style={styles.metaGrid}>
-            <InfoLine label="Kaupallisen kalastajan tunnus" value={label.commercialFishingId} />
-            <InfoLine label="Tuote" value={label.productForm} />
-            <InfoLine value={label.productStateText} />
-            <InfoLine label="Säilytys" value="0-2 °C" />
-          </div>
-
-          <div style={styles.weightLine}>
-            <span>Paino:</span>
-            <span style={styles.weightWriteLine} />
-            <span>kg</span>
+            <div style={styles.batchText}>Erätunnus: {label.batchId || "-"}</div>
           </div>
         </div>
 
-        <div style={styles.rightColumn}>
-          <div style={styles.qrFrame}>
-            {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
-          </div>
-          <div style={styles.supplierBlock}>
-            <div style={styles.supplierLine}><strong>Toimittaja:</strong> {label.supplier || "-"}</div>
-            {label.supplierAddress ? <div style={styles.supplierLine}>{label.supplierAddress}</div> : null}
-            {label.supplierContact ? <div style={styles.supplierLine}>{label.supplierContact}</div> : null}
+        <div style={styles.infoBlock}>
+          <InfoLine label="Pyyntialue" value={label.catchArea} />
+          <InfoLine value={label.harvestSourceText || label.productionMethodText} />
+          <InfoLine label="Pyyntimenetelmä" value={label.gearType} />
+          <InfoLine value={label.productStateText} />
+          <InfoLine label="Pyyntipäivä" value={label.catchDate} emphasis />
+          <InfoLine label="Kaupallisen kalastajan tunnus" value={label.commercialFishingId} />
+          <InfoLine label="Tuote" value={label.productForm} />
+          <InfoLine label="Säilytys" value="0–2 °C" />
+        </div>
+
+        <div style={styles.weightLine}>
+          <span>Paino:</span>
+          <span style={styles.weightWriteLine} />
+          <span>kg</span>
+        </div>
+
+        <div style={styles.supplierBlock}>
+          <div style={styles.supplierLine}>Toimittaja: {label.supplier || "-"}</div>
+          {label.supplierAddress ? <div style={styles.supplierLine}>{label.supplierAddress}</div> : null}
+          {label.supplierContact ? <div style={styles.supplierLine}>{label.supplierContact}</div> : null}
+        </div>
+      </div>
+
+      <div style={styles.right}>
+        <div style={styles.brandBlock}>
+          {label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={styles.logo} /> : null}
+          <div style={styles.brandText}>
+            <div>Suoraan</div>
+            <div>Kalastajalta</div>
           </div>
         </div>
-      </section>
+
+        <div style={styles.qrFrame}>
+          {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
+        </div>
+      </div>
     </div>
   );
 }
