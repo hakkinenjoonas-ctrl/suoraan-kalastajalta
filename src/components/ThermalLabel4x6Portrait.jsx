@@ -26,7 +26,7 @@ const styles = {
     color: palette.text,
     fontFamily: "\"Avenir Next\", \"Helvetica Neue\", Arial, sans-serif",
     display: "grid",
-    gridTemplateRows: "21mm 1fr 37mm",
+    gridTemplateRows: "21mm 1fr 45mm",
     gap: "3mm",
   },
   brand: {
@@ -130,24 +130,31 @@ const styles = {
     gridTemplateColumns: "auto 1fr auto",
     alignItems: "end",
     gap: "2.2mm",
-    marginTop: "0.7mm",
-    minHeight: "6mm",
+    marginTop: 0,
+    minHeight: "7mm",
     fontSize: "11pt",
     lineHeight: 1,
     fontWeight: 900,
   },
   weightWriteLine: {
-    height: "4.8mm",
+    height: "5.2mm",
     borderBottom: `0.55mm solid ${palette.text}`,
   },
   footer: {
+    display: "grid",
+    gridTemplateRows: "auto 1fr",
+    gap: "2mm",
+    alignItems: "start",
+    minHeight: 0,
+    paddingTop: "2.2mm",
+    borderTop: `0.5mm solid ${palette.border}`,
+  },
+  footerContent: {
     display: "grid",
     gridTemplateColumns: "34mm 1fr",
     gap: "3.5mm",
     alignItems: "start",
     minHeight: 0,
-    paddingTop: "2.2mm",
-    borderTop: `0.5mm solid ${palette.border}`,
   },
   qrFrame: {
     width: "34mm",
@@ -223,21 +230,23 @@ export default function ThermalLabel4x6Portrait({ label }) {
           <InfoLine label="Säilytys" value="0-2 °C" />
         </div>
 
+      </section>
+
+      <section style={styles.footer}>
         <div style={styles.weightLine}>
           <span>Paino:</span>
           <span style={styles.weightWriteLine} />
           <span>kg</span>
         </div>
-      </section>
-
-      <section style={styles.footer}>
-        <div style={styles.qrFrame}>
-          {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
-        </div>
-        <div style={styles.supplierBlock}>
-          <div style={styles.supplierLine}><strong>Toimittaja:</strong> {label.supplier || "-"}</div>
-          {label.supplierAddress ? <div style={styles.supplierLine}>{label.supplierAddress}</div> : null}
-          {label.supplierContact ? <div style={styles.supplierLine}>{label.supplierContact}</div> : null}
+        <div style={styles.footerContent}>
+          <div style={styles.qrFrame}>
+            {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
+          </div>
+          <div style={styles.supplierBlock}>
+            <div style={styles.supplierLine}><strong>Toimittaja:</strong> {label.supplier || "-"}</div>
+            {label.supplierAddress ? <div style={styles.supplierLine}>{label.supplierAddress}</div> : null}
+            {label.supplierContact ? <div style={styles.supplierLine}>{label.supplierContact}</div> : null}
+          </div>
         </div>
       </section>
     </div>
