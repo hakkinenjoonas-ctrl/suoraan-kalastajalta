@@ -568,6 +568,16 @@ function buildCatchProductionMethodText(waterType, catchArea) {
   return "";
 }
 
+function getCatchHarvestSourceText(waterType) {
+  if (waterType === WATER_TYPE_FRESH) return "Pyydetty: makeasta vedestä";
+  if (waterType === WATER_TYPE_SEA) return "Pyydetty: merestä";
+  return "Pyydetty: tieto puuttuu";
+}
+
+function getCatchProductStateText() {
+  return "Tuotteen tila: Tuore";
+}
+
 function isEntryOfferedForSale(entry) {
   return Boolean(
     entry?.offerToShops ||
@@ -645,6 +655,8 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     waterType,
     waterTypeLabel: getCatchWaterTypeLabel(waterType),
     productionMethodText: buildCatchProductionMethodText(waterType, catchArea),
+    harvestSourceText: getCatchHarvestSourceText(waterType),
+    productStateText: getCatchProductStateText(),
     weightText,
     supplier,
     supplierAddress,
@@ -738,7 +750,9 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             ${label.scientificName ? `<div class="scientific">${label.scientificName}</div>` : ""}
             <div class="batch">Erätunnus: ${label.batchId || "-"}</div>
           ${label.catchArea ? `<div class="line">Pyyntialue: ${label.catchArea}</div>` : ""}
+          ${label.harvestSourceText ? `<div class="line">${label.harvestSourceText}</div>` : ""}
           ${label.gearType ? `<div class="line">Pyyntimenetelmä: ${label.gearType}</div>` : ""}
+          ${label.productStateText ? `<div class="line">${label.productStateText}</div>` : ""}
           ${label.catchDate ? `<div class="line catch-date">Pyyntipäivä: ${label.catchDate}</div>` : ""}
           ${label.commercialFishingId ? `<div class="line">Kaupallisen kalastajan tunnus: ${label.commercialFishingId}</div>` : ""}
           ${label.productForm ? `<div class="line">Tuote: ${label.productForm}</div>` : ""}
@@ -1209,7 +1223,9 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     doc.setFontSize(6.4);
     const lines = [
       label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
+      label.harvestSourceText || "",
       label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
+      label.productStateText || "",
       label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
       label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
       label.productForm ? `Tuote: ${label.productForm}` : "",
@@ -2285,7 +2301,9 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                         {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
                         <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800, padding: "6px 8px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8 }}>Erätunnus: {previewLabel.batchId}</div>
                         {previewLabel.catchArea ? <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.12 }}>Pyyntialue: {previewLabel.catchArea}</div> : null}
+                        {previewLabel.harvestSourceText ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>{previewLabel.harvestSourceText}</div> : null}
                         {previewLabel.gearType ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntimenetelmä: {previewLabel.gearType}</div> : null}
+                        {previewLabel.productStateText ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>{previewLabel.productStateText}</div> : null}
                         {previewLabel.catchDate ? <div style={{ fontSize: 14, lineHeight: 1.16, fontWeight: 700 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
                         {previewLabel.commercialFishingId ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Kaupallisen kalastajan tunnus: {previewLabel.commercialFishingId}</div> : null}
                         {previewLabel.productForm ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Tuote: {previewLabel.productForm}</div> : null}
