@@ -31,7 +31,7 @@ const styles = {
   },
   brand: {
     display: "grid",
-    gridTemplateColumns: "18mm 1fr",
+    gridTemplateColumns: "22mm 1fr",
     gap: "3mm",
     alignItems: "center",
     paddingBottom: "2mm",
@@ -39,16 +39,21 @@ const styles = {
     minWidth: 0,
   },
   logoWrap: {
-    width: "18mm",
+    width: "22mm",
     height: "18mm",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    background: "#ffffff",
+    overflow: "hidden",
   },
   logo: {
-    width: "17mm",
-    height: "17mm",
+    width: "21mm",
+    height: "auto",
+    maxWidth: "21mm",
+    maxHeight: "18mm",
     objectFit: "contain",
+    filter: "none",
     display: "block",
   },
   brandTitle: {
