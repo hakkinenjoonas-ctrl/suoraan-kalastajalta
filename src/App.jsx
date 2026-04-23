@@ -77,6 +77,7 @@ import {
   OfferedEntriesSummarySection,
   WholesaleOffersOverviewSection,
 } from "./components/wholesaleOffersSections.jsx";
+import ThermalLabel4x3, { THERMAL_LABEL_4X3_SIZE_MM } from "./components/ThermalLabel4x3.jsx";
 import ThermalLabel4x6Portrait, { THERMAL_LABEL_4X6_SIZE_MM } from "./components/ThermalLabel4x6Portrait.jsx";
 
 function getPublicAppBaseUrl() {
@@ -691,12 +692,35 @@ function getAppLogoUrl() {
 }
 
 const CATCH_LABEL_FORMAT_APLI_1278 = "apli_1278";
+const CATCH_LABEL_FORMAT_MUNBYN_4X3 = "munbyn_4x3";
 const CATCH_LABEL_FORMAT_MUNBYN_4X6 = "munbyn_4x6";
+
+function isThermalCatchLabelFormat(printFormat) {
+  return printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6 || printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3;
+}
+
+function getThermalLabelSizeMm(printFormat) {
+  if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3) return THERMAL_LABEL_4X3_SIZE_MM;
+  return THERMAL_LABEL_4X6_SIZE_MM;
+}
+
+function renderThermalLabelByFormat(printFormat, label) {
+  if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3) {
+    return <ThermalLabel4x3 label={label} />;
+  }
+  return <ThermalLabel4x6Portrait label={label} />;
+}
+
 const CATCH_LABEL_FORMATS = [
   {
     value: CATCH_LABEL_FORMAT_MUNBYN_4X6,
     label: "MUNBYN 4x6",
     description: "102 × 152 mm · 1 etiketti / sivu",
+  },
+  {
+    value: CATCH_LABEL_FORMAT_MUNBYN_4X3,
+    label: "MUNBYN 4x3",
+    description: "101.6 × 76.2 mm · 1 etiketti / sivu",
   },
   {
     value: CATCH_LABEL_FORMAT_APLI_1278,
@@ -716,7 +740,8 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
     };
   });
 
-  if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
+  if (isThermalCatchLabelFormat(printFormat)) {
+    const thermalSize = getThermalLabelSizeMm(printFormat);
     return `
       <!doctype html>
       <html lang="fi">
@@ -724,14 +749,14 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           <meta charset="utf-8" />
           <title>Kalaetiketit ${String(entry?.batchId || "")}</title>
           <style>
-            @page { size: 102mm 152mm portrait; margin: 0; }
-            html, body { width: 102mm; height: 152mm; margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; background: #fff; }
+            @page { size: ${thermalSize.width}mm ${thermalSize.height}mm; margin: 0; }
+            html, body { width: ${thermalSize.width}mm; height: ${thermalSize.height}mm; margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; background: #fff; }
             * { box-sizing: border-box; }
             .thermal-label-page { page-break-after: always; }
             .thermal-label-page:last-child { page-break-after: auto; }
           </style>
         </head>
-        <body>${labels.map((label) => `<section class="thermal-label-page">${renderToStaticMarkup(<ThermalLabel4x6Portrait label={label} />)}</section>`).join("")}</body>
+        <body>${labels.map((label) => `<section class="thermal-label-page">${renderToStaticMarkup(renderThermalLabelByFormat(printFormat, label))}</section>`).join("")}</body>
       </html>
     `;
   }
@@ -1065,11 +1090,12 @@ function fitCanvasFont(ctx, text, maxWidth, startSize, minSize = 18, fontWeight 
   return size;
 }
 
-async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
+async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl, printFormat = CATCH_LABEL_FORMAT_MUNBYN_4X6) {
   if (typeof document === "undefined") {
     throw new Error("Etiketin kuvarenderöinti ei ole käytettävissä.");
   }
 
+  const thermalSize = getThermalLabelSizeMm(printFormat);
   const printableLabel = {
     ...label,
     qrImageUrl: qrDataUrl,
@@ -1079,13 +1105,13 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl) {
   host.style.position = "fixed";
   host.style.left = "-10000px";
   host.style.top = "0";
-  host.style.width = `${THERMAL_LABEL_4X6_SIZE_MM.width}mm`;
-  host.style.height = `${THERMAL_LABEL_4X6_SIZE_MM.height}mm`;
+  host.style.width = `${thermalSize.width}mm`;
+  host.style.height = `${thermalSize.height}mm`;
   host.style.margin = "0";
   host.style.padding = "0";
   host.style.overflow = "hidden";
   host.style.background = "#ffffff";
-  host.innerHTML = renderToStaticMarkup(<ThermalLabel4x6Portrait label={printableLabel} />);
+  host.innerHTML = renderToStaticMarkup(renderThermalLabelByFormat(printFormat, printableLabel));
   document.body.appendChild(host);
 
   try {
@@ -1128,20 +1154,21 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
   ]);
   const logoDimensions = await loadImageDimensions(logoDataUrl);
 
-  if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6) {
+  if (isThermalCatchLabelFormat(printFormat)) {
+    const thermalSize = getThermalLabelSizeMm(printFormat);
     const doc = new jsPDF({
-      orientation: "portrait",
+      orientation: thermalSize.width > thermalSize.height ? "landscape" : "portrait",
       unit: "mm",
-      format: [THERMAL_LABEL_4X6_SIZE_MM.width, THERMAL_LABEL_4X6_SIZE_MM.height],
+      format: [thermalSize.width, thermalSize.height],
       compress: true,
     });
 
     for (let index = 0; index < labels.length; index += 1) {
       if (index > 0) {
-        doc.addPage([THERMAL_LABEL_4X6_SIZE_MM.width, THERMAL_LABEL_4X6_SIZE_MM.height], "portrait");
+        doc.addPage([thermalSize.width, thermalSize.height], thermalSize.width > thermalSize.height ? "landscape" : "portrait");
       }
-      const labelImage = await renderMunbynLabelCanvas(labels[index], qrDataUrls[index], logoDataUrl);
-      doc.addImage(labelImage, "PNG", 0, 0, THERMAL_LABEL_4X6_SIZE_MM.width, THERMAL_LABEL_4X6_SIZE_MM.height, undefined, "FAST");
+      const labelImage = await renderMunbynLabelCanvas(labels[index], qrDataUrls[index], logoDataUrl, printFormat);
+      doc.addImage(labelImage, "PNG", 0, 0, thermalSize.width, thermalSize.height, undefined, "FAST");
     }
 
     return doc;
@@ -2155,9 +2182,12 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
     logoUrl: getAppLogoUrl(),
   };
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  const isMunbynFormat = printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6;
-  const previewBaseWidth = isMunbynFormat ? 386 : 420;
-  const previewBaseHeight = isMunbynFormat ? (previewBaseWidth * 152) / 102 : (previewBaseWidth * 57) / 105;
+  const isThermalFormat = isThermalCatchLabelFormat(printFormat);
+  const thermalPreviewBaseWidth = printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3 ? 420 : 386;
+  const previewBaseWidth = isThermalFormat ? thermalPreviewBaseWidth : 420;
+  const previewBaseHeight = isThermalFormat
+    ? (previewBaseWidth * getThermalLabelSizeMm(printFormat).height) / getThermalLabelSizeMm(printFormat).width
+    : (previewBaseWidth * 57) / 105;
   const previewScale = isMobile && typeof window !== "undefined"
     ? Math.min(1, Math.max(0.5, (window.innerWidth - 52) / previewBaseWidth))
     : 1;
@@ -2204,7 +2234,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
               <label>Erätunnus</label>
               <input style={styles.input} value={entry.batchId || "-"} disabled />
             </div>
-            {isMunbynFormat ? (
+            {isThermalFormat ? (
               <div style={styles.field}>
                 <label>Vesityyppi</label>
                 <select style={styles.input} value={waterType} onChange={(e) => setWaterType(e.target.value)}>
@@ -2235,7 +2265,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
             </div>
             <div style={styles.field}>
               <label>Tulostuspohja</label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
                 {CATCH_LABEL_FORMATS.map((formatOption) => {
                   const isActive = formatOption.value === printFormat;
                   return (
@@ -2282,17 +2312,19 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
               <div style={{
                 width: previewBaseWidth,
                 minWidth: previewBaseWidth,
-                aspectRatio: isMunbynFormat ? "102 / 152" : "105 / 57",
+                aspectRatio: isThermalFormat
+                  ? `${getThermalLabelSizeMm(printFormat).width} / ${getThermalLabelSizeMm(printFormat).height}`
+                  : "105 / 57",
                 background: "#fff",
-                padding: isMunbynFormat ? 0 : 14,
+                padding: isThermalFormat ? 0 : 14,
                 display: "grid",
-                gridTemplateColumns: isMunbynFormat ? "1fr" : "1fr 96px",
-                gap: isMunbynFormat ? 14 : 12,
+                gridTemplateColumns: isThermalFormat ? "1fr" : "1fr 96px",
+                gap: isThermalFormat ? 14 : 12,
                 transform: `scale(${previewScale})`,
                 transformOrigin: "top center",
               }}>
-                {isMunbynFormat ? (
-                  <ThermalLabel4x6Portrait label={previewLabel} />
+                {isThermalFormat ? (
+                  renderThermalLabelByFormat(printFormat, previewLabel)
                 ) : (
                   <>
                     <div style={{ display: "flex", flexDirection: "column", paddingLeft: 12, minWidth: 0 }}>
@@ -8798,7 +8830,7 @@ export default function App() {
     const resolvedLabelCount = Math.max(1, Number(labelPrintCount || 1));
     const resolvedPrintFormat = labelPrintFormat;
     const storedCatchDefaults = getStoredCatchFormDefaults(profile);
-    const resolvedWaterType = resolvedPrintFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6
+    const resolvedWaterType = isThermalCatchLabelFormat(resolvedPrintFormat)
       ? String(labelPrintWaterType || entry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim()
       : String(entry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim();
     const labelData = buildCatchLabelData(entry, profile, 1, resolvedLabelCount, { waterType: resolvedWaterType });
@@ -8808,8 +8840,8 @@ export default function App() {
       return;
     }
 
-    if (resolvedPrintFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6 && !resolvedWaterType) {
-      setAuthError("Valitse vesityyppi ennen MUNBYN 4x6 -etiketin tulostusta.");
+    if (isThermalCatchLabelFormat(resolvedPrintFormat) && !resolvedWaterType) {
+      setAuthError("Valitse vesityyppi ennen MUNBYN-etiketin tulostusta.");
       return;
     }
 
