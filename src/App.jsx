@@ -706,6 +706,28 @@ function getProcessedLabelProductState(entry) {
   return "";
 }
 
+function getProcessedLabelScientificName(entry) {
+  const explicitValue = String(
+    entry?.speciesNameScientific ||
+    entry?.species_name_scientific ||
+    "",
+  ).trim();
+  if (explicitValue) return explicitValue;
+
+  const primarySpecies = String(
+    entry?.speciesNameFi ||
+    entry?.species_name_fi ||
+    entry?.speciesSummary ||
+    entry?.species_summary ||
+    "",
+  )
+    .split("\n")[0]
+    .split(",")[0]
+    .trim();
+
+  return getCatchLabelScientificName(primarySpecies);
+}
+
 function buildProcessedLabelData(entry, profileLike) {
   const operatorName = String(
     profileLike?.company_name ||
@@ -758,7 +780,7 @@ function buildProcessedLabelData(entry, profileLike) {
     establishmentNumber,
     catchAreaText,
     speciesNameFi: String(entry?.speciesNameFi || entry?.species_name_fi || "").trim(),
-    speciesNameScientific: String(entry?.speciesNameScientific || entry?.species_name_scientific || "").trim(),
+    speciesNameScientific: getProcessedLabelScientificName(entry),
     gearType: String(entry?.gearType || entry?.gear_type || "").trim(),
     productStateText: getProcessedLabelProductState(entry),
     ingredientsText: String(entry?.ingredients || entry?.ingredientsText || "").trim(),
