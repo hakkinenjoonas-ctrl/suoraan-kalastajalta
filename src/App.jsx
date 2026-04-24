@@ -693,6 +693,7 @@ function getProcessedLabelProductState(entry) {
     entry?.productState ||
     entry?.product_state ||
     entry?.productStateText ||
+    entry?.product_state_text ||
     "",
   ).trim();
   if (explicitValue) return explicitValue;
@@ -756,6 +757,9 @@ function buildProcessedLabelData(entry, profileLike) {
     operatorAddress,
     establishmentNumber,
     catchAreaText,
+    speciesNameFi: String(entry?.speciesNameFi || entry?.species_name_fi || "").trim(),
+    speciesNameScientific: String(entry?.speciesNameScientific || entry?.species_name_scientific || "").trim(),
+    gearType: String(entry?.gearType || entry?.gear_type || "").trim(),
     productStateText: getProcessedLabelProductState(entry),
     ingredientsText: String(entry?.ingredients || entry?.ingredientsText || "").trim(),
     allergensText: String(entry?.allergens || entry?.allergensText || "").trim(),
@@ -4284,6 +4288,7 @@ export default function App() {
   const [processedForm, setProcessedForm] = useState({
     productionDate: today(),
     bestBeforeDate: "",
+    useByDate: "",
     area: "Saimaa",
     municipality: "",
     originCity: "",
@@ -4291,7 +4296,14 @@ export default function App() {
     productName: "",
     productType: "Filee",
     processingMethod: "Fileointi",
+    productState: "",
+    speciesNameFi: "",
+    speciesNameScientific: "",
+    gearType: "",
     speciesSummary: "",
+    ingredients: "",
+    allergens: "",
+    storageInstructions: "",
     kilos: "",
     packageSizeG: "",
     packageCount: "",
@@ -5803,6 +5815,7 @@ export default function App() {
             batchId: entry.batch_id,
             productionDate: entry.production_date,
             bestBeforeDate: entry.best_before_date || "",
+            useByDate: entry.use_by_date || "",
             area: entry.area,
             municipality: entry.municipality || "",
             originCity: entry.origin_city || entry.municipality || "",
@@ -5810,7 +5823,14 @@ export default function App() {
             productName: entry.product_name || "",
             productType: entry.product_type || "",
             processingMethod: entry.processing_method || "",
+            productState: entry.product_state || "",
+            speciesNameFi: entry.species_name_fi || "",
+            speciesNameScientific: entry.species_name_scientific || "",
+            gearType: entry.gear_type || "",
             speciesSummary: entry.species_summary || "",
+            ingredients: entry.ingredients || "",
+            allergens: entry.allergens || "",
+            storageInstructions: entry.storage_instructions || "",
             kilos: Number(entry.kilos || 0),
             packageSizeG: entry.package_size_g == null ? "" : Number(entry.package_size_g),
             packageCount: entry.package_count == null ? "" : Number(entry.package_count),
@@ -8838,6 +8858,7 @@ export default function App() {
       batch_id: batchId,
       production_date: processedForm.productionDate,
       best_before_date: processedForm.bestBeforeDate || null,
+      use_by_date: processedForm.useByDate || null,
       area: processedForm.area,
       municipality: processedForm.municipality,
       origin_city: processedForm.originCity || processedForm.municipality || null,
@@ -8845,7 +8866,14 @@ export default function App() {
       product_name: processedForm.productName.trim(),
       product_type: processedForm.productType,
       processing_method: processedForm.processingMethod,
+      product_state: processedForm.productState || null,
+      species_name_fi: processedForm.speciesNameFi.trim() || null,
+      species_name_scientific: processedForm.speciesNameScientific.trim() || null,
+      gear_type: processedForm.gearType.trim() || null,
       species_summary: processedForm.speciesSummary.trim(),
+      ingredients: processedForm.ingredients.trim() || null,
+      allergens: processedForm.allergens.trim() || null,
+      storage_instructions: processedForm.storageInstructions.trim() || null,
       kilos: Number(processedForm.kilos || 0),
       package_size_g: processedForm.packageSizeG === "" ? null : Number(processedForm.packageSizeG),
       package_count: processedForm.packageCount === "" ? null : Number(processedForm.packageCount),
@@ -8935,6 +8963,7 @@ export default function App() {
     setProcessedForm((prev) => ({
       productionDate: today(),
       bestBeforeDate: "",
+      useByDate: "",
       area: "Saimaa",
       municipality: "",
       originCity: "",
@@ -8942,7 +8971,14 @@ export default function App() {
       productName: "",
       productType: "Filee",
       processingMethod: "Fileointi",
+      productState: "",
+      speciesNameFi: "",
+      speciesNameScientific: "",
+      gearType: "",
       speciesSummary: "",
+      ingredients: "",
+      allergens: "",
+      storageInstructions: "",
       kilos: "",
       packageSizeG: "",
       packageCount: "",
@@ -10141,6 +10177,7 @@ export default function App() {
               <div style={formGrid}>
                 <div style={styles.field}><label>Tuotantopäivä</label><input style={styles.input} type="date" value={processedForm.productionDate} onChange={(e) => setProcessedForm({ ...processedForm, productionDate: e.target.value })} /></div>
                 <div style={styles.field}><label>Parasta ennen</label><input style={styles.input} type="date" value={processedForm.bestBeforeDate} onChange={(e) => setProcessedForm({ ...processedForm, bestBeforeDate: e.target.value })} /></div>
+                <div style={styles.field}><label>Viimeinen käyttöpäivä</label><input style={styles.input} type="date" value={processedForm.useByDate} onChange={(e) => setProcessedForm({ ...processedForm, useByDate: e.target.value })} /></div>
                 <div style={styles.field}>
                   <label>Vesialue / alkuperä</label>
                   <select
@@ -10178,7 +10215,19 @@ export default function App() {
                 <div style={styles.field}><label>Tuotenimi</label><input style={styles.input} value={processedForm.productName} onChange={(e) => setProcessedForm({ ...processedForm, productName: e.target.value })} placeholder="Esim. Kylmäsavulohi viipale" /></div>
                 <div style={styles.field}><label>Tuotetyyppi</label><select style={styles.input} value={processedForm.productType} onChange={(e) => setProcessedForm({ ...processedForm, productType: e.target.value })}>{processedProductTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
                 <div style={styles.field}><label>Käsittelytapa</label><select style={styles.input} value={processedForm.processingMethod} onChange={(e) => setProcessedForm({ ...processedForm, processingMethod: e.target.value })}>{processingMethods.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
+                <div style={styles.field}>
+                  <label>Tuotteen tila</label>
+                  <select style={styles.input} value={processedForm.productState} onChange={(e) => setProcessedForm({ ...processedForm, productState: e.target.value })}>
+                    <option value="">Valitse tarvittaessa</option>
+                    <option value="Tuore">Tuore</option>
+                    <option value="Pakastettu">Pakastettu</option>
+                    <option value="Sulatettu">Sulatettu</option>
+                  </select>
+                </div>
                 <div style={styles.field}><label>Käsittelypaikka</label><input style={styles.input} value={processedForm.spot} onChange={(e) => setProcessedForm({ ...processedForm, spot: e.target.value })} placeholder="Esim. jalostuskontti / Forelli" /></div>
+                <div style={styles.field}><label>Laji (kauppanimi)</label><input style={styles.input} value={processedForm.speciesNameFi} onChange={(e) => setProcessedForm({ ...processedForm, speciesNameFi: e.target.value })} placeholder="Esim. Muikku" /></div>
+                <div style={styles.field}><label>Tieteellinen nimi</label><input style={styles.input} value={processedForm.speciesNameScientific} onChange={(e) => setProcessedForm({ ...processedForm, speciesNameScientific: e.target.value })} placeholder="Esim. Coregonus albula" /></div>
+                <div style={styles.field}><label>Pyydystyyppi</label><input style={styles.input} value={processedForm.gearType} onChange={(e) => setProcessedForm({ ...processedForm, gearType: e.target.value })} placeholder="Esim. Rysä" /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
                   <label>{profile.role === "processor" ? "Liitä omat ostetut YKP-raaka-aine-erät" : "Liitä kalastajan YKP-raaka-aine-erät"}</label>
                   {availableSourceEntries.length === 0 ? (
@@ -10230,6 +10279,9 @@ export default function App() {
                   ) : null}
                 </div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}><label>Raaka-aine / lajiyhteenveto</label><textarea style={styles.textarea} value={processedForm.speciesSummary} onChange={(e) => setProcessedForm({ ...processedForm, speciesSummary: e.target.value })} placeholder="Esim. lohi fileenä, kuha fileenä, muikkumassa" /></div>
+                <div style={{ ...styles.field, ...styles.fieldFull }}><label>Ainesosat</label><textarea style={styles.textarea} value={processedForm.ingredients} onChange={(e) => setProcessedForm({ ...processedForm, ingredients: e.target.value })} placeholder="Esim. Muikku (kala), suola" /></div>
+                <div style={{ ...styles.field, ...styles.fieldFull }}><label>Allergeenit</label><textarea style={styles.textarea} value={processedForm.allergens} onChange={(e) => setProcessedForm({ ...processedForm, allergens: e.target.value })} placeholder="Esim. Kala" /></div>
+                <div style={{ ...styles.field, ...styles.fieldFull }}><label>Säilytysohje</label><textarea style={styles.textarea} value={processedForm.storageInstructions} onChange={(e) => setProcessedForm({ ...processedForm, storageInstructions: e.target.value })} placeholder="Esim. Säilytys 0–3 °C" /></div>
                 <div style={styles.field}><label>Määrä kg</label><input style={styles.input} type="number" value={processedForm.kilos} onChange={(e) => setProcessedForm({ ...processedForm, kilos: e.target.value })} placeholder="0" /></div>
                 <div style={styles.field}><label>Pakkauskoko g</label><input style={styles.input} type="number" value={processedForm.packageSizeG} onChange={(e) => setProcessedForm({ ...processedForm, packageSizeG: e.target.value })} placeholder="Esim. 500" /></div>
                 <div style={styles.field}><label>Pakkausten määrä</label><input style={styles.input} type="number" value={processedForm.packageCount} onChange={(e) => setProcessedForm({ ...processedForm, packageCount: e.target.value })} placeholder="Esim. 40" /></div>

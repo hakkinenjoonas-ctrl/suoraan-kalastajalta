@@ -144,21 +144,23 @@ function renderOvalMark(establishmentNumber) {
   return (
     <div
       style={{
-        width: "26mm",
-        height: "13mm",
-        border: "0.5mm solid #0f172a",
-        borderRadius: "999px",
+        width: "28mm",
+        height: "16mm",
+        border: "0.35mm solid #0f172a",
+        borderRadius: "999px / 70%",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         background: "#fff",
         lineHeight: 1,
+        paddingTop: "0.4mm",
+        paddingBottom: "0.2mm",
       }}
     >
-      <div style={{ fontSize: "5.8pt", fontWeight: 800 }}>FI</div>
-      <div style={{ fontSize: "6.8pt", fontWeight: 900, marginTop: "0.3mm" }}>{establishmentNumber}</div>
-      <div style={{ fontSize: "5.8pt", fontWeight: 800, marginTop: "0.3mm" }}>EC</div>
+      <div style={{ fontSize: "6.6pt", fontWeight: 500, letterSpacing: "0.01em" }}>FI</div>
+      <div style={{ fontSize: "9.2pt", fontWeight: 500, marginTop: "0.55mm", letterSpacing: "0.01em" }}>{establishmentNumber}</div>
+      <div style={{ fontSize: "6.6pt", fontWeight: 500, marginTop: "0.55mm", letterSpacing: "0.01em" }}>EC</div>
     </div>
   );
 }
@@ -198,8 +200,11 @@ export default function ProcessedLabel4x3({ label }) {
 
           <div style={styles.infoGrid}>
             <LabelLine label="Raaka-aine" value={label.speciesSummary} />
+            <LabelLine label="Laji" value={label.speciesNameFi} />
+            <LabelLine label="Tieteellinen nimi" value={label.speciesNameScientific} />
             <LabelLine label="Tuotetyyppi" value={label.productType} />
             <LabelLine label="Kasittely" value={label.processingMethod} />
+            <LabelLine label="Pyydystyyppi" value={label.gearType} />
             <LabelLine label="Nettopaino" value={label.netWeightText} strong />
             <LabelLine label={label.dateLabel} value={label.dateValue} strong />
             <LabelLine label="Sailytysohje" value={label.storageText} />
