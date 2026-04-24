@@ -10248,7 +10248,6 @@ export default function App() {
                 </div>
                 <div style={styles.field}><label>Käsittelypaikka</label><input style={styles.input} value={processedForm.spot} onChange={(e) => setProcessedForm({ ...processedForm, spot: e.target.value })} placeholder="Esim. jalostuskontti / Forelli" /></div>
                 <div style={styles.field}><label>Laji (kauppanimi)</label><input style={styles.input} value={processedForm.speciesNameFi} onChange={(e) => setProcessedForm({ ...processedForm, speciesNameFi: e.target.value })} placeholder="Esim. Muikku" /></div>
-                <div style={styles.field}><label>Tieteellinen nimi</label><input style={styles.input} value={processedForm.speciesNameScientific} onChange={(e) => setProcessedForm({ ...processedForm, speciesNameScientific: e.target.value })} placeholder="Esim. Coregonus albula" /></div>
                 <div style={styles.field}><label>Pyydystyyppi</label><input style={styles.input} value={processedForm.gearType} onChange={(e) => setProcessedForm({ ...processedForm, gearType: e.target.value })} placeholder="Esim. Rysä" /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
                   <label>{profile.role === "processor" ? "Liitä omat ostetut YKP-raaka-aine-erät" : "Liitä kalastajan YKP-raaka-aine-erät"}</label>
