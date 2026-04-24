@@ -728,6 +728,30 @@ function getProcessedLabelScientificName(entry) {
   return getCatchLabelScientificName(primarySpecies);
 }
 
+function buildProcessedProductPayload(formState, ownerUserId) {
+  return {
+    owner_user_id: ownerUserId,
+    template_name: String(formState.productName || formState.productType || "Oma tuote").trim(),
+    area: formState.area || "Saimaa",
+    municipality: formState.municipality || "",
+    origin_city: formState.originCity || formState.municipality || "",
+    spot: formState.spot || "",
+    product_name: String(formState.productName || "").trim(),
+    product_type: formState.productType || "",
+    processing_method: formState.processingMethod || "",
+    product_state: formState.productState || null,
+    species_name_fi: String(formState.speciesNameFi || "").trim() || null,
+    species_name_scientific: String(formState.speciesNameScientific || "").trim() || null,
+    gear_type: String(formState.gearType || "").trim() || null,
+    species_summary: String(formState.speciesSummary || "").trim() || null,
+    ingredients: String(formState.ingredients || "").trim() || null,
+    allergens: String(formState.allergens || "").trim() || null,
+    storage_instructions: String(formState.storageInstructions || "").trim() || null,
+    package_size_g: formState.packageSizeG === "" ? null : Number(formState.packageSizeG),
+    notes: String(formState.notes || "").trim() || null,
+  };
+}
+
 function buildProcessedLabelData(entry, profileLike) {
   const operatorName = String(
     profileLike?.company_name ||
@@ -4358,6 +4382,9 @@ export default function App() {
     coldTransport: true,
     sourceEntryIds: [],
   });
+  const [processedProducts, setProcessedProducts] = useState([]);
+  const [selectedProcessedProductId, setSelectedProcessedProductId] = useState("");
+  const [saveProcessedAsProduct, setSaveProcessedAsProduct] = useState(false);
   const [processedAreaSelector, setProcessedAreaSelector] = useState(() => resolveAreaSelectorValue("Saimaa", initialCatchDefaults.customLakeAreas, initialCatchDefaults.customSeaAreas));
   const [newAllowedForm, setNewAllowedForm] = useState({ email: "", displayName: "", role: "member", buyer_id: "" });
   const [buyerAction, setBuyerAction] = useState({
@@ -5616,12 +5643,14 @@ export default function App() {
           hasOffersTable,
           hasBuyersTable,
           hasProcessedBatchesTable,
+          hasProcessedProductsTable,
           hasProcessedBatchSourcesTable,
           hasBuyerOffersTable,
         ] = await Promise.all([
           tableExists(supabase, "wholesale_offers"),
           tableExists(supabase, "buyers"),
           tableExists(supabase, "processed_batches"),
+          tableExists(supabase, "processed_products"),
           tableExists(supabase, "processed_batch_sources"),
           tableExists(supabase, "buyer_offers"),
         ]);
@@ -5657,6 +5686,7 @@ export default function App() {
         const [
           { data: entryData, error: entryError },
           processedEntriesResult,
+          processedProductsResult,
           { data: allowedData, error: allowedError },
           ownerProfilesResult,
           offerResult,
@@ -5669,6 +5699,9 @@ export default function App() {
             ? ((profile.role === "owner" && entryScope === "all")
               ? supabase.from("processed_batches").select("*").order("production_date", { ascending: false }).order("created_at", { ascending: false })
               : supabase.from("processed_batches").select("*").eq("owner_user_id", profile.id).order("production_date", { ascending: false }).order("created_at", { ascending: false }))
+            : Promise.resolve({ data: [], error: null }),
+          hasProcessedProductsTable && profile.role === "processor"
+            ? supabase.from("processed_products").select("*").eq("owner_user_id", profile.id).order("template_name", { ascending: true }).order("created_at", { ascending: false })
             : Promise.resolve({ data: [], error: null }),
           profile.role === "owner"
             ? supabase.from("allowed_users").select("*").order("created_at", { ascending: true })
@@ -5884,6 +5917,37 @@ export default function App() {
                 kilos: source.source_kilos == null ? "" : Number(source.source_kilos),
                 qrImageUrl: getBatchQrImageUrl(source.source_batch_id),
               })),
+          })));
+        }
+
+        if (processedProductsResult?.error && processedProductsResult.error.code !== "PGRST116") {
+          if (isMissingRefreshTokenError(processedProductsResult.error)) {
+            await invalidateSession();
+            return;
+          }
+          setAuthError(processedProductsResult.error.message);
+          setProcessedProducts([]);
+        } else {
+          setProcessedProducts((processedProductsResult?.data || []).map((item) => ({
+            id: item.id,
+            templateName: item.template_name || item.product_name || "Oma tuote",
+            area: item.area || "Saimaa",
+            municipality: item.municipality || "",
+            originCity: item.origin_city || item.municipality || "",
+            spot: item.spot || "",
+            productName: item.product_name || "",
+            productType: item.product_type || "Filee",
+            processingMethod: item.processing_method || "Fileointi",
+            productState: item.product_state || "",
+            speciesNameFi: item.species_name_fi || "",
+            speciesNameScientific: item.species_name_scientific || "",
+            gearType: item.gear_type || "",
+            speciesSummary: item.species_summary || "",
+            ingredients: item.ingredients || "",
+            allergens: item.allergens || "",
+            storageInstructions: item.storage_instructions || "",
+            packageSizeG: item.package_size_g == null ? "" : Number(item.package_size_g),
+            notes: item.notes || "",
           })));
         }
 
@@ -8849,6 +8913,27 @@ export default function App() {
     }
 
     setSaving(true);
+
+    if (saveProcessedAsProduct) {
+      const productPayload = buildProcessedProductPayload(processedForm, profile.id);
+      const productQuery = selectedProcessedProductId
+        ? supabase.from("processed_products").update(productPayload).eq("id", selectedProcessedProductId).eq("owner_user_id", profile.id)
+        : supabase.from("processed_products").insert(productPayload).select("id").single();
+      const { data: savedProductRow, error: savedProductError } = await productQuery;
+      if (savedProductError) {
+        setSaving(false);
+        if (isMissingRefreshTokenError(savedProductError)) {
+          await invalidateSession();
+          return;
+        }
+        setAuthError(savedProductError.message);
+        return;
+      }
+      if (!selectedProcessedProductId && savedProductRow?.id) {
+        setSelectedProcessedProductId(savedProductRow.id);
+      }
+    }
+
     let batchId;
     try {
       batchId = await generateBatchId({
@@ -8981,6 +9066,8 @@ export default function App() {
     }
 
     setSaving(false);
+    setSelectedProcessedProductId("");
+    setSaveProcessedAsProduct(false);
     setProcessedAreaSelector("Saimaa");
     setProcessedForm((prev) => ({
       productionDate: today(),
@@ -10196,6 +10283,61 @@ export default function App() {
         {activeTab === "add" ? (
           profile.role === "processor" ? (
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
+                <label>Omat tuotteet</label>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <select
+                    style={{ ...styles.input, flex: "1 1 320px" }}
+                    value={selectedProcessedProductId}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      setSelectedProcessedProductId(nextId);
+                      if (!nextId) return;
+                      const selectedProduct = processedProducts.find((item) => item.id === nextId);
+                      if (!selectedProduct) return;
+                      setProcessedAreaSelector(resolveAreaSelectorValue(selectedProduct.area || "Saimaa", savedCustomLakeAreas, savedCustomSeaAreas));
+                      setProcessedForm((prev) => ({
+                        ...prev,
+                        area: selectedProduct.area || "Saimaa",
+                        municipality: selectedProduct.municipality || "",
+                        originCity: selectedProduct.originCity || selectedProduct.municipality || "",
+                        spot: selectedProduct.spot || "",
+                        productName: selectedProduct.productName || "",
+                        productType: selectedProduct.productType || "Filee",
+                        processingMethod: selectedProduct.processingMethod || "Fileointi",
+                        productState: selectedProduct.productState || "",
+                        speciesNameFi: selectedProduct.speciesNameFi || "",
+                        speciesNameScientific: selectedProduct.speciesNameScientific || "",
+                        gearType: selectedProduct.gearType || "",
+                        speciesSummary: selectedProduct.speciesSummary || "",
+                        ingredients: selectedProduct.ingredients || "",
+                        allergens: selectedProduct.allergens || "",
+                        storageInstructions: selectedProduct.storageInstructions || "",
+                        packageSizeG: selectedProduct.packageSizeG === "" ? "" : selectedProduct.packageSizeG,
+                        notes: selectedProduct.notes || "",
+                      }));
+                    }}
+                  >
+                    <option value="">Valitse tallennettu tuote</option>
+                    {processedProducts.map((item) => (
+                      <option key={item.id} value={item.id}>{item.templateName}</option>
+                    ))}
+                  </select>
+                  {selectedProcessedProductId ? (
+                    <button
+                      type="button"
+                      style={styles.button}
+                      onClick={() => {
+                        setSelectedProcessedProductId("");
+                        setSaveProcessedAsProduct(false);
+                      }}
+                    >
+                      Tyhjennä valinta
+                    </button>
+                  ) : null}
+                </div>
+                <div style={styles.small}>Valitse aiemmin tallennettu tuote ja muokkaa sen tietoja tarvittaessa ennen erän tallennusta.</div>
+              </div>
               <div style={formGrid}>
                 <div style={styles.field}><label>Tuotantopäivä</label><input style={styles.input} type="date" value={processedForm.productionDate} onChange={(e) => setProcessedForm({ ...processedForm, productionDate: e.target.value })} /></div>
                 <div style={styles.field}><label>Parasta ennen</label><input style={styles.input} type="date" value={processedForm.bestBeforeDate} onChange={(e) => setProcessedForm({ ...processedForm, bestBeforeDate: e.target.value })} /></div>
@@ -10552,7 +10694,17 @@ export default function App() {
                 ) : null}
                 <div style={{ ...styles.field, ...styles.fieldFull }}><label>Lisätiedot</label><textarea style={styles.textarea} value={processedForm.notes} onChange={(e) => setProcessedForm({ ...processedForm, notes: e.target.value })} placeholder="Esim. allergeenit, säilytys, pakkausmuoto, toimitusrytmi" /></div>
               </div>
-              <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveProcessed} disabled={saving}>{saving ? "Tallennetaan..." : shouldSendProcessedOffer ? "Tallenna jaloste-erä ja lähetä tarjous" : "Tallenna jaloste-erä"}</button></div>
+              <div style={{ ...styles.rowBetween, gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                <label style={{ ...styles.row, gap: 8, fontWeight: 600, color: "#334155" }}>
+                  <input
+                    type="checkbox"
+                    checked={saveProcessedAsProduct}
+                    onChange={(e) => setSaveProcessedAsProduct(e.target.checked)}
+                  />
+                  <span>Tallenna erä omiin tuotteisiin</span>
+                </label>
+                <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveProcessed} disabled={saving}>{saving ? "Tallennetaan..." : shouldSendProcessedOffer ? "Tallenna jaloste-erä ja lähetä tarjous" : "Tallenna jaloste-erä"}</button>
+              </div>
             </div>
           ) : (
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
