@@ -105,6 +105,19 @@ export function OfferedEntriesSummarySection({
   );
 }
 
+function getEffectiveOfferPrice(offer) {
+  if (offer?.counter_price_per_kg !== "" && offer?.counter_price_per_kg != null) {
+    return offer.counter_price_per_kg;
+  }
+  if (offer?.price_per_kg !== "" && offer?.price_per_kg != null) {
+    return offer.price_per_kg;
+  }
+  if (offer?.offer_price_per_kg !== "" && offer?.offer_price_per_kg != null) {
+    return offer.offer_price_per_kg;
+  }
+  return null;
+}
+
 export function BuyerResponsesSection({
   prioritizedBuyerResponses,
   requestedOfferId,
@@ -326,7 +339,7 @@ export function OfferedEntriesDetailsSection({
                       <div>
                         <div style={styles.entryBadges}>
                           <span style={styles.badge}>Anonyymi ostajaehdokas</span>
-                          <span style={styles.badge}>{euro(offer.offer_price_per_kg)} / kg</span>
+                          <span style={styles.badge}>{euro(getEffectiveOfferPrice(offer) || 0)} / kg</span>
                           <span style={styles.badge}>{offer.status}</span>
                         </div>
                         <div style={styles.muted}>Tarjous on tallennettu anonyymisti ilman vastaanottajan tunnistetietoja tähän näkymään.</div>
