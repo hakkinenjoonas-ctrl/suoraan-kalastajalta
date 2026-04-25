@@ -8270,7 +8270,7 @@ export default function App() {
       if (offer?.seller_user_id && String(offer.seller_user_id) !== String(profile?.id || "")) {
         const { data: fetchedSellerProfile, error: fetchedSellerProfileError } = await supabase
           .from("profiles")
-          .select("id, company_name, business_id, address, postcode, city, billing_address, billing_postcode, billing_city, billing_email, bank_account_iban")
+          .select("id, email, display_name, company_name, business_id, address, postcode, city, billing_address, billing_postcode, billing_city, billing_email, bank_account_iban, contact_email, phone, commercial_fishing_id")
           .eq("id", offer.seller_user_id)
           .maybeSingle();
 
@@ -8315,6 +8315,15 @@ export default function App() {
       updatePayload = {
         ...updatePayload,
         fulfillment_status: offer.fulfillment_status || "awaiting_contact",
+        seller_name: offer.seller_name || sellerProfileForTrade?.company_name || sellerProfileForTrade?.display_name || sellerProfileForTrade?.email || null,
+        seller_business_id: sellerProfileForTrade?.business_id || offer.seller_business_id || null,
+        seller_address: sellerProfileForTrade?.address || offer.seller_address || null,
+        seller_postcode: sellerProfileForTrade?.postcode || offer.seller_postcode || null,
+        seller_city: sellerProfileForTrade?.city || offer.seller_city || null,
+        seller_contact_email: sellerProfileForTrade?.contact_email || sellerProfileForTrade?.email || offer.seller_contact_email || null,
+        seller_email: sellerProfileForTrade?.email || offer.seller_email || null,
+        seller_phone: sellerProfileForTrade?.phone || offer.seller_phone || null,
+        seller_commercial_fishing_id: sellerProfileForTrade?.commercial_fishing_id || offer.seller_commercial_fishing_id || null,
       };
 
       if (buyerRecord) {
@@ -9630,7 +9639,7 @@ export default function App() {
                     const ownTotalPrice = o.total_price_eur !== "" && o.total_price_eur != null ? Number(o.total_price_eur) : null;
                     const ownDeliveredPricePerKg = o.delivered_price_per_kg !== "" && o.delivered_price_per_kg != null ? Number(o.delivered_price_per_kg) : null;
                     const offerCatchDates = getOfferSummaryCatchDates(o.species_summary);
-                    const buyerOfferActionsOpen = ["sent", "viewed", "countered"].includes(o.status);
+                    const buyerOfferActionsOpen = ["sent", "viewed"].includes(o.status);
                     const showCounterAction = isActive && buyerActionMode === "counter";
                     return (
                       <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
@@ -9654,6 +9663,7 @@ export default function App() {
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
                             <span style={styles.badge}>{o.area || "-"}</span>
                             {o.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varaus käynnissä</span> : null}
+                            {o.status === "countered" ? <span style={{ ...styles.badge, background: "#eff6ff", borderColor: "#93c5fd", color: "#1d4ed8" }}>Vastatarjous lähetetty</span> : null}
                             {o.status === "sold" ? <span style={{ ...styles.badge, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }}>MYYTY</span> : null}
                             <span style={styles.badge}>Tarjoaja: {sellerInfo.sellerLabel}</span>
                           </div>
@@ -9695,6 +9705,11 @@ export default function App() {
                         {o.status === "accepted" ? (
                           <div style={{ ...styles.noticeSuccess, marginTop: 10 }}>
                             Kauppa hyväksytty. Myyjä hyväksyi tarjouksesi.
+                          </div>
+                        ) : null}
+                        {o.status === "countered" ? (
+                          <div style={{ ...styles.noticeInfo, marginTop: 10 }}>
+                            Vastatarjous on lähetetty myyjälle. Samasta erästä ei voi tehdä uutta vastatarjousta ennen kuin myyjä reagoi.
                           </div>
                         ) : null}
                         {o.status === "sold" ? (
