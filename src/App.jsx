@@ -4075,6 +4075,291 @@ async function buildSellerInvoiceEmailAttachment(offer, sellerProfile, documentK
   };
 }
 
+function getOfferBillingMonthValue(offer) {
+  if (String(offer?.billing_month || "").trim()) return String(offer.billing_month).trim();
+  try {
+    const dateValue = new Date(offer?.updated_at || offer?.created_at || new Date().toISOString());
+    return `${dateValue.getFullYear()}-${String(dateValue.getMonth() + 1).padStart(2, "0")}`;
+  } catch {
+    return "";
+  }
+}
+
+function buildSellerGroupInvoiceReference(offers) {
+  const monthDigits = String(getOfferBillingMonthValue(offers?.[0]) || today().slice(0, 7)).replace(/\D/g, "");
+  const idDigits = (offers || []).map((offer) => String(offer?.id || "").replace(/\D/g, "")).join("").slice(-12);
+  let baseDigits = `${monthDigits}${idDigits}`.replace(/^0+/, "").slice(-18);
+  if (!baseDigits) baseDigits = "200";
+  if (baseDigits.length < 3) baseDigits = baseDigits.padEnd(3, "0");
+  return `${baseDigits}${calculateFinnishReferenceCheckDigit(baseDigits)}`;
+}
+
+function buildSellerGroupInvoiceNumber(offers) {
+  const monthKey = String(getOfferBillingMonthValue(offers?.[0]) || today().slice(0, 7)).replace(/\D/g, "");
+  const buyerPart = String(offers?.[0]?.buyer_id || offers?.[0]?.buyer_email || "OSTAJA").replace(/[^a-zA-Z0-9]+/g, "").slice(0, 6).toUpperCase() || "OSTAJA";
+  return `KOONTI-${monthKey}-${buyerPart}`;
+}
+
+function buildSellerGroupInvoiceDueDate(offers) {
+  const newestDate = (offers || [])
+    .map((offer) => new Date(offer?.updated_at || offer?.created_at || new Date().toISOString()))
+    .filter((value) => !Number.isNaN(value.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime())[0];
+  const dateValue = newestDate || new Date();
+  dateValue.setDate(dateValue.getDate() + 14);
+  return dateValue.toISOString().slice(0, 10);
+}
+
+function buildSellerGroupInvoiceLineItems(offers) {
+  const rows = [];
+  (offers || []).forEach((offer) => {
+    const offerLineItems = parseSellerInvoiceLineItems(offer);
+    const batchLabel = String(offer?.batch_id || "").trim();
+    const deliveryDate = formatInvoiceDeliveryDate(offer?.updated_at || offer?.created_at);
+    offerLineItems.forEach((item) => {
+      rows.push({
+        description: [batchLabel ? `Erä ${batchLabel}` : "", deliveryDate ? `Toimitus ${deliveryDate}` : "", item.description || "Kalaerä"].filter(Boolean).join(" · "),
+        quantity: item.quantity,
+        quantityDisplay: item.quantityDisplay,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        lineTotal: item.lineTotal,
+      });
+    });
+    const deliveryCost = Number(offer?.delivery_cost ?? offer?.route_price_eur ?? 0) || 0;
+    if (deliveryCost > 0) {
+      rows.push({
+        description: [batchLabel ? `Erä ${batchLabel}` : "", "Toimituskulu"].filter(Boolean).join(" · "),
+        quantity: 1,
+        quantityDisplay: "1 kpl",
+        unit: "kpl",
+        unitPrice: deliveryCost,
+        lineTotal: deliveryCost,
+      });
+    }
+  });
+  return rows;
+}
+
+function getSellerGroupInvoicePayload(offers, sellerProfile) {
+  const sortedOffers = [...(offers || [])].sort((a, b) => new Date(a.updated_at || a.created_at || 0).getTime() - new Date(b.updated_at || b.created_at || 0).getTime());
+  const firstOffer = sortedOffers[0] || {};
+  const lineItems = buildSellerGroupInvoiceLineItems(sortedOffers);
+  const productTotal = lineItems.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
+  const vatRate = 0.135;
+  const vatAmount = productTotal * vatRate;
+  const grandTotal = productTotal + vatAmount;
+  const referenceNumber = buildSellerGroupInvoiceReference(sortedOffers);
+  const catchDates = Array.from(new Set(sortedOffers.flatMap((offer) => getOfferSummaryCatchDates(offer?.species_summary || ""))));
+  const periodLabel = String(getOfferBillingMonthValue(firstOffer) || "").trim();
+
+  return {
+    invoiceNumber: buildSellerGroupInvoiceNumber(sortedOffers),
+    invoiceDate: today(),
+    dueDate: buildSellerGroupInvoiceDueDate(sortedOffers),
+    referenceNumber,
+    referenceDisplay: formatFinnishReferenceDisplay(referenceNumber),
+    sellerName: String(sellerProfile?.company_name || sellerProfile?.display_name || sellerProfile?.email || "").trim() || "-",
+    sellerBusinessId: String(sellerProfile?.business_id || "").trim(),
+    sellerAddress: formatInvoicePartyAddress(sellerProfile?.address, sellerProfile?.postcode, sellerProfile?.city),
+    sellerEmail: String(sellerProfile?.contact_email || sellerProfile?.email || "").trim(),
+    sellerPhone: String(sellerProfile?.phone || "").trim(),
+    sellerIban: String(sellerProfile?.bank_account_iban || "").trim(),
+    sellerBic: String(sellerProfile?.bank_bic || "").trim(),
+    buyerName: String(firstOffer?.buyer_company_name || firstOffer?.buyer_contact_name || firstOffer?.buyer_email || "").trim() || "Asiakas",
+    buyerBusinessId: String(firstOffer?.buyer_business_id || "").trim(),
+    buyerContactName: String(firstOffer?.buyer_contact_name || "").trim(),
+    buyerBillingEmail: String(firstOffer?.buyer_billing_email || firstOffer?.buyer_email || "").trim(),
+    buyerPhone: String(firstOffer?.buyer_phone || "").trim(),
+    buyerBillingAddress: formatInvoicePartyAddress(firstOffer?.buyer_billing_address, firstOffer?.buyer_billing_postcode, firstOffer?.buyer_billing_city),
+    buyerDeliveryAddress: formatInvoicePartyAddress(firstOffer?.buyer_delivery_address, firstOffer?.buyer_delivery_postcode, firstOffer?.buyer_delivery_city),
+    periodLabel,
+    catchDates,
+    offerCount: sortedOffers.length,
+    batchIds: sortedOffers.map((offer) => String(offer?.batch_id || "").trim()).filter(Boolean),
+    lineItems,
+    vatRate,
+    productTotal,
+    vatAmount,
+    grandTotal,
+  };
+}
+
+async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}) {
+  const invoice = getSellerGroupInvoicePayload(offers, sellerProfile);
+  const documentKind = options.documentKind === "reminder" ? "reminder" : "invoice";
+  const isReminder = documentKind === "reminder";
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+  const leftX = 16;
+  const rightX = 194;
+  const lineHeight = 4.6;
+  const tableBottomLimit = 207;
+  const quantityX = 132;
+  const unitPriceX = 162;
+  const totalX = rightX - 2;
+
+  const drawInvoiceTableHeader = (headerY) => {
+    doc.setFillColor(15, 23, 42);
+    doc.rect(leftX, headerY - 6, 178, 9, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.2);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Tuote", leftX + 2, headerY);
+    doc.text("Määrä", quantityX, headerY, { align: "right" });
+    doc.text("Yks.hinta ALV 0 %", unitPriceX, headerY, { align: "right" });
+    doc.text("Yhteensä", totalX, headerY, { align: "right" });
+  };
+
+  const renderInvoiceColumn = (lines, x, startY, maxWidth) => {
+    let columnY = startY;
+    lines.forEach((line) => {
+      const wrappedLines = doc.splitTextToSize(String(line), maxWidth);
+      doc.text(wrappedLines, x, columnY);
+      columnY += Math.max(1, wrappedLines.length) * lineHeight;
+    });
+    return columnY;
+  };
+
+  let y = 18;
+  doc.setFillColor(239, 246, 255);
+  doc.rect(0, 0, 210, 44, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(isReminder ? 18 : 22);
+  doc.setTextColor(15, 23, 42);
+  doc.text(isReminder ? "KOONTILASKUN MAKSUMUISTUTUS" : "KOONTILASKU", leftX, y + 2);
+  doc.setFontSize(14);
+  doc.setTextColor(30, 64, 175);
+  doc.text("Suoraan Kalastajalta", leftX, y + 12);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  if (invoice.periodLabel) {
+    doc.text(`Laskutuskausi: ${invoice.periodLabel}`, leftX, y + 19);
+  }
+  doc.text(invoice.invoiceNumber, rightX, y + 1, { align: "right" });
+  doc.text(`Laskun päiväys: ${invoice.invoiceDate}`, rightX, y + 8, { align: "right" });
+  doc.text(`Eräpäivä: ${invoice.dueDate}`, rightX, y + 14, { align: "right" });
+
+  y = 58;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Laskuttaja", leftX, y);
+  doc.text("Laskutettava", 120, y);
+  y += 6;
+
+  const sellerLines = [
+    invoice.sellerName,
+    invoice.sellerBusinessId ? `Y-tunnus: ${invoice.sellerBusinessId}` : "",
+    invoice.sellerAddress,
+    invoice.sellerEmail,
+    invoice.sellerPhone,
+  ].filter(Boolean);
+  const buyerLines = [
+    invoice.buyerName,
+    invoice.buyerBusinessId ? `Y-tunnus: ${invoice.buyerBusinessId}` : "",
+    invoice.buyerContactName ? `Yhteyshenkilö: ${invoice.buyerContactName}` : "",
+    invoice.buyerBillingAddress,
+    invoice.buyerBillingEmail,
+    invoice.buyerPhone,
+    invoice.buyerDeliveryAddress ? `Toimitusosoite: ${invoice.buyerDeliveryAddress}` : "",
+  ].filter(Boolean);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  const sellerEndY = renderInvoiceColumn(sellerLines, leftX, y, 84);
+  const buyerEndY = renderInvoiceColumn(buyerLines, 120, y, 70);
+
+  y = Math.max(sellerEndY, buyerEndY) + 8;
+  drawInvoiceTableHeader(y);
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+
+  invoice.lineItems.forEach((item) => {
+    const itemLines = doc.splitTextToSize(item.description, 90);
+    const rowHeight = Math.max(10, (itemLines.length * lineHeight) + 4);
+    if (y + rowHeight > tableBottomLimit) {
+      doc.addPage("a4", "portrait");
+      y = 24;
+      drawInvoiceTableHeader(y);
+      y += 8;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(15, 23, 42);
+    }
+    const textY = y + 3.5;
+    doc.text(itemLines, leftX + 2, textY);
+    doc.text(item.quantityDisplay || "-", quantityX, textY, { align: "right" });
+    doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", unitPriceX, textY, { align: "right" });
+    doc.text(euro(item.lineTotal || 0), totalX, textY, { align: "right" });
+    doc.setDrawColor(226, 232, 240);
+    doc.line(leftX, y + rowHeight, rightX, y + rowHeight);
+    y += rowHeight;
+  });
+
+  let totalsY = 214;
+  if (y > 198) {
+    doc.addPage("a4", "portrait");
+    totalsY = 26;
+  }
+  doc.setFillColor(239, 246, 255);
+  doc.roundedRect(122, totalsY - 8, 72, 35, 2, 2, "F");
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text("Veroton yhteensä", 126, totalsY);
+  doc.text(euro(invoice.productTotal), 190, totalsY, { align: "right" });
+  doc.text(`ALV ${(invoice.vatRate * 100).toLocaleString("fi-FI")} %`, 126, totalsY + 10);
+  doc.text(euro(invoice.vatAmount), 190, totalsY + 10, { align: "right" });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("Maksettava yhteensä", 126, totalsY + 22);
+  doc.text(euro(invoice.grandTotal), 190, totalsY + 22, { align: "right" });
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  let infoY = totalsY === 26 ? 33 : 221;
+  doc.text("Maksutiedot", leftX, infoY);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  infoY += 7;
+
+  const drawInfoLine = (text) => {
+    const wrappedLines = doc.splitTextToSize(text, 102);
+    doc.text(wrappedLines, leftX, infoY);
+    infoY += Math.max(1, wrappedLines.length) * lineHeight + 1.4;
+  };
+
+  drawInfoLine(`Saajan nimi: ${invoice.sellerName || "-"}`);
+  drawInfoLine(`IBAN: ${invoice.sellerIban || "-"}`);
+  drawInfoLine(`BIC: ${invoice.sellerBic || "-"}`);
+  drawInfoLine(`Viitenumero: ${invoice.referenceDisplay}`);
+  if (invoice.periodLabel) drawInfoLine(`Laskutuskausi: ${invoice.periodLabel}`);
+  drawInfoLine(`Koottu ${invoice.offerCount} kaupasta`);
+  if (invoice.batchIds.length > 0) drawInfoLine(`Erätunnukset: ${invoice.batchIds.join(", ")}`);
+  if (invoice.catchDates.length > 0) drawInfoLine(`Pyyntipäivät: ${invoice.catchDates.join(", ")}`);
+
+  return { doc, invoice };
+}
+
+async function buildSellerGroupInvoicePdf(offers, sellerProfile, documentKind = "invoice") {
+  const { doc, invoice } = await buildSellerGroupInvoicePdfDoc(offers, sellerProfile, { documentKind });
+  const fileName = documentKind === "reminder" ? `${invoice.invoiceNumber}-maksumuistutus.pdf` : `${invoice.invoiceNumber}.pdf`;
+  await presentPdfDocument(doc, fileName);
+  return invoice;
+}
+
+async function buildSellerGroupInvoiceEmailAttachment(offers, sellerProfile, documentKind = "invoice") {
+  const { doc, invoice } = await buildSellerGroupInvoicePdfDoc(offers, sellerProfile, { documentKind });
+  const isReminder = documentKind === "reminder";
+  return {
+    invoice,
+    documentKind,
+    fileName: isReminder ? `${invoice.invoiceNumber}-maksumuistutus.pdf` : `${invoice.invoiceNumber}.pdf`,
+    pdfBase64: String(doc.output("datauristring") || "").split(",")[1] || "",
+  };
+}
+
 function SellerBillingView({
   profile,
   accountForm,
@@ -4087,6 +4372,9 @@ function SellerBillingView({
   onOpenInvoicePdf,
   onSendInvoicePdf,
   onUpdateBillingStatus,
+  onOpenGroupInvoicePdf,
+  onSendGroupInvoicePdf,
+  onUpdateGroupBillingStatus,
 }) {
   const sellerDeliveredOffers = (buyerOffers || []).filter((offer) => (
     offer.status === "accepted" &&
@@ -4094,6 +4382,27 @@ function SellerBillingView({
     String(offer.seller_user_id || "") === String(profile?.id || "") &&
     (billingFilter === "all" || String(offer.billing_status || "unbilled") === billingFilter)
   ));
+
+  const groupedInvoices = Object.values(sellerDeliveredOffers.reduce((acc, offer) => {
+    const monthKey = getOfferBillingMonthValue(offer) || "Ei kuukautta";
+    const buyerKey = String(offer.buyer_id || offer.buyer_email || "ostaja").trim().toLowerCase() || "ostaja";
+    const groupKey = `${monthKey}__${buyerKey}`;
+    if (!acc[groupKey]) {
+      acc[groupKey] = {
+        id: groupKey,
+        monthKey,
+        buyerLabel: offer.buyer_company_name || offer.buyer_contact_name || offer.buyer_email || "Ostaja",
+        buyerBillingEmail: offer.buyer_billing_email || offer.buyer_email || "",
+        billingStatus: offer.billing_status || "unbilled",
+        offers: [],
+      };
+    }
+    acc[groupKey].offers.push(offer);
+    return acc;
+  }, {})).sort((a, b) => {
+    if (a.monthKey === b.monthKey) return a.buyerLabel.localeCompare(b.buyerLabel, "fi");
+    return b.monthKey.localeCompare(a.monthKey, "fi");
+  });
 
   return (
     <div style={styles.stack}>
@@ -4144,6 +4453,80 @@ function SellerBillingView({
             {accountSaving ? "Tallennetaan..." : "Tallenna pankkitiedot"}
           </button>
         </div>
+      </div>
+
+      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+        <div>
+          <strong>Koontilaskut</strong>
+          <div style={styles.muted}>Muodosta samalla ostajalle yksi lasku koko kuukauden toimitetuista kaupoista. Yksittäiset laskut säilyvät silti alla ennallaan.</div>
+        </div>
+        {groupedInvoices.length === 0 ? (
+          <div style={styles.muted}>Ei koottavia kauppoja tällä suodattimella.</div>
+        ) : (
+          groupedInvoices.map((group) => {
+            const invoicePayload = getSellerGroupInvoicePayload(group.offers, profile);
+            const isReminderGroup = group.billingStatus === "invoiced";
+            const isPaidGroup = group.billingStatus === "paid";
+            const canCreateInvoicePdf = Boolean(accountForm.bankAccountIban.trim()) && Boolean(invoicePayload.buyerBillingEmail);
+            return (
+              <div key={group.id} style={{ ...styles.entry, background: "#f8fafc" }}>
+                <div style={styles.rowBetween}>
+                  <div>
+                    <strong>{group.buyerLabel}</strong>
+                    <div style={styles.muted}>Kuukausi: {group.monthKey}</div>
+                  </div>
+                  <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>
+                    {group.billingStatus === "paid" ? "Maksettu" : group.billingStatus === "invoiced" ? "Laskutettu" : "Laskuttamaton"}
+                  </span>
+                </div>
+
+                <div style={styles.entryBadges}>
+                  <span style={styles.badge}>{group.offers.length} kauppaa</span>
+                  <span style={styles.badge}>{euro(invoicePayload.productTotal)} veroton</span>
+                  <span style={styles.badge}>ALV {(invoicePayload.vatRate * 100).toLocaleString("fi-FI")} % {euro(invoicePayload.vatAmount)}</span>
+                  <span style={{ ...styles.badge, background: "#eff6ff" }}>{euro(invoicePayload.grandTotal)} koontilasku</span>
+                </div>
+
+                <div style={styles.muted}>Laskutussähköposti: {invoicePayload.buyerBillingEmail || "-"}</div>
+                {invoicePayload.batchIds.length > 0 ? <div style={styles.muted}>Erätunnukset: {invoicePayload.batchIds.join(", ")}</div> : null}
+
+                <div style={styles.row}>
+                  <button
+                    type="button"
+                    style={styles.button}
+                    onClick={() => onOpenGroupInvoicePdf(group.offers)}
+                    disabled={!accountForm.bankAccountIban.trim()}
+                  >
+                    {isPaidGroup ? "Luo koontilaskun kopio PDF" : isReminderGroup ? "Luo koontimaksumuistutus (PDF)" : "Luo koontilasku (PDF)"}
+                  </button>
+                  {!isPaidGroup ? (
+                    <button
+                      type="button"
+                      style={{ ...styles.button, ...styles.primaryButton }}
+                      onClick={() => onSendGroupInvoicePdf(group.offers)}
+                      disabled={!canCreateInvoicePdf}
+                    >
+                      {isReminderGroup ? "Lähetä koontimaksumuistutus" : "Lähetä koontilasku sähköpostilla"}
+                    </button>
+                  ) : null}
+                  {group.billingStatus !== "paid" ? (
+                    <button style={styles.button} onClick={() => onUpdateGroupBillingStatus(group.offers, "paid")}>Merkitse ryhmä maksetuksi</button>
+                  ) : null}
+                  {group.billingStatus !== "unbilled" ? (
+                    <button style={styles.button} onClick={() => onUpdateGroupBillingStatus(group.offers, "unbilled")}>Palauta ryhmä laskuttamattomaksi</button>
+                  ) : null}
+                </div>
+
+                {!accountForm.bankAccountIban.trim() ? (
+                  <div style={styles.noticeError}>Lisää IBAN pankkitietoihin ennen koontilaskun muodostamista.</div>
+                ) : null}
+                {!invoicePayload.buyerBillingEmail ? (
+                  <div style={styles.noticeError}>Ostajalle ei ole tallennettu laskutussähköpostia.</div>
+                ) : null}
+              </div>
+            );
+          })
+        )}
       </div>
 
       {sellerDeliveredOffers.length === 0 ? (
@@ -7826,8 +8209,7 @@ export default function App() {
     }));
   };
 
-  const handleUpdateBillingStatus = async (offer, billingStatus) => {
-    const patch = {
+  const buildBillingStatusPatch = (offer, billingStatus) => ({
       billing_status: billingStatus,
       billed_at: billingStatus === "invoiced" ? new Date().toISOString() : null,
       paid_at: billingStatus === "paid" ? new Date().toISOString() : null,
@@ -7842,7 +8224,10 @@ export default function App() {
       commission_rate: COMMISSION_RATE,
       trade_value: calculateCommissionDetails(offer).tradeValue,
       commission_amount: calculateCommissionDetails(offer).commissionValue,
-    };
+    });
+
+  const handleUpdateBillingStatus = async (offer, billingStatus) => {
+    const patch = buildBillingStatusPatch(offer, billingStatus);
 
     const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offer.id);
     if (error) {
@@ -7860,6 +8245,33 @@ export default function App() {
         : billingStatus === "invoiced"
         ? "Kauppa merkitty laskutetuksi."
         : "Kauppa palautettu laskuttamattomaksi."
+    );
+    setRefreshTick((prev) => prev + 1);
+  };
+
+  const handleUpdateGroupBillingStatus = async (offers, billingStatus) => {
+    const targetOffers = Array.isArray(offers) ? offers.filter(Boolean) : [];
+    if (targetOffers.length === 0) return;
+
+    for (const offer of targetOffers) {
+      const patch = buildBillingStatusPatch(offer, billingStatus);
+      const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offer.id);
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        setAuthError(error.message);
+        return;
+      }
+    }
+
+    setAuthInfo(
+      billingStatus === "paid"
+        ? "Koontilaskun kaikki kaupat merkitty maksetuiksi."
+        : billingStatus === "invoiced"
+        ? "Koontilaskun kaikki kaupat merkitty laskutetuiksi."
+        : "Koontilaskun kaikki kaupat palautettu laskuttamattomiksi."
     );
     setRefreshTick((prev) => prev + 1);
   };
@@ -7939,6 +8351,66 @@ export default function App() {
       batchId: offer?.batch_id,
     });
     setAuthInfo(`Maksumuistutus ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
+  };
+
+  const handleOpenSellerGroupInvoicePdf = async (offers) => {
+    if (!profile?.bank_account_iban) {
+      setAuthError("Lisää IBAN pankkitietoihin ennen koontilasku-PDF:n muodostamista.");
+      return;
+    }
+    setAuthError("");
+    const currentStatus = String(offers?.[0]?.billing_status || "unbilled");
+    await buildSellerGroupInvoicePdf(offers, profile, currentStatus === "invoiced" ? "reminder" : "invoice");
+  };
+
+  const handleSendSellerGroupInvoicePdf = async (offers) => {
+    if (!profile?.bank_account_iban) {
+      setAuthError("Lisää IBAN pankkitietoihin ennen koontilaskun lähettämistä.");
+      return;
+    }
+    const currentStatus = String(offers?.[0]?.billing_status || "unbilled");
+    const documentKind = currentStatus === "invoiced" ? "reminder" : "invoice";
+    const attachment = await buildSellerGroupInvoiceEmailAttachment(offers, profile, documentKind);
+    if (!attachment.invoice.buyerBillingEmail) {
+      setAuthError("Ostajalle ei ole tallennettu laskutussähköpostia.");
+      return;
+    }
+    if (!attachment.pdfBase64) {
+      setAuthError("Koontilasku-PDF:n muodostus epäonnistui.");
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    const { error } = await invokeEdgeFunctionAuthenticated("send-seller-invoice-email", {
+      invoiceEmail: attachment.invoice.buyerBillingEmail,
+      invoiceNumber: attachment.invoice.invoiceNumber,
+      referenceNumber: attachment.invoice.referenceDisplay,
+      sellerName: attachment.invoice.sellerName,
+      buyerName: attachment.invoice.buyerName,
+      totalAmount: euro(attachment.invoice.grandTotal),
+      dueDate: attachment.invoice.dueDate,
+      documentKind,
+      fileName: attachment.fileName,
+      pdfBase64: attachment.pdfBase64,
+    }, accessToken);
+
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message || "Koontilaskun lähetys epäonnistui.");
+      return;
+    }
+
+    if (documentKind === "invoice") {
+      await handleUpdateGroupBillingStatus(offers, "invoiced");
+      setAuthInfo(`Koontilasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
+      return;
+    }
+
+    setAuthInfo(`Koontimaksumuistutus ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
   };
 
   const updateFulfillmentStatus = async (offer, fulfillmentStatus) => {
@@ -11347,6 +11819,9 @@ export default function App() {
               onOpenInvoicePdf={handleOpenSellerInvoicePdf}
               onSendInvoicePdf={handleSendSellerInvoicePdf}
               onUpdateBillingStatus={handleUpdateBillingStatus}
+              onOpenGroupInvoicePdf={handleOpenSellerGroupInvoicePdf}
+              onSendGroupInvoicePdf={handleSendSellerGroupInvoicePdf}
+              onUpdateGroupBillingStatus={handleUpdateGroupBillingStatus}
             />
         ) : null}
 
