@@ -134,26 +134,57 @@ const styles = {
 function renderOvalMark(establishmentNumber) {
   if (!establishmentNumber) return null;
   return (
-    <div
-      style={{
-        width: "34mm",
-        height: "21mm",
-        border: "0.35mm solid #0f172a",
-        borderRadius: "999px / 70%",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#fff",
-        lineHeight: 1,
-        paddingTop: "0.6mm",
-        paddingBottom: "0.2mm",
-      }}
+    <svg
+      width="40mm"
+      height="22mm"
+      viewBox="0 0 160 90"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-label={`Laitostunnus ${establishmentNumber}`}
+      style={{ display: "block" }}
     >
-      <div style={{ fontSize: "8.4pt", fontWeight: 500, letterSpacing: "0.01em" }}>FI</div>
-      <div style={{ fontSize: "12.5pt", fontWeight: 500, marginTop: "0.8mm", letterSpacing: "0.01em" }}>{establishmentNumber}</div>
-      <div style={{ fontSize: "8.4pt", fontWeight: 500, marginTop: "0.8mm", letterSpacing: "0.01em" }}>EC</div>
-    </div>
+      <ellipse
+        cx="80"
+        cy="45"
+        rx="72"
+        ry="36"
+        fill="white"
+        stroke="black"
+        strokeWidth="2"
+      />
+      <text
+        x="80"
+        y="28"
+        textAnchor="middle"
+        fontFamily="Arial, sans-serif"
+        fontSize="14"
+        fontWeight="700"
+        fill="black"
+      >
+        FI
+      </text>
+      <text
+        x="80"
+        y="50"
+        textAnchor="middle"
+        fontFamily="Arial, sans-serif"
+        fontSize="18"
+        fontWeight="700"
+        fill="black"
+      >
+        {establishmentNumber}
+      </text>
+      <text
+        x="80"
+        y="72"
+        textAnchor="middle"
+        fontFamily="Arial, sans-serif"
+        fontSize="14"
+        fontWeight="700"
+        fill="black"
+      >
+        EC
+      </text>
+    </svg>
   );
 }
 
