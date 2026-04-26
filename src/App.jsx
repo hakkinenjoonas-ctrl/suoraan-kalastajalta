@@ -949,6 +949,21 @@ function extractFineliComponentEntries(foodPayload) {
 }
 
 function extractNutritionSnapshotFromFineliFood(foodPayload, componentIdsByKey) {
+  const directSnapshot = {
+    energyKj: parseFineliNumeric(foodPayload?.energy),
+    energyKcal: parseFineliNumeric(foodPayload?.energyKcal ?? foodPayload?.energyKcalValue),
+    fat: parseFineliNumeric(foodPayload?.fat),
+    saturatedFat: parseFineliNumeric(foodPayload?.saturatedFat ?? foodPayload?.saturated_fat),
+    carbohydrate: parseFineliNumeric(foodPayload?.carbohydrate),
+    sugars: parseFineliNumeric(foodPayload?.sugar ?? foodPayload?.sugars),
+    protein: parseFineliNumeric(foodPayload?.protein),
+    salt: parseFineliNumeric(foodPayload?.salt),
+  };
+  const hasDirectValues = Object.values(directSnapshot).some((value) => value != null);
+  if (hasDirectValues) {
+    return directSnapshot;
+  }
+
   const entries = extractFineliComponentEntries(foodPayload).map((entry) => ({
     id: String(
       entry?.componentId ??
