@@ -746,6 +746,7 @@ function buildProcessedProductPayload(formState, ownerUserId) {
     species_summary: String(formState.speciesSummary || "").trim() || null,
     ingredients: String(formState.ingredients || "").trim() || null,
     allergens: String(formState.allergens || "").trim() || null,
+    storage_temperature: String(formState.storageTemperature || "").trim() || null,
     storage_instructions: String(formState.storageInstructions || "").trim() || null,
     package_size_g: formState.packageSizeG === "" ? null : Number(formState.packageSizeG),
     notes: String(formState.notes || "").trim() || null,
@@ -797,6 +798,7 @@ function buildProcessedLabelData(entry, profileLike) {
     netWeightText,
     dateLabel,
     dateValue,
+    storageTemperatureText: String(entry?.storageTemperature || entry?.storage_temperature || "").trim(),
     storageText: String(entry?.storageInstructions || entry?.storage_instructions || entry?.storageText || "").trim(),
     batchId: String(entry?.batchId || entry?.batch_id || "").trim(),
     operatorName,
@@ -4829,6 +4831,7 @@ export default function App() {
     speciesSummary: "",
     ingredients: "",
     allergens: "",
+    storageTemperature: "",
     storageInstructions: "",
     kilos: "",
     packageSizeG: "",
@@ -6368,6 +6371,7 @@ export default function App() {
             speciesSummary: entry.species_summary || "",
             ingredients: entry.ingredients || "",
             allergens: entry.allergens || "",
+            storageTemperature: entry.storage_temperature || "",
             storageInstructions: entry.storage_instructions || "",
             kilos: Number(entry.kilos || 0),
             packageSizeG: entry.package_size_g == null ? "" : Number(entry.package_size_g),
@@ -6428,6 +6432,7 @@ export default function App() {
             speciesSummary: item.species_summary || "",
             ingredients: item.ingredients || "",
             allergens: item.allergens || "",
+            storageTemperature: item.storage_temperature || "",
             storageInstructions: item.storage_instructions || "",
             packageSizeG: item.package_size_g == null ? "" : Number(item.package_size_g),
             notes: item.notes || "",
@@ -9655,6 +9660,7 @@ export default function App() {
       species_summary: processedForm.speciesSummary.trim(),
       ingredients: processedForm.ingredients.trim() || null,
       allergens: processedForm.allergens.trim() || null,
+      storage_temperature: processedForm.storageTemperature || null,
       storage_instructions: processedForm.storageInstructions.trim() || null,
       kilos: Number(processedForm.kilos || 0),
       package_size_g: processedForm.packageSizeG === "" ? null : Number(processedForm.packageSizeG),
@@ -9763,6 +9769,7 @@ export default function App() {
       ingredients: "",
       allergens: "",
       storageInstructions: "",
+      storageTemperature: "",
       kilos: "",
       packageSizeG: "",
       packageCount: "",
@@ -10993,6 +11000,7 @@ export default function App() {
                         speciesSummary: selectedProduct.speciesSummary || "",
                         ingredients: selectedProduct.ingredients || "",
                         allergens: selectedProduct.allergens || "",
+                        storageTemperature: selectedProduct.storageTemperature || "",
                         storageInstructions: selectedProduct.storageInstructions || "",
                         packageSizeG: selectedProduct.packageSizeG === "" ? "" : selectedProduct.packageSizeG,
                         notes: selectedProduct.notes || "",
@@ -11060,6 +11068,14 @@ export default function App() {
                 <div style={styles.field}><label>Tuotenimi</label><input style={styles.input} value={processedForm.productName} onChange={(e) => setProcessedForm({ ...processedForm, productName: e.target.value })} placeholder="Esim. Kylmäsavulohi viipale" /></div>
                 <div style={styles.field}><label>Tuotetyyppi</label><select style={styles.input} value={processedForm.productType} onChange={(e) => setProcessedForm({ ...processedForm, productType: e.target.value })}>{processedProductTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
                 <div style={styles.field}><label>Käsittelytapa</label><select style={styles.input} value={processedForm.processingMethod} onChange={(e) => setProcessedForm({ ...processedForm, processingMethod: e.target.value })}>{processingMethods.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
+                <div style={styles.field}>
+                  <label>Säilytys</label>
+                  <select style={styles.input} value={processedForm.storageTemperature} onChange={(e) => setProcessedForm({ ...processedForm, storageTemperature: e.target.value })}>
+                    <option value="">Valitse</option>
+                    <option value="0-2 °C">0-2 °C</option>
+                    <option value="-18 °C">-18 °C</option>
+                  </select>
+                </div>
                 <div style={styles.field}>
                   <label>Tuotteen tila</label>
                   <select style={styles.input} value={processedForm.productState} onChange={(e) => setProcessedForm({ ...processedForm, productState: e.target.value })}>

@@ -238,6 +238,7 @@ export default function ProcessedLabel4x3({ label }) {
             <LabelLine label="Pyydystyyppi" value={label.gearType} />
             <LabelLine label="Nettopaino" value={label.netWeightText} strong />
             <LabelLine label={label.dateLabel} value={label.dateValue} strong />
+            <LabelLine label="Sailytys" value={label.storageTemperatureText} strong />
             <LabelLine label="Sailytysohje" value={label.storageText} />
             <LabelLine label="Pyyntialue" value={label.catchAreaText} />
             <LabelLine label="Tuotteen tila" value={label.productStateText} />
