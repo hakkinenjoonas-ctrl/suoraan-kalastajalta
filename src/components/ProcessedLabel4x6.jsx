@@ -26,7 +26,7 @@ const styles = {
     color: palette.text,
     fontFamily: "\"Avenir Next\", \"Helvetica Neue\", Arial, sans-serif",
     display: "grid",
-    gridTemplateRows: "22mm 1fr 40mm",
+    gridTemplateRows: "22mm 1fr",
     gap: "2.4mm",
   },
   brand: {
@@ -58,11 +58,17 @@ const styles = {
     color: palette.muted,
   },
   main: {
+    display: "grid",
+    gridTemplateColumns: "1fr 35mm",
+    gap: "3.2mm",
+    minWidth: 0,
+    minHeight: 0,
+  },
+  mainLeft: {
     display: "flex",
     flexDirection: "column",
     minWidth: 0,
     minHeight: 0,
-    gap: "1.4mm",
   },
   productName: {
     fontSize: "24pt",
@@ -114,14 +120,13 @@ const styles = {
     fontSize: "7.6pt",
     lineHeight: 1.05,
   },
-  footer: {
-    display: "grid",
-    gridTemplateColumns: "35mm 1fr",
-    gap: "3.2mm",
-    alignItems: "start",
+  sideColumn: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: "2.4mm",
+    minWidth: 0,
     minHeight: 0,
-    paddingTop: "2mm",
-    borderTop: `0.45mm solid ${palette.border}`,
   },
   qrFrame: {
     width: "35mm",
@@ -143,6 +148,8 @@ const styles = {
     display: "grid",
     gap: "0.8mm",
     alignContent: "start",
+    paddingTop: "1.8mm",
+    borderTop: `0.45mm solid ${palette.border}`,
   },
   supplierLine: {
     fontSize: "8.1pt",
@@ -280,40 +287,42 @@ export default function ProcessedLabel4x6({ label }) {
       </section>
 
       <section style={styles.main}>
-        <div style={styles.productName}>{label.productName || "Jalostettu kalatuote"}</div>
-        {label.batchId ? (
-          <div style={styles.batchBox}>
-            <div style={styles.batchText}>Eratunnus: {label.batchId}</div>
+        <div style={styles.mainLeft}>
+          <div style={styles.productName}>{label.productName || "Jalostettu kalatuote"}</div>
+          {label.batchId ? (
+            <div style={styles.batchBox}>
+              <div style={styles.batchText}>Eratunnus: {label.batchId}</div>
+            </div>
+          ) : null}
+
+          <div style={styles.infoGrid}>
+            <LabelLine label="Raaka-aine" value={label.speciesSummary} />
+            <LabelLine label="Laji" value={label.speciesNameFi} />
+            <LabelLine label="Tieteellinen nimi" value={label.speciesNameScientific} />
+            <LabelLine label="Tuotetyyppi" value={label.productType} />
+            <LabelLine label="Kasittely" value={label.processingMethod} />
+            <LabelLine label="Pyydystyyppi" value={label.gearType} />
+            <LabelLine label="Nettopaino" value={label.netWeightText} strong />
+            <LabelLine label={label.dateLabel} value={label.dateValue} strong />
+            <LabelLine label="Sailytys" value={label.storageTemperatureText} strong />
+            <LabelLine label="Sailytysohje" value={label.storageText} />
+            <LabelLine label="Pyyntialue" value={label.catchAreaText} />
+            <LabelLine label="Tuotteen tila" value={label.productStateText} />
+            <LabelLine label="Ainesosat" content={renderHighlightedIngredients(label.ingredientsText, label.allergensText)} />
+            <LabelLine label="Allergeenit" value={label.allergensText} strong />
           </div>
-        ) : null}
-
-        <div style={styles.infoGrid}>
-          <LabelLine label="Raaka-aine" value={label.speciesSummary} />
-          <LabelLine label="Laji" value={label.speciesNameFi} />
-          <LabelLine label="Tieteellinen nimi" value={label.speciesNameScientific} />
-          <LabelLine label="Tuotetyyppi" value={label.productType} />
-          <LabelLine label="Kasittely" value={label.processingMethod} />
-          <LabelLine label="Pyydystyyppi" value={label.gearType} />
-          <LabelLine label="Nettopaino" value={label.netWeightText} strong />
-          <LabelLine label={label.dateLabel} value={label.dateValue} strong />
-          <LabelLine label="Sailytys" value={label.storageTemperatureText} strong />
-          <LabelLine label="Sailytysohje" value={label.storageText} />
-          <LabelLine label="Pyyntialue" value={label.catchAreaText} />
-          <LabelLine label="Tuotteen tila" value={label.productStateText} />
-          <LabelLine label="Ainesosat" content={renderHighlightedIngredients(label.ingredientsText, label.allergensText)} />
-          <LabelLine label="Allergeenit" value={label.allergensText} strong />
+          <NutritionBlock rows={label.nutritionRows} />
         </div>
-        <NutritionBlock rows={label.nutritionRows} />
-      </section>
 
-      <section style={styles.footer}>
-        <div style={styles.qrFrame}>
-          {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
-        </div>
-        <div style={styles.supplierBlock}>
-          <div style={styles.supplierLine}><strong>Toimija:</strong> {label.operatorName || "-"}</div>
-          {label.operatorAddress ? <div style={styles.supplierLine}>{label.operatorAddress}</div> : null}
-          {label.operatorEmail ? <div style={styles.supplierLine}>{label.operatorEmail}</div> : null}
+        <div style={styles.sideColumn}>
+          <div style={styles.qrFrame}>
+            {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
+          </div>
+          <div style={styles.supplierBlock}>
+            <div style={styles.supplierLine}><strong>Toimija:</strong> {label.operatorName || "-"}</div>
+            {label.operatorAddress ? <div style={styles.supplierLine}>{label.operatorAddress}</div> : null}
+            {label.operatorEmail ? <div style={styles.supplierLine}>{label.operatorEmail}</div> : null}
+          </div>
         </div>
       </section>
     </div>
