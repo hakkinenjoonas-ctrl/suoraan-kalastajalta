@@ -138,7 +138,7 @@ const styles = {
   qrColumn: {
     display: "flex",
     flexDirection: "column",
-    justifyContent: "flex-end",
+    justifyContent: "flex-start",
     alignItems: "flex-end",
     minHeight: 0,
   },
