@@ -301,7 +301,6 @@ export default function ProcessedLabel4x3({ label }) {
             <LabelLine label="Laji" value={label.speciesNameFi} />
             <LabelLine label="Tieteellinen nimi" value={label.speciesNameScientific} />
             <LabelLine label="Tuotetyyppi" value={label.productType} />
-            <LabelLine label="Kasittely" value={label.processingMethod} />
             <LabelLine label="Pyydystyyppi" value={label.gearType} />
             <LabelLine label="Nettopaino" value={label.netWeightText} strong />
             <LabelLine label={label.dateLabel} value={label.dateValue} strong />

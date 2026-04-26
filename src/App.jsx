@@ -12552,7 +12552,7 @@ export default function App() {
                       <div style={styles.muted}>{entry.productionDate} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                       {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                       {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
-                      <div style={styles.muted}>Käsittely: {entry.processingMethod || "-"} · Raaka-aine: {entry.speciesSummary || "-"}</div>
+                      <div style={styles.muted}>Raaka-aine: {entry.speciesSummary || "-"}</div>
                       {Array.isArray(entry.sourceBatches) && entry.sourceBatches.length > 0 ? (
                         <div style={{ ...styles.stack, gap: 8, marginTop: 8 }}>
                           <div style={styles.muted}><strong>Linkitetyt lähde-erät</strong></div>
