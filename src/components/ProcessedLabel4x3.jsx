@@ -118,7 +118,8 @@ const styles = {
   qrColumn: {
     display: "flex",
     flexDirection: "column",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
+    alignItems: "flex-end",
     minHeight: 0,
   },
   qrFrame: {
@@ -129,7 +130,6 @@ const styles = {
     borderRadius: "1.8mm",
     background: "#fff",
     boxSizing: "border-box",
-    marginLeft: "auto",
   },
   qrImage: {
     width: "100%",
