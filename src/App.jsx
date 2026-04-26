@@ -854,22 +854,27 @@ function extractFineliEntryValue(entry) {
   const directCandidates = [
     entry?.value,
     entry?.amount,
+    entry?.componentValue,
+    entry?.component_value,
+    entry?.foodComponentValue,
+    entry?.food_component_value,
+    entry?.quantity,
+    entry?.quantityValue,
+    entry?.quantity_value,
+    entry?.numericValue,
+    entry?.numeric_value,
     entry?.bestLocationValue,
     entry?.best_location_value,
     entry?.calculatedValue,
     entry?.calculated_value,
     entry?.median,
     entry?.mean,
+    entry?.component?.value,
+    entry?.component?.amount,
   ];
   for (const candidate of directCandidates) {
     const parsed = parseFineliNumeric(candidate);
     if (parsed != null) return parsed;
-  }
-  if (entry && typeof entry === "object") {
-    for (const value of Object.values(entry)) {
-      const parsed = parseFineliNumeric(value);
-      if (parsed != null) return parsed;
-    }
   }
   return null;
 }
