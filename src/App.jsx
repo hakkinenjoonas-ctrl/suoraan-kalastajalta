@@ -1005,6 +1005,8 @@ function extractFineliComponentEntries(foodPayload) {
 }
 
 function extractNutritionSnapshotFromFineliFood(foodPayload, componentIdsByKey) {
+  const directSaltValue = parseFineliNumeric(foodPayload?.salt);
+  const normalizedDirectSaltValue = directSaltValue != null && directSaltValue > 100 ? directSaltValue / 1000 : directSaltValue;
   const directSnapshot = {
     energyKj: parseFineliNumeric(foodPayload?.energy),
     energyKcal: parseFineliNumeric(foodPayload?.energyKcal ?? foodPayload?.energyKcalValue),
@@ -1013,7 +1015,7 @@ function extractNutritionSnapshotFromFineliFood(foodPayload, componentIdsByKey) 
     carbohydrate: parseFineliNumeric(foodPayload?.carbohydrate),
     sugars: parseFineliNumeric(foodPayload?.sugar ?? foodPayload?.sugars),
     protein: parseFineliNumeric(foodPayload?.protein),
-    salt: parseFineliNumeric(foodPayload?.salt),
+    salt: normalizedDirectSaltValue,
   };
   const hasDirectValues = Object.values(directSnapshot).some((value) => value != null);
   if (hasDirectValues) {
