@@ -1300,6 +1300,61 @@ function getAppLogoUrl() {
   return new URL("/logo.png", window.location.origin).toString();
 }
 
+function createInitialProcessedForm() {
+  return {
+    productionDate: today(),
+    bestBeforeDate: "",
+    useByDate: "",
+    area: "Saimaa",
+    municipality: "",
+    originCity: "",
+    spot: "",
+    productName: "",
+    productType: "Filee",
+    processingMethod: "Fileointi",
+    productState: "",
+    speciesNameFi: "",
+    speciesNameScientific: "",
+    gearType: "",
+    speciesSummary: "",
+    ingredients: "",
+    allergens: "",
+    storageTemperature: "",
+    storageInstructions: "",
+    kilos: "",
+    packageSizeG: "",
+    packageCount: "",
+    notes: "",
+    listForSale: false,
+    offerToShops: false,
+    offerToRestaurants: false,
+    offerToWholesalers: false,
+    deliveryPossible: false,
+    deliveryMethod: "Myyjä toimittaa",
+    transportMode: "",
+    originPointId: "",
+    transportCompanyId: "north-fresh-logistics",
+    pickupAddress: "",
+    pickupSurcharge: "",
+    estimatedPickupTime: "",
+    pickupPostal: "",
+    deliveryAddress: "",
+    deliveryPostal: "",
+    palletType: "EUR-lava",
+    palletCount: "1",
+    tailLift: false,
+    pickupWindow: "",
+    deliveryWindow: "",
+    transportNotes: "",
+    deliveryDestinations: initialCatchDefaults.deliveryDestinations || [],
+    deliveryArea: initialCatchDefaults.deliveryArea || "",
+    deliveryCost: "",
+    earliestDeliveryDate: today(),
+    coldTransport: true,
+    sourceEntryIds: [],
+  };
+}
+
 const CATCH_LABEL_FORMAT_APLI_1278 = "apli_1278";
 const CATCH_LABEL_FORMAT_MUNBYN_4X3 = "munbyn_4x3";
 const CATCH_LABEL_FORMAT_MUNBYN_4X6 = "munbyn_4x6";
@@ -5280,58 +5335,7 @@ export default function App() {
   const [savedNetMeshSizeOptions, setSavedNetMeshSizeOptions] = useState(() => getStoredCatchFormDefaults().netMeshSizeOptions || []);
   const [savedFykeHeightOptions, setSavedFykeHeightOptions] = useState(() => getStoredCatchFormDefaults().fykeHeightOptions || []);
   const [speciesRows, setSpeciesRows] = useState([createSpeciesRow()]);
-  const [processedForm, setProcessedForm] = useState({
-    productionDate: today(),
-    bestBeforeDate: "",
-    useByDate: "",
-    area: "Saimaa",
-    municipality: "",
-    originCity: "",
-    spot: "",
-    productName: "",
-    productType: "Filee",
-    processingMethod: "Fileointi",
-    productState: "",
-    speciesNameFi: "",
-    speciesNameScientific: "",
-    gearType: "",
-    speciesSummary: "",
-    ingredients: "",
-    allergens: "",
-    storageTemperature: "",
-    storageInstructions: "",
-    kilos: "",
-    packageSizeG: "",
-    packageCount: "",
-    notes: "",
-    listForSale: false,
-    offerToShops: false,
-    offerToRestaurants: false,
-    offerToWholesalers: false,
-    deliveryPossible: false,
-        deliveryMethod: "Myyjä toimittaa",
-    transportMode: "",
-    originPointId: "",
-    transportCompanyId: "north-fresh-logistics",
-    pickupAddress: "",
-    pickupSurcharge: "",
-    estimatedPickupTime: "",
-    pickupPostal: "",
-    deliveryAddress: "",
-    deliveryPostal: "",
-    palletType: "EUR-lava",
-    palletCount: "1",
-    tailLift: false,
-    pickupWindow: "",
-    deliveryWindow: "",
-    transportNotes: "",
-    deliveryDestinations: initialCatchDefaults.deliveryDestinations || [],
-    deliveryArea: initialCatchDefaults.deliveryArea || "",
-    deliveryCost: "",
-    earliestDeliveryDate: today(),
-    coldTransport: true,
-    sourceEntryIds: [],
-  });
+  const [processedForm, setProcessedForm] = useState(createInitialProcessedForm);
   const [processedProducts, setProcessedProducts] = useState([]);
   const [selectedProcessedProductId, setSelectedProcessedProductId] = useState("");
   const [saveProcessedAsProduct, setSaveProcessedAsProduct] = useState(false);
@@ -10358,49 +10362,7 @@ export default function App() {
     setSaveProcessedAsProduct(false);
     setProcessedRecipeRows([createProcessedRecipeRow()]);
     setProcessedAreaSelector("Saimaa");
-    setProcessedForm((prev) => ({
-      productionDate: today(),
-      bestBeforeDate: "",
-      useByDate: "",
-      area: "Saimaa",
-      municipality: "",
-      originCity: "",
-      spot: "",
-      productName: "",
-      productType: "Filee",
-      processingMethod: "Fileointi",
-      productState: "",
-      speciesNameFi: "",
-      speciesNameScientific: "",
-      gearType: "",
-      speciesSummary: "",
-      ingredients: "",
-      allergens: "",
-      storageInstructions: "",
-      storageTemperature: "",
-      kilos: "",
-      packageSizeG: "",
-      packageCount: "",
-      notes: "",
-      listForSale: false,
-      offerToShops: false,
-      offerToRestaurants: false,
-      offerToWholesalers: false,
-      deliveryPossible: false,
-      deliveryMethod: "Nouto",
-      transportMode: "",
-      originPointId: "",
-      transportCompanyId: "north-fresh-logistics",
-      pickupAddress: "",
-      pickupSurcharge: "",
-      estimatedPickupTime: "",
-      deliveryDestinations: prev.deliveryDestinations || [],
-      deliveryArea: formatDeliveryDestinations(prev.deliveryDestinations) || prev.deliveryArea || "",
-      deliveryCost: "",
-      earliestDeliveryDate: today(),
-      coldTransport: true,
-      sourceEntryIds: [],
-    }));
+    setProcessedForm(createInitialProcessedForm());
     setRefreshTick((prev) => prev + 1);
     setActiveTab("entries");
   };
@@ -11632,6 +11594,9 @@ export default function App() {
                       onClick={() => {
                         setSelectedProcessedProductId("");
                         setSaveProcessedAsProduct(false);
+                        setProcessedAreaSelector(resolveAreaSelectorValue("Saimaa", savedCustomLakeAreas, savedCustomSeaAreas));
+                        setProcessedForm(createInitialProcessedForm());
+                        setProcessedRecipeRows([createProcessedRecipeRow()]);
                       }}
                     >
                       Tyhjennä valinta
