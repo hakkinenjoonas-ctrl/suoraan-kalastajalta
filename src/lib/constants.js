@@ -69,7 +69,7 @@ export const transportModeLabels = {
   pickup: "Kuljetusfirma noutaa",
   collection_point: "Vie keräilypisteeseen",
 };
-export const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Pakaste", "Massa", "Pyörykät", "Pihvit", "Muu"];
+export const processedProductTypes = ["Filee", "Graavi", "Kylmäsavu", "Lämminsavu", "Mäti", "Massa", "Pyörykät", "Pihvit", "Muu"];
 export const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "Lämminsavustus", "Pakastaminen", "Jauhatus", "Kypsennys", "Muu"];
 export const COMMISSION_RATE = 0.03;
 export const PUSH_CHANNEL_ID = "trade_events_blop_v3";
