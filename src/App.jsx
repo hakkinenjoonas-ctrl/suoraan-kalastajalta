@@ -10092,34 +10092,34 @@ export default function App() {
                       flexShrink: 0,
                     }}
                   />
-                </div>
-                <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · Rooli: <strong>{roleLabel(profile?.role)}</strong></p>
               </div>
-              <div style={styles.toolbar}>
-                <div style={styles.toolbarActions}>
-                  {availableRoleOptions.length > 1 ? (
-                    <select
-                      style={styles.input}
-                      value={activeRoleOption?.id || ""}
-                      onChange={(e) => {
-                        const selectedRole = availableRoleOptions.find((option) => String(option.id) === String(e.target.value));
-                        if (selectedRole) {
-                          handleRoleSelect(selectedRole);
-                        }
-                      }}
-                    >
-                      {availableRoleOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {buildRoleOptionLabel(option, buyers)}
-                        </option>
-                      ))}
-                    </select>
-                  ) : null}
-                  <button type="button" style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
-                  <button type="button" style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
-                  <button type="button" style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
-                </div>
+              <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · Rooli: <strong>{roleLabel(profile?.role)}</strong></p>
+            </div>
+            <div style={styles.toolbar}>
+              {availableRoleOptions.length > 1 ? (
+                <select
+                  style={styles.input}
+                  value={activeRoleOption?.id || ""}
+                  onChange={(e) => {
+                    const selectedRole = availableRoleOptions.find((option) => String(option.id) === String(e.target.value));
+                    if (selectedRole) {
+                      handleRoleSelect(selectedRole);
+                    }
+                  }}
+                >
+                  {availableRoleOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {buildRoleOptionLabel(option, buyers)}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              <div style={styles.toolbarActions}>
+                <button type="button" style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
+                <button type="button" style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
+                <button type="button" style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
               </div>
+            </div>
             </div>
           </div>
 
