@@ -41,6 +41,7 @@ Deno.serve(async (req) => {
 
     const {
       invoiceEmail,
+      recipientName,
       invoiceNumber,
       referenceNumber,
       sellerName,
@@ -50,6 +51,7 @@ Deno.serve(async (req) => {
       documentKind,
       fileName,
       pdfBase64,
+      emailMode,
     } = await req.json();
 
     if (!invoiceEmail || !fileName || !pdfBase64) {
@@ -59,17 +61,20 @@ Deno.serve(async (req) => {
     const safeInvoiceNumber = escapeHtml(invoiceNumber || "Lasku");
     const safeReferenceNumber = escapeHtml(referenceNumber || "");
     const safeSellerName = escapeHtml(sellerName || "Suoraan Kalastajalta");
-    const safeBuyerName = escapeHtml(buyerName || "Asiakas");
+    const safeRecipientName = escapeHtml(recipientName || buyerName || "Vastaanottaja");
     const safeTotalAmount = escapeHtml(totalAmount || "");
     const safeDueDate = escapeHtml(dueDate || "");
     const isReminder = documentKind === "reminder";
+    const isCopy = emailMode === "copy";
     const documentLabel = isReminder ? "Maksumuistutus" : "Lasku";
-    const introText = isReminder
-      ? `${sellerName || "Suoraan Kalastajalta"} lähetti sinulle maksumuistutuksen PDF-liitteenä.`
-      : `${sellerName || "Suoraan Kalastajalta"} lähetti sinulle laskun PDF-liitteenä.`;
+    const introText = isCopy
+      ? `Tässä on kopio asiakkaalle lähetetystä ${isReminder ? "maksumuistutuksesta" : "laskusta"} PDF-liitteenä.`
+      : isReminder
+        ? `${sellerName || "Suoraan Kalastajalta"} lähetti sinulle maksumuistutuksen PDF-liitteenä.`
+        : `${sellerName || "Suoraan Kalastajalta"} lähetti sinulle laskun PDF-liitteenä.`;
 
     const text = [
-      `Hei ${buyerName || "Asiakas"},`,
+      `Hei ${recipientName || buyerName || "Vastaanottaja"},`,
       "",
       introText,
       invoiceNumber ? `Laskunumero: ${invoiceNumber}` : "",
@@ -83,9 +88,9 @@ Deno.serve(async (req) => {
 
     const html = `
       <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
-        <h2 style="color: #1d4ed8; margin-bottom: 12px;">${escapeHtml(documentLabel)} PDF-liitteenä</h2>
-        <p>Hei <strong>${safeBuyerName}</strong>,</p>
-        <p><strong>${safeSellerName}</strong> lähetti sinulle ${isReminder ? "maksumuistutuksen" : "laskun"} PDF-liitteenä.</p>
+        <h2 style="color: #1d4ed8; margin-bottom: 12px;">${escapeHtml(documentLabel)}${isCopy ? " - kopio" : ""} PDF-liitteenä</h2>
+        <p>Hei <strong>${safeRecipientName}</strong>,</p>
+        <p>${isCopy ? introText : `<strong>${safeSellerName}</strong> lähetti sinulle ${isReminder ? "maksumuistutuksen" : "laskun"} PDF-liitteenä.`}</p>
         <table style="border-collapse: collapse; width: 100%; max-width: 520px;">
           ${safeInvoiceNumber ? `<tr><td style="padding: 8px 10px; background: #eff6ff; border: 1px solid #bfdbfe; font-weight: 700;">Laskunumero</td><td style="padding: 8px 10px; border: 1px solid #bfdbfe;">${safeInvoiceNumber}</td></tr>` : ""}
           ${safeReferenceNumber ? `<tr><td style="padding: 8px 10px; background: #eff6ff; border: 1px solid #bfdbfe; font-weight: 700;">Viitenumero</td><td style="padding: 8px 10px; border: 1px solid #bfdbfe;">${safeReferenceNumber}</td></tr>` : ""}
@@ -105,7 +110,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: fromEmail,
         to: [invoiceEmail],
-        subject: `${documentLabel}${invoiceNumber ? ` ${invoiceNumber}` : ""} - ${sellerName || "Suoraan Kalastajalta"}`,
+        subject: `${documentLabel}${invoiceNumber ? ` ${invoiceNumber}` : ""}${isCopy ? " - kopio" : ""} - ${sellerName || "Suoraan Kalastajalta"}`,
         text,
         html,
         attachments: [

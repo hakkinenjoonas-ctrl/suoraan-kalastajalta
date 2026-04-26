@@ -4360,10 +4360,75 @@ async function buildSellerGroupInvoiceEmailAttachment(offers, sellerProfile, doc
   };
 }
 
+function buildInvoiceCopyRecipientTargets({
+  buyerEmail,
+  selfEmail,
+  accountantEmail,
+  sellerName,
+  sendToSelf,
+  sendToAccountant,
+}) {
+  const buyerEmailNormalized = normalizeEmail(buyerEmail || "");
+  const recipientMap = new Map();
+  const skipped = [];
+
+  const registerRecipient = (rawEmail, label, recipientName) => {
+    const normalizedEmail = normalizeEmail(rawEmail || "");
+    if (!normalizedEmail) {
+      skipped.push(label);
+      return;
+    }
+    if (normalizedEmail === buyerEmailNormalized) return;
+    const existingRecipient = recipientMap.get(normalizedEmail);
+    if (existingRecipient) {
+      existingRecipient.labels.push(label);
+      return;
+    }
+    recipientMap.set(normalizedEmail, {
+      email: normalizedEmail,
+      recipientName,
+      labels: [label],
+    });
+  };
+
+  if (sendToSelf) {
+    registerRecipient(selfEmail, "itselle", sellerName || "Kalastaja");
+  }
+  if (sendToAccountant) {
+    registerRecipient(accountantEmail, "kirjanpitäjälle", "Kirjanpitäjä");
+  }
+
+  return {
+    recipients: Array.from(recipientMap.values()).map((recipient) => ({
+      ...recipient,
+      label: recipient.labels.join(" ja "),
+    })),
+    skipped,
+  };
+}
+
+function buildInvoiceCopyStatusText({ sentLabels, failedLabels, skippedLabels }) {
+  const parts = [];
+  if (sentLabels.length > 0) {
+    parts.push(`Kopio lähetetty myös ${sentLabels.join(", ")}.`);
+  }
+  if (failedLabels.length > 0) {
+    parts.push(`Kopion lähetys epäonnistui: ${failedLabels.join(", ")}.`);
+  }
+  if (skippedLabels.length > 0) {
+    parts.push(`Kopiota ei voitu lähettää: ${skippedLabels.join(", ")} (sähköposti puuttuu).`);
+  }
+  return parts.length > 0 ? ` ${parts.join(" ")}` : "";
+}
+
 function SellerBillingView({
   profile,
   accountForm,
   setAccountForm,
+  sendInvoiceCopyToSelf,
+  setSendInvoiceCopyToSelf,
+  sendInvoiceCopyToAccountant,
+  setSendInvoiceCopyToAccountant,
   accountSaving,
   onSaveBankDetails,
   buyerOffers,
@@ -4447,10 +4512,42 @@ function SellerBillingView({
               autoComplete="off"
             />
           </div>
+          <div style={styles.field}>
+            <label>Kirjanpitäjän sähköposti</label>
+            <input
+              style={styles.input}
+              type="email"
+              value={accountForm.accountantEmail}
+              onChange={(e) => setAccountForm((prev) => ({ ...prev, accountantEmail: e.target.value }))}
+              placeholder="kirjanpito@yritys.fi"
+              autoComplete="off"
+            />
+          </div>
         </div>
+        <div style={{ ...styles.stack, gap: 8 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={sendInvoiceCopyToSelf}
+              onChange={(e) => setSendInvoiceCopyToSelf(e.target.checked)}
+            />
+            <span>Lähetä laskun kopio itselleni</span>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={sendInvoiceCopyToAccountant}
+              onChange={(e) => setSendInvoiceCopyToAccountant(e.target.checked)}
+            />
+            <span>Lähetä laskun kopio kirjanpitäjälle</span>
+          </label>
+        </div>
+        {sendInvoiceCopyToAccountant && !String(accountForm.accountantEmail || "").trim() ? (
+          <div style={styles.noticeError}>Lisää kirjanpitäjän sähköposti tai poista kirjanpitäjän kopion ruksi.</div>
+        ) : null}
         <div style={{ ...styles.row, justifyContent: "flex-end" }}>
           <button style={{ ...styles.button, ...styles.primaryButton }} onClick={onSaveBankDetails} disabled={accountSaving}>
-            {accountSaving ? "Tallennetaan..." : "Tallenna pankkitiedot"}
+            {accountSaving ? "Tallennetaan..." : "Tallenna laskutusasetukset"}
           </button>
         </div>
       </div>
@@ -4844,6 +4941,7 @@ export default function App() {
     bankAccountIban: "",
     bankBic: "",
     contactEmail: "",
+    accountantEmail: "",
     phone: "",
     waterType: "",
     contactName: "",
@@ -4852,6 +4950,8 @@ export default function App() {
     deliveryCity: "",
     notes: "",
   });
+  const [sendInvoiceCopyToSelf, setSendInvoiceCopyToSelf] = useState(true);
+  const [sendInvoiceCopyToAccountant, setSendInvoiceCopyToAccountant] = useState(false);
   const [accountFormDirty, setAccountFormDirty] = useState(false);
   const [accountBillingSameAsDelivery, setAccountBillingSameAsDelivery] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ newPassword: "", confirmPassword: "" });
@@ -6507,6 +6607,7 @@ export default function App() {
       bankAccountIban: profile.bank_account_iban || "",
       bankBic: profile.bank_bic || "",
       contactEmail: profile.contact_email || profile.email || "",
+      accountantEmail: profile.accountant_email || "",
       phone: buyerAccountData?.phone || profile.phone || "",
       waterType: profile.water_type || "",
       contactName: buyerAccountData?.contact_name || "",
@@ -7031,6 +7132,7 @@ export default function App() {
         bankAccountIban: accountForm.bankAccountIban.trim(),
         bankBic: accountForm.bankBic.trim(),
         contactEmail: accountForm.contactEmail.trim().toLowerCase(),
+        accountantEmail: accountForm.accountantEmail.trim().toLowerCase(),
         phone: accountForm.phone.trim(),
         waterType: String(accountForm.waterType || "").trim(),
         contactName: accountForm.contactName.trim(),
@@ -7060,6 +7162,7 @@ export default function App() {
               bank_account_iban: accountForm.bankAccountIban.trim() || null,
               bank_bic: accountForm.bankBic.trim() || null,
               contact_email: accountForm.contactEmail.trim().toLowerCase() || null,
+              accountant_email: accountForm.accountantEmail.trim().toLowerCase() || null,
               phone: accountForm.phone.trim() || null,
               water_type: accountForm.waterType || null,
             }
@@ -7082,6 +7185,7 @@ export default function App() {
               bank_account_iban: accountForm.bankAccountIban.trim() || null,
               bank_bic: accountForm.bankBic.trim() || null,
               contact_email: accountForm.contactEmail.trim().toLowerCase() || null,
+              accountant_email: accountForm.accountantEmail.trim().toLowerCase() || null,
               phone: accountForm.phone.trim() || null,
               water_type: accountForm.waterType || null,
             }
@@ -8285,6 +8389,84 @@ export default function App() {
     await buildSellerInvoicePdf(offer, profile, offer?.billing_status === "invoiced" ? "reminder" : "invoice");
   };
 
+  const sendSellerInvoiceEmailMessage = async ({
+    recipientEmail,
+    recipientName,
+    invoiceNumber,
+    referenceNumber,
+    sellerName,
+    buyerName,
+    totalAmount,
+    dueDate,
+    documentKind,
+    fileName,
+    pdfBase64,
+    accessToken,
+    emailMode = "buyer",
+  }) => invokeEdgeFunctionAuthenticated("send-seller-invoice-email", {
+    invoiceEmail: recipientEmail,
+    recipientName,
+    invoiceNumber,
+    referenceNumber,
+    sellerName,
+    buyerName,
+    totalAmount,
+    dueDate,
+    documentKind,
+    fileName,
+    pdfBase64,
+    emailMode,
+  }, accessToken);
+
+  const sendSellerInvoiceCopies = async (attachment, accessToken) => {
+    const { recipients, skipped } = buildInvoiceCopyRecipientTargets({
+      buyerEmail: attachment.invoice.buyerBillingEmail,
+      selfEmail: accountForm.contactEmail || profile?.contact_email || profile?.email || "",
+      accountantEmail: accountForm.accountantEmail || "",
+      sellerName: attachment.invoice.sellerName || profile?.display_name || "Kalastaja",
+      sendToSelf: sendInvoiceCopyToSelf,
+      sendToAccountant: sendInvoiceCopyToAccountant,
+    });
+    const sentLabels = [];
+    const failedLabels = [];
+
+    for (const recipient of recipients) {
+      const { error } = await sendSellerInvoiceEmailMessage({
+        recipientEmail: recipient.email,
+        recipientName: recipient.recipientName,
+        invoiceNumber: attachment.invoice.invoiceNumber,
+        referenceNumber: attachment.invoice.referenceDisplay,
+        sellerName: attachment.invoice.sellerName,
+        buyerName: attachment.invoice.buyerName,
+        totalAmount: euro(attachment.invoice.grandTotal),
+        dueDate: attachment.invoice.dueDate,
+        documentKind: attachment.documentKind,
+        fileName: attachment.fileName,
+        pdfBase64: attachment.pdfBase64,
+        accessToken,
+        emailMode: "copy",
+      });
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return { authInvalidated: true, statusText: "" };
+        }
+        failedLabels.push(recipient.label);
+      } else {
+        sentLabels.push(recipient.label);
+      }
+    }
+
+    return {
+      authInvalidated: false,
+      statusText: buildInvoiceCopyStatusText({
+        sentLabels,
+        failedLabels,
+        skippedLabels: skipped,
+      }),
+    };
+  };
+
   const handleSendSellerInvoicePdf = async (offer) => {
     if (!profile?.bank_account_iban) {
       setAuthError("Lisää IBAN pankkitietoihin ennen laskun lähettämistä.");
@@ -8304,8 +8486,9 @@ export default function App() {
 
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
-    const { error } = await invokeEdgeFunctionAuthenticated("send-seller-invoice-email", {
-      invoiceEmail: attachment.invoice.buyerBillingEmail,
+    const { error } = await sendSellerInvoiceEmailMessage({
+      recipientEmail: attachment.invoice.buyerBillingEmail,
+      recipientName: attachment.invoice.buyerName,
       invoiceNumber: attachment.invoice.invoiceNumber,
       referenceNumber: attachment.invoice.referenceDisplay,
       sellerName: attachment.invoice.sellerName,
@@ -8315,7 +8498,9 @@ export default function App() {
       documentKind,
       fileName: attachment.fileName,
       pdfBase64: attachment.pdfBase64,
-    }, accessToken);
+      accessToken,
+      emailMode: "buyer",
+    });
 
     if (error) {
       if (isMissingRefreshTokenError(error)) {
@@ -8325,6 +8510,9 @@ export default function App() {
       setAuthError(error.message || "Laskun lähetys epäonnistui.");
       return;
     }
+
+    const copyResult = await sendSellerInvoiceCopies(attachment, accessToken);
+    if (copyResult.authInvalidated) return;
 
     if (documentKind === "invoice") {
       await handleUpdateBillingStatus(offer, "invoiced");
@@ -8337,7 +8525,7 @@ export default function App() {
         offerId: offer?.id,
         batchId: offer?.batch_id,
       });
-      setAuthInfo(`Lasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
+      setAuthInfo(`Lasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.${copyResult.statusText}`);
       return;
     }
 
@@ -8350,7 +8538,7 @@ export default function App() {
       offerId: offer?.id,
       batchId: offer?.batch_id,
     });
-    setAuthInfo(`Maksumuistutus ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
+    setAuthInfo(`Maksumuistutus ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.${copyResult.statusText}`);
   };
 
   const handleOpenSellerGroupInvoicePdf = async (offers) => {
@@ -8382,8 +8570,9 @@ export default function App() {
 
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
-    const { error } = await invokeEdgeFunctionAuthenticated("send-seller-invoice-email", {
-      invoiceEmail: attachment.invoice.buyerBillingEmail,
+    const { error } = await sendSellerInvoiceEmailMessage({
+      recipientEmail: attachment.invoice.buyerBillingEmail,
+      recipientName: attachment.invoice.buyerName,
       invoiceNumber: attachment.invoice.invoiceNumber,
       referenceNumber: attachment.invoice.referenceDisplay,
       sellerName: attachment.invoice.sellerName,
@@ -8393,7 +8582,9 @@ export default function App() {
       documentKind,
       fileName: attachment.fileName,
       pdfBase64: attachment.pdfBase64,
-    }, accessToken);
+      accessToken,
+      emailMode: "buyer",
+    });
 
     if (error) {
       if (isMissingRefreshTokenError(error)) {
@@ -8404,13 +8595,16 @@ export default function App() {
       return;
     }
 
+    const copyResult = await sendSellerInvoiceCopies(attachment, accessToken);
+    if (copyResult.authInvalidated) return;
+
     if (documentKind === "invoice") {
       await handleUpdateGroupBillingStatus(offers, "invoiced");
-      setAuthInfo(`Koontilasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
+      setAuthInfo(`Koontilasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.${copyResult.statusText}`);
       return;
     }
 
-    setAuthInfo(`Koontimaksumuistutus ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.`);
+    setAuthInfo(`Koontimaksumuistutus ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.${copyResult.statusText}`);
   };
 
   const updateFulfillmentStatus = async (offer, fulfillmentStatus) => {
@@ -11811,6 +12005,10 @@ export default function App() {
               profile={profile}
               accountForm={accountForm}
               setAccountForm={setAccountForm}
+              sendInvoiceCopyToSelf={sendInvoiceCopyToSelf}
+              setSendInvoiceCopyToSelf={setSendInvoiceCopyToSelf}
+              sendInvoiceCopyToAccountant={sendInvoiceCopyToAccountant}
+              setSendInvoiceCopyToAccountant={setSendInvoiceCopyToAccountant}
               accountSaving={accountSaving}
               onSaveBankDetails={handleSaveOwnDetails}
               buyerOffers={buyerOffers}
