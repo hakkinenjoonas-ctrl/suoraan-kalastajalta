@@ -827,7 +827,18 @@ function extractFineliFoodName(item) {
     item?.food?.nameFi,
     item?.food?.name_fi,
   ];
-  const found = candidates.find((value) => String(value || "").trim());
+  const found = candidates.find((value) => {
+    if (typeof value === "string") return value.trim();
+    if (value && typeof value === "object") return collectFineliStrings(value, 1).some((entry) => String(entry || "").trim());
+    return String(value || "").trim();
+  });
+  if (typeof found === "string") return found.trim();
+  if (found && typeof found === "object") {
+    const objectValues = collectFineliStrings(found, 2)
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean);
+    return objectValues[0] || "";
+  }
   return String(found || "").trim();
 }
 
