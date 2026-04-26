@@ -754,6 +754,24 @@ function buildProcessedProductPayload(formState, ownerUserId) {
 }
 
 function buildProcessedLabelData(entry, profileLike) {
+  const operatorStreet = String(
+    profileLike?.address ||
+    profileLike?.billing_address ||
+    profileLike?.billingAddress ||
+    "",
+  ).trim();
+  const operatorPostcode = String(
+    profileLike?.postcode ||
+    profileLike?.billing_postcode ||
+    profileLike?.billingPostcode ||
+    "",
+  ).trim();
+  const operatorCity = String(
+    profileLike?.city ||
+    profileLike?.billing_city ||
+    profileLike?.billingCity ||
+    "",
+  ).trim();
   const operatorName = String(
     profileLike?.company_name ||
     profileLike?.companyName ||
@@ -763,9 +781,15 @@ function buildProcessedLabelData(entry, profileLike) {
     "",
   ).trim();
   const operatorAddress = [
-    String(profileLike?.address || "").trim(),
-    [String(profileLike?.postcode || "").trim(), String(profileLike?.city || "").trim()].filter(Boolean).join(" "),
+    operatorStreet,
+    [operatorPostcode, operatorCity].filter(Boolean).join(" "),
   ].filter(Boolean).join(", ");
+  const operatorEmail = String(
+    profileLike?.contact_email ||
+    profileLike?.contactEmail ||
+    profileLike?.email ||
+    "",
+  ).trim();
   const establishmentNumber = String(
     profileLike?.evira_facility_id ||
     profileLike?.eviraFacilityId ||
@@ -803,6 +827,7 @@ function buildProcessedLabelData(entry, profileLike) {
     batchId: String(entry?.batchId || entry?.batch_id || "").trim(),
     operatorName,
     operatorAddress,
+    operatorEmail,
     establishmentNumber,
     catchAreaText,
     speciesNameFi: String(entry?.speciesNameFi || entry?.species_name_fi || "").trim(),

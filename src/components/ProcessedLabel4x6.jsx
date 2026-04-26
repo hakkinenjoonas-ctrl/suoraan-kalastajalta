@@ -188,12 +188,34 @@ function renderOvalMark(establishmentNumber) {
   );
 }
 
-function LabelLine({ label, value, strong = false }) {
-  if (!value) return null;
+function renderHighlightedIngredients(value, allergens) {
+  const sourceText = String(value || "").trim();
+  if (!sourceText) return null;
+  const tokens = String(allergens || "")
+    .split(/[,\n;]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  if (tokens.length === 0) return sourceText;
+
+  const escapedTokens = tokens.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const matcher = new RegExp(`(${escapedTokens.join("|")})`, "gi");
+  const parts = sourceText.split(matcher);
+  const lowerCaseTokens = tokens.map((item) => item.toLowerCase());
+
+  return parts.map((part, index) => (
+    lowerCaseTokens.includes(String(part || "").toLowerCase())
+      ? <strong key={`allergen-${index}`}>{part}</strong>
+      : <React.Fragment key={`text-${index}`}>{part}</React.Fragment>
+  ));
+}
+
+function LabelLine({ label, value, strong = false, content = null }) {
+  if (!value && !content) return null;
   return (
     <div style={{ ...styles.line, ...(strong ? { fontWeight: 800 } : null) }}>
       {label ? <strong>{label}: </strong> : null}
-      <span>{value}</span>
+      <span>{content || value}</span>
     </div>
   );
 }
@@ -233,7 +255,7 @@ export default function ProcessedLabel4x6({ label }) {
           <LabelLine label="Sailytysohje" value={label.storageText} />
           <LabelLine label="Pyyntialue" value={label.catchAreaText} />
           <LabelLine label="Tuotteen tila" value={label.productStateText} />
-          <LabelLine label="Ainesosat" value={label.ingredientsText} />
+          <LabelLine label="Ainesosat" content={renderHighlightedIngredients(label.ingredientsText, label.allergensText)} />
           <LabelLine label="Allergeenit" value={label.allergensText} strong />
         </div>
       </section>
@@ -245,6 +267,7 @@ export default function ProcessedLabel4x6({ label }) {
         <div style={styles.supplierBlock}>
           <div style={styles.supplierLine}><strong>Toimija:</strong> {label.operatorName || "-"}</div>
           {label.operatorAddress ? <div style={styles.supplierLine}>{label.operatorAddress}</div> : null}
+          {label.operatorEmail ? <div style={styles.supplierLine}>{label.operatorEmail}</div> : null}
         </div>
       </section>
     </div>
