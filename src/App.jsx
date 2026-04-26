@@ -728,7 +728,357 @@ function getProcessedLabelScientificName(entry) {
   return getCatchLabelScientificName(primarySpecies);
 }
 
-function buildProcessedProductPayload(formState, ownerUserId) {
+const FINELI_API_BASE = "https://fineli.fi/fineli/api/v1";
+const PROCESSED_NUTRITION_FIELDS = [
+  { key: "energyKj", label: "Energia", unit: "kJ" },
+  { key: "energyKcal", label: "Energia", unit: "kcal" },
+  { key: "fat", label: "Rasva", unit: "g" },
+  { key: "saturatedFat", label: "josta tyydyttynytta", unit: "g" },
+  { key: "carbohydrate", label: "Hiilihydraatit", unit: "g" },
+  { key: "sugars", label: "josta sokereita", unit: "g" },
+  { key: "protein", label: "Proteiini", unit: "g" },
+  { key: "salt", label: "Suola", unit: "g" },
+];
+const FINELI_COMPONENT_MATCHERS = {
+  energyKj: [["energia", "kj"], ["energy", "kj"]],
+  energyKcal: [["energia", "kcal"], ["energy", "kcal"]],
+  fat: [["rasva"], ["fat"]],
+  saturatedFat: [["tyydytt"], ["saturated"]],
+  carbohydrate: [["hiilihydra"], ["carbohydrate"]],
+  sugars: [["soker"], ["sugar"]],
+  protein: [["protei"], ["protein"]],
+  salt: [["suola"], ["salt"]],
+  sodium: [["natrium"], ["sodium"]],
+};
+
+let fineliComponentsPromise = null;
+const fineliFoodDetailCache = new Map();
+
+function createProcessedRecipeRow(seed = {}) {
+  return {
+    id: seed.id || safeId(),
+    ingredientName: String(seed.ingredientName || seed.ingredient_name || seed.fineliFoodName || "").trim(),
+    percentage: seed.percentage === "" || seed.percentage == null ? "" : String(seed.percentage),
+    fineliFoodId: String(seed.fineliFoodId || seed.fineli_food_id || "").trim(),
+    fineliFoodName: String(seed.fineliFoodName || seed.fineli_food_name || "").trim(),
+    fineliNutrients: seed.fineliNutrients || seed.fineli_nutrients || null,
+    searchResults: [],
+    searchLoading: false,
+    searchError: "",
+  };
+}
+
+function normalizeFineliText(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function collectFineliStrings(input, depth = 2, seen = new Set()) {
+  if (input == null || depth < 0) return [];
+  if (typeof input === "string" || typeof input === "number" || typeof input === "boolean") {
+    return [String(input)];
+  }
+  if (typeof input !== "object") return [];
+  if (seen.has(input)) return [];
+  seen.add(input);
+
+  const values = [];
+  if (Array.isArray(input)) {
+    input.forEach((item) => {
+      values.push(...collectFineliStrings(item, depth - 1, seen));
+    });
+    return values;
+  }
+
+  Object.values(input).forEach((value) => {
+    values.push(...collectFineliStrings(value, depth - 1, seen));
+  });
+  return values;
+}
+
+function extractFineliFoodId(item) {
+  const candidates = [
+    item?.id,
+    item?.foodId,
+    item?.food_id,
+    item?.food?.id,
+    item?.food?.foodId,
+    item?.food?.food_id,
+  ];
+  const found = candidates.find((value) => value != null && value !== "");
+  return found == null ? "" : String(found).trim();
+}
+
+function extractFineliFoodName(item) {
+  const candidates = [
+    item?.name,
+    item?.nameFi,
+    item?.name_fi,
+    item?.foodName,
+    item?.food_name,
+    item?.shortName,
+    item?.short_name,
+    item?.description,
+    item?.food?.name,
+    item?.food?.nameFi,
+    item?.food?.name_fi,
+  ];
+  const found = candidates.find((value) => String(value || "").trim());
+  return String(found || "").trim();
+}
+
+function parseFineliNumeric(value) {
+  if (value == null || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const normalized = String(value).replace(",", ".").trim();
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function extractFineliEntryValue(entry) {
+  const directCandidates = [
+    entry?.value,
+    entry?.amount,
+    entry?.bestLocationValue,
+    entry?.best_location_value,
+    entry?.calculatedValue,
+    entry?.calculated_value,
+    entry?.median,
+    entry?.mean,
+  ];
+  for (const candidate of directCandidates) {
+    const parsed = parseFineliNumeric(candidate);
+    if (parsed != null) return parsed;
+  }
+  if (entry && typeof entry === "object") {
+    for (const value of Object.values(entry)) {
+      const parsed = parseFineliNumeric(value);
+      if (parsed != null) return parsed;
+    }
+  }
+  return null;
+}
+
+function matchesFineliKeywords(text, keywordGroups) {
+  return keywordGroups.some((keywords) => keywords.every((keyword) => text.includes(keyword)));
+}
+
+async function fetchFineliComponents() {
+  if (!fineliComponentsPromise) {
+    fineliComponentsPromise = fetch(`${FINELI_API_BASE}/components`)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Fineli-komponenttien haku epäonnistui (${response.status})`);
+        }
+        return response.json();
+      })
+      .then((payload) => {
+        if (Array.isArray(payload)) return payload;
+        if (Array.isArray(payload?.data)) return payload.data;
+        if (Array.isArray(payload?.components)) return payload.components;
+        return [];
+      })
+      .catch((error) => {
+        fineliComponentsPromise = null;
+        throw error;
+      });
+  }
+  return fineliComponentsPromise;
+}
+
+function resolveFineliComponentIds(components) {
+  return Object.entries(FINELI_COMPONENT_MATCHERS).reduce((acc, [key, keywordGroups]) => {
+    const ids = components
+      .filter((item) => {
+        const text = normalizeFineliText(collectFineliStrings(item, 2).join(" "));
+        return text && matchesFineliKeywords(text, keywordGroups);
+      })
+      .map((item) => {
+        const idCandidate = item?.id ?? item?.componentId ?? item?.component_id ?? item?.value;
+        return idCandidate == null ? null : String(idCandidate).trim();
+      })
+      .filter(Boolean);
+    acc[key] = ids;
+    return acc;
+  }, {});
+}
+
+function extractFineliFoodRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.foods)) return payload.foods;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+}
+
+function extractFineliComponentEntries(foodPayload) {
+  const candidates = [
+    foodPayload?.componentValues,
+    foodPayload?.component_values,
+    foodPayload?.components,
+    foodPayload?.componentvalues,
+    foodPayload?.values,
+    foodPayload?.nutrients,
+    foodPayload?.food?.componentValues,
+    foodPayload?.food?.component_values,
+    foodPayload?.food?.components,
+    foodPayload?.food?.values,
+    foodPayload?.food?.nutrients,
+  ];
+  return candidates.find(Array.isArray) || [];
+}
+
+function extractNutritionSnapshotFromFineliFood(foodPayload, componentIdsByKey) {
+  const entries = extractFineliComponentEntries(foodPayload).map((entry) => ({
+    id: String(
+      entry?.componentId ??
+      entry?.component_id ??
+      entry?.component?.id ??
+      entry?.component?.componentId ??
+      entry?.component?.component_id ??
+      entry?.id ??
+      "",
+    ).trim(),
+    text: normalizeFineliText(collectFineliStrings(entry, 2).join(" ")),
+    value: extractFineliEntryValue(entry),
+  }));
+
+  const findComponentValue = (key) => {
+    const ids = componentIdsByKey[key] || [];
+    const matcherGroups = FINELI_COMPONENT_MATCHERS[key] || [];
+    const match = entries.find((entry) => entry.value != null && (
+      (ids.length > 0 && entry.id && ids.includes(entry.id)) ||
+      (entry.text && matchesFineliKeywords(entry.text, matcherGroups))
+    ));
+    return match?.value ?? null;
+  };
+
+  const sodiumValue = findComponentValue("sodium");
+  const explicitSalt = findComponentValue("salt");
+  return {
+    energyKj: findComponentValue("energyKj"),
+    energyKcal: findComponentValue("energyKcal"),
+    fat: findComponentValue("fat"),
+    saturatedFat: findComponentValue("saturatedFat"),
+    carbohydrate: findComponentValue("carbohydrate"),
+    sugars: findComponentValue("sugars"),
+    protein: findComponentValue("protein"),
+    salt: explicitSalt != null ? explicitSalt : (sodiumValue != null ? sodiumValue * 2.5 : null),
+  };
+}
+
+function buildProcessedRecipePayload(rows) {
+  return rows
+    .map((row) => ({
+      ingredient_name: String(row.ingredientName || "").trim(),
+      percentage: parseFineliNumeric(row.percentage),
+      fineli_food_id: String(row.fineliFoodId || "").trim() || null,
+      fineli_food_name: String(row.fineliFoodName || "").trim() || null,
+      fineli_nutrients: row.fineliNutrients || null,
+    }))
+    .filter((row) => row.ingredient_name || row.percentage != null || row.fineli_food_id || row.fineli_food_name);
+}
+
+function calculateProcessedNutritionPer100g(rows) {
+  const normalizedRows = rows
+    .map((row) => ({
+      ingredientName: String(row.ingredientName || "").trim(),
+      percentage: parseFineliNumeric(row.percentage),
+      nutrients: row.fineliNutrients || null,
+      selected: Boolean(String(row.fineliFoodId || "").trim()),
+    }))
+    .filter((row) => row.ingredientName || row.percentage != null || row.selected);
+
+  if (normalizedRows.length === 0) {
+    return { nutrition: null, totalPercentage: 0, complete: false, hasRows: false };
+  }
+
+  const rowsWithPercentage = normalizedRows.filter((row) => row.percentage != null && row.percentage > 0);
+  const totalPercentage = rowsWithPercentage.reduce((sum, row) => sum + Number(row.percentage || 0), 0);
+  const incomplete = rowsWithPercentage.some((row) => !row.selected || !row.nutrients);
+
+  if (rowsWithPercentage.length === 0 || totalPercentage <= 0 || incomplete) {
+    return { nutrition: null, totalPercentage, complete: false, hasRows: true };
+  }
+
+  const nutrition = PROCESSED_NUTRITION_FIELDS.reduce((acc, field) => {
+    const total = rowsWithPercentage.reduce((sum, row) => {
+      const value = parseFineliNumeric(row.nutrients?.[field.key]);
+      return sum + ((value == null ? 0 : value) * Number(row.percentage || 0));
+    }, 0);
+    acc[field.key] = total / totalPercentage;
+    return acc;
+  }, {});
+
+  return { nutrition, totalPercentage, complete: true, hasRows: true };
+}
+
+function formatProcessedNutritionValue(key, value) {
+  const parsed = parseFineliNumeric(value);
+  if (parsed == null) return "";
+  if (key === "energyKj" || key === "energyKcal") return String(Math.round(parsed));
+  return parsed.toLocaleString("fi-FI", {
+    minimumFractionDigits: parsed < 10 ? 1 : 0,
+    maximumFractionDigits: 1,
+  });
+}
+
+function buildProcessedNutritionRows(nutrition) {
+  if (!nutrition || typeof nutrition !== "object") return [];
+  return PROCESSED_NUTRITION_FIELDS
+    .map((field) => ({
+      key: field.key,
+      label: field.label,
+      unit: field.unit,
+      value: formatProcessedNutritionValue(field.key, nutrition[field.key]),
+    }))
+    .filter((row) => row.value);
+}
+
+async function searchFineliFoodsByQuery(query) {
+  const response = await fetch(`${FINELI_API_BASE}/foods?q=${encodeURIComponent(query)}`);
+  if (!response.ok) {
+    throw new Error(`Fineli-haku epäonnistui (${response.status})`);
+  }
+  const payload = await response.json();
+  return extractFineliFoodRows(payload)
+    .map((item) => ({
+      id: extractFineliFoodId(item),
+      name: extractFineliFoodName(item),
+    }))
+    .filter((item) => item.id && item.name)
+    .slice(0, 12);
+}
+
+async function fetchFineliFoodNutrition(foodId) {
+  if (fineliFoodDetailCache.has(foodId)) {
+    return fineliFoodDetailCache.get(foodId);
+  }
+
+  const promise = Promise.all([
+    fetch(`${FINELI_API_BASE}/foods/${encodeURIComponent(foodId)}`),
+    fetchFineliComponents(),
+  ]).then(async ([foodResponse, components]) => {
+    if (!foodResponse.ok) {
+      throw new Error(`Fineli-tuotteen haku epäonnistui (${foodResponse.status})`);
+    }
+    const foodPayload = await foodResponse.json();
+    const componentIdsByKey = resolveFineliComponentIds(components);
+    return extractNutritionSnapshotFromFineliFood(foodPayload, componentIdsByKey);
+  }).catch((error) => {
+    fineliFoodDetailCache.delete(foodId);
+    throw error;
+  });
+
+  fineliFoodDetailCache.set(foodId, promise);
+  return promise;
+}
+
+function buildProcessedProductPayload(formState, ownerUserId, recipeItems = [], nutritionPer100g = null) {
   return {
     owner_user_id: ownerUserId,
     template_name: String(formState.productName || formState.productType || "Oma tuote").trim(),
@@ -748,6 +1098,8 @@ function buildProcessedProductPayload(formState, ownerUserId) {
     allergens: String(formState.allergens || "").trim() || null,
     storage_temperature: String(formState.storageTemperature || "").trim() || null,
     storage_instructions: String(formState.storageInstructions || "").trim() || null,
+    recipe_items: recipeItems.length > 0 ? recipeItems : null,
+    nutrition_per_100g: nutritionPer100g || null,
     package_size_g: formState.packageSizeG === "" ? null : Number(formState.packageSizeG),
     notes: String(formState.notes || "").trim() || null,
   };
@@ -836,6 +1188,7 @@ function buildProcessedLabelData(entry, profileLike) {
     productStateText: getProcessedLabelProductState(entry),
     ingredientsText: String(entry?.ingredients || entry?.ingredientsText || "").trim(),
     allergensText: String(entry?.allergens || entry?.allergensText || "").trim(),
+    nutritionRows: buildProcessedNutritionRows(entry?.nutritionPer100g || entry?.nutrition_per_100g || null),
     qrImageUrl: entry?.batchId ? getBatchQrImageUrl(entry.batchId) : "",
     logoUrl: getAppLogoUrl(),
   };
@@ -4893,6 +5246,7 @@ export default function App() {
   const [processedProducts, setProcessedProducts] = useState([]);
   const [selectedProcessedProductId, setSelectedProcessedProductId] = useState("");
   const [saveProcessedAsProduct, setSaveProcessedAsProduct] = useState(false);
+  const [processedRecipeRows, setProcessedRecipeRows] = useState([createProcessedRecipeRow()]);
   const [processedAreaSelector, setProcessedAreaSelector] = useState(() => resolveAreaSelectorValue("Saimaa", initialCatchDefaults.customLakeAreas, initialCatchDefaults.customSeaAreas));
   const [newAllowedForm, setNewAllowedForm] = useState({ email: "", displayName: "", role: "member", buyer_id: "" });
   const [buyerAction, setBuyerAction] = useState({
@@ -6398,6 +6752,8 @@ export default function App() {
             allergens: entry.allergens || "",
             storageTemperature: entry.storage_temperature || "",
             storageInstructions: entry.storage_instructions || "",
+            recipeItems: Array.isArray(entry.recipe_items) ? entry.recipe_items : [],
+            nutritionPer100g: entry.nutrition_per_100g || null,
             kilos: Number(entry.kilos || 0),
             packageSizeG: entry.package_size_g == null ? "" : Number(entry.package_size_g),
             packageCount: entry.package_count == null ? "" : Number(entry.package_count),
@@ -6459,6 +6815,8 @@ export default function App() {
             allergens: item.allergens || "",
             storageTemperature: item.storage_temperature || "",
             storageInstructions: item.storage_instructions || "",
+            recipeItems: Array.isArray(item.recipe_items) ? item.recipe_items : [],
+            nutritionPer100g: item.nutrition_per_100g || null,
             packageSizeG: item.package_size_g == null ? "" : Number(item.package_size_g),
             notes: item.notes || "",
           })));
@@ -6889,6 +7247,102 @@ export default function App() {
     () => availableSourceEntries.filter((entry) => processedForm.sourceEntryIds.includes(entry.id)),
     [availableSourceEntries, processedForm.sourceEntryIds],
   );
+  const processedNutritionPreview = useMemo(
+    () => calculateProcessedNutritionPer100g(processedRecipeRows),
+    [processedRecipeRows],
+  );
+  const processedNutritionRows = useMemo(
+    () => buildProcessedNutritionRows(processedNutritionPreview.nutrition),
+    [processedNutritionPreview],
+  );
+
+  const updateProcessedRecipeRow = (rowId, changes) => {
+    setProcessedRecipeRows((prev) => prev.map((row) => {
+      if (row.id !== rowId) return row;
+      return {
+        ...row,
+        ...changes,
+      };
+    }));
+  };
+
+  const addProcessedRecipeRow = () => {
+    setProcessedRecipeRows((prev) => [...prev, createProcessedRecipeRow()]);
+  };
+
+  const removeProcessedRecipeRow = (rowId) => {
+    setProcessedRecipeRows((prev) => (prev.length <= 1 ? [createProcessedRecipeRow()] : prev.filter((row) => row.id !== rowId)));
+  };
+
+  const handleSearchProcessedRecipeRow = async (rowId) => {
+    const targetRow = processedRecipeRows.find((row) => row.id === rowId);
+    const query = String(targetRow?.ingredientName || "").trim();
+    if (!query) {
+      updateProcessedRecipeRow(rowId, {
+        searchError: "Kirjoita ensin ainesosan nimi Fineli-hakua varten.",
+        searchResults: [],
+      });
+      return;
+    }
+
+    updateProcessedRecipeRow(rowId, {
+      searchLoading: true,
+      searchError: "",
+      searchResults: [],
+    });
+
+    try {
+      const results = await searchFineliFoodsByQuery(query);
+      updateProcessedRecipeRow(rowId, {
+        searchLoading: false,
+        searchResults: results,
+        searchError: results.length === 0 ? "Finelista ei löytynyt osumia tällä haulla." : "",
+      });
+    } catch (error) {
+      updateProcessedRecipeRow(rowId, {
+        searchLoading: false,
+        searchResults: [],
+        searchError: String(error?.message || error || "Fineli-haku epäonnistui."),
+      });
+    }
+  };
+
+  const handleSelectProcessedRecipeFood = async (rowId, nextFoodId) => {
+    if (!nextFoodId) {
+      updateProcessedRecipeRow(rowId, {
+        fineliFoodId: "",
+        fineliFoodName: "",
+        fineliNutrients: null,
+      });
+      return;
+    }
+
+    const targetRow = processedRecipeRows.find((row) => row.id === rowId);
+    const selectedResult = (targetRow?.searchResults || []).find((item) => item.id === nextFoodId);
+    updateProcessedRecipeRow(rowId, {
+      searchLoading: true,
+      searchError: "",
+      fineliFoodId: nextFoodId,
+      fineliFoodName: selectedResult?.name || targetRow?.fineliFoodName || "",
+    });
+
+    try {
+      const nutrition = await fetchFineliFoodNutrition(nextFoodId);
+      updateProcessedRecipeRow(rowId, {
+        searchLoading: false,
+        fineliFoodName: selectedResult?.name || targetRow?.fineliFoodName || "",
+        fineliNutrients: nutrition,
+      });
+    } catch (error) {
+      updateProcessedRecipeRow(rowId, {
+        searchLoading: false,
+        fineliFoodId: "",
+        fineliFoodName: "",
+        fineliNutrients: null,
+        searchError: String(error?.message || error || "Fineli-tuotteen ravintoarvotietojen haku epäonnistui."),
+      });
+    }
+  };
 
   const totals = useMemo(() => {
     const totalKg = entries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
@@ -9618,9 +10072,11 @@ export default function App() {
     }
 
     setSaving(true);
+    const processedRecipePayload = buildProcessedRecipePayload(processedRecipeRows);
+    const processedNutritionPayload = processedNutritionPreview.complete ? processedNutritionPreview.nutrition : null;
 
     if (saveProcessedAsProduct) {
-      const productPayload = buildProcessedProductPayload(processedForm, profile.id);
+      const productPayload = buildProcessedProductPayload(processedForm, profile.id, processedRecipePayload, processedNutritionPayload);
       const productQuery = selectedProcessedProductId
         ? supabase.from("processed_products").update(productPayload).eq("id", selectedProcessedProductId).eq("owner_user_id", profile.id)
         : supabase.from("processed_products").insert(productPayload).select("id").single();
@@ -9687,6 +10143,8 @@ export default function App() {
       allergens: processedForm.allergens.trim() || null,
       storage_temperature: processedForm.storageTemperature || null,
       storage_instructions: processedForm.storageInstructions.trim() || null,
+      recipe_items: processedRecipePayload.length > 0 ? processedRecipePayload : null,
+      nutrition_per_100g: processedNutritionPayload,
       kilos: Number(processedForm.kilos || 0),
       package_size_g: processedForm.packageSizeG === "" ? null : Number(processedForm.packageSizeG),
       package_count: processedForm.packageCount === "" ? null : Number(processedForm.packageCount),
@@ -9774,6 +10232,7 @@ export default function App() {
     setSaving(false);
     setSelectedProcessedProductId("");
     setSaveProcessedAsProduct(false);
+    setProcessedRecipeRows([createProcessedRecipeRow()]);
     setProcessedAreaSelector("Saimaa");
     setProcessedForm((prev) => ({
       productionDate: today(),
@@ -11030,6 +11489,11 @@ export default function App() {
                         packageSizeG: selectedProduct.packageSizeG === "" ? "" : selectedProduct.packageSizeG,
                         notes: selectedProduct.notes || "",
                       }));
+                      setProcessedRecipeRows(
+                        Array.isArray(selectedProduct.recipeItems) && selectedProduct.recipeItems.length > 0
+                          ? selectedProduct.recipeItems.map((item) => createProcessedRecipeRow(item))
+                          : [createProcessedRecipeRow()],
+                      );
                     }}
                   >
                     <option value="">Valitse tallennettu tuote</option>
@@ -11166,6 +11630,104 @@ export default function App() {
                 <div style={{ ...styles.field, ...styles.fieldFull }}><label>Ainesosat</label><textarea style={styles.textarea} value={processedForm.ingredients} onChange={(e) => setProcessedForm({ ...processedForm, ingredients: e.target.value })} placeholder="Esim. Muikku (kala), suola" /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}><label>Allergeenit</label><textarea style={styles.textarea} value={processedForm.allergens} onChange={(e) => setProcessedForm({ ...processedForm, allergens: e.target.value })} placeholder="Esim. Kala" /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}><label>Säilytysohje</label><textarea style={styles.textarea} value={processedForm.storageInstructions} onChange={(e) => setProcessedForm({ ...processedForm, storageInstructions: e.target.value })} placeholder="Esim. Säilytys 0–3 °C" /></div>
+                <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
+                  <label>Ravintoarvojen resepti (Fineli, %)</label>
+                  <div style={styles.noticeInfo}>Valitse jokaiselle ainesosalle Fineli-osuma itse. Ravintoarvot lasketaan automaattisesti per 100 g vain jalostepuolen etikettiä varten.</div>
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {processedRecipeRows.map((row, index) => (
+                      <div key={row.id} style={{ ...styles.entry, background: "#f8fbff", padding: 14, gap: 12 }}>
+                        <div style={{ ...styles.rowBetween, gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                          <strong>Ainesosa {index + 1}</strong>
+                          <button type="button" style={styles.button} onClick={() => removeProcessedRecipeRow(row.id)}>
+                            {processedRecipeRows.length > 1 ? "Poista" : "Tyhjennä"}
+                          </button>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1fr) 140px auto", gap: 12 }}>
+                          <div style={styles.field}>
+                            <label>Ainesosan nimi</label>
+                            <input
+                              style={styles.input}
+                              value={row.ingredientName}
+                              onChange={(e) => updateProcessedRecipeRow(row.id, {
+                                ingredientName: e.target.value,
+                                fineliFoodId: "",
+                                fineliFoodName: "",
+                                fineliNutrients: null,
+                                searchResults: [],
+                                searchError: "",
+                              })}
+                              placeholder="Esim. Hauki"
+                            />
+                          </div>
+                          <div style={styles.field}>
+                            <label>Osuus %</label>
+                            <input
+                              style={styles.input}
+                              type="number"
+                              inputMode="decimal"
+                              min="0"
+                              step="0.1"
+                              value={row.percentage}
+                              onChange={(e) => updateProcessedRecipeRow(row.id, { percentage: e.target.value })}
+                              placeholder="Esim. 60"
+                            />
+                          </div>
+                          <div style={{ ...styles.field, alignSelf: "end" }}>
+                            <button
+                              type="button"
+                              style={{ ...styles.button, width: "100%" }}
+                              onClick={() => handleSearchProcessedRecipeRow(row.id)}
+                              disabled={row.searchLoading}
+                            >
+                              {row.searchLoading ? "Haetaan..." : "Hae Fineli"}
+                            </button>
+                          </div>
+                        </div>
+                        <div style={styles.field}>
+                          <label>Valitse Fineli-tuote</label>
+                          <select
+                            style={styles.input}
+                            value={row.fineliFoodId}
+                            onChange={(e) => handleSelectProcessedRecipeFood(row.id, e.target.value)}
+                          >
+                            <option value="">{row.searchResults.length > 0 ? "Valitse haun tuloksista" : "Hae ensin Finelistä"}</option>
+                            {row.searchResults.map((item) => (
+                              <option key={item.id} value={item.id}>{item.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {row.fineliFoodName ? (
+                          <div style={styles.small}>Valittu Fineli-tuote: <strong>{row.fineliFoodName}</strong></div>
+                        ) : null}
+                        {row.searchError ? <div style={styles.noticeError}>{row.searchError}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={styles.row}>
+                    <button type="button" style={styles.button} onClick={addProcessedRecipeRow}>Lisää ainesosa</button>
+                  </div>
+                  <div style={{ ...styles.entry, background: "#fff", gap: 12 }}>
+                    <strong>Ravintoarvot per 100 g</strong>
+                    {processedNutritionRows.length > 0 ? (
+                      <div style={{ display: "grid", gridTemplateColumns: "minmax(200px, 1fr) auto", gap: 8 }}>
+                        {processedNutritionRows.map((row) => (
+                          <React.Fragment key={row.key}>
+                            <div>{row.label}</div>
+                            <div><strong>{row.value} {row.unit}</strong></div>
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={styles.small}>Ravintoarvot muodostuvat tähän, kun kaikille reseptin riveille on valittu Fineli-tuote ja prosentit.</div>
+                    )}
+                    {processedNutritionPreview.hasRows && !processedNutritionPreview.complete ? (
+                      <div style={styles.noticeInfo}>Valitse kaikille reseptin riveille Fineli-osuma ja prosenttiosuus, jotta ravintoarvot saadaan laskettua.</div>
+                    ) : null}
+                    {processedNutritionPreview.totalPercentage > 0 && Math.abs(processedNutritionPreview.totalPercentage - 100) > 0.2 ? (
+                      <div style={styles.noticeInfo}>Prosenttien summa on nyt {processedNutritionPreview.totalPercentage.toLocaleString("fi-FI", { maximumFractionDigits: 1 })} %. Laskenta normalisoidaan automaattisesti per 100 g, mutta tarkin tulos saadaan kun summa on 100 %.</div>
+                    ) : null}
+                  </div>
+                </div>
                 <div style={styles.field}><label>Määrä kg</label><input style={styles.input} type="number" value={processedForm.kilos} onChange={(e) => setProcessedForm({ ...processedForm, kilos: e.target.value })} placeholder="0" /></div>
                 <div style={styles.field}><label>Pakkauskoko g</label><input style={styles.input} type="number" value={processedForm.packageSizeG} onChange={(e) => setProcessedForm({ ...processedForm, packageSizeG: e.target.value })} placeholder="Esim. 500" /></div>
                 <div style={styles.field}><label>Pakkausten määrä</label><input style={styles.input} type="number" value={processedForm.packageCount} onChange={(e) => setProcessedForm({ ...processedForm, packageCount: e.target.value })} placeholder="Esim. 40" /></div>

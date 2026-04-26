@@ -94,6 +94,26 @@ const styles = {
     lineHeight: 1.08,
     wordBreak: "break-word",
   },
+  nutritionBlock: {
+    marginTop: "1.2mm",
+    padding: "1.8mm 2mm",
+    border: `0.35mm solid ${palette.border}`,
+    borderRadius: "2mm",
+    display: "grid",
+    gap: "0.7mm",
+  },
+  nutritionTitle: {
+    fontSize: "8pt",
+    lineHeight: 1.04,
+    fontWeight: 800,
+  },
+  nutritionRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: "2mm",
+    fontSize: "7.6pt",
+    lineHeight: 1.05,
+  },
   footer: {
     display: "grid",
     gridTemplateColumns: "35mm 1fr",
@@ -220,6 +240,31 @@ function LabelLine({ label, value, strong = false, content = null }) {
   );
 }
 
+function NutritionBlock({ rows }) {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const energyKj = rows.find((row) => row.key === "energyKj");
+  const energyKcal = rows.find((row) => row.key === "energyKcal");
+  const otherRows = rows.filter((row) => row.key !== "energyKj" && row.key !== "energyKcal");
+
+  return (
+    <div style={styles.nutritionBlock}>
+      <div style={styles.nutritionTitle}>Ravintosisalto / 100 g</div>
+      {(energyKj || energyKcal) ? (
+        <div style={styles.nutritionRow}>
+          <span>Energia</span>
+          <strong>{[energyKj ? `${energyKj.value} ${energyKj.unit}` : "", energyKcal ? `${energyKcal.value} ${energyKcal.unit}` : ""].filter(Boolean).join(" / ")}</strong>
+        </div>
+      ) : null}
+      {otherRows.map((row) => (
+        <div key={row.key} style={styles.nutritionRow}>
+          <span>{row.label}</span>
+          <strong>{row.value} {row.unit}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ProcessedLabel4x6({ label }) {
   if (!label) return null;
 
@@ -258,6 +303,7 @@ export default function ProcessedLabel4x6({ label }) {
           <LabelLine label="Ainesosat" content={renderHighlightedIngredients(label.ingredientsText, label.allergensText)} />
           <LabelLine label="Allergeenit" value={label.allergensText} strong />
         </div>
+        <NutritionBlock rows={label.nutritionRows} />
       </section>
 
       <section style={styles.footer}>
