@@ -11574,7 +11574,7 @@ export default function App() {
                     <option value="Sulatettu">Sulatettu</option>
                   </select>
                 </div>
-                <div style={styles.field}><label>Käsittelypaikka</label><input style={styles.input} value={processedForm.spot} onChange={(e) => setProcessedForm({ ...processedForm, spot: e.target.value })} placeholder="Esim. Forelli Kalalaitos Oy" /></div>
+                <div style={styles.field}><label>Käsittelypaikka</label><input style={styles.input} value={processedForm.spot} onChange={(e) => setProcessedForm({ ...processedForm, spot: e.target.value })} placeholder="Esim. Kalalaitos Oy" /></div>
                 <div style={styles.field}><label>Laji (kauppanimi)</label><input style={styles.input} value={processedForm.speciesNameFi} onChange={(e) => setProcessedForm({ ...processedForm, speciesNameFi: e.target.value })} placeholder="Esim. Muikku" /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
                   <label>{profile.role === "processor" ? "Liitä omat ostetut YKP-raaka-aine-erät" : "Liitä kalastajan YKP-raaka-aine-erät"}</label>
