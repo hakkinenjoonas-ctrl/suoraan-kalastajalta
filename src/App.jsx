@@ -750,6 +750,47 @@ const FINELI_COMPONENT_MATCHERS = {
   salt: [["suola"], ["salt"]],
   sodium: [["natrium"], ["sodium"]],
 };
+const PROCESSED_RECIPE_MANUAL_INGREDIENTS = {
+  suola: {
+    name: "Suola",
+    nutrition: {
+      energyKj: 0,
+      energyKcal: 0,
+      fat: 0,
+      saturatedFat: 0,
+      carbohydrate: 0,
+      sugars: 0,
+      protein: 0,
+      salt: 100,
+    },
+  },
+  vesi: {
+    name: "Vesi",
+    nutrition: {
+      energyKj: 0,
+      energyKcal: 0,
+      fat: 0,
+      saturatedFat: 0,
+      carbohydrate: 0,
+      sugars: 0,
+      protein: 0,
+      salt: 0,
+    },
+  },
+  sokeri: {
+    name: "Sokeri",
+    nutrition: {
+      energyKj: 1700,
+      energyKcal: 400,
+      fat: 0,
+      saturatedFat: 0,
+      carbohydrate: 100,
+      sugars: 100,
+      protein: 0,
+      salt: 0,
+    },
+  },
+};
 
 let fineliComponentsPromise = null;
 const fineliFoodDetailCache = new Map();
@@ -766,6 +807,21 @@ function createProcessedRecipeRow(seed = {}) {
     searchLoading: false,
     searchError: "",
   };
+}
+
+function getProcessedManualIngredientPreset(name) {
+  const normalized = normalizeFineliText(name);
+  if (!normalized) return null;
+  if (normalized === "suola" || normalized === "merisuola" || normalized === "hienosuola" || normalized === "kivisuola") {
+    return PROCESSED_RECIPE_MANUAL_INGREDIENTS.suola;
+  }
+  if (normalized === "vesi") {
+    return PROCESSED_RECIPE_MANUAL_INGREDIENTS.vesi;
+  }
+  if (normalized === "sokeri" || normalized === "kidesokeri") {
+    return PROCESSED_RECIPE_MANUAL_INGREDIENTS.sokeri;
+  }
+  return null;
 }
 
 function normalizeFineliText(value) {
@@ -7316,6 +7372,19 @@ export default function App() {
       return;
     }
 
+    const manualPreset = getProcessedManualIngredientPreset(query);
+    if (manualPreset) {
+      updateProcessedRecipeRow(rowId, {
+        searchLoading: false,
+        searchError: "",
+        searchResults: [{ id: `manual:${normalizeFineliText(query)}`, name: `${manualPreset.name} (vakioarvo)` }],
+        fineliFoodId: `manual:${normalizeFineliText(query)}`,
+        fineliFoodName: `${manualPreset.name} (vakioarvo)`,
+        fineliNutrients: manualPreset.nutrition,
+      });
+      return;
+    }
+
     updateProcessedRecipeRow(rowId, {
       searchLoading: true,
       searchError: "",
@@ -7344,6 +7413,28 @@ export default function App() {
         fineliFoodId: "",
         fineliFoodName: "",
         fineliNutrients: null,
+      });
+      return;
+    }
+
+    if (String(nextFoodId).startsWith("manual:")) {
+      const targetRow = processedRecipeRows.find((row) => row.id === rowId);
+      const manualPreset = getProcessedManualIngredientPreset(targetRow?.ingredientName || "");
+      if (!manualPreset) {
+        updateProcessedRecipeRow(rowId, {
+          fineliFoodId: "",
+          fineliFoodName: "",
+          fineliNutrients: null,
+          searchError: "Vakioaineen arvoja ei löytynyt.",
+        });
+        return;
+      }
+      updateProcessedRecipeRow(rowId, {
+        searchLoading: false,
+        searchError: "",
+        fineliFoodId: nextFoodId,
+        fineliFoodName: `${manualPreset.name} (vakioarvo)`,
+        fineliNutrients: manualPreset.nutrition,
       });
       return;
     }
@@ -11587,7 +11678,6 @@ export default function App() {
                 <div style={styles.field}><label>Paikkakunta</label><MunicipalitySelect value={processedForm.municipality} onChange={(e) => setProcessedForm({ ...processedForm, municipality: e.target.value })} /></div>
                 <div style={styles.field}><label>Tuotenimi</label><input style={styles.input} value={processedForm.productName} onChange={(e) => setProcessedForm({ ...processedForm, productName: e.target.value })} placeholder="Esim. Kylmäsavulohi viipale" /></div>
                 <div style={styles.field}><label>Tuotetyyppi</label><select style={styles.input} value={processedForm.productType} onChange={(e) => setProcessedForm({ ...processedForm, productType: e.target.value })}>{processedProductTypes.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
-                <div style={styles.field}><label>Käsittelytapa</label><select style={styles.input} value={processedForm.processingMethod} onChange={(e) => setProcessedForm({ ...processedForm, processingMethod: e.target.value })}>{processingMethods.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
                 <div style={styles.field}>
                   <label>Säilytys</label>
                   <select style={styles.input} value={processedForm.storageTemperature} onChange={(e) => setProcessedForm({ ...processedForm, storageTemperature: e.target.value })}>
@@ -11606,7 +11696,6 @@ export default function App() {
                   </select>
                 </div>
                 <div style={styles.field}><label>Käsittelypaikka</label><input style={styles.input} value={processedForm.spot} onChange={(e) => setProcessedForm({ ...processedForm, spot: e.target.value })} placeholder="Esim. Kalalaitos Oy" /></div>
-                <div style={styles.field}><label>Laji (kauppanimi)</label><input style={styles.input} value={processedForm.speciesNameFi} onChange={(e) => setProcessedForm({ ...processedForm, speciesNameFi: e.target.value })} placeholder="Esim. Muikku" /></div>
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
                   <label>{profile.role === "processor" ? "Liitä omat ostetut YKP-raaka-aine-erät" : "Liitä kalastajan YKP-raaka-aine-erät"}</label>
                   {availableSourceEntries.length === 0 ? (
@@ -11664,6 +11753,7 @@ export default function App() {
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
                   <label>Ravintoarvojen resepti (Fineli, %)</label>
                   <div style={styles.noticeInfo}>Valitse jokaiselle ainesosalle Fineli-osuma itse. Ravintoarvot lasketaan automaattisesti per 100 g vain jalostepuolen etikettiä varten.</div>
+                  <div style={styles.small}>Vakioaineet toimivat myös ilman Fineliä: suola, vesi ja sokeri.</div>
                   <div style={{ display: "grid", gap: 12 }}>
                     {processedRecipeRows.map((row, index) => (
                       <div key={row.id} style={{ ...styles.entry, background: "#f8fbff", padding: 14, gap: 12 }}>
