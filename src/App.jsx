@@ -795,7 +795,21 @@ const PROCESSED_RECIPE_MANUAL_INGREDIENTS = {
 let fineliComponentsPromise = null;
 const fineliFoodDetailCache = new Map();
 
+function createEmptyProcessedManualNutrition(seed = {}) {
+  return {
+    energyKj: seed.energyKj === "" || seed.energyKj == null ? "" : String(seed.energyKj),
+    energyKcal: seed.energyKcal === "" || seed.energyKcal == null ? "" : String(seed.energyKcal),
+    fat: seed.fat === "" || seed.fat == null ? "" : String(seed.fat),
+    saturatedFat: seed.saturatedFat === "" || seed.saturatedFat == null ? "" : String(seed.saturatedFat),
+    carbohydrate: seed.carbohydrate === "" || seed.carbohydrate == null ? "" : String(seed.carbohydrate),
+    sugars: seed.sugars === "" || seed.sugars == null ? "" : String(seed.sugars),
+    protein: seed.protein === "" || seed.protein == null ? "" : String(seed.protein),
+    salt: seed.salt === "" || seed.salt == null ? "" : String(seed.salt),
+  };
+}
+
 function createProcessedRecipeRow(seed = {}) {
+  const manualNutritionSeed = seed.manualNutrition || seed.manual_nutrition || {};
   return {
     id: seed.id || safeId(),
     ingredientName: String(seed.ingredientName || seed.ingredient_name || seed.fineliFoodName || "").trim(),
@@ -803,6 +817,8 @@ function createProcessedRecipeRow(seed = {}) {
     fineliFoodId: String(seed.fineliFoodId || seed.fineli_food_id || "").trim(),
     fineliFoodName: String(seed.fineliFoodName || seed.fineli_food_name || "").trim(),
     fineliNutrients: seed.fineliNutrients || seed.fineli_nutrients || null,
+    nutritionMode: String(seed.nutritionMode || seed.nutrition_mode || (Object.keys(manualNutritionSeed).length > 0 ? "manual" : "fineli")).trim() || "fineli",
+    manualNutrition: createEmptyProcessedManualNutrition(manualNutritionSeed),
     searchResults: [],
     searchLoading: false,
     searchError: "",
@@ -1068,8 +1084,16 @@ function buildProcessedRecipePayload(rows) {
       fineli_food_id: String(row.fineliFoodId || "").trim() || null,
       fineli_food_name: String(row.fineliFoodName || "").trim() || null,
       fineli_nutrients: row.fineliNutrients || null,
+      nutrition_mode: row.nutritionMode === "manual" ? "manual" : "fineli",
+      manual_nutrition: row.nutritionMode === "manual"
+        ? PROCESSED_NUTRITION_FIELDS.reduce((acc, field) => {
+            const parsed = parseFineliNumeric(row.manualNutrition?.[field.key]);
+            acc[field.key] = parsed == null ? null : parsed;
+            return acc;
+          }, {})
+        : null,
     }))
-    .filter((row) => row.ingredient_name || row.percentage != null || row.fineli_food_id || row.fineli_food_name);
+    .filter((row) => row.ingredient_name || row.percentage != null || row.fineli_food_id || row.fineli_food_name || row.nutrition_mode === "manual");
 }
 
 function calculateProcessedNutritionPer100g(rows) {
@@ -1077,8 +1101,16 @@ function calculateProcessedNutritionPer100g(rows) {
     .map((row) => ({
       ingredientName: String(row.ingredientName || "").trim(),
       percentage: parseFineliNumeric(row.percentage),
-      nutrients: row.fineliNutrients || null,
-      selected: Boolean(String(row.fineliFoodId || "").trim()),
+      nutrients: row.nutritionMode === "manual"
+        ? PROCESSED_NUTRITION_FIELDS.reduce((acc, field) => {
+            const parsed = parseFineliNumeric(row.manualNutrition?.[field.key]);
+            acc[field.key] = parsed == null ? null : parsed;
+            return acc;
+          }, {})
+        : (row.fineliNutrients || null),
+      selected: row.nutritionMode === "manual"
+        ? PROCESSED_NUTRITION_FIELDS.some((field) => parseFineliNumeric(row.manualNutrition?.[field.key]) != null)
+        : Boolean(String(row.fineliFoodId || "").trim()),
     }))
     .filter((row) => row.ingredientName || row.percentage != null || row.selected);
 
@@ -7367,6 +7399,19 @@ export default function App() {
     }));
   };
 
+  const updateProcessedRecipeManualNutrition = (rowId, key, value) => {
+    setProcessedRecipeRows((prev) => prev.map((row) => {
+      if (row.id !== rowId) return row;
+      return {
+        ...row,
+        manualNutrition: {
+          ...(row.manualNutrition || createEmptyProcessedManualNutrition()),
+          [key]: value,
+        },
+      };
+    }));
+  };
+
   const addProcessedRecipeRow = () => {
     setProcessedRecipeRows((prev) => [...prev, createProcessedRecipeRow()]);
   };
@@ -7395,6 +7440,8 @@ export default function App() {
         fineliFoodId: `manual:${normalizeFineliText(query)}`,
         fineliFoodName: `${manualPreset.name} (vakioarvo)`,
         fineliNutrients: manualPreset.nutrition,
+        nutritionMode: "manual",
+        manualNutrition: createEmptyProcessedManualNutrition(manualPreset.nutrition),
       });
       return;
     }
@@ -7449,6 +7496,8 @@ export default function App() {
         fineliFoodId: nextFoodId,
         fineliFoodName: `${manualPreset.name} (vakioarvo)`,
         fineliNutrients: manualPreset.nutrition,
+        nutritionMode: "manual",
+        manualNutrition: createEmptyProcessedManualNutrition(manualPreset.nutrition),
       });
       return;
     }
@@ -7468,6 +7517,7 @@ export default function App() {
         searchLoading: false,
         fineliFoodName: selectedResult?.name || targetRow?.fineliFoodName || "",
         fineliNutrients: nutrition,
+        nutritionMode: "fineli",
       });
     } catch (error) {
       updateProcessedRecipeRow(rowId, {
@@ -11795,6 +11845,35 @@ export default function App() {
                         {row.fineliFoodName ? (
                           <div style={styles.small}>Valittu Fineli-tuote: <strong>{row.fineliFoodName}</strong></div>
                         ) : null}
+                        <label style={{ ...styles.checkboxCard, background: "#fff" }}>
+                          <input
+                            type="checkbox"
+                            checked={row.nutritionMode === "manual"}
+                            onChange={(e) => updateProcessedRecipeRow(row.id, {
+                              nutritionMode: e.target.checked ? "manual" : "fineli",
+                            })}
+                          />
+                          Syötä ravintoarvot käsin tälle ainesosalle
+                        </label>
+                        {row.nutritionMode === "manual" ? (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+                            {PROCESSED_NUTRITION_FIELDS.map((field) => (
+                              <div key={`${row.id}-${field.key}`} style={styles.field}>
+                                <label>{field.label} {field.unit}</label>
+                                <input
+                                  style={styles.input}
+                                  type="number"
+                                  inputMode="decimal"
+                                  min="0"
+                                  step="0.1"
+                                  value={row.manualNutrition?.[field.key] ?? ""}
+                                  onChange={(e) => updateProcessedRecipeManualNutrition(row.id, field.key, e.target.value)}
+                                  placeholder="0"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                         {row.searchError ? <div style={styles.noticeError}>{row.searchError}</div> : null}
                       </div>
                     ))}
@@ -11814,10 +11893,10 @@ export default function App() {
                         ))}
                       </div>
                     ) : (
-                      <div style={styles.small}>Ravintoarvot muodostuvat tähän, kun kaikille reseptin riveille on valittu Fineli-tuote ja prosentit.</div>
+                      <div style={styles.small}>Ravintoarvot muodostuvat tähän, kun kaikille reseptin riveille on valittu Fineli-tuote tai syötetty ravintoarvot käsin sekä prosentit.</div>
                     )}
                     {processedNutritionPreview.hasRows && !processedNutritionPreview.complete ? (
-                      <div style={styles.noticeInfo}>Valitse kaikille reseptin riveille Fineli-osuma ja prosenttiosuus, jotta ravintoarvot saadaan laskettua.</div>
+                      <div style={styles.noticeInfo}>Valitse kaikille reseptin riveille Fineli-osuma tai syötä rivin ravintoarvot käsin sekä prosenttiosuus, jotta ravintoarvot saadaan laskettua.</div>
                     ) : null}
                     {processedNutritionPreview.totalPercentage > 0 && Math.abs(processedNutritionPreview.totalPercentage - 100) > 0.2 ? (
                       <div style={styles.noticeInfo}>Prosenttien summa on nyt {processedNutritionPreview.totalPercentage.toLocaleString("fi-FI", { maximumFractionDigits: 1 })} %. Laskenta normalisoidaan automaattisesti per 100 g, mutta tarkin tulos saadaan kun summa on 100 %.</div>
