@@ -1333,6 +1333,7 @@ function getAppLogoUrl() {
 }
 
 function createInitialProcessedForm() {
+  const storedCatchDefaults = getStoredCatchFormDefaults();
   return {
     productionDate: today(),
     bestBeforeDate: "",
@@ -1378,8 +1379,8 @@ function createInitialProcessedForm() {
     pickupWindow: "",
     deliveryWindow: "",
     transportNotes: "",
-    deliveryDestinations: initialCatchDefaults.deliveryDestinations || [],
-    deliveryArea: initialCatchDefaults.deliveryArea || "",
+    deliveryDestinations: storedCatchDefaults.deliveryDestinations || [],
+    deliveryArea: storedCatchDefaults.deliveryArea || "",
     deliveryCost: "",
     earliestDeliveryDate: today(),
     coldTransport: true,
