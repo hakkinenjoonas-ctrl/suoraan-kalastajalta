@@ -2338,11 +2338,19 @@ function getCommercialFishingVesselIds(profileLike) {
 
 function getPreferredBatchSourceIdentifier(profileLike, selectedVesselId = "") {
   return String(
-    profileLike?.evira_facility_id ||
     selectedVesselId ||
     getCommercialFishingVesselIds(profileLike)[0] ||
     profileLike?.commercial_fishing_vessel_id ||
     profileLike?.commercial_fishing_id ||
+    ""
+  ).trim();
+}
+
+function getProcessedBatchSourceIdentifier(profileLike) {
+  return String(
+    profileLike?.evira_facility_id ||
+    profileLike?.approval_number ||
+    profileLike?.establishment_number ||
     ""
   ).trim();
 }
@@ -10226,7 +10234,7 @@ export default function App() {
     let batchId;
     try {
       batchId = await generateBatchId({
-        sourceIdentifier: getPreferredBatchSourceIdentifier(profile),
+        sourceIdentifier: getProcessedBatchSourceIdentifier(profile),
         date: processedForm.productionDate,
         speciesLabels: (processedForm.speciesSummary
           .split("\n")
