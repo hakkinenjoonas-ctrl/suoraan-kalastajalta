@@ -11021,10 +11021,10 @@ export default function App() {
                           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
                             <strong>Kalastajan tiedot</strong>
                             <div style={styles.muted}>Nimi: {sellerInfo.sellerName || "-"}</div>
-                            {sellerInfo.sellerBusinessId ? <div style={styles.muted}>Y-tunnus: {sellerInfo.sellerBusinessId}</div> : null}
+                            <div style={styles.muted}>Y-tunnus: {sellerInfo.sellerBusinessId || "-"}</div>
                             {sellerInfo.sellerAddress ? <div style={styles.muted}>Yrityksen osoite: {sellerInfo.sellerAddress}</div> : null}
-                            {sellerInfo.sellerEmail ? <div style={styles.muted}>Sähköposti: {sellerInfo.sellerEmail}</div> : null}
-                            {sellerInfo.sellerPhone ? <div style={styles.muted}>Puhelin: {sellerInfo.sellerPhone}</div> : null}
+                            <div style={styles.muted}>Sähköposti: {sellerInfo.sellerEmail || "-"}</div>
+                            <div style={styles.muted}>Puhelin: {sellerInfo.sellerPhone || "-"}</div>
                             {sellerInfo.sellerCommercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {sellerInfo.sellerCommercialFishingId}</div> : null}
                             <div style={styles.muted}>Vesialue: {sellerInfo.sellerArea || "-"}</div>
                             {sellerInfo.sellerSpot ? <div style={styles.muted}>Pyyntipaikka: {sellerInfo.sellerSpot}</div> : null}
@@ -11034,8 +11034,8 @@ export default function App() {
                             <div style={styles.muted}>Kylmäkuljetus: {sellerInfo.coldTransport ? "kyllä" : "ei"}</div>
                             <div style={styles.muted}>Toimituksen tila: {fulfillmentStatusLabel(o.fulfillment_status)}</div>
                             <div style={styles.row}>
-                              {o.fulfillment_status !== "delivery_agreed" ? <button style={styles.button} onClick={() => updateFulfillmentStatus(o, "delivery_agreed")}>Merkitse toimitus sovituksi</button> : null}
-                              {o.fulfillment_status !== "delivered" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => updateFulfillmentStatus(o, "delivered")}>Merkitse toimitetuksi</button> : null}
+                              {!["delivery_agreed", "delivered", "received"].includes(String(o.fulfillment_status || "")) ? <button style={styles.button} onClick={() => updateFulfillmentStatus(o, "delivery_agreed")}>Merkitse toimitus sovituksi</button> : null}
+                              {!["delivered", "received"].includes(String(o.fulfillment_status || "")) ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => updateFulfillmentStatus(o, "delivered")}>Merkitse toimitetuksi</button> : null}
                             </div>
                           </div>
                         ) : null}
