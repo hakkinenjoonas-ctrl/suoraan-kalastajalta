@@ -11716,6 +11716,8 @@ export default function App() {
                   <select style={styles.input} value={processedForm.productState} onChange={(e) => setProcessedForm({ ...processedForm, productState: e.target.value })}>
                     <option value="">Valitse tarvittaessa</option>
                     <option value="Tuore">Tuore</option>
+                    <option value="Kypsennetty">Kypsennetty</option>
+                    <option value="Kypsennetty, pakastettu">Kypsennetty, pakastettu</option>
                     <option value="Pakastettu">Pakastettu</option>
                     <option value="Sulatettu">Sulatettu</option>
                   </select>
