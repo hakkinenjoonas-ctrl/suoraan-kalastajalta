@@ -441,8 +441,13 @@ export function buildRoleOptionLabel(option, buyers = []) {
   return roleLabel(option.role);
 }
 
-export function responsiveGridStyle(base) {
-  if (typeof window !== "undefined" && window.innerWidth < 960) {
+export function responsiveGridStyle(base, viewportWidth) {
+  const width = typeof viewportWidth === "number"
+    ? viewportWidth
+    : typeof window !== "undefined"
+    ? window.innerWidth
+    : 0;
+  if (width < 960) {
     return { ...base, gridTemplateColumns: "1fr" };
   }
   return base;

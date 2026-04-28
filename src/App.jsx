@@ -2779,10 +2779,10 @@ function FishSpeciesInput({ value, onChange, placeholder = "Valitse tai kirjoita
   );
 }
 
-function FirstUseGuideCard({ profile, guideState, onDismissNow, onHideForever }) {
+function FirstUseGuideCard({ profile, guideState, onDismissNow, onHideForever, viewportWidth }) {
   const guide = getRoleOnboardingGuideContent(profile?.role);
   if (!guide || !guideState?.visible) return null;
-  const onboardingStepsStyle = responsiveGridStyle(styles.onboardingSteps);
+  const onboardingStepsStyle = responsiveGridStyle(styles.onboardingSteps, viewportWidth);
 
   return (
     <div style={{ ...styles.card, ...styles.sectionCard, ...styles.onboardingCard, ...styles.stack, marginBottom: 16 }}>
@@ -2973,7 +2973,7 @@ function PublicBatchView({ batchId, data, loading, error }) {
   );
 }
 
-function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint }) {
+function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint, viewportWidth }) {
   if (!entry) return null;
 
   const previewLabel = {
@@ -2981,15 +2981,15 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
     qrImageUrl: getCatchLabelQrImageUrl(buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType })),
     logoUrl: getAppLogoUrl(),
   };
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const isMobile = viewportWidth < 768;
   const isThermalFormat = isThermalCatchLabelFormat(printFormat);
   const thermalPreviewBaseWidth = printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3 ? 420 : 386;
   const previewBaseWidth = isThermalFormat ? thermalPreviewBaseWidth : 420;
   const previewBaseHeight = isThermalFormat
     ? (previewBaseWidth * getThermalLabelSizeMm(printFormat).height) / getThermalLabelSizeMm(printFormat).width
     : (previewBaseWidth * 57) / 105;
-  const previewScale = isMobile && typeof window !== "undefined"
-    ? Math.min(1, Math.max(0.5, (window.innerWidth - 52) / previewBaseWidth))
+  const previewScale = isMobile
+    ? Math.min(1, Math.max(0.5, (viewportWidth - 52) / previewBaseWidth))
     : 1;
   const formatDetails = CATCH_LABEL_FORMATS.find((formatOption) => formatOption.value === printFormat) || CATCH_LABEL_FORMATS[0];
 
@@ -3178,10 +3178,10 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
   );
 }
 
-function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, onForgotPassword, onResetRecoveredPassword, authError, authInfo, authSubmitting }) {
-  const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
+function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, onForgotPassword, onResetRecoveredPassword, authError, authInfo, authSubmitting, viewportWidth }) {
+  const logoHeight = viewportWidth < 768
     ? 172
-    : typeof window !== "undefined" && window.innerWidth < 1024
+    : viewportWidth < 1024
     ? 206
     : 228;
 
@@ -3197,7 +3197,7 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
               style={{
                 height: logoHeight,
                 width: "auto",
-                maxWidth: typeof window !== "undefined" && window.innerWidth < 768 ? "46vw" : "none",
+                maxWidth: viewportWidth < 768 ? "46vw" : "none",
                 objectFit: "contain",
                 display: "block",
                 flexShrink: 0,
@@ -5297,6 +5297,7 @@ export default function App() {
   const publicBatchId = getRequestedPublicBatchId();
   const requestedOfferId = getRequestedOfferId();
   const initialCatchDefaults = getStoredCatchFormDefaults();
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1280));
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [availableRoleOptions, setAvailableRoleOptions] = useState([]);
@@ -5326,6 +5327,20 @@ export default function App() {
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [activeTab, setActiveTab] = useState("dashboard");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
+    updateViewportWidth();
+    window.addEventListener("resize", updateViewportWidth);
+    window.addEventListener("orientationchange", updateViewportWidth);
+    window.visualViewport?.addEventListener("resize", updateViewportWidth);
+    return () => {
+      window.removeEventListener("resize", updateViewportWidth);
+      window.removeEventListener("orientationchange", updateViewportWidth);
+      window.visualViewport?.removeEventListener("resize", updateViewportWidth);
+    };
+  }, []);
 
   useEffect(() => {
     if (!authInfo) return undefined;
@@ -10623,7 +10638,7 @@ export default function App() {
   }
 
   if (authMode === "recovery" || !session || !profile) {
-    return <AuthView authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} onSignIn={handleSignIn} onSignUp={handleSignUp} onForgotPassword={handleForgotPassword} onResetRecoveredPassword={handleResetRecoveredPassword} authError={authError} authInfo={authInfo} authSubmitting={authSubmitting} />;
+    return <AuthView authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} onSignIn={handleSignIn} onSignUp={handleSignUp} onForgotPassword={handleForgotPassword} onResetRecoveredPassword={handleResetRecoveredPassword} authError={authError} authInfo={authInfo} authSubmitting={authSubmitting} viewportWidth={viewportWidth} />;
   }
 
   if (!profile.is_active && availableRoleOptions.length === 0) {
@@ -10709,9 +10724,9 @@ export default function App() {
     const acceptedBuyerOffers = (buyerOffers || []).filter(
       (offer) => offer.status === "accepted" && formatOfferDay(offer.updated_at || offer.created_at) === todayLabel
     );
-    const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
+    const logoHeight = viewportWidth < 768
       ? 172
-      : typeof window !== "undefined" && window.innerWidth < 1024
+      : viewportWidth < 1024
       ? 206
       : 228;
 
@@ -10729,7 +10744,7 @@ export default function App() {
                     style={{
                       height: logoHeight,
                       width: "auto",
-                      maxWidth: typeof window !== "undefined" && window.innerWidth < 768 ? "46vw" : "none",
+                      maxWidth: viewportWidth < 768 ? "46vw" : "none",
                       objectFit: "contain",
                       display: "block",
                       flexShrink: 0,
@@ -10885,6 +10900,7 @@ export default function App() {
             guideState={onboardingGuideState}
             onDismissNow={dismissOnboardingGuideNow}
             onHideForever={hideOnboardingGuideForever}
+            viewportWidth={viewportWidth}
           />
           {acceptedBuyerOffers.length > 0 ? (
             <div style={{ ...styles.successHighlightBox, ...styles.stack, marginBottom: 16 }}>
@@ -11191,7 +11207,7 @@ export default function App() {
     : profile.role === "member"
     ? { ...styles.tabs6, gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }
     : styles.tabs6;
-  const isCompactTabs = typeof window !== "undefined" && window.innerWidth < 900;
+  const isCompactTabs = viewportWidth < 900;
   const visibleTabStyle = isCompactTabs
     ? {
         ...tabStyle,
@@ -11216,13 +11232,13 @@ export default function App() {
         whiteSpace: "nowrap",
       }
     : styles.tab;
-  const grid3 = responsiveGridStyle(styles.grid3);
-  const grid2 = responsiveGridStyle(styles.grid2);
-  const formGrid = responsiveGridStyle(styles.formGrid);
-  const speciesRow = responsiveGridStyle(styles.speciesRow);
-  const logoHeight = typeof window !== "undefined" && window.innerWidth < 768
+  const grid3 = responsiveGridStyle(styles.grid3, viewportWidth);
+  const grid2 = responsiveGridStyle(styles.grid2, viewportWidth);
+  const formGrid = responsiveGridStyle(styles.formGrid, viewportWidth);
+  const speciesRow = responsiveGridStyle(styles.speciesRow, viewportWidth);
+  const logoHeight = viewportWidth < 768
     ? 172
-    : typeof window !== "undefined" && window.innerWidth < 1024
+    : viewportWidth < 1024
     ? 206
     : 228;
 
@@ -11240,7 +11256,7 @@ export default function App() {
                   style={{
                     height: logoHeight,
                     width: "auto",
-                    maxWidth: typeof window !== "undefined" && window.innerWidth < 768 ? "46vw" : "none",
+                    maxWidth: viewportWidth < 768 ? "46vw" : "none",
                     objectFit: "contain",
                     display: "block",
                     flexShrink: 0,
@@ -11558,6 +11574,7 @@ export default function App() {
           guideState={onboardingGuideState}
           onDismissNow={dismissOnboardingGuideNow}
           onHideForever={hideOnboardingGuideForever}
+          viewportWidth={viewportWidth}
         />
 
         <div style={styles.stickyTabsWrap}>
@@ -13060,6 +13077,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             onClose={closeLabelPrintModal}
             onGeneratePdf={() => openCatchLabelPrintDialog(labelPrintEntry, "pdf")}
             onPrint={() => openCatchLabelPrintDialog(labelPrintEntry, "print")}
+            viewportWidth={viewportWidth}
           />
         ) : null}
       </div>
