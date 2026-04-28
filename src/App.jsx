@@ -4589,8 +4589,9 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
     y += deliveryRowHeight;
   }
 
-  let totalsY = 214;
-  if (y > 198) {
+  const invoiceBottomSectionStartY = y + 10;
+  let totalsY = invoiceBottomSectionStartY;
+  if (totalsY + 49 > pageBottomY - 8) {
     doc.addPage("a4", "portrait");
     totalsY = 26;
   }
@@ -4615,10 +4616,7 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  let paymentStartY = 214;
-  if (totalsY === 26) {
-    paymentStartY = 26;
-  }
+  let paymentStartY = totalsY;
   doc.text("Maksutiedot", leftX, paymentStartY);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
