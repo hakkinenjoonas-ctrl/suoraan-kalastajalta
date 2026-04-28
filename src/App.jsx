@@ -4392,6 +4392,16 @@ function drawCode128SetCBarcode(doc, data, x, y, width, height) {
 function getSellerInvoicePayload(offer, sellerProfile) {
   const invoiceDetails = calculateSellerInvoiceDetails(offer);
   const referenceNumber = buildSellerInvoiceReference(offer);
+  const lineItems = parseSellerInvoiceLineItems(offer).map((item) => {
+    const lineTotal = Number(item.lineTotal || 0);
+    const vatAmount = lineTotal * invoiceDetails.vatRate;
+    return {
+      ...item,
+      lineTotal,
+      vatAmount,
+      grossTotal: lineTotal + vatAmount,
+    };
+  });
   return {
     invoiceNumber: buildSellerInvoiceNumber(offer),
     invoiceDate: today(),
@@ -4418,7 +4428,7 @@ function getSellerInvoicePayload(offer, sellerProfile) {
     areaText: [offer?.area, offer?.spot].map((item) => String(item || "").trim()).filter(Boolean).join(" / "),
     acceptedSourceLabel: getAcceptedInvoiceSourceLabel(offer),
     deliveryMethod: String(offer?.delivery_method || "").trim(),
-    lineItems: parseSellerInvoiceLineItems(offer),
+    lineItems,
     vatRate: invoiceDetails.vatRate,
     productTotal: invoiceDetails.productTotal,
     productVatAmount: invoiceDetails.productVatAmount,
@@ -4526,7 +4536,9 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   doc.setTextColor(15, 23, 42);
   invoice.lineItems.forEach((item) => {
     const itemLines = doc.splitTextToSize(item.description, 90);
-    const rowHeight = Math.max(10, (itemLines.length * lineHeight) + 4);
+    const vatDetailLine = `ALV ${(invoice.vatRate * 100).toLocaleString("fi-FI")} %: ${euro(item.vatAmount || 0)} · Yhteensä sis. ALV: ${euro(item.grossTotal || 0)}`;
+    const vatLines = doc.splitTextToSize(vatDetailLine, 90);
+    const rowHeight = Math.max(14, ((itemLines.length + vatLines.length) * lineHeight) + 6);
     if (y + rowHeight > tableBottomLimit) {
       doc.addPage("a4", "portrait");
       y = 24;
@@ -4538,6 +4550,11 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
     }
     const textY = y + 3.5;
     doc.text(itemLines, leftX + 2, textY);
+    doc.setFontSize(8.6);
+    doc.setTextColor(71, 85, 105);
+    doc.text(vatLines, leftX + 2, textY + (itemLines.length * lineHeight) + 0.8);
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
     doc.text(item.quantityDisplay || "-", quantityX, textY, { align: "right" });
     doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", unitPriceX, textY, { align: "right" });
     doc.text(euro(item.lineTotal || 0), totalX, textY, { align: "right" });
@@ -4547,7 +4564,9 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   });
 
   if (invoice.deliveryCost > 0) {
-    const deliveryRowHeight = 10;
+    const deliveryVatDetail = `ALV ${(invoice.vatRate * 100).toLocaleString("fi-FI")} %: ${euro(invoice.deliveryVatAmount || 0)} · Yhteensä sis. ALV: ${euro((invoice.deliveryCost || 0) + (invoice.deliveryVatAmount || 0))}`;
+    const deliveryVatLines = doc.splitTextToSize(deliveryVatDetail, 90);
+    const deliveryRowHeight = Math.max(14, (deliveryVatLines.length * lineHeight) + 10);
     if (y + deliveryRowHeight > tableBottomLimit) {
       doc.addPage("a4", "portrait");
       y = 24;
@@ -4557,8 +4576,14 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
       doc.setFontSize(10);
       doc.setTextColor(15, 23, 42);
     }
-    doc.text("Toimituskulu", leftX + 2, y + 3.5);
-    doc.text(euro(invoice.deliveryCost), rightX - 2, y + 3.5, { align: "right" });
+    const deliveryTextY = y + 3.5;
+    doc.text("Toimituskulu", leftX + 2, deliveryTextY);
+    doc.setFontSize(8.6);
+    doc.setTextColor(71, 85, 105);
+    doc.text(deliveryVatLines, leftX + 2, deliveryTextY + lineHeight + 0.8);
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text(euro(invoice.deliveryCost), rightX - 2, deliveryTextY, { align: "right" });
     doc.setDrawColor(226, 232, 240);
     doc.line(leftX, y + deliveryRowHeight, rightX, y + deliveryRowHeight);
     y += deliveryRowHeight;
@@ -4616,8 +4641,16 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
 
   const barcodeData = buildSellerInvoiceBankBarcode(invoice);
   if (barcodeData) {
-    const barcodeY = Math.min(infoY + 20, pageBottomY - 18);
-    drawCode128SetCBarcode(doc, barcodeData, leftX, barcodeY, 120, 12);
+    let barcodePageY = infoY + 6;
+    if (barcodePageY + 16 > pageBottomY) {
+      doc.addPage("a4", "portrait");
+      barcodePageY = 24;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Pankkiviivakoodi", leftX, barcodePageY);
+    drawCode128SetCBarcode(doc, barcodeData, leftX, barcodePageY + 4, 120, 12);
   }
 
   return { doc, invoice };
@@ -4717,8 +4750,18 @@ function getSellerGroupInvoicePayload(offers, sellerProfile) {
   const sortedOffers = [...(offers || [])].sort((a, b) => new Date(a.updated_at || a.created_at || 0).getTime() - new Date(b.updated_at || b.created_at || 0).getTime());
   const firstOffer = sortedOffers[0] || {};
   const lineItems = buildSellerGroupInvoiceLineItems(sortedOffers);
-  const productTotal = lineItems.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
   const vatRate = 0.135;
+  const lineItemsWithVat = lineItems.map((item) => {
+    const lineTotal = Number(item.lineTotal || 0);
+    const vatAmount = lineTotal * vatRate;
+    return {
+      ...item,
+      lineTotal,
+      vatAmount,
+      grossTotal: lineTotal + vatAmount,
+    };
+  });
+  const productTotal = lineItemsWithVat.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
   const vatAmount = productTotal * vatRate;
   const grandTotal = productTotal + vatAmount;
   const referenceNumber = buildSellerGroupInvoiceReference(sortedOffers);
@@ -4749,7 +4792,7 @@ function getSellerGroupInvoicePayload(offers, sellerProfile) {
     catchDates,
     offerCount: sortedOffers.length,
     batchIds: sortedOffers.map((offer) => String(offer?.batch_id || "").trim()).filter(Boolean),
-    lineItems,
+    lineItems: lineItemsWithVat,
     vatRate,
     productTotal,
     vatAmount,
@@ -4850,7 +4893,9 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
 
   invoice.lineItems.forEach((item) => {
     const itemLines = doc.splitTextToSize(item.description, 90);
-    const rowHeight = Math.max(10, (itemLines.length * lineHeight) + 4);
+    const vatDetailLine = `ALV ${(invoice.vatRate * 100).toLocaleString("fi-FI")} %: ${euro(item.vatAmount || 0)} · Yhteensä sis. ALV: ${euro(item.grossTotal || 0)}`;
+    const vatLines = doc.splitTextToSize(vatDetailLine, 90);
+    const rowHeight = Math.max(14, ((itemLines.length + vatLines.length) * lineHeight) + 6);
     if (y + rowHeight > tableBottomLimit) {
       doc.addPage("a4", "portrait");
       y = 24;
@@ -4862,6 +4907,11 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
     }
     const textY = y + 3.5;
     doc.text(itemLines, leftX + 2, textY);
+    doc.setFontSize(8.6);
+    doc.setTextColor(71, 85, 105);
+    doc.text(vatLines, leftX + 2, textY + (itemLines.length * lineHeight) + 0.8);
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
     doc.text(item.quantityDisplay || "-", quantityX, textY, { align: "right" });
     doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", unitPriceX, textY, { align: "right" });
     doc.text(euro(item.lineTotal || 0), totalX, textY, { align: "right" });
