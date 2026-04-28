@@ -4447,6 +4447,7 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   const invoice = getSellerInvoicePayload(offer, sellerProfile);
   const documentKind = options.documentKind === "reminder" ? "reminder" : "invoice";
   const isReminder = documentKind === "reminder";
+  const logoDataUrl = await fetchImageDataUrl(getAppLogoUrl()).catch(() => "");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   const leftX = 16;
   const rightX = 194;
@@ -4493,6 +4494,9 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   doc.setFontSize(14);
   doc.setTextColor(30, 64, 175);
   doc.text("Suoraan Kalastajalta", leftX, y + 12);
+  if (logoDataUrl) {
+    doc.addImage(logoDataUrl, "PNG", 154, y - 3, 22, 14);
+  }
   if (isReminder) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9.5);
@@ -4808,6 +4812,7 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
   const invoice = getSellerGroupInvoicePayload(offers, sellerProfile);
   const documentKind = options.documentKind === "reminder" ? "reminder" : "invoice";
   const isReminder = documentKind === "reminder";
+  const logoDataUrl = await fetchImageDataUrl(getAppLogoUrl()).catch(() => "");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   const leftX = 16;
   const rightX = 194;
@@ -4855,6 +4860,9 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
   doc.setFontSize(14);
   doc.setTextColor(30, 64, 175);
   doc.text("Suoraan Kalastajalta", leftX, y + 12);
+  if (logoDataUrl) {
+    doc.addImage(logoDataUrl, "PNG", 154, y - 3, 22, 14);
+  }
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(15, 23, 42);
