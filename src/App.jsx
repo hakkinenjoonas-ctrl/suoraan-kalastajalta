@@ -1148,6 +1148,12 @@ function formatProcessedNutritionValue(key, value) {
   });
 }
 
+function getProcessedStrongSaltWarning(entry) {
+  const saltValue = parseFineliNumeric(entry?.nutritionPer100g?.salt ?? entry?.nutrition_per_100g?.salt);
+  if (saltValue == null) return "";
+  return saltValue > 1.8 ? "Voimakassuolainen" : "";
+}
+
 function buildProcessedNutritionRows(nutrition) {
   if (!nutrition || typeof nutrition !== "object") return [];
   return PROCESSED_NUTRITION_FIELDS
@@ -1307,6 +1313,7 @@ function buildProcessedLabelData(entry, profileLike) {
     speciesNameScientific: getProcessedLabelScientificName(entry),
     gearType: String(entry?.gearType || entry?.gear_type || "").trim(),
     productStateText: getProcessedLabelProductState(entry),
+    strongSaltWarningText: getProcessedStrongSaltWarning(entry),
     ingredientsText: String(entry?.ingredients || entry?.ingredientsText || "").trim(),
     allergensText: String(entry?.allergens || entry?.allergensText || "").trim(),
     nutritionRows: buildProcessedNutritionRows(entry?.nutritionPer100g || entry?.nutrition_per_100g || null),

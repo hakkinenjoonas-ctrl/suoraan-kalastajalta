@@ -307,6 +307,7 @@ export default function ProcessedLabel4x6({ label }) {
             <LabelLine label="Sailytysohje" value={label.storageText} />
             <LabelLine label="Pyyntialue" value={label.catchAreaText} />
             <LabelLine label="Tuotteen tila" value={label.productStateText} />
+            <LabelLine label="Merkinta" value={label.strongSaltWarningText} strong />
             <LabelLine label="Ainesosat" content={renderHighlightedIngredients(label.ingredientsText, label.allergensText)} />
             <LabelLine label="Allergeenit" value={label.allergensText} strong />
           </div>
