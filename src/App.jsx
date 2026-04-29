@@ -4495,7 +4495,7 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   doc.setTextColor(30, 64, 175);
   doc.text("Suoraan Kalastajalta", leftX, y + 12);
   if (logoDataUrl) {
-    doc.addImage(logoDataUrl, "PNG", leftX + 50, y + 3, 12, 7.6);
+    doc.addImage(logoDataUrl, "PNG", leftX + 50, y + 0.8, 24, 15.2);
   }
   if (isReminder) {
     doc.setFont("helvetica", "normal");
@@ -4596,12 +4596,34 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
     y += deliveryRowHeight;
   }
 
-  const invoiceBottomSectionStartY = y + 10;
-  let totalsY = invoiceBottomSectionStartY;
-  if (totalsY + 49 > pageBottomY - 8) {
+  let paymentLines = [
+    `Saajan nimi: ${invoice.sellerName || "-"}`,
+    `IBAN: ${invoice.sellerIban || "-"}`,
+    `BIC: ${invoice.sellerBic || "-"}`,
+    `Viitenumero: ${invoice.referenceDisplay}`,
+    `Erätunnus: ${invoice.batchId || "-"}`,
+  ];
+  if (invoice.acceptedSourceLabel) paymentLines.push(`Laskutusperuste: ${invoice.acceptedSourceLabel}`);
+  if (invoice.catchDates.length > 0) paymentLines.push(`Pyyntipäivämäärä: ${invoice.catchDates.join(", ")}`);
+  if (invoice.deliveryDate) paymentLines.push(`Toimituspäivä: ${invoice.deliveryDate}`);
+  if (invoice.areaText) paymentLines.push(`Kalastamisalue: ${invoice.areaText}`);
+  if (invoice.deliveryMethod) paymentLines.push(`Toimitustapa: ${invoice.deliveryMethod}`);
+
+  const estimateWrappedHeight = (lines, maxWidth) => lines.reduce((total, text) => (
+    total + (Math.max(1, doc.splitTextToSize(text, maxWidth).length) * lineHeight) + 1.4
+  ), 0);
+
+  const barcodeBlockHeight = 22;
+  const sectionGap = 6;
+  const totalsBoxHeight = 49;
+  let invoiceBottomSectionStartY = y + 10;
+  const paymentInfoHeight = 7 + estimateWrappedHeight(paymentLines, 102);
+  const topSectionHeight = Math.max(paymentInfoHeight, totalsBoxHeight);
+  if (invoiceBottomSectionStartY + topSectionHeight + sectionGap + barcodeBlockHeight > pageBottomY) {
     doc.addPage("a4", "portrait");
-    totalsY = 26;
+    invoiceBottomSectionStartY = 26;
   }
+  let totalsY = invoiceBottomSectionStartY;
   doc.setFillColor(239, 246, 255);
   doc.roundedRect(122, totalsY - 8, 72, 49, 2, 2, "F");
   doc.setFont("helvetica", "normal");
@@ -4623,7 +4645,7 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  let paymentStartY = totalsY;
+  let paymentStartY = invoiceBottomSectionStartY;
   doc.text("Maksutiedot", leftX, paymentStartY);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
@@ -4633,29 +4655,17 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
     doc.text(wrappedLines, leftX, infoY);
     infoY += Math.max(1, wrappedLines.length) * lineHeight + 1.4;
   };
-  drawInfoLine(`Saajan nimi: ${invoice.sellerName || "-"}`);
-  drawInfoLine(`IBAN: ${invoice.sellerIban || "-"}`);
-  drawInfoLine(`BIC: ${invoice.sellerBic || "-"}`);
-  drawInfoLine(`Viitenumero: ${invoice.referenceDisplay}`);
-  drawInfoLine(`Erätunnus: ${invoice.batchId || "-"}`);
-  if (invoice.acceptedSourceLabel) drawInfoLine(`Laskutusperuste: ${invoice.acceptedSourceLabel}`);
-  if (invoice.catchDates.length > 0) drawInfoLine(`Pyyntipäivämäärä: ${invoice.catchDates.join(", ")}`);
-  if (invoice.deliveryDate) drawInfoLine(`Toimituspäivä: ${invoice.deliveryDate}`);
-  if (invoice.areaText) drawInfoLine(`Kalastamisalue: ${invoice.areaText}`);
-  if (invoice.deliveryMethod) drawInfoLine(`Toimitustapa: ${invoice.deliveryMethod}`);
+  paymentLines.forEach(drawInfoLine);
 
   const barcodeData = buildSellerInvoiceBankBarcode(invoice);
   if (barcodeData) {
-    let barcodePageY = infoY + 6;
-    if (barcodePageY + 16 > pageBottomY) {
-      doc.addPage("a4", "portrait");
-      barcodePageY = 24;
-    }
+    const barcodeTitleY = pageBottomY - 18;
+    const barcodeBarsY = pageBottomY - 12;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(15, 23, 42);
-    doc.text("Pankkiviivakoodi", leftX, barcodePageY);
-    drawCode128SetCBarcode(doc, barcodeData, leftX, barcodePageY + 4, 120, 12);
+    doc.text("Pankkiviivakoodi", leftX, barcodeTitleY);
+    drawCode128SetCBarcode(doc, barcodeData, leftX, barcodeBarsY, 120, 12);
   }
 
   return { doc, invoice };
@@ -4861,7 +4871,7 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
   doc.setTextColor(30, 64, 175);
   doc.text("Suoraan Kalastajalta", leftX, y + 12);
   if (logoDataUrl) {
-    doc.addImage(logoDataUrl, "PNG", leftX + 50, y + 3, 12, 7.6);
+    doc.addImage(logoDataUrl, "PNG", leftX + 50, y + 0.8, 24, 15.2);
   }
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
