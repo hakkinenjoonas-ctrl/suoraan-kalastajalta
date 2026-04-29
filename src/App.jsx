@@ -4495,7 +4495,7 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   doc.setTextColor(30, 64, 175);
   doc.text("Suoraan Kalastajalta", leftX, y + 12);
   if (logoDataUrl) {
-    doc.addImage(logoDataUrl, "PNG", 154, y - 3, 22, 14);
+    doc.addImage(logoDataUrl, "PNG", leftX + 50, y + 3, 12, 7.6);
   }
   if (isReminder) {
     doc.setFont("helvetica", "normal");
@@ -4861,7 +4861,7 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
   doc.setTextColor(30, 64, 175);
   doc.text("Suoraan Kalastajalta", leftX, y + 12);
   if (logoDataUrl) {
-    doc.addImage(logoDataUrl, "PNG", 154, y - 3, 22, 14);
+    doc.addImage(logoDataUrl, "PNG", leftX + 50, y + 3, 12, 7.6);
   }
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
