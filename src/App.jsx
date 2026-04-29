@@ -4454,17 +4454,17 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   const pageBottomY = 287;
   const lineHeight = 4.6;
   const tableBottomLimit = 207;
-  const quantityX = 108;
-  const unitPriceNetX = 128;
-  const unitPriceGrossX = 148;
-  const vatAmountX = 163;
-  const totalNetX = 178;
+  const quantityX = 104;
+  const unitPriceNetX = 124;
+  const unitPriceGrossX = 144;
+  const vatAmountX = 160;
+  const totalNetX = 176;
   const totalGrossX = rightX - 2;
   const drawInvoiceTableHeader = (headerY) => {
     doc.setFillColor(15, 23, 42);
     doc.rect(leftX, headerY - 6, 178, 9, "F");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.4);
+    doc.setFontSize(5.8);
     doc.setTextColor(255, 255, 255);
     doc.text("Tuote", leftX + 2, headerY);
     doc.text("Määrä", quantityX, headerY, { align: "right" });
@@ -4507,7 +4507,7 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   doc.setTextColor(15, 23, 42);
   doc.text(invoice.invoiceNumber, rightX, y + 1, { align: "right" });
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
+  doc.setFontSize(9.2);
   doc.text(`Laskun päiväys: ${invoice.invoiceDate}`, rightX, y + 8, { align: "right" });
   doc.text(`Eräpäivä: ${invoice.dueDate}`, rightX, y + 14, { align: "right" });
 
@@ -4556,7 +4556,7 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
       drawInvoiceTableHeader(y);
       y += 8;
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
+      doc.setFontSize(9.2);
       doc.setTextColor(15, 23, 42);
     }
     const textY = y + 3.5;
@@ -4580,7 +4580,7 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
       drawInvoiceTableHeader(y);
       y += 8;
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
+      doc.setFontSize(9.2);
       doc.setTextColor(15, 23, 42);
     }
     const deliveryTextY = y + 3.5;
@@ -4828,18 +4828,18 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
   const rightX = 194;
   const lineHeight = 4.6;
   const tableBottomLimit = 207;
-  const quantityX = 108;
-  const unitPriceNetX = 128;
-  const unitPriceGrossX = 148;
-  const vatAmountX = 163;
-  const totalNetX = 178;
+  const quantityX = 104;
+  const unitPriceNetX = 124;
+  const unitPriceGrossX = 144;
+  const vatAmountX = 160;
+  const totalNetX = 176;
   const totalGrossX = rightX - 2;
 
   const drawInvoiceTableHeader = (headerY) => {
     doc.setFillColor(15, 23, 42);
     doc.rect(leftX, headerY - 6, 178, 9, "F");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.4);
+    doc.setFontSize(5.8);
     doc.setTextColor(255, 255, 255);
     doc.text("Tuote", leftX + 2, headerY);
     doc.text("Määrä", quantityX, headerY, { align: "right" });
@@ -4874,7 +4874,7 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
     doc.addImage(logoDataUrl, "PNG", leftX + 50, y + 0.8, 24, 15.2);
   }
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
+  doc.setFontSize(9.2);
   doc.setTextColor(15, 23, 42);
   if (invoice.periodLabel) {
     doc.text(`Laskutuskausi: ${invoice.periodLabel}`, leftX, y + 19);
@@ -4928,7 +4928,7 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
       drawInvoiceTableHeader(y);
       y += 8;
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
+      doc.setFontSize(9.2);
       doc.setTextColor(15, 23, 42);
     }
     const textY = y + 3.5;
@@ -5371,6 +5371,24 @@ export default function App() {
   const publicBatchId = getRequestedPublicBatchId();
   const requestedOfferId = getRequestedOfferId();
   const initialCatchDefaults = getStoredCatchFormDefaults();
+  const buyerOffersCompatFields = [
+    "seller_business_id",
+    "seller_address",
+    "seller_postcode",
+    "seller_city",
+    "seller_contact_email",
+    "seller_email",
+    "seller_phone",
+    "seller_commercial_fishing_id",
+    "buyer_delivery_address",
+    "buyer_delivery_postcode",
+    "buyer_delivery_city",
+    "buyer_billing_address",
+    "buyer_billing_postcode",
+    "buyer_billing_city",
+    "buyer_billing_email",
+    "buyer_business_id",
+  ];
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1280));
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -5423,6 +5441,29 @@ export default function App() {
     }, 5000);
     return () => window.clearTimeout(timer);
   }, [authInfo]);
+  const isBuyerOffersCompatColumnError = useCallback((error) => {
+    const message = String(error?.message || "").toLowerCase();
+    return message.includes("buyer_offers") &&
+      message.includes("schema cache") &&
+      buyerOffersCompatFields.some((field) => message.includes(field));
+  }, [buyerOffersCompatFields]);
+  const stripBuyerOffersCompatFields = useCallback((payload) => {
+    if (!payload || typeof payload !== "object") return payload;
+    const nextPayload = { ...payload };
+    buyerOffersCompatFields.forEach((field) => {
+      delete nextPayload[field];
+    });
+    return nextPayload;
+  }, [buyerOffersCompatFields]);
+  const updateBuyerOfferWithCompatFallback = useCallback(async (offerId, payload) => {
+    let result = await supabase.from("buyer_offers").update(payload).eq("id", offerId);
+    if (!result.error || !isBuyerOffersCompatColumnError(result.error)) return result;
+    console.warn("buyer_offers update fallback: missing compat columns in schema cache", result.error.message);
+    return supabase
+      .from("buyer_offers")
+      .update(stripBuyerOffersCompatFields(payload))
+      .eq("id", offerId);
+  }, [isBuyerOffersCompatColumnError, stripBuyerOffersCompatFields]);
   const [form, setForm] = useState(() => {
     const defaults = initialCatchDefaults;
     return {
@@ -9774,10 +9815,7 @@ export default function App() {
       }
     }
 
-    const { error } = await supabase
-      .from("buyer_offers")
-      .update(updatePayload)
-      .eq("id", offer.id);
+    const { error } = await updateBuyerOfferWithCompatFallback(offer.id, updatePayload);
 
     if (error) {
       if (isMissingRefreshTokenError(error)) {
