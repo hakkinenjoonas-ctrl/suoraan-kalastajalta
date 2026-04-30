@@ -202,6 +202,8 @@ export function BuyerResponsesSection({
                 {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous:</strong> {euro(offer.counter_price_per_kg)} / kg</div> : null}
                 {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
                 {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
+                {revealIdentity ? <div style={styles.muted}><strong>Ostaja:</strong> {offer.buyer_company_name || offer.buyer_contact_name || offer.buyer_email || "-"}</div> : null}
+                {revealIdentity && offer.buyer_business_id ? <div style={styles.muted}><strong>Y-tunnus:</strong> {offer.buyer_business_id}</div> : null}
                 {revealIdentity ? <div style={styles.muted}><strong>Yhteystiedot:</strong> {offer.buyer_contact_name || "-"} · {offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div> : null}
                 {revealIdentity && buyerDeliveryAddressText ? (
                   <div style={{ marginTop: 10, fontSize: 18, fontWeight: 800, lineHeight: 1.25, color: "#0f172a" }}>
@@ -467,8 +469,9 @@ export function OfferedEntriesDetailsSection({
 
                           {revealIdentity ? (
                             <div style={{ ...styles.entry, background: "#fff", padding: 12, marginBottom: 10 }}>
-                              <div style={styles.muted}><strong>Yhteystiedot</strong></div>
                               <div>{offer.buyer_company_name || "-"}</div>
+                              {buyerBusinessId ? <div style={styles.muted}>Y-tunnus: {buyerBusinessId}</div> : null}
+                              <div style={styles.muted}><strong>Yhteystiedot</strong></div>
                               <div>{offer.buyer_contact_name || "-"}</div>
                               <div>{offer.buyer_email || "-"}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ""}</div>
                               {buyerDeliveryAddressText ? (
