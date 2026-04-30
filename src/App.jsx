@@ -6245,6 +6245,11 @@ export default function App() {
     return types.map((type) => buyerTypeTextLabel(type)).join(" / ");
   };
 
+  const fishermanDeliveryMethods = deliveryMethods.filter((method) => method === "Nouto" || method === "Myyjä toimittaa");
+  const normalizeFishermanDeliveryMethod = (value) => (
+    fishermanDeliveryMethods.includes(value) ? value : "Nouto"
+  );
+
   const buyerTypeLabel = (type) => {
     const types = parseBuyerTypes(type);
     if (types.length === 1) {
@@ -12789,10 +12794,10 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={form.deliveryMethod} onChange={(e) => setForm({ ...form, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
+                    <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={normalizeFishermanDeliveryMethod(form.deliveryMethod)} onChange={(e) => setForm({ ...form, deliveryMethod: e.target.value })}>{fishermanDeliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
                     <div style={styles.field}>
-                      <label>{form.deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}</label>
-                      {form.deliveryMethod === "Nouto" ? (
+                      <label>{normalizeFishermanDeliveryMethod(form.deliveryMethod) === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}</label>
+                      {normalizeFishermanDeliveryMethod(form.deliveryMethod) === "Nouto" ? (
                         <input
                           style={styles.input}
                           placeholder="Esim. Satamakatu 1, Kuopio"
