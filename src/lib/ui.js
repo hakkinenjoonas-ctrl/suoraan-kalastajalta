@@ -195,6 +195,15 @@ export const styles = {
     border: "1px solid #a5f3fc",
     whiteSpace: "pre-wrap",
   },
+  noticeWarning: {
+    padding: "13px 15px",
+    borderRadius: 16,
+    fontSize: 14,
+    background: "linear-gradient(135deg, #fffbeb 0%, #fff7ed 100%)",
+    color: "#b45309",
+    border: "1px solid #fcd34d",
+    whiteSpace: "pre-wrap",
+  },
   toastStack: {
     position: "fixed",
     top: 18,

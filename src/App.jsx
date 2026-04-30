@@ -5428,6 +5428,7 @@ export default function App() {
   const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "", displayName: "", requestedRole: "member" });
   const [authError, setAuthError] = useState("");
   const [authInfo, setAuthInfo] = useState("");
+  const [authWarning, setAuthWarning] = useState("");
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -5453,6 +5454,14 @@ export default function App() {
     }, 5000);
     return () => window.clearTimeout(timer);
   }, [authInfo]);
+
+  useEffect(() => {
+    if (!authWarning) return undefined;
+    const timer = window.setTimeout(() => {
+      setAuthWarning((current) => (current === authWarning ? "" : current));
+    }, 6500);
+    return () => window.clearTimeout(timer);
+  }, [authWarning]);
   const isBuyerOffersCompatColumnError = useCallback((error) => {
     const message = String(error?.message || "").toLowerCase();
     return message.includes("buyer_offers") &&
@@ -9822,6 +9831,7 @@ export default function App() {
   };
 
   const onUpdateBuyerOfferStatus = async (offer, status) => {
+    setAuthWarning("");
     let updatePayload = { status };
 
     if (status === "accepted") {
@@ -9924,7 +9934,7 @@ export default function App() {
           await invalidateSession();
           return;
         }
-        setAuthError(`Kauppa hyväksyttiin, mutta muiden saman erän tarjousten sulkeminen epäonnistui: ${openOffersError.message}`);
+        setAuthWarning(`Kauppa hyväksyttiin, mutta muiden saman erän tarjousten sulkeminen epäonnistui: ${openOffersError.message}`);
       } else {
         const competingOfferIds = (openOffers || [])
           .filter((candidate) => candidate.id !== offer.id && offersShareSameLot(offer, candidate))
@@ -9941,7 +9951,7 @@ export default function App() {
               await invalidateSession();
               return;
             }
-            setAuthError(`Kauppa hyväksyttiin, mutta muiden saman erän tarjousten sulkeminen epäonnistui: ${competingOffersError.message}`);
+            setAuthWarning(`Kauppa hyväksyttiin, mutta muiden saman erän tarjousten sulkeminen epäonnistui: ${competingOffersError.message}`);
           }
         }
       }
@@ -9959,7 +9969,7 @@ export default function App() {
       try {
         await sendBuyerAcceptedEmail({ ...offer, ...updatePayload, status: "accepted" });
       } catch (emailError) {
-        setAuthError(`Kauppa hyväksyttiin, mutta vahvistussähköpostin lähetys epäonnistui: ${String(emailError?.message || emailError)}`);
+        setAuthWarning(`Kauppa hyväksyttiin, mutta vahvistussähköpostin lähetys epäonnistui: ${String(emailError?.message || emailError)}`);
       }
       await sendPushEvent({
         targetBuyerId: offer?.buyer_id || "",
@@ -11761,12 +11771,18 @@ export default function App() {
           </div>
         ) : null}
 
-        {(authError || authInfo) ? (
+        {(authError || authInfo || authWarning) ? (
           <div style={styles.toastStack}>
             {authError ? (
               <div style={{ ...styles.noticeError, ...styles.toastCard }}>
                 {authError}
                 <button type="button" style={styles.toastClose} onClick={() => setAuthError("")} aria-label="Sulje virheilmoitus">×</button>
+              </div>
+            ) : null}
+            {authWarning ? (
+              <div style={{ ...styles.noticeWarning, ...styles.toastCard }}>
+                {authWarning}
+                <button type="button" style={styles.toastClose} onClick={() => setAuthWarning("")} aria-label="Sulje huomio">×</button>
               </div>
             ) : null}
             {authInfo ? (
