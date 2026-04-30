@@ -5455,13 +5455,6 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [authInfo]);
 
-  useEffect(() => {
-    if (!authWarning) return undefined;
-    const timer = window.setTimeout(() => {
-      setAuthWarning((current) => (current === authWarning ? "" : current));
-    }, 6500);
-    return () => window.clearTimeout(timer);
-  }, [authWarning]);
   const isBuyerOffersCompatColumnError = useCallback((error) => {
     const message = String(error?.message || "").toLowerCase();
     return message.includes("buyer_offers") &&
@@ -9934,6 +9927,12 @@ export default function App() {
           await invalidateSession();
           return;
         }
+        console.warn("Competing buyer offer lookup failed after accepted trade", {
+          offerId: offer?.id,
+          sellerUserId: offer?.seller_user_id,
+          batchId: offer?.batch_id,
+          message: openOffersError.message,
+        });
         setAuthWarning(`Kauppa hyväksyttiin, mutta muiden saman erän tarjousten sulkeminen epäonnistui: ${openOffersError.message}`);
       } else {
         const competingOfferIds = (openOffers || [])
@@ -9951,7 +9950,42 @@ export default function App() {
               await invalidateSession();
               return;
             }
-            setAuthWarning(`Kauppa hyväksyttiin, mutta muiden saman erän tarjousten sulkeminen epäonnistui: ${competingOffersError.message}`);
+            console.warn("Bulk competing buyer offer close failed after accepted trade", {
+              offerId: offer?.id,
+              competingOfferIds,
+              message: competingOffersError.message,
+            });
+
+            const closeResults = await Promise.all(
+              competingOfferIds.map(async (competingOfferId) => {
+                const { error: singleCloseError } = await supabase
+                  .from("buyer_offers")
+                  .update({ status: "sold" })
+                  .eq("id", competingOfferId);
+                return {
+                  id: competingOfferId,
+                  error: singleCloseError,
+                };
+              })
+            );
+
+            const failedClosures = closeResults.filter((result) => result.error);
+
+            if (failedClosures.length > 0) {
+              console.warn("Some competing buyer offers still failed to close after retry", {
+                offerId: offer?.id,
+                failures: failedClosures.map((result) => ({
+                  id: result.id,
+                  message: result.error?.message || "",
+                })),
+              });
+              const failureSummary = failedClosures
+                .map((result) => `${result.id}: ${result.error?.message || "tuntematon virhe"}`)
+                .join(" | ");
+              setAuthWarning(`Kauppa hyväksyttiin, mutta ${failedClosures.length} saman erän tarjousta jäi avoimeksi. ${failureSummary}`);
+            } else {
+              setAuthWarning("Kauppa hyväksyttiin. Muiden saman erän tarjousten sulkeminen onnistui varayrityksellä.");
+            }
           }
         }
       }
