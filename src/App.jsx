@@ -6193,11 +6193,57 @@ export default function App() {
     return "";
   };
 
-  const buyerTypeLabel = (type) => {
+  const parseBuyerTypes = (value) => {
+    if (Array.isArray(value)) {
+      return Array.from(new Set(value.map((item) => normalizeBuyerType(item)).filter(Boolean)));
+    }
+    return Array.from(new Set(
+      String(value || "")
+        .split(/[;,]/)
+        .map((item) => normalizeBuyerType(item))
+        .filter(Boolean),
+    ));
+  };
+
+  const serializeBuyerTypes = (value) => {
+    const types = parseBuyerTypes(value);
+    return types.length > 0 ? types.join(",") : "ravintola";
+  };
+
+  const toggleBuyerTypeSelection = (currentValue, type, checked) => {
+    const normalized = normalizeBuyerType(type);
+    const currentTypes = parseBuyerTypes(currentValue);
+    const nextTypes = checked
+      ? Array.from(new Set([...currentTypes, normalized].filter(Boolean)))
+      : currentTypes.filter((item) => item !== normalized);
+    return serializeBuyerTypes(nextTypes.length > 0 ? nextTypes : ["ravintola"]);
+  };
+
+  const buyerTypeTextLabel = (type) => {
     const normalizedType = normalizeBuyerType(type);
-    if (normalizedType === "ravintola") return "Anonyymi ravintola";
-    if (normalizedType === "tukku") return "Anonyymi tukku";
-    if (normalizedType === "kauppa") return "Anonyymi kauppa";
+    if (normalizedType === "ravintola") return "Ravintola";
+    if (normalizedType === "tukku") return "Tukku";
+    if (normalizedType === "kauppa") return "Kauppa";
+    return "Ostaja";
+  };
+
+  const buyerTypesBadgeLabel = (value) => {
+    const types = parseBuyerTypes(value);
+    if (types.length === 0) return "Ostaja";
+    return types.map((type) => buyerTypeTextLabel(type)).join(" / ");
+  };
+
+  const buyerTypeLabel = (type) => {
+    const types = parseBuyerTypes(type);
+    if (types.length === 1) {
+      const normalizedType = types[0];
+      if (normalizedType === "ravintola") return "Anonyymi ravintola";
+      if (normalizedType === "tukku") return "Anonyymi tukku";
+      if (normalizedType === "kauppa") return "Anonyymi kauppa";
+    }
+    if (types.length > 1) {
+      return `Anonyymi ${types.map((item) => buyerTypeTextLabel(item).toLowerCase()).join(" / ")}`;
+    }
     return "Anonyymi ostaja";
   };
 
@@ -6394,8 +6440,9 @@ export default function App() {
     (buyers || [])
       .filter((buyer) => buyer.is_active)
       .forEach((buyer) => {
-        const buyerType = normalizeBuyerType(buyer.buyer_type);
-        if (!buyerType || !selectedTypes.includes(buyerType)) return;
+        const buyerTypes = parseBuyerTypes(buyer.buyer_type);
+        const matchedBuyerType = buyerTypes.find((buyerType) => selectedTypes.includes(buyerType));
+        if (!matchedBuyerType) return;
         const minKg = buyer.min_kg == null || buyer.min_kg === "" ? null : Number(buyer.min_kg);
         const maxKg = buyer.max_kg == null || buyer.max_kg === "" ? null : Number(buyer.max_kg);
         const minOk = minKg == null || totalKilos >= minKg;
@@ -6403,7 +6450,7 @@ export default function App() {
         const recipient = {
           buyer_id: buyer.id,
           email: buyer.email,
-          channel: buyerType,
+          channel: matchedBuyerType,
           company_name: buyer.company_name,
           contact_name: buyer.contact_name,
           destination_city: resolveBuyerDestinationCity(buyer),
@@ -7200,7 +7247,7 @@ export default function App() {
               delivery_cost: offer.delivery_cost == null ? "" : Number(offer.delivery_cost),
               earliest_delivery_date: offer.earliest_delivery_date || "",
               cold_transport: Boolean(offer.cold_transport),
-              buyer_type: normalizeBuyerType(buyer?.buyer_type) || "",
+              buyer_type: serializeBuyerTypes(buyer?.buyer_type || ""),
               buyer_company_name: buyer?.company_name || "",
               buyer_contact_name: buyer?.contact_name || "",
               buyer_phone: buyer?.phone || "",
@@ -7247,7 +7294,7 @@ export default function App() {
     const buyerAccountData = profile.role === "buyer" ? linkedBuyerRecord : null;
     const nextForm = {
       displayName: profile.display_name || "",
-      buyerType: normalizeBuyerType(buyerAccountData?.buyer_type) || "ravintola",
+      buyerType: serializeBuyerTypes(buyerAccountData?.buyer_type || "ravintola"),
       minKg: buyerAccountData?.min_kg == null ? "" : Number(buyerAccountData.min_kg),
       maxKg: buyerAccountData?.max_kg == null ? "" : Number(buyerAccountData.max_kg),
       eviraFacilityId: profile.evira_facility_id || "",
@@ -7923,7 +7970,7 @@ export default function App() {
       const savedAccountForm = {
         ...accountForm,
         displayName,
-        buyerType: String(accountForm.buyerType || "ravintola").trim() || "ravintola",
+        buyerType: serializeBuyerTypes(accountForm.buyerType),
         minKg: accountForm.minKg === "" ? "" : Number(accountForm.minKg),
         maxKg: accountForm.maxKg === "" ? "" : Number(accountForm.maxKg),
         commercialFishingId: accountForm.commercialFishingId.trim(),
@@ -8023,7 +8070,7 @@ export default function App() {
       if (profile.role === "buyer" && linkedBuyerRecord?.id) {
         const buyerPayload = {
           company_name: accountForm.companyName.trim(),
-          buyer_type: normalizeBuyerType(accountForm.buyerType) || "ravintola",
+          buyer_type: serializeBuyerTypes(accountForm.buyerType),
           contact_name: accountForm.contactName.trim(),
           phone: accountForm.phone.trim(),
           min_kg: accountForm.minKg === "" ? null : Number(accountForm.minKg),
@@ -8392,7 +8439,7 @@ export default function App() {
     const nextForm = {
       id: buyer.id,
       company_name: buyer.company_name || "",
-      buyer_type: normalizeBuyerType(buyer.buyer_type) || "ravintola",
+      buyer_type: serializeBuyerTypes(buyer.buyer_type || "ravintola"),
       contact_name: buyer.contact_name || "",
       email: buyer.email || "",
       phone: buyer.phone || "",
@@ -8480,7 +8527,7 @@ export default function App() {
     if (!profile || profile.role !== "owner") return;
     const payload = {
       company_name: buyerForm.company_name.trim(),
-      buyer_type: normalizeBuyerType(buyerForm.buyer_type) || "ravintola",
+      buyer_type: serializeBuyerTypes(buyerForm.buyer_type),
       contact_name: buyerForm.contact_name.trim(),
       email: buyerForm.email.trim().toLowerCase(),
       phone: buyerForm.phone.trim(),
@@ -11459,12 +11506,22 @@ export default function App() {
               {profile.role === "buyer" ? (
                 <>
                   <div style={styles.field}>
-                    <label>Ryhmä</label>
-                    <select style={styles.input} value={accountForm.buyerType} onChange={(e) => setAccountForm((prev) => ({ ...prev, buyerType: e.target.value }))}>
-                      <option value="ravintola">Ravintola</option>
-                      <option value="tukku">Tukku</option>
-                      <option value="kauppa">Kauppa</option>
-                    </select>
+                    <label>Roolit</label>
+                    <div style={{ ...styles.row, flexWrap: "wrap", gap: 12 }}>
+                      {["ravintola", "tukku", "kauppa"].map((buyerTypeOption) => (
+                        <label key={buyerTypeOption} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            checked={parseBuyerTypes(accountForm.buyerType).includes(buyerTypeOption)}
+                            onChange={(e) => setAccountForm((prev) => ({
+                              ...prev,
+                              buyerType: toggleBuyerTypeSelection(prev.buyerType, buyerTypeOption, e.target.checked),
+                            }))}
+                          />
+                          {buyerTypeTextLabel(buyerTypeOption)}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                   <div style={styles.field}>
                     <label>Min ostomäärä (kg)</label>
@@ -12967,7 +13024,24 @@ Tarjouslogiikka:
 
 Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe toistensa yhteystietoja.</div>
               <div style={styles.field}><label>Yritys</label><input style={styles.input} value={buyerForm.company_name} onChange={(e) => setBuyerForm((prev) => ({ ...prev, company_name: e.target.value }))} placeholder="Esim. Ravintola Saimaa" /></div>
-              <div style={styles.field}><label>Ryhmä</label><select style={styles.input} value={buyerForm.buyer_type} onChange={(e) => setBuyerForm((prev) => ({ ...prev, buyer_type: e.target.value }))}><option value="ravintola">Ravintola</option><option value="tukku">Tukku</option><option value="kauppa">Kauppa</option></select></div>
+              <div style={styles.field}>
+                <label>Roolit</label>
+                <div style={{ ...styles.row, flexWrap: "wrap", gap: 12 }}>
+                  {["ravintola", "tukku", "kauppa"].map((buyerTypeOption) => (
+                    <label key={buyerTypeOption} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={parseBuyerTypes(buyerForm.buyer_type).includes(buyerTypeOption)}
+                        onChange={(e) => setBuyerForm((prev) => ({
+                          ...prev,
+                          buyer_type: toggleBuyerTypeSelection(prev.buyer_type, buyerTypeOption, e.target.checked),
+                        }))}
+                      />
+                      {buyerTypeTextLabel(buyerTypeOption)}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <div style={styles.field}><label>Yhteyshenkilö</label><input style={styles.input} value={buyerForm.contact_name} onChange={(e) => setBuyerForm((prev) => ({ ...prev, contact_name: e.target.value }))} placeholder="Nimi" /></div>
               <div style={styles.field}><label>Sähköposti</label><input style={styles.input} type="email" value={buyerForm.email} onChange={(e) => setBuyerForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="email@yritys.fi" /></div>
               <div style={styles.field}><label>Puhelin</label><input style={styles.input} value={buyerForm.phone} onChange={(e) => setBuyerForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Puhelin" /></div>
@@ -13003,7 +13077,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                     <div>
                       <div style={styles.entryBadges}>
                         <span style={styles.badge}>{buyer.company_name}</span>
-                        <span style={styles.badge}>{buyer.buyer_type}</span>
+                        <span style={styles.badge}>{buyerTypesBadgeLabel(buyer.buyer_type)}</span>
                         <span style={styles.badge}>{buyer.email}</span>
                         <span style={styles.badge}>{buyer.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
                         {buyer.min_kg !== "" ? <span style={styles.badge}>Min {buyer.min_kg} kg</span> : null}
