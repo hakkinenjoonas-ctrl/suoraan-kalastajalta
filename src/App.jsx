@@ -6222,12 +6222,16 @@ export default function App() {
     });
 
     return {
-      sellerName: offer.seller_company_name || offer.seller_name || matchingEntry?.ownerName || "Myyjä",
-      sellerBusinessId: offer.seller_business_id || "",
-      sellerAddress: formatInvoicePartyAddress(offer.seller_address, offer.seller_postcode, offer.seller_city),
-      sellerEmail: offer.seller_contact_email || offer.seller_email || "",
-      sellerPhone: offer.seller_phone || "",
-      sellerCommercialFishingId: offer.seller_commercial_fishing_id || matchingEntry?.commercialFishingId || "",
+      sellerName: offer.seller_company_name || offer.seller_name || offer.sellerCompanyNameFallback || offer.sellerDisplayNameFallback || matchingEntry?.ownerName || "Myyjä",
+      sellerBusinessId: offer.seller_business_id || offer.sellerBusinessIdFallback || "",
+      sellerAddress: formatInvoicePartyAddress(
+        offer.seller_address || offer.sellerAddressFallback,
+        offer.seller_postcode || offer.sellerPostcodeFallback,
+        offer.seller_city || offer.sellerCityFallback,
+      ),
+      sellerEmail: offer.seller_contact_email || offer.seller_email || offer.sellerContactEmailFallback || offer.sellerEmail || "",
+      sellerPhone: offer.seller_phone || offer.sellerPhone || "",
+      sellerCommercialFishingId: offer.seller_commercial_fishing_id || offer.sellerCommercialFishingIdFallback || matchingEntry?.commercialFishingId || "",
       sellerArea: matchingEntry?.area || offer.area || "",
       municipality: matchingEntry?.municipality || "",
       sellerSpot: matchingEntry?.spot || offer.spot || "",
@@ -9062,7 +9066,7 @@ export default function App() {
     if (sellerIds.length > 0) {
       const { data: sellerProfiles, error: sellerProfilesError } = await supabase
         .from("profiles")
-        .select("id, email, phone")
+        .select("id, email, phone, company_name, display_name, business_id, address, postcode, city, contact_email, commercial_fishing_id")
         .in("id", sellerIds);
 
       if (sellerProfilesError) {
@@ -9080,6 +9084,14 @@ export default function App() {
           {
             email: item.email || "",
             phone: item.phone || "",
+            companyName: item.company_name || "",
+            displayName: item.display_name || "",
+            businessId: item.business_id || "",
+            address: item.address || "",
+            postcode: item.postcode || "",
+            city: item.city || "",
+            contactEmail: item.contact_email || "",
+            commercialFishingId: item.commercial_fishing_id || "",
           },
         ]),
       );
@@ -9116,6 +9128,14 @@ export default function App() {
         buyer_phone: buyer?.phone || "",
         sellerEmail: sellerProfile.email || "",
         sellerPhone: sellerProfile.phone || "",
+        sellerCompanyNameFallback: sellerProfile.companyName || "",
+        sellerDisplayNameFallback: sellerProfile.displayName || "",
+        sellerBusinessIdFallback: sellerProfile.businessId || "",
+        sellerAddressFallback: sellerProfile.address || "",
+        sellerPostcodeFallback: sellerProfile.postcode || "",
+        sellerCityFallback: sellerProfile.city || "",
+        sellerContactEmailFallback: sellerProfile.contactEmail || "",
+        sellerCommercialFishingIdFallback: sellerProfile.commercialFishingId || "",
         fulfillment_status: offer.fulfillment_status || (offer.status === "accepted" ? "awaiting_contact" : ""),
       };
     }));
