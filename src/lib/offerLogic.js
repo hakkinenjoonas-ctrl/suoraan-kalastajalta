@@ -60,7 +60,7 @@ export function buyerStatusLabel(status) {
   if (status === "countered") return "Vastatarjous";
   if (status === "reserved") return "Varattu";
   if (status === "accepted") return "Kauppa hyväksytty";
-  if (status === "sold") return "MYYTY";
+  if (status === "sold") return "MYYTY JO TOISELLE OSTAJALLE";
   if (status === "rejected") return "Hylätty";
   if (status === "cancelled") return "Peruttu";
   return status || "-";

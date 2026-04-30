@@ -11316,7 +11316,7 @@ export default function App() {
                             <span style={styles.badge}>{o.area || "-"}</span>
                             {o.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varaus käynnissä</span> : null}
                             {o.status === "countered" ? <span style={{ ...styles.badge, background: "#eff6ff", borderColor: "#93c5fd", color: "#1d4ed8" }}>Vastatarjous lähetetty</span> : null}
-                            {o.status === "sold" ? <span style={{ ...styles.badge, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }}>MYYTY</span> : null}
+                            {o.status === "sold" ? <span style={{ ...styles.badge, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }}>MYYTY JO TOISELLE OSTAJALLE</span> : null}
                             <span style={styles.badge}>Tarjoaja: {sellerInfo.sellerLabel}</span>
                           </div>
                         </div>
@@ -11366,7 +11366,7 @@ export default function App() {
                         ) : null}
                         {o.status === "sold" ? (
                           <div style={{ ...styles.noticeError, marginTop: 10 }}>
-                            MYYTY. Tämä erä on myyty toiselle ostajalle, eikä sitä voi enää varata.
+                            MYYTY JO TOISELLE OSTAJALLE. Tämä erä ei ole enää myynnissä, eikä siihen voi tehdä toimenpiteitä.
                           </div>
                         ) : null}
 
@@ -11424,7 +11424,7 @@ export default function App() {
                           </div>
                         ) : null}
                         {o.status === "sold" ? (
-                          <div style={styles.noticeError}>Erä on myyty toiselle ostajalle. Varaus- ja vastatarjoustoiminnot eivät ole enää käytettävissä.</div>
+                          <div style={styles.noticeError}>MYYTY JO TOISELLE OSTAJALLE. Varaus- ja vastatarjoustoiminnot eivät ole enää käytettävissä.</div>
                         ) : null}
                         {o.status === "accepted" ? (
                           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
