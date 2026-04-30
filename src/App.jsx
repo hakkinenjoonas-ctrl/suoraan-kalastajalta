@@ -4677,6 +4677,12 @@ async function openSellerInvoicePdf(offer, sellerProfile) {
   return invoice;
 }
 
+async function openSellerGroupInvoicePdf(offers, sellerProfile) {
+  const { doc, invoice } = await buildSellerGroupInvoicePdfDoc(offers, sellerProfile);
+  await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`);
+  return invoice;
+}
+
 async function buildSellerInvoicePdf(offer, sellerProfile, documentKind = "invoice") {
   const { doc, invoice } = await buildSellerInvoicePdfDoc(offer, sellerProfile, { documentKind });
   const fileName = documentKind === "reminder" ? `${invoice.invoiceNumber}-maksumuistutus.pdf` : `${invoice.invoiceNumber}.pdf`;
@@ -5125,9 +5131,11 @@ function SellerBillingView({
   billingFilter,
   setBillingFilter,
   onOpenInvoicePdf,
+  onViewInvoicePdf,
   onSendInvoicePdf,
   onUpdateBillingStatus,
   onOpenGroupInvoicePdf,
+  onViewGroupInvoicePdf,
   onSendGroupInvoicePdf,
   onUpdateGroupBillingStatus,
 }) {
@@ -5278,6 +5286,16 @@ function SellerBillingView({
                 {invoicePayload.batchIds.length > 0 ? <div style={styles.muted}>Erätunnukset: {invoicePayload.batchIds.join(", ")}</div> : null}
 
                 <div style={styles.row}>
+                  {isReminderGroup ? (
+                    <button
+                      type="button"
+                      style={styles.button}
+                      onClick={() => onViewGroupInvoicePdf(group.offers)}
+                      disabled={!accountForm.bankAccountIban.trim()}
+                    >
+                      Tarkastele koontilaskua (PDF)
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     style={styles.button}
@@ -5371,6 +5389,16 @@ function SellerBillingView({
               {offer.buyer_billing_email ? <div style={styles.muted}><strong>Laskutussähköposti:</strong> {offer.buyer_billing_email}</div> : null}
 
               <div style={styles.row}>
+                {isReminderOffer ? (
+                  <button
+                    type="button"
+                    style={styles.button}
+                    onClick={() => onViewInvoicePdf(offer)}
+                    disabled={!accountForm.bankAccountIban.trim()}
+                  >
+                    Tarkastele laskua (PDF)
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   style={styles.button}
@@ -9315,6 +9343,15 @@ export default function App() {
     await buildSellerInvoicePdf(offer, profile, offer?.billing_status === "invoiced" ? "reminder" : "invoice");
   };
 
+  const handleViewSellerInvoicePdf = async (offer) => {
+    if (!profile?.bank_account_iban) {
+      setAuthError("Lisää IBAN pankkitietoihin ennen lasku-PDF:n avaamista.");
+      return;
+    }
+    setAuthError("");
+    await openSellerInvoicePdf(offer, profile);
+  };
+
   const sendSellerInvoiceEmailMessage = async ({
     recipientEmail,
     recipientName,
@@ -9475,6 +9512,15 @@ export default function App() {
     setAuthError("");
     const currentStatus = String(offers?.[0]?.billing_status || "unbilled");
     await buildSellerGroupInvoicePdf(offers, profile, currentStatus === "invoiced" ? "reminder" : "invoice");
+  };
+
+  const handleViewSellerGroupInvoicePdf = async (offers) => {
+    if (!profile?.bank_account_iban) {
+      setAuthError("Lisää IBAN pankkitietoihin ennen koontilasku-PDF:n avaamista.");
+      return;
+    }
+    setAuthError("");
+    await openSellerGroupInvoicePdf(offers, profile);
   };
 
   const handleSendSellerGroupInvoicePdf = async (offers) => {
@@ -13110,9 +13156,11 @@ export default function App() {
               billingFilter={billingFilter}
               setBillingFilter={setBillingFilter}
               onOpenInvoicePdf={handleOpenSellerInvoicePdf}
+              onViewInvoicePdf={handleViewSellerInvoicePdf}
               onSendInvoicePdf={handleSendSellerInvoicePdf}
               onUpdateBillingStatus={handleUpdateBillingStatus}
               onOpenGroupInvoicePdf={handleOpenSellerGroupInvoicePdf}
+              onViewGroupInvoicePdf={handleViewSellerGroupInvoicePdf}
               onSendGroupInvoicePdf={handleSendSellerGroupInvoicePdf}
               onUpdateGroupBillingStatus={handleUpdateGroupBillingStatus}
             />
