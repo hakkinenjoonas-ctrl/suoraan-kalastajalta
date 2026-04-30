@@ -4735,10 +4735,14 @@ function buildSellerGroupInvoiceLineItems(offers) {
   (offers || []).forEach((offer) => {
     const offerLineItems = parseSellerInvoiceLineItems(offer);
     const batchLabel = String(offer?.batch_id || "").trim();
+    const deliveryDateLabel = formatInvoiceDeliveryDate(offer?.updated_at || offer?.created_at);
+    const detailLine = [batchLabel ? `Erätunnus: ${batchLabel}` : "", deliveryDateLabel ? `Toimituspäivä: ${deliveryDateLabel}` : ""]
+      .filter(Boolean)
+      .join("\n");
     offerLineItems.forEach((item) => {
       rows.push({
         description: item.description || getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true }) || "Kalaerä",
-        detailLine: batchLabel ? `Erätunnus: ${batchLabel}` : "",
+        detailLine,
         quantity: item.quantity,
         quantityDisplay: item.quantityDisplay,
         unit: item.unit,
@@ -4750,7 +4754,7 @@ function buildSellerGroupInvoiceLineItems(offers) {
     if (deliveryCost > 0) {
       rows.push({
         description: "Toimituskulu",
-        detailLine: batchLabel ? `Erätunnus: ${batchLabel}` : "",
+        detailLine,
         quantity: 1,
         quantityDisplay: "1 kpl",
         unit: "kpl",
