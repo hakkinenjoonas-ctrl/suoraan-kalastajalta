@@ -44,7 +44,7 @@ export const styles = {
     border: "1px solid rgba(147, 197, 253, 0.92)",
   },
   toolbar: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
-  toolbarActions: { display: "flex", gap: 10, flexWrap: "nowrap", alignItems: "center", whiteSpace: "nowrap" },
+  toolbarActions: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
   tabs: {
     display: "grid",
     gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
