@@ -9457,17 +9457,19 @@ export default function App() {
         ? "Kauppa merkitty toimitetuksi."
         : "Toimituksen tila päivitetty."
     );
-    await sendPushEvent({
-      targetBuyerId: offer?.buyer_id || "",
-      title: fulfillmentStatus === "delivered" ? "Toimitus merkitty toimitetuksi" : "Toimitus sovittu",
-      body: fulfillmentStatus === "delivered"
-        ? `${offer?.seller_name || "Myyjä"} merkitsi kaupan ${buildPushEventHeadline(offer)} toimitetuksi.`
-        : `${offer?.seller_name || "Myyjä"} merkitsi kaupan ${buildPushEventHeadline(offer)} toimituksen sovituksi.`,
-      eventType: fulfillmentStatus,
-      route: "offers",
-      offerId: offer?.id,
-      batchId: offer?.batch_id,
-    });
+    if (profile?.role !== "buyer") {
+      await sendPushEvent({
+        targetBuyerId: offer?.buyer_id || "",
+        title: fulfillmentStatus === "delivered" ? "Toimitus merkitty toimitetuksi" : "Toimitus sovittu",
+        body: fulfillmentStatus === "delivered"
+          ? `${offer?.seller_name || "Myyjä"} merkitsi kaupan ${buildPushEventHeadline(offer)} toimitetuksi.`
+          : `${offer?.seller_name || "Myyjä"} merkitsi kaupan ${buildPushEventHeadline(offer)} toimituksen sovituksi.`,
+        eventType: fulfillmentStatus,
+        route: "offers",
+        offerId: offer?.id,
+        batchId: offer?.batch_id,
+      });
+    }
     await refreshBuyerOffers();
     setRefreshTick((prev) => prev + 1);
   };
