@@ -9826,6 +9826,7 @@ export default function App() {
   const onUpdateBuyerOfferStatus = async (offer, status) => {
     setAuthWarning("");
     let updatePayload = { status };
+    let resolvedBuyerPushId = String(offer?.buyer_id || "").trim();
 
     if (status === "accepted") {
       let sellerProfileForTrade = profile;
@@ -9890,6 +9891,7 @@ export default function App() {
       };
 
       if (buyerRecord) {
+        resolvedBuyerPushId = String(buyerRecord.id || resolvedBuyerPushId || "").trim();
         updatePayload = {
           ...updatePayload,
           buyer_delivery_address: buyerRecord.delivery_address || null,
@@ -10005,10 +10007,15 @@ export default function App() {
       } catch (emailError) {
         setAuthWarning(`Kauppa hyväksyttiin, mutta vahvistussähköpostin lähetys epäonnistui: ${String(emailError?.message || emailError)}`);
       }
+      const acceptedTradeHeadline = buildPushEventHeadline({ ...offer, ...updatePayload });
+      const acceptedTitle = offer?.status === "countered" ? "Vastatarjous hyväksytty" : "Kauppa hyväksytty";
+      const acceptedBody = offer?.status === "countered"
+        ? `Kalastaja hyväksyi vastatarjouksesi kaupasta ${acceptedTradeHeadline}.`
+        : `${offer?.seller_name || "Myyjä"} hyväksyi kaupan ${acceptedTradeHeadline}.`;
       await sendPushEvent({
-        targetBuyerId: offer?.buyer_id || "",
-        title: "Kauppa hyväksytty",
-        body: `${offer?.seller_name || "Myyjä"} hyväksyi kaupan ${buildPushEventHeadline({ ...offer, ...updatePayload })}.`,
+        targetBuyerId: resolvedBuyerPushId,
+        title: acceptedTitle,
+        body: acceptedBody,
         eventType: "offer_accepted",
         route: "offers",
         offerId: offer?.id,
