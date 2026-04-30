@@ -4735,10 +4735,10 @@ function buildSellerGroupInvoiceLineItems(offers) {
   (offers || []).forEach((offer) => {
     const offerLineItems = parseSellerInvoiceLineItems(offer);
     const batchLabel = String(offer?.batch_id || "").trim();
-    const deliveryDate = formatInvoiceDeliveryDate(offer?.updated_at || offer?.created_at);
     offerLineItems.forEach((item) => {
       rows.push({
-        description: [batchLabel ? `Erä ${batchLabel}` : "", deliveryDate ? `Toimitus ${deliveryDate}` : "", item.description || "Kalaerä"].filter(Boolean).join(" · "),
+        description: item.description || getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true }) || "Kalaerä",
+        detailLine: batchLabel ? `Erätunnus: ${batchLabel}` : "",
         quantity: item.quantity,
         quantityDisplay: item.quantityDisplay,
         unit: item.unit,
@@ -4749,7 +4749,8 @@ function buildSellerGroupInvoiceLineItems(offers) {
     const deliveryCost = Number(offer?.delivery_cost ?? offer?.route_price_eur ?? 0) || 0;
     if (deliveryCost > 0) {
       rows.push({
-        description: [batchLabel ? `Erä ${batchLabel}` : "", "Toimituskulu"].filter(Boolean).join(" · "),
+        description: "Toimituskulu",
+        detailLine: batchLabel ? `Erätunnus: ${batchLabel}` : "",
         quantity: 1,
         quantityDisplay: "1 kpl",
         unit: "kpl",
@@ -4920,8 +4921,9 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
   doc.setTextColor(15, 23, 42);
 
   invoice.lineItems.forEach((item) => {
-    const itemLines = doc.splitTextToSize(item.description, 90);
-    const rowHeight = Math.max(10, (itemLines.length * lineHeight) + 4);
+    const titleLines = doc.splitTextToSize(item.description, 76);
+    const detailLines = item.detailLine ? doc.splitTextToSize(String(item.detailLine), 76) : [];
+    const rowHeight = Math.max(10, ((titleLines.length + detailLines.length) * lineHeight) + 4);
     if (y + rowHeight > tableBottomLimit) {
       doc.addPage("a4", "portrait");
       y = 24;
@@ -4932,7 +4934,17 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
       doc.setTextColor(15, 23, 42);
     }
     const textY = y + 3.5;
-    doc.text(itemLines, leftX + 2, textY);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.2);
+    doc.text(titleLines, leftX + 2, textY);
+    if (detailLines.length > 0) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.8);
+      doc.setTextColor(71, 85, 105);
+      doc.text(detailLines, leftX + 2, textY + (titleLines.length * lineHeight));
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(9.2);
+    }
     doc.text(item.quantityDisplay || "-", quantityX, textY, { align: "right" });
     doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", unitPriceNetX, textY, { align: "right" });
     doc.text(item.unitGrossPrice > 0 ? euro(item.unitGrossPrice) : "-", unitPriceGrossX, textY, { align: "right" });
