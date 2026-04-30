@@ -4839,6 +4839,7 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
   const vatAmountX = 160;
   const totalNetX = 176;
   const totalGrossX = rightX - 2;
+  const pageBottomY = 279;
 
   const drawInvoiceTableHeader = (headerY) => {
     doc.setFillColor(15, 23, 42);
@@ -4960,11 +4961,33 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
     y += rowHeight;
   });
 
-  let totalsY = 214;
-  if (y > 198) {
+  const paymentLines = [
+    `Saajan nimi: ${invoice.sellerName || "-"}`,
+    `IBAN: ${invoice.sellerIban || "-"}`,
+    `BIC: ${invoice.sellerBic || "-"}`,
+    `Viitenumero: ${invoice.referenceDisplay}`,
+    invoice.periodLabel ? `Laskutuskausi: ${invoice.periodLabel}` : "",
+    `Koottu ${invoice.offerCount} kaupasta`,
+    invoice.batchIds.length > 0 ? `Erätunnukset: ${invoice.batchIds.join(", ")}` : "",
+    invoice.catchDates.length > 0 ? `Pyyntipäivät: ${invoice.catchDates.join(", ")}` : "",
+  ].filter(Boolean);
+
+  const estimateWrappedHeight = (lines, maxWidth) => lines.reduce((total, text) => (
+    total + (Math.max(1, doc.splitTextToSize(text, maxWidth).length) * lineHeight) + 1.4
+  ), 0);
+
+  const barcodeBlockHeight = 22;
+  const sectionGap = 6;
+  const totalsBoxHeight = 35;
+  let bottomSectionStartY = y + 10;
+  const paymentInfoHeight = 7 + estimateWrappedHeight(paymentLines, 102);
+  const topSectionHeight = Math.max(paymentInfoHeight, totalsBoxHeight);
+  if (bottomSectionStartY + topSectionHeight + sectionGap + barcodeBlockHeight > pageBottomY) {
     doc.addPage("a4", "portrait");
-    totalsY = 26;
+    bottomSectionStartY = 26;
   }
+
+  let totalsY = bottomSectionStartY;
   doc.setFillColor(239, 246, 255);
   doc.roundedRect(122, totalsY - 8, 72, 35, 2, 2, "F");
   doc.setFont("helvetica", "normal");
@@ -4980,7 +5003,7 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  let infoY = totalsY === 26 ? 33 : 221;
+  let infoY = bottomSectionStartY;
   doc.text("Maksutiedot", leftX, infoY);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
@@ -4992,14 +5015,19 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
     infoY += Math.max(1, wrappedLines.length) * lineHeight + 1.4;
   };
 
-  drawInfoLine(`Saajan nimi: ${invoice.sellerName || "-"}`);
-  drawInfoLine(`IBAN: ${invoice.sellerIban || "-"}`);
-  drawInfoLine(`BIC: ${invoice.sellerBic || "-"}`);
-  drawInfoLine(`Viitenumero: ${invoice.referenceDisplay}`);
-  if (invoice.periodLabel) drawInfoLine(`Laskutuskausi: ${invoice.periodLabel}`);
-  drawInfoLine(`Koottu ${invoice.offerCount} kaupasta`);
-  if (invoice.batchIds.length > 0) drawInfoLine(`Erätunnukset: ${invoice.batchIds.join(", ")}`);
-  if (invoice.catchDates.length > 0) drawInfoLine(`Pyyntipäivät: ${invoice.catchDates.join(", ")}`);
+  paymentLines.forEach(drawInfoLine);
+
+  const barcodeData = buildSellerInvoiceBankBarcode(invoice);
+  if (barcodeData) {
+    const barcodeSectionY = bottomSectionStartY + topSectionHeight + sectionGap;
+    const barcodeTitleY = barcodeSectionY;
+    const barcodeBarsY = barcodeSectionY + 6;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Pankkiviivakoodi", leftX, barcodeTitleY);
+    drawCode128SetCBarcode(doc, barcodeData, leftX, barcodeBarsY, 120, 12);
+  }
 
   return { doc, invoice };
 }
