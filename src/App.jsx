@@ -7898,6 +7898,13 @@ export default function App() {
       };
     }
     if (field === "price_per_kg_gross") {
+      if (value === "") {
+        return {
+          ...row,
+          price_per_kg_gross_input: "",
+          price_per_kg: "",
+        };
+      }
       const parsedGross = parseLocaleNumber(value);
       const parsedNet = parsedGross == null ? null : calculateNetPrice(parsedGross);
       return {
