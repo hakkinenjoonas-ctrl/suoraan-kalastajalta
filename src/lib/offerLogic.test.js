@@ -4,6 +4,7 @@ import {
   BUYER_OFFER_ACTION_REQUIRED_STATUSES,
   BUYER_OFFER_OPEN_RESPONSE_STATUSES,
   BUYER_OFFER_STATUS,
+  buildOpenOfferedEntriesSummary,
   buildPushEventHeadline,
   buyerStatusLabel,
   getBuyerOfferAcceptanceActionLabel,
@@ -123,6 +124,87 @@ describe("offerLogic", () => {
       expect(getBuyerOffersFilterForStatus(BUYER_OFFER_STATUS.ACCEPTED)).toBe("accepted");
       expect(getBuyerOffersFilterForStatus(BUYER_OFFER_STATUS.RESERVED)).toBe("reserved");
       expect(getBuyerOffersFilterForStatus(BUYER_OFFER_STATUS.REJECTED)).toBe("rejected");
+    });
+  });
+
+  describe("buildOpenOfferedEntriesSummary", () => {
+    it("groups a mixed offer into one open summary card", () => {
+      const summary = buildOpenOfferedEntriesSummary([
+        {
+          entry: {
+            id: "entry-1",
+            species: "Ahven",
+            kilos: 20,
+            date: "2026-05-01",
+            area: "Suur-Saimaa",
+            municipality: "",
+            spot: "Taipalsaari",
+          },
+          reservation: null,
+          buyerMatches: [{
+            id: "offer-1",
+            species_summary: "Ahven: 20 kg · Erätunnus A1\nHauki: 30 kg · Erätunnus H1",
+          }],
+        },
+        {
+          entry: {
+            id: "entry-2",
+            species: "Hauki",
+            kilos: 30,
+            date: "2026-05-01",
+            area: "Suur-Saimaa",
+            municipality: "",
+            spot: "Taipalsaari",
+          },
+          reservation: null,
+          buyerMatches: [{
+            id: "offer-1",
+            species_summary: "Ahven: 20 kg · Erätunnus A1\nHauki: 30 kg · Erätunnus H1",
+          }],
+        },
+      ], (value) => value);
+
+      expect(summary).toHaveLength(1);
+      expect(summary[0].species).toBe("Monilajinen erä");
+      expect(summary[0].kilos).toBe(50);
+      expect(summary[0].mixedSummary).toBe("Ahven, Hauki");
+      expect(summary[0].buyerCount).toBe(1);
+    });
+
+    it("keeps separate entries separate when they do not share buyer matches", () => {
+      const summary = buildOpenOfferedEntriesSummary([
+        {
+          entry: {
+            id: "entry-1",
+            species: "Ahven",
+            kilos: 20,
+            date: "2026-05-01",
+            area: "Suur-Saimaa",
+            municipality: "",
+            spot: "Taipalsaari",
+          },
+          reservation: null,
+          buyerMatches: [],
+        },
+        {
+          entry: {
+            id: "entry-2",
+            species: "Hauki",
+            kilos: 30,
+            date: "2026-05-01",
+            area: "Suur-Saimaa",
+            municipality: "",
+            spot: "Taipalsaari",
+          },
+          reservation: null,
+          buyerMatches: [{
+            id: "offer-2",
+            species_summary: "Hauki: 30 kg · Erätunnus H1",
+          }],
+        },
+      ], (value) => value);
+
+      expect(summary).toHaveLength(2);
     });
   });
 });

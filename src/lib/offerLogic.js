@@ -100,6 +100,51 @@ export function getBuyerOffersFilterForStatus(status) {
   return "open";
 }
 
+export function buildOpenOfferedEntriesSummary(groupedBuyerOffers, formatSpeciesLabel) {
+  return Array.from(
+    (groupedBuyerOffers || [])
+      .filter(({ reservation }) => !isBuyerOfferAccepted(reservation?.status))
+      .reduce((acc, { entry, buyerMatches, reservation }) => {
+        const matchIds = buyerMatches.map((offer) => offer.id).sort().join("|");
+        const groupKey = matchIds || `entry:${entry.id}`;
+        const existing = acc.get(groupKey);
+        const speciesLabel = formatSpeciesLabel(entry.species);
+        const hasMixedBuyerOffer = buyerMatches.some((offer) => getOfferSummaryLines(offer?.species_summary).length > 1);
+
+        if (!existing) {
+          acc.set(groupKey, {
+            id: entry.id,
+            entryIds: [entry.id],
+            species: hasMixedBuyerOffer ? "Monilajinen erä" : speciesLabel,
+            speciesList: [speciesLabel],
+            kilos: Number(entry.kilos || 0),
+            date: entry.date || "",
+            area: [entry.area, entry.municipality, entry.spot].filter(Boolean).join(" / "),
+            buyerCount: buyerMatches.length,
+            reservationStatus: reservation?.status || "",
+          });
+          return acc;
+        }
+
+        existing.entryIds.push(entry.id);
+        existing.kilos += Number(entry.kilos || 0);
+        if (!existing.speciesList.includes(speciesLabel)) {
+          existing.speciesList.push(speciesLabel);
+        }
+        if ((!existing.date || existing.date > (entry.date || "")) && entry.date) {
+          existing.date = entry.date;
+        }
+        return acc;
+      }, new Map())
+      .values()
+  )
+    .map((item) => ({
+      ...item,
+      mixedSummary: item.species === "Monilajinen erä" ? item.speciesList.join(", ") : "",
+    }))
+    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+}
+
 function getOfferSummaryLines(summary) {
   return String(summary || "")
     .split("\n")

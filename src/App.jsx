@@ -18,6 +18,7 @@ import {
   BUYER_OFFER_COMPETING_OPEN_STATUSES,
   BUYER_OFFER_OPEN_RESPONSE_STATUSES,
   BUYER_OFFER_QUERYABLE_STATUSES,
+  buildOpenOfferedEntriesSummary,
   buildPushEventHeadline,
   buyerStatusLabel,
   getBuyerOffersFilterForStatus,
@@ -59,7 +60,7 @@ import {
   transportCompanies,
   transportModeLabels,
 } from "./lib/constants.js";
-import { createSpeciesRow, safeId, today } from "./lib/helpers.js";
+import { applyGrossPriceInput, createSpeciesRow, safeId, today } from "./lib/helpers.js";
 import {
   DEFAULT_PUBLIC_APP_URL,
   supabase,
@@ -3497,47 +3498,7 @@ function WholesaleOffersView({
     if (!target) return;
     target.scrollIntoView({ behavior: "smooth", block: "start" });
   };
-  const offeredEntriesSummary = Array.from(
-    groupedBuyerOffers
-    .filter(({ reservation }) => !isBuyerOfferAccepted(reservation?.status))
-      .reduce((acc, { entry, buyerMatches, reservation }) => {
-        const matchIds = buyerMatches.map((offer) => offer.id).sort().join("|");
-        const groupKey = matchIds || `entry:${entry.id}`;
-        const existing = acc.get(groupKey);
-        const speciesLabel = formatSpeciesForSale(entry.species);
-
-        if (!existing) {
-          acc.set(groupKey, {
-            id: entry.id,
-            entryIds: [entry.id],
-            species: buyerMatches.length > 0 && buyerMatches.some((offer) => isMixedOffer(offer)) ? "Monilajinen erä" : speciesLabel,
-            speciesList: [speciesLabel],
-            kilos: Number(entry.kilos || 0),
-            date: entry.date || "",
-            area: [entry.area, entry.municipality, entry.spot].filter(Boolean).join(" / "),
-            buyerCount: buyerMatches.length,
-            reservationStatus: reservation?.status || "",
-          });
-          return acc;
-        }
-
-        existing.entryIds.push(entry.id);
-        existing.kilos += Number(entry.kilos || 0);
-        if (!existing.speciesList.includes(speciesLabel)) {
-          existing.speciesList.push(speciesLabel);
-        }
-        if ((!existing.date || existing.date > (entry.date || "")) && entry.date) {
-          existing.date = entry.date;
-        }
-        return acc;
-      }, new Map())
-      .values()
-  )
-    .map((item) => ({
-      ...item,
-      mixedSummary: item.species === "Monilajinen erä" ? item.speciesList.join(", ") : "",
-    }))
-    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+  const offeredEntriesSummary = buildOpenOfferedEntriesSummary(groupedBuyerOffers, formatSpeciesForSale);
   const openOfferedEntriesSummary = offeredEntriesSummary.filter((item) => item.reservationStatus === "");
   const openBuyerOfferStatuses = BUYER_OFFER_OPEN_RESPONSE_STATUSES;
   const buyerResponsePriority = {
@@ -7917,20 +7878,10 @@ export default function App() {
       };
     }
     if (field === "price_per_kg_gross") {
-      if (value === "") {
-        return {
-          ...row,
-          price_per_kg_gross_input: "",
-          price_per_kg: "",
-        };
-      }
-      const parsedGross = parseLocaleNumber(value);
-      const parsedNet = parsedGross == null ? null : calculateNetPrice(parsedGross);
-      return {
-        ...row,
-        price_per_kg_gross_input: value,
-        price_per_kg: parsedNet == null ? row.price_per_kg : parsedNet.toLocaleString("fi-FI", { maximumFractionDigits: 4 }),
-      };
+      return applyGrossPriceInput(row, value, {
+        parseLocaleNumber,
+        calculateNetPrice,
+      });
     }
     return { ...row, [field]: value };
   }));
