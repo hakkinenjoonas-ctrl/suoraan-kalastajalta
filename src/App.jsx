@@ -62,6 +62,15 @@ import {
 } from "./lib/constants.js";
 import { applyGrossPriceInput, createSpeciesRow, safeId, today } from "./lib/helpers.js";
 import {
+  FISH_VAT_RATE,
+  calculateGrossPrice,
+  calculateNetPrice,
+  calculateOfferCommissionValues,
+  formatDeliveredPricePerKg,
+  formatDeliveryPrice,
+  formatVatPercent,
+} from "./lib/pricing.js";
+import {
   DEFAULT_PUBLIC_APP_URL,
   supabase,
 } from "./lib/supabase.js";
@@ -483,38 +492,6 @@ function getOfferProductTotal(rows) {
     }
     return sum + Number(row.kilos || 0) * price;
   }, 0);
-}
-
-const FISH_VAT_RATE = 0.135;
-
-function calculateGrossPrice(value, vatRate = FISH_VAT_RATE) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return null;
-  return number * (1 + vatRate);
-}
-
-function calculateNetPrice(value, vatRate = FISH_VAT_RATE) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return null;
-  return number / (1 + vatRate);
-}
-
-function formatVatPercent(vatRate = FISH_VAT_RATE) {
-  return (vatRate * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
-function formatDeliveryPrice(value) {
-  if (value === null || value === undefined || value === "") return "-";
-  const number = Number(value);
-  if (Number.isNaN(number)) return String(value || "-");
-  return `${number.toLocaleString("fi-FI")} €`;
-}
-
-function formatDeliveredPricePerKg(value) {
-  if (value === null || value === undefined || value === "") return "-";
-  const number = Number(value);
-  if (Number.isNaN(number)) return String(value || "-");
-  return `${number.toLocaleString("fi-FI")} €/kg`;
 }
 
 function formatEntryPrice(rowOrSpecies, value) {
@@ -2640,21 +2617,18 @@ function describeOfferEmailError(error) {
 }
 
 function calculateCommissionDetails(offer, commissionRate = 0.03) {
-  const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
-  const pricePerKg = Number(
-    offer?.counter_price_per_kg || offer?.price_per_kg || offer?.offer_price_per_kg || 0
-  );
   const lineItemTradeValue = parseSellerInvoiceLineItems(offer).reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
   const summaryTradeValue = parseTradeValueFromSpeciesSummary(offer?.species_summary);
-  const tradeValue = lineItemTradeValue > 0 ? lineItemTradeValue : summaryTradeValue;
-  const commissionValue = tradeValue * commissionRate;
-
-  return {
-    billingKilos: kilos,
-    billingPricePerKg: pricePerKg,
-    tradeValue,
-    commissionValue,
-  };
+  return calculateOfferCommissionValues({
+    reservedKilos: offer?.reserved_kilos,
+    totalKilos: offer?.total_kilos,
+    counterPricePerKg: offer?.counter_price_per_kg,
+    pricePerKg: offer?.price_per_kg,
+    offerPricePerKg: offer?.offer_price_per_kg,
+    lineItemTradeValue,
+    summaryTradeValue,
+    commissionRate,
+  });
 }
 
 async function exportSpreadsheet(filename, rows, sheetName = "Raportti") {
@@ -6283,16 +6257,6 @@ export default function App() {
       });
     };
   }, [handleNotificationNavigation, linkedBuyerRecord?.id, profile?.id, profile?.role, session?.user?.id]);
-
-  const calculateCommissionDetails = (offer) => {
-    const kilos = Number(offer?.reserved_kilos || offer?.total_kilos || 0);
-    const pricePerKg = Number(offer?.counter_price_per_kg || offer?.price_per_kg || 0);
-    const directTradeValue = kilos * pricePerKg;
-    const summaryTradeValue = parseTradeValueFromSpeciesSummary(offer?.species_summary);
-    const tradeValue = directTradeValue > 0 ? directTradeValue : summaryTradeValue;
-    const commissionValue = tradeValue * COMMISSION_RATE;
-    return { kilos, pricePerKg, tradeValue, commissionValue };
-  };
 
   const getMissingSellerBillingFields = (profileLike) => {
     const checks = [

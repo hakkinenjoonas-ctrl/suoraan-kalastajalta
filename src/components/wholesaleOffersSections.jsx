@@ -7,6 +7,7 @@ import {
   isBuyerOfferRejected,
   isBuyerOfferReserved,
 } from "../lib/offerLogic.js";
+import { FISH_VAT_RATE } from "../lib/pricing.js";
 
 export function WholesaleOffersOverviewSection({
   actionRequiredCount,
@@ -125,8 +126,6 @@ export function OfferedEntriesSummarySection({
     </div>
   );
 }
-
-const FISH_VAT_RATE = 0.135;
 
 function grossPriceLabel(value) {
   const number = Number(value);
