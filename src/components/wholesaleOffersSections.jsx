@@ -124,6 +124,12 @@ function grossPriceLabel(value) {
   return `${euro(number * (1 + FISH_VAT_RATE))} / kg`;
 }
 
+function netPriceLabel(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${euro(number)} / kg`;
+}
+
 function getEffectiveOfferPrice(offer) {
   if (offer?.counter_price_per_kg !== "" && offer?.counter_price_per_kg != null) {
     return offer.counter_price_per_kg;
@@ -218,7 +224,7 @@ export function BuyerResponsesSection({
                   )}
                 {!isMixedOffer(offer) && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                 <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
-                {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous:</strong> {euro(offer.counter_price_per_kg)} / kg</div> : null}
+                {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous ALV 0 %:</strong> {netPriceLabel(offer.counter_price_per_kg)}</div> : null}
                 {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>{`Vastatarjous sis. ALV ${(FISH_VAT_RATE * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %:`}</strong> {grossPriceLabel(offer.counter_price_per_kg)}</div> : null}
                 {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
                 {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
@@ -361,7 +367,8 @@ export function OfferedEntriesDetailsSection({
                       <div>
                         <div style={styles.entryBadges}>
                           <span style={styles.badge}>Anonyymi ostajaehdokas</span>
-                          <span style={styles.badge}>{euro(getEffectiveOfferPrice(offer) || 0)} / kg</span>
+                          <span style={styles.badge}>{euro(getEffectiveOfferPrice(offer) || 0)} / kg ALV 0 %</span>
+                          <span style={styles.badge}>{grossPriceLabel(getEffectiveOfferPrice(offer) || 0)} sis. ALV {(FISH_VAT_RATE * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %</span>
                           <span style={styles.badge}>{offer.status}</span>
                         </div>
                         <div style={styles.muted}>Tarjous on tallennettu anonyymisti ilman vastaanottajan tunnistetietoja tähän näkymään.</div>
@@ -457,7 +464,7 @@ export function OfferedEntriesDetailsSection({
                               <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{entry.municipality ? ` · ${entry.municipality}` : ""}{offer.spot ? ` / ${offer.spot}` : ""}</div>
                             </div>
                             <div>
-                              <div style={styles.muted}><strong>Vastatarjous:</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? `${euro(offer.counter_price_per_kg)} / kg` : "-"}</div>
+                              <div style={styles.muted}><strong>Vastatarjous ALV 0 %:</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? netPriceLabel(offer.counter_price_per_kg) : "-"}</div>
                               <div style={styles.muted}><strong>{`Vastatarjous sis. ALV ${(FISH_VAT_RATE * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %:`}</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? grossPriceLabel(offer.counter_price_per_kg) : "-"}</div>
                               {offer.status === "accepted" ? <div style={styles.muted}><strong>Kaupan arvo:</strong> {euro(calculateCommissionDetails(offer).tradeValue)}</div> : null}
                               {offer.status === "accepted" ? <div style={styles.muted}><strong>Komissio ({(COMMISSION_RATE * 100).toFixed(1)} %):</strong> {euro(calculateCommissionDetails(offer).commissionValue)}</div> : null}

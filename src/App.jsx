@@ -517,6 +517,17 @@ function formatEntryGrossPrice(rowOrSpecies, value) {
   return `${euro(grossPrice)} / ${unit}`;
 }
 
+function formatNetAndGrossPriceLines(rowOrSpecies, value, vatRate = FISH_VAT_RATE) {
+  if (value === "" || value == null) return [];
+  const unit = getSpeciesPriceUnit(typeof rowOrSpecies === "string" ? rowOrSpecies : getSpeciesRowLabel(rowOrSpecies));
+  const grossPrice = calculateGrossPrice(value, vatRate);
+  if (grossPrice == null) return [];
+  return [
+    `Hinta ALV 0 %: ${euro(value)} / ${unit}`,
+    `Hinta sis. ALV ${formatVatPercent(vatRate)} %: ${euro(grossPrice)} / ${unit}`,
+  ];
+}
+
 function parsePricePerKgFromNotes(notes) {
   const match = String(notes || "").match(/Hinta:\s*([0-9]+(?:[.,][0-9]+)?)\s*€/i);
   if (!match) return "";
@@ -546,6 +557,8 @@ function extractVisibleAdditionalNotes(notes) {
     if (inSpeciesBlock) continue;
     if (
       line.startsWith("Hinta:") ||
+      line.startsWith("Hinta ALV 0 %") ||
+      line.startsWith("Hinta sis. ALV") ||
       line === "Kilpailuta kuljetus: Ei" ||
       line.startsWith("Toimitustapa:") ||
       line.startsWith("Toimitusalue:") ||
@@ -4195,7 +4208,8 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
                 <div style={styles.entryBadges}>
                   <span style={styles.badge}>{offer.buyerLabel}</span>
                   <span style={styles.badge}>{offer.billingKilos} kg</span>
-                  <span style={styles.badge}>{euro(offer.billingPricePerKg)} / kg</span>
+                <span style={styles.badge}>{euro(offer.billingPricePerKg)} / kg ALV 0 %</span>
+                <span style={styles.badge}>{euro(calculateGrossPrice(offer.billingPricePerKg) || 0)} / kg sis. ALV {formatVatPercent()} %</span>
                   <span style={styles.badge}>{euro(offer.tradeValue)}</span>
                   <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{euro(offer.commissionValue)} komissio</span>
                 </div>
@@ -11492,8 +11506,13 @@ export default function App() {
                                 {getOfferSummaryLines(o.species_summary).length} lajia samassa erässä
                               </div>
                             ) : visiblePrice !== "" && visiblePrice != null ? (
-                              <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
-                                Hinta ALV 0 %: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
+                                  Hinta ALV 0 %: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}
+                                </div>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: "#475569" }}>
+                                  {`Hinta sis. ALV ${formatVatPercent()} %:`} {euro(calculateGrossPrice(visiblePrice) || 0)} / {getOfferDisplayUnit(o)}
+                                </div>
                               </div>
                             ) : null}
                           </div>
@@ -11521,8 +11540,7 @@ export default function App() {
                               }) || "-"}
                             </div>
                             {!mixedOffer ? <div style={styles.muted}>Määrä: {getOfferQuantityDisplay(o)}</div> : null}
-                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta ALV 0 %: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}</div> : null}
-                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>{`Hinta sis. ALV ${formatVatPercent()} %:`} {euro(calculateGrossPrice(visiblePrice) || 0)} / {getOfferDisplayUnit(o)}</div> : null}
+                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? formatNetAndGrossPriceLines(o, visiblePrice).map((line) => <div key={line} style={styles.muted}>{line}</div>) : null}
                             {!mixedOffer && offerCatchDates.length > 0 ? <div style={styles.muted}>Pyyntipäivämäärä: {offerCatchDates.join(", ")}</div> : null}
                             {ownDeliveryPrice != null ? <div style={styles.muted}>Toimitushinta omaan kaupunkiin ({o.delivery_destination_city || linkedBuyerRecord?.delivery_city || linkedBuyerRecord?.city || "-" }): {formatDeliveryPrice(ownDeliveryPrice)}</div> : null}
                             {ownTotalPrice != null ? <div style={styles.muted}>Kokonaishinta: {formatDeliveryPrice(ownTotalPrice)}</div> : null}
