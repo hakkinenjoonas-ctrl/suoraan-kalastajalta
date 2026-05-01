@@ -1,3 +1,13 @@
+import {
+  BUYER_OFFER_ACTION_REQUIRED_STATUSES,
+  getBuyerOfferAcceptanceActionLabel,
+  hasBuyerOfferStatus,
+  isBuyerOfferAccepted,
+  isBuyerOfferCountered,
+  isBuyerOfferRejected,
+  isBuyerOfferReserved,
+} from "../lib/offerLogic.js";
+
 export function WholesaleOffersOverviewSection({
   actionRequiredCount,
   openEntriesCount,
@@ -174,9 +184,9 @@ export function BuyerResponsesSection({
         <div style={styles.muted}>{emptyText}</div>
       ) : (
         prioritizedBuyerResponses.slice(0, maxItems).map((offer) => {
-          const isAccepted = offer.status === "accepted";
-          const isReserved = offer.status === "reserved";
-          const isCountered = offer.status === "countered";
+          const isAccepted = isBuyerOfferAccepted(offer.status);
+          const isReserved = isBuyerOfferReserved(offer.status);
+          const isCountered = isBuyerOfferCountered(offer.status);
           const revealIdentity = shouldRevealBuyerIdentity(offer.status);
           const isLinkedOffer = requestedOfferId && offer.id === requestedOfferId;
           const buyerProfile = buyers.find(
@@ -205,7 +215,7 @@ export function BuyerResponsesSection({
                 </div>
               </div>
               <div>
-                <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideTraceability: offer.status !== "accepted" }) || "-"}</div>
+                <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideTraceability: !isBuyerOfferAccepted(offer.status) }) || "-"}</div>
                 {getOfferSummaryCatchDates(offer.species_summary).length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryCatchDates(offer.species_summary).join(", ")}</div> : null}
                 {isMixedOffer(offer)
                   ? getOfferSummaryBatchItems(offer.species_summary).map((item) => (
@@ -239,15 +249,15 @@ export function BuyerResponsesSection({
                 {revealIdentity && buyerDeliveryAddressText ? (
                   <div style={styles.muted}><strong>Toimitusosoite:</strong> {buyerDeliveryAddressText}</div>
                 ) : null}
-                {offer.status === "accepted" ? (
+                {isBuyerOfferAccepted(offer.status) ? (
                   <div style={styles.muted}>
                     <strong>Laskutus:</strong> Tiedot tästä kaupasta siirtyvät Laskutus-välilehdelle heti kun ostaja on vahvistanut erän vastaanotetuksi. Siellä voit muodostaa laskun ostajalle. Suoraan Kalastajalta perii 3 % komission hyväksytyistä kaupoista ja laskuttaa komissiot kuukausittain.
                   </div>
                 ) : null}
-                {canManageBuyerOffer(offer) && offer.status !== "accepted" && offer.status !== "rejected" ? (
+                {canManageBuyerOffer(offer) && !isBuyerOfferAccepted(offer.status) && !isBuyerOfferRejected(offer.status) ? (
                   <div style={{ ...styles.row, marginTop: 12 }}>
                     <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBuyerOfferStatus(offer, "accepted")}>
-                      {offer.status === "reserved" ? "Hyväksy varaus" : offer.status === "countered" ? "Hyväksy vastatarjous" : "Hyväksy kauppa"}
+                      {getBuyerOfferAcceptanceActionLabel(offer.status)}
                     </button>
                     <button style={styles.button} onClick={() => onUpdateBuyerOfferStatus(offer, "rejected")}>Hylkää</button>
                   </div>
@@ -300,7 +310,7 @@ export function OfferedEntriesDetailsSection({
       ) : (
         groupedBuyerOffers.map(({ entry, reservation, entryOffers, buyerMatches }) => {
           const openBuyerOffers = buyerMatches.filter((offer) => openBuyerOfferStatuses.includes(offer.status));
-          const answeredBuyerOffers = buyerMatches.filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status));
+          const answeredBuyerOffers = buyerMatches.filter((offer) => hasBuyerOfferStatus(offer.status, [...BUYER_OFFER_ACTION_REQUIRED_STATUSES, "accepted", "rejected"]));
           return (
             <div key={entry.id} id={`offer-entry-${entry.id}`} style={styles.entry}>
               <div style={styles.entryHeader}>
@@ -397,7 +407,7 @@ export function OfferedEntriesDetailsSection({
                       return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
                     })
                     .map((offer) => {
-                      const isAccepted = offer.status === "accepted";
+                      const isAccepted = isBuyerOfferAccepted(offer.status);
                       const showTraceability = isAccepted;
                       const revealIdentity = shouldRevealBuyerIdentity(offer.status);
                       const buyerIdentity = revealIdentity ? (offer.buyer_company_name || offer.buyer_email || "Ostaja") : buyerTypeLabel(offer.buyer_type);
@@ -466,8 +476,8 @@ export function OfferedEntriesDetailsSection({
                             <div>
                               <div style={styles.muted}><strong>Vastatarjous ALV 0 %:</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? netPriceLabel(offer.counter_price_per_kg) : "-"}</div>
                               <div style={styles.muted}><strong>{`Vastatarjous sis. ALV ${(FISH_VAT_RATE * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %:`}</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? grossPriceLabel(offer.counter_price_per_kg) : "-"}</div>
-                              {offer.status === "accepted" ? <div style={styles.muted}><strong>Kaupan arvo:</strong> {euro(calculateCommissionDetails(offer).tradeValue)}</div> : null}
-                              {offer.status === "accepted" ? <div style={styles.muted}><strong>Komissio ({(COMMISSION_RATE * 100).toFixed(1)} %):</strong> {euro(calculateCommissionDetails(offer).commissionValue)}</div> : null}
+                              {isBuyerOfferAccepted(offer.status) ? <div style={styles.muted}><strong>Kaupan arvo:</strong> {euro(calculateCommissionDetails(offer).tradeValue)}</div> : null}
+                              {isBuyerOfferAccepted(offer.status) ? <div style={styles.muted}><strong>Komissio ({(COMMISSION_RATE * 100).toFixed(1)} %):</strong> {euro(calculateCommissionDetails(offer).commissionValue)}</div> : null}
                               <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? `${offer.reserved_kilos} kg` : "-"}</div>
                               <div style={styles.muted}><strong>Pyydys:</strong> {formatCatchGearDisplay(entry)}</div>
                             </div>
@@ -525,8 +535,8 @@ export function OfferedEntriesDetailsSection({
 
                           {!revealIdentity && canManageBuyerOffer(offer) ? (
                             <div style={styles.row}>
-                              {offer.status !== "accepted" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBuyerOfferStatus(offer, "accepted")}>{offer.status === "reserved" ? "Hyväksy varaus" : offer.status === "countered" ? "Hyväksy vastatarjous" : "Hyväksy kauppa"}</button> : null}
-                              {offer.status !== "rejected" ? <button style={styles.button} onClick={() => onUpdateBuyerOfferStatus(offer, "rejected")}>Hylkää</button> : null}
+                              {!isBuyerOfferAccepted(offer.status) ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBuyerOfferStatus(offer, "accepted")}>{getBuyerOfferAcceptanceActionLabel(offer.status)}</button> : null}
+                              {!isBuyerOfferRejected(offer.status) ? <button style={styles.button} onClick={() => onUpdateBuyerOfferStatus(offer, "rejected")}>Hylkää</button> : null}
                             </div>
                           ) : null}
                           {revealIdentity && canManageBuyerOffer(offer) ? (

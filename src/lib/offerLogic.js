@@ -2,6 +2,104 @@ function normalizeOfferMatchValue(value) {
   return String(value || "").trim();
 }
 
+export const BUYER_OFFER_STATUS = Object.freeze({
+  SENT: "sent",
+  VIEWED: "viewed",
+  COUNTERED: "countered",
+  RESERVED: "reserved",
+  ACCEPTED: "accepted",
+  SOLD: "sold",
+  REJECTED: "rejected",
+  EXPIRED: "expired",
+  CANCELLED: "cancelled",
+});
+
+export const BUYER_OFFER_OPEN_RESPONSE_STATUSES = Object.freeze([
+  BUYER_OFFER_STATUS.SENT,
+  BUYER_OFFER_STATUS.VIEWED,
+]);
+
+export const BUYER_OFFER_ACTION_REQUIRED_STATUSES = Object.freeze([
+  BUYER_OFFER_STATUS.RESERVED,
+  BUYER_OFFER_STATUS.COUNTERED,
+]);
+
+export const BUYER_OFFER_RESPONDED_STATUSES = Object.freeze([
+  BUYER_OFFER_STATUS.COUNTERED,
+  BUYER_OFFER_STATUS.RESERVED,
+  BUYER_OFFER_STATUS.ACCEPTED,
+  BUYER_OFFER_STATUS.REJECTED,
+]);
+
+export const BUYER_OFFER_COMPETING_OPEN_STATUSES = Object.freeze([
+  BUYER_OFFER_STATUS.SENT,
+  BUYER_OFFER_STATUS.VIEWED,
+  BUYER_OFFER_STATUS.COUNTERED,
+  BUYER_OFFER_STATUS.RESERVED,
+]);
+
+export const BUYER_OFFER_QUERYABLE_STATUSES = Object.freeze([
+  BUYER_OFFER_STATUS.SENT,
+  BUYER_OFFER_STATUS.VIEWED,
+  BUYER_OFFER_STATUS.COUNTERED,
+  BUYER_OFFER_STATUS.RESERVED,
+  BUYER_OFFER_STATUS.ACCEPTED,
+  BUYER_OFFER_STATUS.SOLD,
+  BUYER_OFFER_STATUS.REJECTED,
+  BUYER_OFFER_STATUS.EXPIRED,
+  BUYER_OFFER_STATUS.CANCELLED,
+]);
+
+export function hasBuyerOfferStatus(status, allowedStatuses) {
+  return allowedStatuses.includes(String(status || "").trim());
+}
+
+export function isBuyerOfferAccepted(status) {
+  return String(status || "").trim() === BUYER_OFFER_STATUS.ACCEPTED;
+}
+
+export function isBuyerOfferReserved(status) {
+  return String(status || "").trim() === BUYER_OFFER_STATUS.RESERVED;
+}
+
+export function isBuyerOfferCountered(status) {
+  return String(status || "").trim() === BUYER_OFFER_STATUS.COUNTERED;
+}
+
+export function isBuyerOfferRejected(status) {
+  return String(status || "").trim() === BUYER_OFFER_STATUS.REJECTED;
+}
+
+export function isBuyerOfferSold(status) {
+  return String(status || "").trim() === BUYER_OFFER_STATUS.SOLD;
+}
+
+export function isBuyerOfferActionRequired(status) {
+  return hasBuyerOfferStatus(status, BUYER_OFFER_ACTION_REQUIRED_STATUSES);
+}
+
+export function isBuyerOfferOpenForBuyerActions(status) {
+  return hasBuyerOfferStatus(status, BUYER_OFFER_OPEN_RESPONSE_STATUSES);
+}
+
+export function shouldRevealBuyerIdentityForStatus(status) {
+  return isBuyerOfferAccepted(status);
+}
+
+export function getBuyerOfferAcceptanceActionLabel(status) {
+  if (isBuyerOfferReserved(status)) return "Hyväksy varaus";
+  if (isBuyerOfferCountered(status)) return "Hyväksy vastatarjous";
+  return "Hyväksy kauppa";
+}
+
+export function getBuyerOffersFilterForStatus(status) {
+  if (isBuyerOfferAccepted(status) || isBuyerOfferSold(status)) return "accepted";
+  if (isBuyerOfferReserved(status)) return "reserved";
+  if (isBuyerOfferCountered(status)) return "countered";
+  if (isBuyerOfferRejected(status)) return "rejected";
+  return "open";
+}
+
 function getOfferSummaryLines(summary) {
   return String(summary || "")
     .split("\n")
@@ -55,13 +153,13 @@ export function getAcceptedInvoiceSourceLabel(offer) {
 }
 
 export function buyerStatusLabel(status) {
-  if (status === "sent") return "Tarjous lähetetty";
-  if (status === "viewed") return "Avattu";
-  if (status === "countered") return "Vastatarjous";
-  if (status === "reserved") return "Varattu";
-  if (status === "accepted") return "Kauppa hyväksytty";
-  if (status === "sold") return "MYYTY JO TOISELLE OSTAJALLE";
-  if (status === "rejected") return "Hylätty";
-  if (status === "cancelled") return "Peruttu";
+  if (status === BUYER_OFFER_STATUS.SENT) return "Tarjous lähetetty";
+  if (status === BUYER_OFFER_STATUS.VIEWED) return "Avattu";
+  if (status === BUYER_OFFER_STATUS.COUNTERED) return "Vastatarjous";
+  if (status === BUYER_OFFER_STATUS.RESERVED) return "Varattu";
+  if (status === BUYER_OFFER_STATUS.ACCEPTED) return "Kauppa hyväksytty";
+  if (status === BUYER_OFFER_STATUS.SOLD) return "MYYTY JO TOISELLE OSTAJALLE";
+  if (status === BUYER_OFFER_STATUS.REJECTED) return "Hylätty";
+  if (status === BUYER_OFFER_STATUS.CANCELLED) return "Peruttu";
   return status || "-";
 }

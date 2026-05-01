@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BUYER_OFFER_ACTION_REQUIRED_STATUSES,
+  BUYER_OFFER_OPEN_RESPONSE_STATUSES,
+  BUYER_OFFER_STATUS,
   buildPushEventHeadline,
   buyerStatusLabel,
+  getBuyerOfferAcceptanceActionLabel,
+  getBuyerOffersFilterForStatus,
   getAcceptedInvoiceSourceLabel,
+  hasBuyerOfferStatus,
+  isBuyerOfferAccepted,
   offersShareSameLot,
+  shouldRevealBuyerIdentityForStatus,
 } from "./offerLogic.js";
 
 describe("offerLogic", () => {
@@ -91,6 +99,30 @@ describe("offerLogic", () => {
 
     it("falls back to raw status for unknown values", () => {
       expect(buyerStatusLabel("custom-status")).toBe("custom-status");
+    });
+  });
+
+  describe("status helpers", () => {
+    it("recognizes accepted status centrally", () => {
+      expect(isBuyerOfferAccepted(BUYER_OFFER_STATUS.ACCEPTED)).toBe(true);
+      expect(shouldRevealBuyerIdentityForStatus(BUYER_OFFER_STATUS.ACCEPTED)).toBe(true);
+    });
+
+    it("matches status sets through shared helper", () => {
+      expect(hasBuyerOfferStatus(BUYER_OFFER_STATUS.SENT, BUYER_OFFER_OPEN_RESPONSE_STATUSES)).toBe(true);
+      expect(hasBuyerOfferStatus(BUYER_OFFER_STATUS.COUNTERED, BUYER_OFFER_ACTION_REQUIRED_STATUSES)).toBe(true);
+    });
+
+    it("returns correct acceptance action label", () => {
+      expect(getBuyerOfferAcceptanceActionLabel(BUYER_OFFER_STATUS.RESERVED)).toBe("Hyväksy varaus");
+      expect(getBuyerOfferAcceptanceActionLabel(BUYER_OFFER_STATUS.COUNTERED)).toBe("Hyväksy vastatarjous");
+      expect(getBuyerOfferAcceptanceActionLabel(BUYER_OFFER_STATUS.SENT)).toBe("Hyväksy kauppa");
+    });
+
+    it("maps statuses to buyer offer filters", () => {
+      expect(getBuyerOffersFilterForStatus(BUYER_OFFER_STATUS.ACCEPTED)).toBe("accepted");
+      expect(getBuyerOffersFilterForStatus(BUYER_OFFER_STATUS.RESERVED)).toBe("reserved");
+      expect(getBuyerOffersFilterForStatus(BUYER_OFFER_STATUS.REJECTED)).toBe("rejected");
     });
   });
 });

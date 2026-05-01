@@ -14,11 +14,23 @@ import {
   isMissingRefreshTokenError,
 } from "./lib/auth.js";
 import {
+  BUYER_OFFER_ACTION_REQUIRED_STATUSES,
+  BUYER_OFFER_COMPETING_OPEN_STATUSES,
+  BUYER_OFFER_OPEN_RESPONSE_STATUSES,
+  BUYER_OFFER_QUERYABLE_STATUSES,
   buildPushEventHeadline,
   buyerStatusLabel,
+  getBuyerOffersFilterForStatus,
   getAcceptedInvoiceSourceLabel,
   getOfferSpeciesHeadline,
+  hasBuyerOfferStatus,
+  isBuyerOfferAccepted,
+  isBuyerOfferCountered,
+  isBuyerOfferRejected,
+  isBuyerOfferReserved,
+  isBuyerOfferSold,
   offersShareSameLot,
+  shouldRevealBuyerIdentityForStatus,
 } from "./lib/offerLogic.js";
 import {
   CATCH_FORM_DEFAULTS_KEY,
@@ -3423,7 +3435,7 @@ function WholesaleOffersView({
 
   const getEntryReservation = (entry) => {
     const matches = (buyerOffers || []).filter((offer) => {
-      if (offer.status !== "reserved" && offer.status !== "accepted") {
+      if (!isBuyerOfferReserved(offer.status) && !isBuyerOfferAccepted(offer.status)) {
         return false;
       }
 
@@ -3487,7 +3499,7 @@ function WholesaleOffersView({
   };
   const offeredEntriesSummary = Array.from(
     groupedBuyerOffers
-      .filter(({ reservation }) => reservation?.status !== "accepted")
+    .filter(({ reservation }) => !isBuyerOfferAccepted(reservation?.status))
       .reduce((acc, { entry, buyerMatches, reservation }) => {
         const matchIds = buyerMatches.map((offer) => offer.id).sort().join("|");
         const groupKey = matchIds || `entry:${entry.id}`;
@@ -3527,8 +3539,7 @@ function WholesaleOffersView({
     }))
     .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
   const openOfferedEntriesSummary = offeredEntriesSummary.filter((item) => item.reservationStatus === "");
-  const openBuyerOfferStatuses = ["sent", "viewed"];
-
+  const openBuyerOfferStatuses = BUYER_OFFER_OPEN_RESPONSE_STATUSES;
   const buyerResponsePriority = {
     reserved: 0,
     countered: 1,
@@ -3537,7 +3548,11 @@ function WholesaleOffersView({
   };
 
   const prioritizedBuyerResponses = (buyerOffers || [])
-    .filter((offer) => ["countered", "reserved", "accepted", "rejected"].includes(offer.status))
+    .filter((offer) => hasBuyerOfferStatus(offer.status, [
+      ...BUYER_OFFER_ACTION_REQUIRED_STATUSES,
+      "accepted",
+      "rejected",
+    ]))
     .sort((a, b) => {
       if (requestedOfferId) {
         if (a.id === requestedOfferId && b.id !== requestedOfferId) return -1;
@@ -3547,9 +3562,9 @@ function WholesaleOffersView({
       if (priorityDiff !== 0) return priorityDiff;
       return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
     });
-  const actionRequiredResponses = prioritizedBuyerResponses.filter((offer) => ["reserved", "countered"].includes(offer.status));
-  const acceptedBuyerResponses = prioritizedBuyerResponses.filter((offer) => offer.status === "accepted");
-  const archivedBuyerResponses = prioritizedBuyerResponses.filter((offer) => offer.status === "rejected");
+  const actionRequiredResponses = prioritizedBuyerResponses.filter((offer) => hasBuyerOfferStatus(offer.status, BUYER_OFFER_ACTION_REQUIRED_STATUSES));
+  const acceptedBuyerResponses = prioritizedBuyerResponses.filter((offer) => isBuyerOfferAccepted(offer.status));
+  const archivedBuyerResponses = prioritizedBuyerResponses.filter((offer) => isBuyerOfferRejected(offer.status));
 
   const canManageBuyerOffer = (offer) => profile?.role === "owner" || profile?.id === offer?.seller_user_id;
   const linkedBuyerOffer = requestedOfferId
@@ -6410,7 +6425,7 @@ export default function App() {
     return buyerTypeLabel(offer?.buyer_type);
   };
 
-  const shouldRevealBuyerIdentity = (status) => status === "accepted";
+  const shouldRevealBuyerIdentity = shouldRevealBuyerIdentityForStatus;
 
   const getSellerIdentityForBuyer = (offer) => {
     const matchingEntry = entries.find((entry) => {
@@ -6778,17 +6793,7 @@ export default function App() {
 
     setBuyerActiveOfferId(linkedOffer.id);
 
-    if (["accepted", "sold"].includes(linkedOffer.status)) {
-      setBuyerOffersFilter("accepted");
-    } else if (linkedOffer.status === "reserved") {
-      setBuyerOffersFilter("reserved");
-    } else if (linkedOffer.status === "countered") {
-      setBuyerOffersFilter("countered");
-    } else if (linkedOffer.status === "rejected") {
-      setBuyerOffersFilter("rejected");
-    } else {
-      setBuyerOffersFilter("open");
-    }
+    setBuyerOffersFilter(getBuyerOffersFilterForStatus(linkedOffer.status));
   }, [requestedOfferId, profile?.role, buyerOffers]);
 
   useEffect(() => {
@@ -7006,7 +7011,7 @@ export default function App() {
                 const query = supabase
                   .from("buyer_offers")
                   .select("*")
-                  .in("status", ["sent", "viewed", "countered", "reserved", "accepted", "sold", "rejected", "expired", "cancelled"])
+                  .in("status", BUYER_OFFER_QUERYABLE_STATUSES)
                   .order("created_at", { ascending: false });
                 return profile.buyer_id
                   ? query.or(`buyer_id.eq.${profile.buyer_id},buyer_email.eq.${normalizedProfileEmail}`)
@@ -7427,7 +7432,7 @@ export default function App() {
               seller_commercial_fishing_id: offer.seller_commercial_fishing_id || sellerProfile.commercial_fishing_id || "",
               billing_status: offer.billing_status || "unbilled",
               billing_month: offer.billing_month || "",
-              fulfillment_status: offer.fulfillment_status || (offer.status === "accepted" ? "awaiting_contact" : ""),
+              fulfillment_status: offer.fulfillment_status || (isBuyerOfferAccepted(offer.status) ? "awaiting_contact" : ""),
             };
           }));
         }
@@ -10028,7 +10033,7 @@ export default function App() {
       .from("buyer_offers")
       .delete()
       .eq("seller_user_id", targetEntry.ownerUserId || profile?.id || "")
-      .in("status", ["sent", "viewed", "countered", "reserved"]);
+      .in("status", BUYER_OFFER_COMPETING_OPEN_STATUSES);
 
     const batchIds = targetEntries
       .map((entry) => String(entry.batchId || "").trim())
@@ -10202,7 +10207,7 @@ export default function App() {
         .from("buyer_offers")
         .select("id, batch_id, seller_user_id, species_summary, total_kilos, area, spot, status")
         .eq("seller_user_id", offer.seller_user_id)
-        .in("status", ["sent", "viewed", "countered", "reserved"]);
+        .in("status", BUYER_OFFER_COMPETING_OPEN_STATUSES);
 
       if (openOffersError) {
         if (isMissingRefreshTokenError(openOffersError)) {
@@ -11226,9 +11231,9 @@ export default function App() {
       const statusOk = buyerOffersFilter === "all"
         ? true
         : buyerOffersFilter === "open"
-        ? ["sent", "viewed", "countered", "reserved", "sold"].includes(offer.status)
+        ? hasBuyerOfferStatus(offer.status, [...BUYER_OFFER_OPEN_RESPONSE_STATUSES, ...BUYER_OFFER_ACTION_REQUIRED_STATUSES, "sold"])
         : buyerOffersFilter === "accepted"
-        ? offer.status === "accepted"
+        ? isBuyerOfferAccepted(offer.status)
         : offer.status === buyerOffersFilter;
       const text = [offer.seller_name, offer.area, offer.spot, offer.species_summary, offer.status, offer.buyer_message]
         .filter(Boolean)
@@ -11251,7 +11256,7 @@ export default function App() {
     });
     const todayLabel = formatOfferDay(new Date().toISOString());
     const acceptedBuyerOffers = (buyerOffers || []).filter(
-      (offer) => offer.status === "accepted" && formatOfferDay(offer.updated_at || offer.created_at) === todayLabel
+      (offer) => isBuyerOfferAccepted(offer.status) && formatOfferDay(offer.updated_at || offer.created_at) === todayLabel
     );
     const logoHeight = viewportWidth < 768
       ? 172
@@ -11487,13 +11492,13 @@ export default function App() {
                     const visiblePrice = getVisibleOfferPrice(o);
                     const sellerInfo = getBuyerVisibleSellerInfo(o);
                     const mixedOffer = isMixedOffer(o);
-                    const showTraceability = o.status === "accepted";
+                    const showTraceability = isBuyerOfferAccepted(o.status);
                     const visibleAdditionalNotes = extractVisibleAdditionalNotes(o.notes);
                     const ownDeliveryPrice = o.route_price_eur !== "" && o.route_price_eur != null ? Number(o.route_price_eur) : null;
                     const ownTotalPrice = o.total_price_eur !== "" && o.total_price_eur != null ? Number(o.total_price_eur) : null;
                     const ownDeliveredPricePerKg = o.delivered_price_per_kg !== "" && o.delivered_price_per_kg != null ? Number(o.delivered_price_per_kg) : null;
                     const offerCatchDates = getOfferSummaryCatchDates(o.species_summary);
-                    const buyerOfferActionsOpen = ["sent", "viewed"].includes(o.status);
+                    const buyerOfferActionsOpen = hasBuyerOfferStatus(o.status, BUYER_OFFER_OPEN_RESPONSE_STATUSES);
                     const showCounterAction = isActive && buyerActionMode === "counter";
                     return (
                       <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
