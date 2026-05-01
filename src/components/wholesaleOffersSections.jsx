@@ -9,6 +9,12 @@ import {
 } from "../lib/offerLogic.js";
 import { FISH_VAT_RATE } from "../lib/pricing.js";
 
+function euro(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${number.toLocaleString("fi-FI")} €`;
+}
+
 export function WholesaleOffersOverviewSection({
   actionRequiredCount,
   openEntriesCount,
