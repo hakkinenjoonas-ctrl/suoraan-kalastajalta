@@ -3356,6 +3356,7 @@ function WholesaleOffersView({
   onCreateOffer,
   onUpdateOfferStatus,
   onUpdateBuyerOfferStatus,
+  onRemoveEntryFromSale,
   updateFulfillmentStatus,
   requestedOfferId,
   buyerTypeLabel,
@@ -3507,6 +3508,7 @@ function WholesaleOffersView({
       <OfferedEntriesSummarySection
         offeredEntriesSummary={openOfferedEntriesSummary}
         jumpToEntryOffer={jumpToEntryOffer}
+        onRemoveEntryFromSale={onRemoveEntryFromSale}
         buyerStatusBadgeStyle={buyerStatusBadgeStyle}
         styles={styles}
         title="Avoimet tarjoukset"
@@ -9871,6 +9873,86 @@ export default function App() {
     }
   };
 
+  const handleRemoveEntryFromSale = async (entryId) => {
+    const targetEntry = (profile.role === "processor" ? processedSaleEntries : saleEntries)
+      .find((entry) => String(entry.id) === String(entryId));
+
+    if (!targetEntry) {
+      setAuthError("Myynnistä poistettavaa erää ei löytynyt.");
+      return;
+    }
+
+    const entryLabel = targetEntry.productName || targetEntry.species || "erä";
+    const confirmed = typeof window === "undefined"
+      ? true
+      : window.confirm(`Poistetaanko ${entryLabel} myynnistä? Tarjous häviää ostajien näkymästä.`);
+
+    if (!confirmed) return;
+
+    const isProcessedEntry = Boolean(targetEntry.productName || targetEntry.productType);
+    const tableName = isProcessedEntry ? "processed_batches" : "catch_entries";
+    const updatePayload = {
+      offer_to_shops: false,
+      offer_to_restaurants: false,
+      offer_to_wholesalers: false,
+      delivery_possible: false,
+      delivery_method: null,
+      transport_mode: null,
+      origin_point_id: null,
+      transport_company_id: null,
+      pickup_address: null,
+      delivery_destinations: [],
+      delivery_area: null,
+      delivery_cost: null,
+      earliest_delivery_date: null,
+      cold_transport: false,
+    };
+
+    const { error: entryUpdateError } = await supabase
+      .from(tableName)
+      .update(updatePayload)
+      .eq("id", targetEntry.id);
+
+    if (entryUpdateError) {
+      if (isMissingRefreshTokenError(entryUpdateError)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(entryUpdateError.message);
+      return;
+    }
+
+    let buyerOfferDeleteQuery = supabase
+      .from("buyer_offers")
+      .delete()
+      .eq("seller_user_id", targetEntry.ownerUserId || profile?.id || "")
+      .in("status", ["sent", "viewed", "countered", "reserved"]);
+
+    if (targetEntry.batchId) {
+      buyerOfferDeleteQuery = buyerOfferDeleteQuery.eq("batch_id", targetEntry.batchId);
+    } else {
+      buyerOfferDeleteQuery = buyerOfferDeleteQuery
+        .eq("area", targetEntry.area || "")
+        .eq("spot", targetEntry.spot || "")
+        .eq("total_kilos", Number(targetEntry.kilos || 0));
+    }
+
+    const { error: buyerOfferDeleteError } = await buyerOfferDeleteQuery;
+
+    if (buyerOfferDeleteError) {
+      if (isMissingRefreshTokenError(buyerOfferDeleteError)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(buyerOfferDeleteError.message);
+      return;
+    }
+
+    setAuthInfo("Erä poistettu myynnistä. Tarjous ei enää näy ostajille.");
+    await refreshBuyerOffers();
+    setRefreshTick((prev) => prev + 1);
+  };
+
   const handleCreateOffer = async (entry) => {
     setAuthError("");
     setAuthInfo("");
@@ -13142,6 +13224,7 @@ export default function App() {
             onCreateOffer={handleCreateOffer}
             onUpdateOfferStatus={onUpdateOfferStatus}
             onUpdateBuyerOfferStatus={onUpdateBuyerOfferStatus}
+            onRemoveEntryFromSale={handleRemoveEntryFromSale}
             updateFulfillmentStatus={updateFulfillmentStatus}
             requestedOfferId={requestedOfferId}
             buyerTypeLabel={buyerTypeLabel}

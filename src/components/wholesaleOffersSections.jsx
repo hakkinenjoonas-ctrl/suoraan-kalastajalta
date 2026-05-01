@@ -66,6 +66,7 @@ export function LinkedBuyerOfferCard({
 export function OfferedEntriesSummarySection({
   offeredEntriesSummary,
   jumpToEntryOffer,
+  onRemoveEntryFromSale,
   buyerStatusBadgeStyle,
   styles,
   title = "Myyntiin lähetetyt erät",
@@ -93,6 +94,15 @@ export function OfferedEntriesSummarySection({
                   onClick={() => jumpToEntryOffer(item.id)}
                 >
                   Siirry hyväksymään/hylkäämään varaus
+                </button>
+              ) : null}
+              {item.reservationStatus === "" ? (
+                <button
+                  type="button"
+                  style={{ ...styles.button, padding: "8px 12px", background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }}
+                  onClick={() => onRemoveEntryFromSale(item.id)}
+                >
+                  Poista myynnistä
                 </button>
               ) : null}
             </div>
