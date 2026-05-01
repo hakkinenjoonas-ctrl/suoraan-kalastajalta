@@ -100,13 +100,14 @@ export function OfferedEntriesSummarySection({
                 <button
                   type="button"
                   style={{ ...styles.button, padding: "8px 12px", background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }}
-                  onClick={() => onRemoveEntryFromSale(item.id)}
+                  onClick={() => onRemoveEntryFromSale(item.entryIds || [item.id])}
                 >
                   Poista myynnistä
                 </button>
               ) : null}
             </div>
             <div style={styles.muted}>{item.date || "-"} · {item.area || "-"}</div>
+            {item.mixedSummary ? <div style={styles.muted}>Lajit samassa erässä: {item.mixedSummary}</div> : null}
             <div style={styles.muted}>Tarjous lähetetty {item.buyerCount} ostajalle</div>
           </div>
         ))

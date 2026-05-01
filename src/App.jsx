@@ -3408,9 +3408,11 @@ function WholesaleOffersView({
   const groupedBuyerOffers = saleEntries.map((entry) => {
     const reservation = getEntryReservation(entry);
 
-    const batchMatches = (buyerOffers || []).filter(
-      (offer) => offer.batch_id && entry.batchId && offer.batch_id === entry.batchId
-    );
+    const batchMatches = (buyerOffers || []).filter((offer) => {
+      if (!entry.batchId) return false;
+      if (offer.batch_id && offer.batch_id === entry.batchId) return true;
+      return getOfferSummaryBatchItems(offer.species_summary).some((item) => item.batchId === entry.batchId);
+    });
 
     const entryMatches = (buyerOffers || []).filter((offer) => {
       if (offer.batch_id && entry.batchId) return false;
@@ -3440,16 +3442,45 @@ function WholesaleOffersView({
     if (!target) return;
     target.scrollIntoView({ behavior: "smooth", block: "start" });
   };
-  const offeredEntriesSummary = groupedBuyerOffers
-    .filter(({ reservation }) => reservation?.status !== "accepted")
-    .map(({ entry, buyerMatches, reservation }) => ({
-      id: entry.id,
-      species: formatSpeciesForSale(entry.species),
-      kilos: Number(entry.kilos || 0),
-      date: entry.date || "",
-      area: [entry.area, entry.municipality, entry.spot].filter(Boolean).join(" / "),
-      buyerCount: buyerMatches.length,
-      reservationStatus: reservation?.status || "",
+  const offeredEntriesSummary = Array.from(
+    groupedBuyerOffers
+      .filter(({ reservation }) => reservation?.status !== "accepted")
+      .reduce((acc, { entry, buyerMatches, reservation }) => {
+        const matchIds = buyerMatches.map((offer) => offer.id).sort().join("|");
+        const groupKey = matchIds || `entry:${entry.id}`;
+        const existing = acc.get(groupKey);
+        const speciesLabel = formatSpeciesForSale(entry.species);
+
+        if (!existing) {
+          acc.set(groupKey, {
+            id: entry.id,
+            entryIds: [entry.id],
+            species: buyerMatches.length > 0 && buyerMatches.some((offer) => isMixedOffer(offer)) ? "Monilajinen erä" : speciesLabel,
+            speciesList: [speciesLabel],
+            kilos: Number(entry.kilos || 0),
+            date: entry.date || "",
+            area: [entry.area, entry.municipality, entry.spot].filter(Boolean).join(" / "),
+            buyerCount: buyerMatches.length,
+            reservationStatus: reservation?.status || "",
+          });
+          return acc;
+        }
+
+        existing.entryIds.push(entry.id);
+        existing.kilos += Number(entry.kilos || 0);
+        if (!existing.speciesList.includes(speciesLabel)) {
+          existing.speciesList.push(speciesLabel);
+        }
+        if ((!existing.date || existing.date > (entry.date || "")) && entry.date) {
+          existing.date = entry.date;
+        }
+        return acc;
+      }, new Map())
+      .values()
+  )
+    .map((item) => ({
+      ...item,
+      mixedSummary: item.species === "Monilajinen erä" ? item.speciesList.join(", ") : "",
     }))
     .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
   const openOfferedEntriesSummary = offeredEntriesSummary.filter((item) => item.reservationStatus === "");
@@ -9873,16 +9904,20 @@ export default function App() {
     }
   };
 
-  const handleRemoveEntryFromSale = async (entryId) => {
-    const targetEntry = (profile.role === "processor" ? processedSaleEntries : saleEntries)
-      .find((entry) => String(entry.id) === String(entryId));
+  const handleRemoveEntryFromSale = async (entryIds) => {
+    const normalizedEntryIds = Array.isArray(entryIds) ? entryIds.map(String) : [String(entryIds)];
+    const targetEntries = (profile.role === "processor" ? processedSaleEntries : saleEntries)
+      .filter((entry) => normalizedEntryIds.includes(String(entry.id)));
 
-    if (!targetEntry) {
+    if (targetEntries.length === 0) {
       setAuthError("Myynnistä poistettavaa erää ei löytynyt.");
       return;
     }
 
-    const entryLabel = targetEntry.productName || targetEntry.species || "erä";
+    const targetEntry = targetEntries[0];
+    const entryLabel = targetEntries.length > 1
+      ? "monilajinen erä"
+      : targetEntry.productName || targetEntry.species || "erä";
     const confirmed = typeof window === "undefined"
       ? true
       : window.confirm(`Poistetaanko ${entryLabel} myynnistä? Tarjous häviää ostajien näkymästä.`);
@@ -9911,7 +9946,7 @@ export default function App() {
     const { error: entryUpdateError } = await supabase
       .from(tableName)
       .update(updatePayload)
-      .eq("id", targetEntry.id);
+      .in("id", normalizedEntryIds);
 
     if (entryUpdateError) {
       if (isMissingRefreshTokenError(entryUpdateError)) {
@@ -9928,8 +9963,12 @@ export default function App() {
       .eq("seller_user_id", targetEntry.ownerUserId || profile?.id || "")
       .in("status", ["sent", "viewed", "countered", "reserved"]);
 
-    if (targetEntry.batchId) {
-      buyerOfferDeleteQuery = buyerOfferDeleteQuery.eq("batch_id", targetEntry.batchId);
+    const batchIds = targetEntries
+      .map((entry) => String(entry.batchId || "").trim())
+      .filter(Boolean);
+
+    if (batchIds.length > 0) {
+      buyerOfferDeleteQuery = buyerOfferDeleteQuery.in("batch_id", batchIds);
     } else {
       buyerOfferDeleteQuery = buyerOfferDeleteQuery
         .eq("area", targetEntry.area || "")
