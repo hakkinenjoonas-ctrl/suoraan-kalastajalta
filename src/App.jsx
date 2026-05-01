@@ -5672,6 +5672,7 @@ export default function App() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const foregroundNotificationRef = useRef({ key: "", at: 0 });
   const pushRegistrationKeyRef = useRef("");
+  const currentPushTokenRef = useRef("");
   const [accountForm, setAccountForm] = useState({
     displayName: "",
     buyerType: "ravintola",
@@ -5969,6 +5970,37 @@ export default function App() {
     );
   }, [sendPushEvent]);
 
+  const registerPushTokenOwnership = useCallback(async ({
+    token,
+    buyerId = "",
+    platform = "android",
+    deviceLabel = "android-app",
+  }) => {
+    const trimmedToken = String(token || "").trim();
+    if (!trimmedToken) {
+      return { data: null, error: { message: "Missing push token" } };
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    return invokeEdgeFunctionAuthenticated("register-push-token", {
+      token: trimmedToken,
+      buyerId: String(buyerId || "").trim() || null,
+      platform,
+      deviceLabel,
+    }, accessToken);
+  }, []);
+
+  const unregisterPushTokenOwnership = useCallback(async (token = "") => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) return { data: null, error: null };
+
+    return invokeEdgeFunctionAuthenticated("unregister-push-token", {
+      token: String(token || "").trim() || null,
+    }, accessToken);
+  }, []);
+
   useEffect(() => {
     if (!session?.user?.id || !profile?.id || !isNativeCapacitorApp()) return undefined;
 
@@ -6113,35 +6145,30 @@ export default function App() {
               }
             }
 
-            const { error: upsertError } = await supabase
-              .from("app_push_tokens")
-              .upsert({
-                user_id: profile.id,
-                buyer_id: resolvedBuyerId,
-                role: profile.role || "member",
-                platform: "android",
-                token: token.value,
-                device_label: "android-app",
-                is_active: true,
-                last_seen_at: new Date().toISOString(),
-              }, { onConflict: "token" });
+            const registerResult = await registerPushTokenOwnership({
+              token: token.value,
+              buyerId: resolvedBuyerId || "",
+              platform: "android",
+              deviceLabel: "android-app",
+            });
 
-            if (upsertError) {
-              console.error("[PUSH] token upsert failed", JSON.stringify({
+            if (registerResult?.error) {
+              console.error("[PUSH] token register failed", JSON.stringify({
                 profileId: profile.id,
                 buyerId: resolvedBuyerId,
                 role: profile.role || "member",
-                error: upsertError.message || String(upsertError),
+                error: registerResult.error.message || String(registerResult.error),
               }));
-              scheduleRetry("token_upsert_failed");
+              scheduleRetry("token_register_failed");
               return;
             }
 
+            currentPushTokenRef.current = token.value;
             pushRegistrationKeyRef.current = registrationKey;
             console.log("[PUSH] token registered", JSON.stringify({
               profileId: profile.id,
-              buyerId: resolvedBuyerId,
-              role: profile.role || "member",
+              buyerId: registerResult?.data?.buyerId || resolvedBuyerId || null,
+              role: registerResult?.data?.role || profile.role || "member",
               registrationKey,
             }));
           } catch (error) {
@@ -6258,7 +6285,7 @@ export default function App() {
         }
       });
     };
-  }, [handleNotificationNavigation, linkedBuyerRecord?.id, profile?.id, profile?.role, session?.user?.id]);
+  }, [handleNotificationNavigation, linkedBuyerRecord?.id, profile?.buyer_id, profile?.id, profile?.role, registerPushTokenOwnership, session?.user?.id]);
 
   const getMissingSellerBillingFields = (profileLike) => {
     const checks = [
@@ -8006,6 +8033,12 @@ export default function App() {
         setAuthError(error.message);
         return;
       }
+      try {
+        await unregisterPushTokenOwnership(currentPushTokenRef.current);
+      } catch {
+        // ignore token cleanup failure
+      }
+      currentPushTokenRef.current = "";
       await supabase.auth.signOut();
       setSession(null);
       setProfile(null);
@@ -8020,6 +8053,12 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    try {
+      await unregisterPushTokenOwnership(currentPushTokenRef.current);
+    } catch {
+      // ignore logout cleanup failure
+    }
+    currentPushTokenRef.current = "";
     await clearBrokenSession();
     setProfile(null);
     setSession(null);
