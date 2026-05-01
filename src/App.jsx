@@ -197,12 +197,15 @@ function formatSpeciesOfferSummaryLine(row) {
   const count = Number(row?.count || 0);
   const unit = getSpeciesPriceUnit(getSpeciesRowLabel(row));
   const parsedPrice = parseLocaleNumber(row?.price_per_kg);
+  const grossPrice = parsedPrice == null ? null : calculateGrossPrice(parsedPrice);
   const price = parsedPrice == null ? "-" : `${parsedPrice.toLocaleString("fi-FI")} € / ${unit}`;
+  const gross = grossPrice == null ? "-" : `${grossPrice.toLocaleString("fi-FI")} € / ${unit}`;
   const batchId = String(row?.batch_id || "").trim();
   const catchDate = String(row?.catch_date || row?.date || "").trim();
   return [
     formatSpeciesSummaryLine(getSpeciesRowLabel(row), kilos, count),
-    `Hinta ${price}`,
+    `Hinta ALV 0 % ${price}`,
+    `Hinta sis. ALV ${formatVatPercent()} % ${gross}`,
     catchDate ? `Pyyntipäivämäärä ${catchDate}` : "",
     batchId ? `Erätunnus ${batchId}` : "",
   ].filter(Boolean).join(" · ");
@@ -210,7 +213,7 @@ function formatSpeciesOfferSummaryLine(row) {
 
 function parseTradeValueFromSpeciesSummary(summary) {
   return getOfferSummaryLines(summary).reduce((sum, line) => {
-    const priceMatch = String(line).match(/Hinta\s+([0-9]+(?:[.,][0-9]+)?)/i);
+    const priceMatch = String(line).match(/Hinta(?:\s+ALV\s+0\s*%)?\s+([0-9]+(?:[.,][0-9]+)?)/i);
     if (!priceMatch) return sum;
 
     const parsedPrice = parseLocaleNumber(priceMatch[1]);
@@ -249,7 +252,9 @@ function stripOfferInlineMetaText(line, options = {}) {
     cleaned = stripOfferTraceabilityText(cleaned);
   }
   if (options?.hidePrice) {
-    cleaned = cleaned.replace(/\s*·\s*Hinta\s+[^·]+/gi, "");
+    cleaned = cleaned
+      .replace(/\s*·\s*Hinta(?:\s+ALV\s+0\s*%)?\s+[^·]+/gi, "")
+      .replace(/\s*·\s*Hinta\s+sis\.\s*ALV\s+[0-9]+(?:[.,][0-9]+)?\s*%\s+[^·]+/gi, "");
   }
   if (options?.hideCatchDate) {
     cleaned = cleaned.replace(/\s*·\s*Pyyntipäivämäärä\s+[^·]+/gi, "");
@@ -467,6 +472,24 @@ function getOfferProductTotal(rows) {
   }, 0);
 }
 
+const FISH_VAT_RATE = 0.135;
+
+function calculateGrossPrice(value, vatRate = FISH_VAT_RATE) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return number * (1 + vatRate);
+}
+
+function calculateNetPrice(value, vatRate = FISH_VAT_RATE) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return number / (1 + vatRate);
+}
+
+function formatVatPercent(vatRate = FISH_VAT_RATE) {
+  return (vatRate * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 function formatDeliveryPrice(value) {
   if (value === null || value === undefined || value === "") return "-";
   const number = Number(value);
@@ -485,6 +508,13 @@ function formatEntryPrice(rowOrSpecies, value) {
   const unit = getSpeciesPriceUnit(typeof rowOrSpecies === "string" ? rowOrSpecies : getSpeciesRowLabel(rowOrSpecies));
   if (value === "" || value == null) return "";
   return `${euro(value)} / ${unit}`;
+}
+
+function formatEntryGrossPrice(rowOrSpecies, value) {
+  const grossPrice = calculateGrossPrice(value);
+  if (grossPrice == null) return "";
+  const unit = getSpeciesPriceUnit(typeof rowOrSpecies === "string" ? rowOrSpecies : getSpeciesRowLabel(rowOrSpecies));
+  return `${euro(grossPrice)} / ${unit}`;
 }
 
 function parsePricePerKgFromNotes(notes) {
@@ -7860,6 +7890,14 @@ export default function App() {
         customSpecies: value === "Muu" ? row.customSpecies : "",
       };
     }
+    if (field === "price_per_kg_gross") {
+      const parsedGross = parseLocaleNumber(value);
+      const parsedNet = parsedGross == null ? null : calculateNetPrice(parsedGross);
+      return {
+        ...row,
+        price_per_kg: parsedNet == null ? "" : parsedNet.toLocaleString("fi-FI", { maximumFractionDigits: 4 }),
+      };
+    }
     return { ...row, [field]: value };
   }));
   const removeSpeciesRow = (id) => setSpeciesRows((prev) => (prev.length === 1 ? [createSpeciesRow()] : prev.filter((row) => row.id !== id)));
@@ -11469,6 +11507,7 @@ export default function App() {
                             </div>
                             {!mixedOffer ? <div style={styles.muted}>Määrä: {getOfferQuantityDisplay(o)}</div> : null}
                             {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>Hinta ALV 0 %: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}</div> : null}
+                            {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? <div style={styles.muted}>{`Hinta sis. ALV ${formatVatPercent()} %:`} {euro(calculateGrossPrice(visiblePrice) || 0)} / {getOfferDisplayUnit(o)}</div> : null}
                             {!mixedOffer && offerCatchDates.length > 0 ? <div style={styles.muted}>Pyyntipäivämäärä: {offerCatchDates.join(", ")}</div> : null}
                             {ownDeliveryPrice != null ? <div style={styles.muted}>Toimitushinta omaan kaupunkiin ({o.delivery_destination_city || linkedBuyerRecord?.delivery_city || linkedBuyerRecord?.city || "-" }): {formatDeliveryPrice(ownDeliveryPrice)}</div> : null}
                             {ownTotalPrice != null ? <div style={styles.muted}>Kokonaishinta: {formatDeliveryPrice(ownTotalPrice)}</div> : null}
@@ -12798,6 +12837,19 @@ export default function App() {
                             onChange={(e) => updateSpeciesRow(row.id, "price_per_kg", e.target.value)}
                           />
                         </div>
+                        <div style={styles.field}>
+                          <label>{`Hinta sis. ALV ${formatVatPercent()} % (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
+                          <input
+                            style={styles.input}
+                            type="text"
+                            inputMode="decimal"
+                            placeholder={isCrayfishRow ? "Esim. 2,27" : "Esim. 6,24"}
+                            value={row.price_per_kg === "" || row.price_per_kg == null
+                              ? ""
+                              : (calculateGrossPrice(parseLocaleNumber(row.price_per_kg) || 0) ?? 0).toLocaleString("fi-FI", { maximumFractionDigits: 4 })}
+                            onChange={(e) => updateSpeciesRow(row.id, "price_per_kg_gross", e.target.value)}
+                          />
+                        </div>
                         <div style={styles.field}><label>{isCrayfishRow ? "Kpl (pakollinen)" : "Kpl"}</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
                         <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
                       </div>
@@ -13231,6 +13283,7 @@ export default function App() {
                           {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                           {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                           {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>Hinta ALV 0 %: {formatEntryPrice(entry.species, entry.pricePerKg)}</div> : null}
+                          {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>{`Hinta sis. ALV ${formatVatPercent()} %:`} {formatEntryGrossPrice(entry.species, entry.pricePerKg)}</div> : null}
                           {entry.gearCount ? <div style={styles.muted}>Pyydysten määrä: {entry.gearCount}</div> : null}
                           {entry.fishingDurationDays ? <div style={styles.muted}>Pyyntiaika: {entry.fishingDurationDays}</div> : null}
                           {isEntryOfferedForSale(entry) ? (
