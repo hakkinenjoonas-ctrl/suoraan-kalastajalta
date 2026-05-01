@@ -163,35 +163,103 @@ Deno.serve(async (req) => {
     });
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-    let tokenQuery = adminClient
-      .from("app_push_tokens")
-      .select("id, token, platform")
-      .eq("is_active", true);
+    const tokenRowsById = new Map<string, { id: string; token: string; platform: string }>();
 
     if (targetUserId) {
-      tokenQuery = tokenQuery.eq("user_id", targetUserId);
-    } else {
-      tokenQuery = tokenQuery.eq("buyer_id", targetBuyerId);
+      const { data: directUserTokenRows, error: directUserTokenError } = await adminClient
+        .from("app_push_tokens")
+        .select("id, token, platform")
+        .eq("is_active", true)
+        .eq("user_id", targetUserId);
+
+      if (directUserTokenError) {
+        console.error("send-push-notification:token-query-error", {
+          targetUserId: targetUserId || null,
+          targetBuyerId: targetBuyerId || null,
+          eventType,
+          error: directUserTokenError.message,
+        });
+        return jsonResponse(500, { error: directUserTokenError.message });
+      }
+
+      for (const row of directUserTokenRows || []) {
+        const rowId = safeString(row.id);
+        if (rowId) tokenRowsById.set(rowId, row);
+      }
     }
 
-    const { data: tokenRows, error: tokenError } = await tokenQuery;
-    if (tokenError) {
-      console.error("send-push-notification:token-query-error", {
-        targetUserId: targetUserId || null,
-        targetBuyerId: targetBuyerId || null,
-        eventType,
-        error: tokenError.message,
-      });
-      return jsonResponse(500, { error: tokenError.message });
+    if (targetBuyerId) {
+      const { data: directBuyerTokenRows, error: directBuyerTokenError } = await adminClient
+        .from("app_push_tokens")
+        .select("id, token, platform")
+        .eq("is_active", true)
+        .eq("buyer_id", targetBuyerId);
+
+      if (directBuyerTokenError) {
+        console.error("send-push-notification:token-query-error", {
+          targetUserId: targetUserId || null,
+          targetBuyerId: targetBuyerId || null,
+          eventType,
+          error: directBuyerTokenError.message,
+        });
+        return jsonResponse(500, { error: directBuyerTokenError.message });
+      }
+
+      for (const row of directBuyerTokenRows || []) {
+        const rowId = safeString(row.id);
+        if (rowId) tokenRowsById.set(rowId, row);
+      }
+
+      const { data: linkedProfiles, error: linkedProfilesError } = await adminClient
+        .from("profiles")
+        .select("id")
+        .eq("buyer_id", targetBuyerId);
+
+      if (linkedProfilesError) {
+        console.error("send-push-notification:linked-profiles-query-error", {
+          targetBuyerId: targetBuyerId || null,
+          eventType,
+          error: linkedProfilesError.message,
+        });
+        return jsonResponse(500, { error: linkedProfilesError.message });
+      }
+
+      const linkedUserIds = Array.from(
+        new Set((linkedProfiles || []).map((row) => safeString(row.id)).filter(Boolean)),
+      );
+
+      if (linkedUserIds.length > 0) {
+        const { data: linkedUserTokenRows, error: linkedUserTokenError } = await adminClient
+          .from("app_push_tokens")
+          .select("id, token, platform")
+          .eq("is_active", true)
+          .in("user_id", linkedUserIds);
+
+        if (linkedUserTokenError) {
+          console.error("send-push-notification:linked-user-token-query-error", {
+            targetBuyerId: targetBuyerId || null,
+            eventType,
+            linkedUserCount: linkedUserIds.length,
+            error: linkedUserTokenError.message,
+          });
+          return jsonResponse(500, { error: linkedUserTokenError.message });
+        }
+
+        for (const row of linkedUserTokenRows || []) {
+          const rowId = safeString(row.id);
+          if (rowId) tokenRowsById.set(rowId, row);
+        }
+      }
     }
 
-    const tokens = Array.from(new Set((tokenRows || []).map((row) => safeString(row.token)).filter(Boolean)));
+    const tokenRows = Array.from(tokenRowsById.values());
+    const tokens = Array.from(new Set(tokenRows.map((row) => safeString(row.token)).filter(Boolean)));
     console.log("send-push-notification:tokens-resolved", {
       targetUserId: targetUserId || null,
       targetBuyerId: targetBuyerId || null,
       eventType,
       tokenCount: tokens.length,
-      tokenRowCount: (tokenRows || []).length,
+      tokenRowCount: tokenRows.length,
     });
     if (tokens.length === 0) {
       console.warn("send-push-notification:skipped-no-tokens", {
