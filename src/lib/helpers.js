@@ -4,7 +4,7 @@ export function safeId() {
 }
 
 export function createSpeciesRow() {
-  return { id: safeId(), species: "", customSpecies: "", kilos: "", count: "", price_per_kg: "" };
+  return { id: safeId(), species: "", customSpecies: "", kilos: "", count: "", price_per_kg: "", price_per_kg_gross_input: "" };
 }
 
 export function today() {

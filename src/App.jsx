@@ -7890,12 +7890,20 @@ export default function App() {
         customSpecies: value === "Muu" ? row.customSpecies : "",
       };
     }
+    if (field === "price_per_kg") {
+      return {
+        ...row,
+        price_per_kg: value,
+        price_per_kg_gross_input: "",
+      };
+    }
     if (field === "price_per_kg_gross") {
       const parsedGross = parseLocaleNumber(value);
       const parsedNet = parsedGross == null ? null : calculateNetPrice(parsedGross);
       return {
         ...row,
-        price_per_kg: parsedNet == null ? "" : parsedNet.toLocaleString("fi-FI", { maximumFractionDigits: 4 }),
+        price_per_kg_gross_input: value,
+        price_per_kg: parsedNet == null ? row.price_per_kg : parsedNet.toLocaleString("fi-FI", { maximumFractionDigits: 4 }),
       };
     }
     return { ...row, [field]: value };
@@ -12844,13 +12852,19 @@ export default function App() {
                             type="text"
                             inputMode="decimal"
                             placeholder={isCrayfishRow ? "Esim. 2,27" : "Esim. 6,24"}
-                            value={row.price_per_kg === "" || row.price_per_kg == null
-                              ? ""
-                              : (calculateGrossPrice(parseLocaleNumber(row.price_per_kg) || 0) ?? 0).toLocaleString("fi-FI", { maximumFractionDigits: 4 })}
+                            value={row.price_per_kg_gross_input !== ""
+                              ? row.price_per_kg_gross_input
+                              : row.price_per_kg === "" || row.price_per_kg == null
+                                ? ""
+                                : (calculateGrossPrice(parseLocaleNumber(row.price_per_kg) || 0) ?? 0).toLocaleString("fi-FI", { maximumFractionDigits: 4 })}
                             onChange={(e) => updateSpeciesRow(row.id, "price_per_kg_gross", e.target.value)}
                           />
                         </div>
-                        <div style={styles.field}><label>{isCrayfishRow ? "Kpl (pakollinen)" : "Kpl"}</label><input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} /></div>
+                        <div style={styles.field}>
+                          <label>{isCrayfishRow ? "Kpl (pakollinen)" : "Kpl"}</label>
+                          <input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} />
+                          {!isCrayfishRow ? <div style={styles.small}>Lisää tähän halutessasi kappalemäärä, niin ostaja saa tietää kalojen koon.</div> : null}
+                        </div>
                         <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
                       </div>
                     );
