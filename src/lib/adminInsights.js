@@ -59,6 +59,16 @@ function buildPushTokenMaps(appPushTokens) {
   return { activeBuyerTokens, activeUserTokens };
 }
 
+function getActorLabelByUserId(userId, ownerProfilesById) {
+  const profile = ownerProfilesById.get(String(userId || "").trim());
+  return (
+    profile?.display_name ||
+    profile?.company_name ||
+    profile?.email ||
+    "Käyttäjä"
+  );
+}
+
 function buildStuckOffers(buyerOffers, buyersById, now = Date.now()) {
   return (buyerOffers || [])
     .map((offer) => {
@@ -179,6 +189,60 @@ function buildInvoiceWatch(buyerOffers, buyersById) {
     .sort((left, right) => toTimestamp(right.timestamp) - toTimestamp(left.timestamp));
 }
 
+function buildRecentOffers(buyerOffers, buyersById) {
+  return (buyerOffers || [])
+    .map((offer) => ({
+      id: offer.id,
+      buyerLabel: getBuyerLabel(offer, buyersById),
+      buyerEmail: offer?.buyer_email || "",
+      speciesHeadline: getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true }) || "Kalaerä",
+      status: String(offer?.status || "").trim(),
+      statusLabel: buyerStatusLabel(offer?.status),
+      fulfillmentStatus: String(offer?.fulfillment_status || "").trim(),
+      billingStatus: String(offer?.billing_status || "unbilled").trim(),
+      quantityLabel: `${Number(offer?.reserved_kilos || offer?.total_kilos || 0)} kg`,
+      timestamp: getOfferTimestamp(offer),
+      createdAt: offer?.created_at || "",
+      sellerName: offer?.seller_name || "Kalastaja",
+      deliveryCity: offer?.buyer_delivery_city || offer?.delivery_destination_city || "",
+      hasPushReadyBuyer: Boolean(String(offer?.buyer_id || "").trim()),
+    }))
+    .sort((left, right) => toTimestamp(right.timestamp) - toTimestamp(left.timestamp));
+}
+
+function buildBuyerOverview(buyerOffers, buyersById, activeBuyerTokens) {
+  const grouped = new Map();
+
+  (buyerOffers || []).forEach((offer) => {
+    const buyerId = String(offer?.buyer_id || "").trim() || `email:${String(offer?.buyer_email || "").trim().toLowerCase()}`;
+    const existing = grouped.get(buyerId) || {
+      buyerId,
+      buyerLabel: getBuyerLabel(offer, buyersById),
+      buyerEmail: offer?.buyer_email || "",
+      totalOffers: 0,
+      openOffers: 0,
+      actionRequired: 0,
+      acceptedOffers: 0,
+      invoicedOffers: 0,
+      hasActivePushToken: Boolean(activeBuyerTokens.get(String(offer?.buyer_id || "").trim())),
+      latestTimestamp: "",
+    };
+
+    existing.totalOffers += 1;
+    if (hasBuyerOfferStatus(offer?.status, BUYER_OFFER_OPEN_RESPONSE_STATUSES)) existing.openOffers += 1;
+    if (hasBuyerOfferStatus(offer?.status, BUYER_OFFER_ACTION_REQUIRED_STATUSES)) existing.actionRequired += 1;
+    if (isBuyerOfferAccepted(offer?.status)) existing.acceptedOffers += 1;
+    if (["invoiced", "paid"].includes(String(offer?.billing_status || ""))) existing.invoicedOffers += 1;
+    if (toTimestamp(getOfferTimestamp(offer)) > toTimestamp(existing.latestTimestamp)) {
+      existing.latestTimestamp = getOfferTimestamp(offer);
+    }
+
+    grouped.set(buyerId, existing);
+  });
+
+  return Array.from(grouped.values()).sort((left, right) => toTimestamp(right.latestTimestamp) - toTimestamp(left.latestTimestamp));
+}
+
 function buildInconsistentStates(buyerOffers, buyersById, activeBuyerTokens) {
   const issues = [];
 
@@ -280,6 +344,7 @@ function buildRecentActivity({ entries, processedEntries, buyerOffers, appPushTo
       timestamp: entry.createdAt,
       title: "Saalis tallennettu",
       detail: `${entry.ownerName || "Kalastaja"} lisäsi erän ${entry.species || "Kalaerä"} (${Number(entry.kilos || 0)} kg).`,
+      kind: "catch_entry",
     });
   });
 
@@ -290,6 +355,7 @@ function buildRecentActivity({ entries, processedEntries, buyerOffers, appPushTo
       timestamp: entry.createdAt,
       title: "Jaloste-erä tallennettu",
       detail: `${entry.ownerName || "Jalostaja"} lisäsi erän ${entry.productName || "Jaloste-erä"} (${Number(entry.kilos || 0)} kg).`,
+      kind: "processed_entry",
     });
   });
 
@@ -302,6 +368,7 @@ function buildRecentActivity({ entries, processedEntries, buyerOffers, appPushTo
         timestamp: offer.created_at,
         title: "Tarjous lähetetty",
         detail: `${headline} lähetettiin ostajalle ${buyerLabel}.`,
+        kind: "offer_created",
       });
     }
     if (offer?.updated_at && offer.updated_at !== offer.created_at) {
@@ -310,6 +377,7 @@ function buildRecentActivity({ entries, processedEntries, buyerOffers, appPushTo
         timestamp: offer.updated_at,
         title: `Tarjouksen tila: ${buyerStatusLabel(offer.status)}`,
         detail: `${headline} · ${buyerLabel}`,
+        kind: "offer_updated",
       });
     }
     if (offer?.billed_at) {
@@ -318,6 +386,7 @@ function buildRecentActivity({ entries, processedEntries, buyerOffers, appPushTo
         timestamp: offer.billed_at,
         title: "Lasku merkitty lähetetyksi",
         detail: `${headline} · ${buyerLabel}`,
+        kind: "offer_billed",
       });
     }
     if (offer?.paid_at) {
@@ -326,6 +395,7 @@ function buildRecentActivity({ entries, processedEntries, buyerOffers, appPushTo
         timestamp: offer.paid_at,
         title: "Maksu merkitty vastaanotetuksi",
         detail: `${headline} · ${buyerLabel}`,
+        kind: "offer_paid",
       });
     }
   });
@@ -340,12 +410,29 @@ function buildRecentActivity({ entries, processedEntries, buyerOffers, appPushTo
         timestamp: tokenRow.last_seen_at,
         title: "Push-token nähty aktiivisena",
         detail: `${actorLabel} · ${tokenRow.platform || "laite"}`,
+        kind: "push_seen",
       });
     });
 
   return events
     .sort((left, right) => toTimestamp(right.timestamp) - toTimestamp(left.timestamp))
-    .slice(0, 30);
+    .slice(0, 100);
+}
+
+function buildPushTokenInventory(appPushTokens, buyersById, ownerProfilesById) {
+  return (appPushTokens || [])
+    .filter((tokenRow) => tokenRow?.is_active)
+    .map((tokenRow) => ({
+      id: tokenRow.id,
+      actorLabel: getActorLabelByUserId(tokenRow?.user_id, ownerProfilesById),
+      buyerLabel: buyersById.get(String(tokenRow?.buyer_id || "").trim())?.company_name || "",
+      role: tokenRow?.role || "",
+      platform: tokenRow?.platform || "",
+      lastSeenAt: tokenRow?.last_seen_at || "",
+      deviceLabel: tokenRow?.device_label || "",
+      hasBuyerLink: Boolean(String(tokenRow?.buyer_id || "").trim()),
+    }))
+    .sort((left, right) => toTimestamp(right.lastSeenAt) - toTimestamp(left.lastSeenAt));
 }
 
 export function buildAdminOperationsSnapshot({
@@ -364,6 +451,9 @@ export function buildAdminOperationsSnapshot({
   const missingPushBuyers = buildMissingPushBuyers(buyerOffers, buyersById, activeBuyerTokens);
   const invoiceWatch = buildInvoiceWatch(buyerOffers, buyersById);
   const inconsistentStates = buildInconsistentStates(buyerOffers, buyersById, activeBuyerTokens);
+  const recentOffers = buildRecentOffers(buyerOffers, buyersById);
+  const buyerOverview = buildBuyerOverview(buyerOffers, buyersById, activeBuyerTokens);
+  const pushTokenInventory = buildPushTokenInventory(appPushTokens, buyersById, ownerProfilesById);
   const recentActivity = buildRecentActivity({
     entries,
     processedEntries,
@@ -378,12 +468,17 @@ export function buildAdminOperationsSnapshot({
     missingPushBuyers,
     invoiceWatch,
     inconsistentStates,
+    recentOffers,
+    buyerOverview,
+    pushTokenInventory,
     recentActivity,
     metrics: {
       stuckOffers: stuckOffers.length,
       missingPushBuyers: missingPushBuyers.length,
       invoicedCount: invoiceWatch.filter((item) => item.billingStatus === "invoiced").length,
       inconsistentStates: inconsistentStates.length,
+      recentOffers: recentOffers.length,
+      activePushTokens: pushTokenInventory.length,
     },
   };
 }

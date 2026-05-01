@@ -30,6 +30,14 @@ function getIssueStyle(severity) {
   };
 }
 
+function getActivityStyle(kind) {
+  if (kind === "offer_created") return { background: "#eff6ff", borderColor: "#93c5fd" };
+  if (kind === "offer_updated") return { background: "#f8fbff", borderColor: "#bfdbfe" };
+  if (kind === "offer_billed" || kind === "offer_paid") return { background: "#ecfdf5", borderColor: "#86efac" };
+  if (kind === "push_seen") return { background: "#fff7ed", borderColor: "#fdba74" };
+  return { background: "#f8fafc", borderColor: "#cbd5e1" };
+}
+
 export default function AdminOperationsView({
   entries,
   processedEntries,
@@ -74,6 +82,62 @@ export default function AdminOperationsView({
             <div style={styles.metric}>{snapshot.metrics.inconsistentStates}</div>
             <div style={styles.muted}>ristiriitaista tilaa</div>
           </div>
+          <div style={{ ...styles.card, ...styles.sectionCard }}>
+            <div style={styles.metric}>{snapshot.metrics.recentOffers}</div>
+            <div style={styles.muted}>tarjousta tapahtumavirrassa</div>
+          </div>
+          <div style={{ ...styles.card, ...styles.sectionCard }}>
+            <div style={styles.metric}>{snapshot.metrics.activePushTokens}</div>
+            <div style={styles.muted}>aktiivista push-laitetta</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ ...styles.grid2, alignItems: "start" }}>
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <strong>Viimeisimmät tarjoukset</strong>
+          <div style={styles.muted}>Tässä näkyvät uusimmat tarjousrivit nykyisellä tilallaan, jotta owner näkee nopeasti mitä markkinassa tapahtuu.</div>
+          {snapshot.recentOffers.length === 0 ? (
+            <div style={styles.muted}>Ei vielä tarjoushistoriaa.</div>
+          ) : (
+            snapshot.recentOffers.slice(0, 16).map((item) => (
+              <div key={item.id} style={{ ...styles.entry, background: "#f8fafc" }}>
+                <div style={styles.entryBadges}>
+                  <span style={styles.badge}>{item.statusLabel}</span>
+                  <span style={styles.badge}>{item.quantityLabel}</span>
+                  {item.deliveryCity ? <span style={styles.badge}>{item.deliveryCity}</span> : null}
+                  <span style={styles.badge}>{item.billingStatus === "paid" ? "Maksettu" : item.billingStatus === "invoiced" ? "Laskutettu" : "Laskuttamaton"}</span>
+                </div>
+                <div style={styles.muted}><strong>{item.speciesHeadline}</strong> · {item.buyerLabel}</div>
+                <div style={styles.muted}>Kalastaja: {item.sellerName}{item.buyerEmail ? ` · ${item.buyerEmail}` : ""}</div>
+                <div style={styles.small}>{formatDateTime(item.timestamp)}</div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <strong>Ostajakohtainen tilanne</strong>
+          <div style={styles.muted}>Näet yhdellä silmäyksellä paljonko kullakin ostajalla on avoimia, hyväksyttyjä ja laskutettuja tarjouksia sekä onko push-valmius kunnossa.</div>
+          {snapshot.buyerOverview.length === 0 ? (
+            <div style={styles.muted}>Ei vielä ostajakohtaista tapahtumadataa.</div>
+          ) : (
+            snapshot.buyerOverview.slice(0, 16).map((item) => (
+              <div key={item.buyerId} style={{ ...styles.entry, background: "#f8fbff" }}>
+                <div style={styles.entryBadges}>
+                  <span style={styles.badge}>{item.totalOffers} tarjousta</span>
+                  <span style={styles.badge}>{item.openOffers} avointa</span>
+                  <span style={styles.badge}>{item.acceptedOffers} hyväksyttyä</span>
+                  <span style={styles.badge}>{item.invoicedOffers} laskutettua</span>
+                  <span style={{ ...styles.badge, ...(item.hasActivePushToken ? { background: "#ecfdf5", borderColor: "#86efac", color: "#166534" } : { background: "#fff7ed", borderColor: "#fdba74", color: "#b45309" }) }}>
+                    {item.hasActivePushToken ? "Push valmis" : "Push puuttuu"}
+                  </span>
+                </div>
+                <div style={styles.muted}><strong>{item.buyerLabel}</strong>{item.buyerEmail ? ` · ${item.buyerEmail}` : ""}</div>
+                <div style={styles.small}>Viimeisin tapahtuma: {formatDateTime(item.latestTimestamp)}</div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -138,12 +202,13 @@ export default function AdminOperationsView({
         </div>
 
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-          <strong>Viimeisin aktiviteetti</strong>
+          <strong>Tapahtumavirta</strong>
+          <div style={styles.muted}>Tämä kokoaa ownerille mahdollisimman laajasti näkyviin, mitä appissa on tapahtunut viime aikoina.</div>
           {snapshot.recentActivity.length === 0 ? (
             <div style={styles.muted}>Ei vielä viimeaikaisia tapahtumia.</div>
           ) : (
-            snapshot.recentActivity.slice(0, 16).map((item) => (
-              <div key={item.key} style={{ ...styles.entry, background: "#f8fafc" }}>
+            snapshot.recentActivity.slice(0, 24).map((item) => (
+              <div key={item.key} style={{ ...styles.entry, ...getActivityStyle(item.kind) }}>
                 <div style={styles.muted}><strong>{item.title}</strong></div>
                 <div style={styles.muted}>{item.detail}</div>
                 <div style={styles.small}>{formatDateTime(item.timestamp)}</div>
@@ -151,6 +216,29 @@ export default function AdminOperationsView({
             ))
           )}
         </div>
+      </div>
+
+      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+        <strong>Aktiiviset push-laitteet</strong>
+        <div style={styles.muted}>Tässä näkyvät kaikki tällä hetkellä aktiiviset push-tokenit, jotta owner voi nopeasti huomata väärät roolit tai puuttuvat ostajalinkitykset.</div>
+        {snapshot.pushTokenInventory.length === 0 ? (
+          <div style={styles.muted}>Ei aktiivisia push-laitteita.</div>
+        ) : (
+          snapshot.pushTokenInventory.slice(0, 20).map((item) => (
+            <div key={item.id} style={{ ...styles.entry, background: "#fff" }}>
+              <div style={styles.entryBadges}>
+                <span style={styles.badge}>{item.platform || "laite"}</span>
+                <span style={styles.badge}>{item.role || "-"}</span>
+                <span style={{ ...styles.badge, ...(item.hasBuyerLink ? { background: "#ecfdf5", borderColor: "#86efac", color: "#166534" } : { background: "#fff7ed", borderColor: "#fdba74", color: "#b45309" }) }}>
+                  {item.hasBuyerLink ? "Ostajalinkki ok" : "Buyer-linkki puuttuu"}
+                </span>
+              </div>
+              <div style={styles.muted}><strong>{item.actorLabel}</strong>{item.buyerLabel ? ` · ${item.buyerLabel}` : ""}</div>
+              <div style={styles.muted}>{item.deviceLabel || "-"}</div>
+              <div style={styles.small}>Viimeksi nähty: {formatDateTime(item.lastSeenAt)}</div>
+            </div>
+          ))
+        )}
       </div>
 
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
