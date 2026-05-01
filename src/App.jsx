@@ -99,6 +99,7 @@ import {
   OfferedEntriesSummarySection,
   WholesaleOffersOverviewSection,
 } from "./components/wholesaleOffersSections.jsx";
+import AdminOperationsView from "./components/AdminOperationsView.jsx";
 import ProcessedLabel4x3, { PROCESSED_LABEL_4X3_SIZE_MM } from "./components/ProcessedLabel4x3.jsx";
 import ProcessedLabel4x6, { PROCESSED_LABEL_4X6_SIZE_MM } from "./components/ProcessedLabel4x6.jsx";
 import ThermalLabel4x3, { THERMAL_LABEL_4X3_SIZE_MM } from "./components/ThermalLabel4x3.jsx";
@@ -5505,6 +5506,7 @@ export default function App() {
   const [allowedUsers, setAllowedUsers] = useState([]);
   const [pendingProfiles, setPendingProfiles] = useState([]);
   const [ownerUserProfiles, setOwnerUserProfiles] = useState([]);
+  const [appPushTokens, setAppPushTokens] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [processorSourceEntries, setProcessorSourceEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -6919,6 +6921,7 @@ export default function App() {
           hasProcessedProductsTable,
           hasProcessedBatchSourcesTable,
           hasBuyerOffersTable,
+          hasAppPushTokensTable,
         ] = await Promise.all([
           tableExists(supabase, "wholesale_offers"),
           tableExists(supabase, "buyers"),
@@ -6926,6 +6929,7 @@ export default function App() {
           tableExists(supabase, "processed_products"),
           tableExists(supabase, "processed_batch_sources"),
           tableExists(supabase, "buyer_offers"),
+          tableExists(supabase, "app_push_tokens"),
         ]);
 
         const normalizedProfileEmail = (profile.email || "").trim().toLowerCase();
@@ -6962,6 +6966,7 @@ export default function App() {
           processedProductsResult,
           { data: allowedData, error: allowedError },
           ownerProfilesResult,
+          appPushTokensResult,
           offerResult,
           buyersResult,
           buyerOffersResult,
@@ -6981,6 +6986,12 @@ export default function App() {
             : Promise.resolve({ data: [], error: null }),
           profile.role === "owner"
             ? supabase.from("profiles").select("*").order("created_at", { ascending: false })
+            : Promise.resolve({ data: [], error: null }),
+          profile.role === "owner" && hasAppPushTokensTable
+            ? supabase
+                .from("app_push_tokens")
+                .select("id, user_id, buyer_id, role, platform, device_label, is_active, last_seen_at, created_at, updated_at")
+                .order("last_seen_at", { ascending: false })
             : Promise.resolve({ data: [], error: null }),
           hasOffersTable
             ? supabase.from("wholesale_offers").select("*").order("created_at", { ascending: false })
@@ -7241,6 +7252,17 @@ export default function App() {
           setAllowedUsers(allowedData || []);
           setPendingProfiles(ownerProfilesData.filter((row) => !row.is_active && row.id !== profile.id));
           setOwnerUserProfiles(ownerProfilesData.filter((row) => row.is_active));
+        }
+
+        if (appPushTokensResult?.error && appPushTokensResult.error.code !== "PGRST116") {
+          if (isMissingRefreshTokenError(appPushTokensResult.error)) {
+            await invalidateSession();
+            return;
+          }
+          setAuthError(appPushTokensResult.error.message);
+          setAppPushTokens([]);
+        } else {
+          setAppPushTokens(appPushTokensResult?.data || []);
         }
 
         if (offerResult?.error && offerResult.error.code !== "PGRST116") {
@@ -11665,7 +11687,7 @@ export default function App() {
   }
 
   const tabStyle = profile.role === "owner"
-    ? { ...styles.tabs, gridTemplateColumns: "repeat(8, minmax(0, 1fr))" }
+    ? { ...styles.tabs, gridTemplateColumns: "repeat(9, minmax(0, 1fr))" }
     : profile.role === "member"
     ? { ...styles.tabs6, gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }
     : styles.tabs6;
@@ -12063,6 +12085,7 @@ export default function App() {
             <button style={{ ...visibleSingleTabStyle, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
             <button style={{ ...visibleSingleTabStyle, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
             {profile.role === "member" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
+            {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "operations" ? styles.activeTab : {}) }} onClick={() => setActiveTab("operations")}>Ylläpito</button> : null}
             {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
             {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
             {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
@@ -13285,6 +13308,17 @@ export default function App() {
         ) : null}
 
         {activeTab === "reports" ? <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} /> : null}
+
+        {activeTab === "operations" && profile.role === "owner" ? (
+          <AdminOperationsView
+            entries={entries}
+            processedEntries={processedEntries}
+            buyerOffers={buyerOffers}
+            buyers={buyers}
+            ownerUserProfiles={ownerUserProfiles}
+            appPushTokens={appPushTokens}
+          />
+        ) : null}
 
         {activeTab === "billing" && profile.role === "owner" ? (
           <BillingView
