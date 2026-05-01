@@ -9857,6 +9857,20 @@ export default function App() {
     }
   };
 
+  const onRemoveSoldBuyerOffer = async (offer) => {
+    const confirmed = typeof window === "undefined"
+      ? true
+      : window.confirm("Poistetaanko myydyn erän ilmoitus avoimista tarjouksista?");
+
+    if (!confirmed) return;
+
+    const ok = await buyerUpdateOffer(offer.id, { status: "cancelled" });
+    if (ok) {
+      setBuyerActiveOfferId((current) => (current === offer.id ? null : current));
+      setAuthInfo("Myydyn erän ilmoitus poistettu näkyvistä.");
+    }
+  };
+
   const handleCreateOffer = async (entry) => {
     setAuthError("");
     setAuthInfo("");
@@ -11026,7 +11040,7 @@ export default function App() {
         : buyerOffersFilter === "open"
         ? ["sent", "viewed", "countered", "reserved", "sold"].includes(offer.status)
         : buyerOffersFilter === "accepted"
-        ? ["accepted", "sold"].includes(offer.status)
+        ? offer.status === "accepted"
         : offer.status === buyerOffersFilter;
       const text = [offer.seller_name, offer.area, offer.spot, offer.species_summary, offer.status, offer.buyer_message]
         .filter(Boolean)
@@ -11257,7 +11271,7 @@ export default function App() {
                 <select style={styles.input} value={buyerOffersFilter} onChange={(e) => setBuyerOffersFilter(e.target.value)}>
                   <option value="open">Avoimet</option>
                   <option value="reserved">Varatut</option>
-                  <option value="accepted">Hyväksytyt / myydyt</option>
+                  <option value="accepted">Hyväksytyt</option>
                   <option value="countered">Vastatarjoukset</option>
                   <option value="rejected">Hylätyt</option>
                   <option value="all">Kaikki</option>
@@ -11413,6 +11427,14 @@ export default function App() {
                               {isActive ? "Sulje" : "Näytä tiedot"}
                             </button>
                           )}
+                          {o.status === "sold" ? (
+                            <button
+                              style={{ ...styles.button, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }}
+                              onClick={() => onRemoveSoldBuyerOffer(o)}
+                            >
+                              Poista
+                            </button>
+                          ) : null}
                           {o.status !== "accepted" && o.status !== "sold" ? <button style={{ ...styles.button, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }} onClick={() => onRejectBuyerOffer(o)}>Hylkää</button> : null}
                         </div>
 
