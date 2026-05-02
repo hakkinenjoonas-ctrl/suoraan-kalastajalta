@@ -10201,6 +10201,16 @@ export default function App() {
     }
   };
 
+  const markBuyerOfferViewed = async (offer) => {
+    if (offer?.status !== "sent") return true;
+    return await runBuyerOfferMutation({
+      action: "viewed",
+      offer,
+      payload: {},
+      fallbackPatch: { status: "viewed" },
+    });
+  };
+
   const sendBuyerResponseEmail = async (offer, actionLabel) => {
     let sellerEmail = null;
 
@@ -12085,7 +12095,7 @@ export default function App() {
                                 }}
                                 onClick={() => {
                                   if (o.status === "sent") {
-                                    buyerUpdateOffer(o.id, { status: "viewed" });
+                                    void markBuyerOfferViewed(o);
                                   }
                                   setBuyerActionMode("counter");
                                   setBuyerActiveOfferId(isActive && buyerActionMode === "counter" ? null : o.id);
@@ -12102,7 +12112,8 @@ export default function App() {
                                 }}
                                 onClick={async () => {
                                   if (o.status === "sent") {
-                                    await buyerUpdateOffer(o.id, { status: "viewed" });
+                                    const viewedOk = await markBuyerOfferViewed(o);
+                                    if (!viewedOk) return;
                                   }
                                   await onReserve(o);
                                 }}
