@@ -12252,6 +12252,8 @@ export default function App() {
 
   const tabStyle = profile.role === "owner"
     ? { ...styles.tabs, gridTemplateColumns: "repeat(9, minmax(0, 1fr))" }
+    : profile.role === "buyer"
+    ? { ...styles.tabs6, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }
     : profile.role === "member"
     ? { ...styles.tabs6, gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }
     : styles.tabs6;
@@ -12644,8 +12646,8 @@ export default function App() {
         <div style={styles.stickyTabsWrap}>
           <div style={visibleTabStyle}>
             <button style={{ ...visibleSingleTabStyle, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
-            <button style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button>
-            <button style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button>
+            {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button> : null}
+            {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button> : null}
             <button style={{ ...visibleSingleTabStyle, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
             <button style={{ ...visibleSingleTabStyle, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
             {profile.role === "member" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
