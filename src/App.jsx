@@ -11936,7 +11936,46 @@ export default function App() {
             onHideForever={hideOnboardingGuideForever}
             viewportWidth={viewportWidth}
           />
-          {acceptedBuyerOffers.length > 0 ? (
+
+          <div style={styles.stickyTabsWrap}>
+            <div style={viewportWidth < 900 ? {
+              ...styles.tabs6,
+              display: "flex",
+              flexWrap: "nowrap",
+              overflowX: "auto",
+              overflowY: "hidden",
+              WebkitOverflowScrolling: "touch",
+            } : { ...styles.tabs6, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              <button
+                style={{
+                  ...(viewportWidth < 900
+                    ? { ...styles.tab, flex: "0 0 auto", minWidth: 124, whiteSpace: "nowrap" }
+                    : styles.tab),
+                  ...((activeTab === "offers" || activeTab === "dashboard") ? styles.activeTab : {}),
+                }}
+                onClick={() => setActiveTab("offers")}
+              >
+                Tarjoukset
+              </button>
+              <button
+                style={{
+                  ...(viewportWidth < 900
+                    ? { ...styles.tab, flex: "0 0 auto", minWidth: 124, whiteSpace: "nowrap" }
+                    : styles.tab),
+                  ...(activeTab === "reports" ? styles.activeTab : {}),
+                }}
+                onClick={() => setActiveTab("reports")}
+              >
+                Raportit
+              </button>
+            </div>
+          </div>
+
+          {activeTab === "reports" ? (
+            <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} profile={profile} />
+          ) : null}
+
+          {activeTab !== "reports" && acceptedBuyerOffers.length > 0 ? (
             <div style={{ ...styles.successHighlightBox, ...styles.stack, marginBottom: 16 }}>
               <div style={styles.rowBetween}>
                 <div>
@@ -11957,6 +11996,7 @@ export default function App() {
             </div>
           ) : null}
 
+          {activeTab !== "reports" ? (
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}>
               <strong>Minulle tarjotut erät</strong>
@@ -12245,6 +12285,7 @@ export default function App() {
               ))
             )}
           </div>
+          ) : null}
         </div>
       </div>
     );
