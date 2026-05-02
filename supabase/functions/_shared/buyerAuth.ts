@@ -12,7 +12,7 @@ function uniqueNonEmpty(values: unknown[]) {
   );
 }
 
-async function resolveBuyerRecord(
+export async function resolveBuyerRecord(
   adminClient: ReturnType<typeof createClient>,
   profile: Record<string, unknown>,
 ) {
@@ -57,7 +57,7 @@ async function resolveBuyerRecord(
   return null;
 }
 
-export async function requireBuyerContext(req: Request) {
+export async function requireAuthenticatedProfileContext(req: Request) {
   const supabaseUrl = safeString(Deno.env.get("SUPABASE_URL"));
   const anonKey = safeString(Deno.env.get("SUPABASE_ANON_KEY"));
   const serviceRoleKey = safeString(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"));
@@ -109,8 +109,20 @@ export async function requireBuyerContext(req: Request) {
     };
   }
 
+  return {
+    ok: true as const,
+    adminClient,
+    callerUserId,
+    profile,
+  };
+}
+
+export async function requireBuyerContext(req: Request) {
+  const authContext = await requireAuthenticatedProfileContext(req);
+  if (!authContext.ok) return authContext;
+
   try {
-    const buyer = await resolveBuyerRecord(adminClient, profile as Record<string, unknown>);
+    const buyer = await resolveBuyerRecord(authContext.adminClient, authContext.profile as Record<string, unknown>);
     if (!buyer) {
       return {
         ok: false as const,
@@ -120,9 +132,9 @@ export async function requireBuyerContext(req: Request) {
 
     return {
       ok: true as const,
-      adminClient,
-      callerUserId,
-      profile,
+      adminClient: authContext.adminClient,
+      callerUserId: authContext.callerUserId,
+      profile: authContext.profile,
       buyer,
     };
   } catch (error) {

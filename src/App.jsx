@@ -78,6 +78,7 @@ import { tableExists } from "./services/database.js";
 import {
   fetchBuyerReport,
   getPublicBatchInfoUrl,
+  invokeBuyerOfferAction,
   invokeEdgeFunctionAuthenticated,
 } from "./services/edgeFunctions.js";
 import {
@@ -10099,20 +10100,84 @@ export default function App() {
     setAuthInfo(`Koontimaksumuistutus ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.${copyResult.statusText}`);
   };
 
-  const updateFulfillmentStatus = async (offer, fulfillmentStatus) => {
+  const updateFulfillmentStatusFallback = async (offer, fulfillmentStatus) => {
     const { error } = await supabase
       .from("buyer_offers")
       .update({ fulfillment_status: fulfillmentStatus })
       .eq("id", offer.id);
 
-    if (error) {
+    if (error) return { ok: false, error };
+    return { ok: true };
+  };
+
+  const buyerUpdateOfferFallback = async (offerId, patch) => {
+    const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offerId);
+    if (error) return { ok: false, error };
+    return { ok: true };
+  };
+
+  const runBuyerOfferMutation = async ({ action, offer, payload, fallbackPatch }) => {
+    let result = null;
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (accessToken) {
+        result = await invokeBuyerOfferAction(accessToken, {
+          action,
+          offerId: offer.id,
+          ...payload,
+        });
+      }
+    } catch (error) {
+      console.warn("buyer-offer-action invocation failed, falling back to direct update", {
+        action,
+        offerId: offer?.id,
+        message: String(error?.message || error),
+      });
+    }
+
+    if (result?.error) {
+      console.warn("buyer-offer-action returned error, falling back to direct update", {
+        action,
+        offerId: offer?.id,
+        message: result.error.message,
+      });
+    }
+
+    if (result && !result.error) {
+      await refreshBuyerOffers();
+      setRefreshTick((prev) => prev + 1);
+      return true;
+    }
+
+    const fallbackResult = action === "update_fulfillment"
+      ? await updateFulfillmentStatusFallback(offer, payload.fulfillmentStatus)
+      : await buyerUpdateOfferFallback(offer.id, fallbackPatch);
+
+    if (!fallbackResult.ok) {
+      const error = fallbackResult.error;
       if (isMissingRefreshTokenError(error)) {
         await invalidateSession();
-        return;
+        return false;
       }
-      setAuthError(error.message);
-      return;
+      setAuthError(error.message || "Ostajan toiminnon päivitys epäonnistui.");
+      return false;
     }
+
+    await refreshBuyerOffers();
+    setRefreshTick((prev) => prev + 1);
+    return true;
+  };
+
+  const updateFulfillmentStatus = async (offer, fulfillmentStatus) => {
+    const ok = await runBuyerOfferMutation({
+      action: "update_fulfillment",
+      offer,
+      payload: { fulfillmentStatus },
+      fallbackPatch: { fulfillment_status: fulfillmentStatus },
+    });
+    if (!ok) return;
 
     setAuthInfo(
       fulfillmentStatus === "delivery_agreed"
@@ -10134,23 +10199,6 @@ export default function App() {
         batchId: offer?.batch_id,
       });
     }
-    await refreshBuyerOffers();
-    setRefreshTick((prev) => prev + 1);
-  };
-
-  const buyerUpdateOffer = async (offerId, patch) => {
-    const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offerId);
-    if (error) {
-      if (isMissingRefreshTokenError(error)) {
-        await invalidateSession();
-        return false;
-      }
-      setAuthError(error.message);
-      return false;
-    }
-    await refreshBuyerOffers();
-    setRefreshTick((prev) => prev + 1);
-    return true;
   };
 
   const sendBuyerResponseEmail = async (offer, actionLabel) => {
@@ -10303,13 +10351,22 @@ export default function App() {
         .filter(Boolean)
         .join("\n\n");
     }
-    const ok = await buyerUpdateOffer(offer.id, {
+    const counterPatch = {
       status: "countered",
       counter_price_per_kg: price,
       buyer_message: msg,
+    };
+    const ok = await runBuyerOfferMutation({
+      action: "counter",
+      offer,
+      payload: {
+        counterPricePerKg: price,
+        buyerMessage: msg,
+      },
+      fallbackPatch: counterPatch,
     });
     if (ok) {
-      const updatedOffer = { ...offer, status: "countered", counter_price_per_kg: price, buyer_message: msg };
+      const updatedOffer = { ...offer, ...counterPatch };
       await sendBuyerResponseEmail(updatedOffer, "Ostaja teki vastatarjouksen");
       await sendPushEvent({
         targetUserId: offer?.seller_user_id || "",
@@ -10340,13 +10397,21 @@ export default function App() {
     if (!confirmed) return;
 
     const reserved = Number(offer.total_kilos || 0);
-    const ok = await buyerUpdateOffer(offer.id, {
+    const reservePatch = {
       status: "reserved",
       reserved_kilos: reserved,
       buyer_message: null,
+    };
+    const ok = await runBuyerOfferMutation({
+      action: "reserve",
+      offer,
+      payload: {
+        reservedKilos: reserved,
+      },
+      fallbackPatch: reservePatch,
     });
     if (ok) {
-      const updatedOffer = { ...offer, status: "reserved", reserved_kilos: reserved, buyer_message: null };
+      const updatedOffer = { ...offer, ...reservePatch };
       await sendBuyerResponseEmail(updatedOffer, "Ostaja varasi erän");
       await sendPushEvent({
         targetUserId: offer?.seller_user_id || "",
@@ -10370,7 +10435,12 @@ export default function App() {
   };
 
   const onRejectBuyerOffer = async (offer) => {
-    const ok = await buyerUpdateOffer(offer.id, { status: "rejected" });
+    const ok = await runBuyerOfferMutation({
+      action: "reject",
+      offer,
+      payload: {},
+      fallbackPatch: { status: "rejected" },
+    });
     if (ok) {
       await sendBuyerResponseEmail({ ...offer, status: "rejected" }, "Ostaja hylkäsi tarjouksen");
       setAuthInfo("Tarjous hylätty.");
@@ -10384,7 +10454,12 @@ export default function App() {
 
     if (!confirmed) return;
 
-    const ok = await buyerUpdateOffer(offer.id, { status: "cancelled" });
+    const ok = await runBuyerOfferMutation({
+      action: "cancel",
+      offer,
+      payload: {},
+      fallbackPatch: { status: "cancelled" },
+    });
     if (ok) {
       setBuyerActiveOfferId((current) => (current === offer.id ? null : current));
       setAuthInfo("Myydyn erän ilmoitus poistettu näkyvistä.");
