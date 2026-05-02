@@ -30,7 +30,6 @@ Deno.serve(async (req) => {
         total_kilos,
         reserved_kilos,
         price_per_kg,
-        offer_price_per_kg,
         counter_price_per_kg,
         trade_value,
         delivery_cost,

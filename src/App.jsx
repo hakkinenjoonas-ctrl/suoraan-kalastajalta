@@ -3764,7 +3764,6 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         species_summary: purchase.speciesSummary,
         buyer_message: purchase.buyerMessage,
         notes: purchase.notes,
-        offer_price_per_kg: purchase.offerPricePerKg,
         counter_price_per_kg: purchase.counterPricePerKg,
         price_per_kg: purchase.pricePerKg,
         reserved_kilos: purchase.reservedKilos,
@@ -3776,7 +3775,6 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
           purchase.unitPriceEur ||
           purchase.counterPricePerKg ||
           purchase.pricePerKg ||
-          purchase.offerPricePerKg ||
           parsePricePerKgFromNotes(purchase.notes) ||
           0
         )

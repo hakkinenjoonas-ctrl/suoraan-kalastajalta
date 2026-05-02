@@ -91,7 +91,6 @@ export function buildBuyerReport(rawOffers = [], buyer = {}) {
         buyerMessage: safeString(offer?.buyer_message),
         notes: safeString(offer?.notes),
         pricePerKg: Number(offer?.price_per_kg || 0),
-        offerPricePerKg: Number(offer?.offer_price_per_kg || 0),
         counterPricePerKg: Number(offer?.counter_price_per_kg || 0),
         reservedKilos: Number(offer?.reserved_kilos || 0),
         totalKilos: Number(offer?.total_kilos || 0),
