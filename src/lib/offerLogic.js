@@ -162,8 +162,15 @@ export function getOfferSpeciesHeadline(summary, options = {}) {
   const hideTraceability = Boolean(options?.hideTraceability);
   const firstLine = (String(summary || "Kalaerä").split("\n")[0] || "Kalaerä");
   const sanitizedFirstLine = hideTraceability ? stripOfferTraceabilityText(firstLine) : firstLine;
-  return sanitizedFirstLine
+  const compactLine = String(sanitizedFirstLine || "")
+    .replace(/\s*·\s*Hinta(?:\s+ALV\s+0\s*%)?[^·]+/gi, "")
+    .replace(/\s*·\s*Hinta\s+sis\.\s*ALV\s+[0-9]+(?:[.,][0-9]+)?\s*%[^·]+/gi, "")
+    .replace(/\s*·\s*Pyyntipäivämäärä\s+[^·]+/gi, "")
+    .replace(/\s*·\s*Erätunnus\s+[A-Z0-9-]+/gi, "")
+    .trim();
+  return compactLine
     .replace(/:\s*\d+(?:[.,]\d+)?\s*kg(?:\s*\([^)]*\))?$/i, "")
+    .replace(/:\s*\d+(?:[.,]\d+)?\s*kpl(?:\s*\([^)]*\))?$/i, "")
     .trim() || "Kalaerä";
 }
 

@@ -10,6 +10,7 @@ import {
   getBuyerOfferAcceptanceActionLabel,
   getBuyerOffersFilterForStatus,
   getAcceptedInvoiceSourceLabel,
+  getOfferSpeciesHeadline,
   hasBuyerOfferStatus,
   isBuyerOfferAccepted,
   offersShareSameLot,
@@ -90,6 +91,15 @@ describe("offerLogic", () => {
 
     it("returns a default headline when species summary is missing", () => {
       expect(buildPushEventHeadline({})).toBe("Kalaerä");
+    });
+  });
+
+  describe("getOfferSpeciesHeadline", () => {
+    it("strips duplicate price and meta details from the headline", () => {
+      expect(getOfferSpeciesHeadline(
+        "Kuha: 50 kg · Hinta ALV 0 % 8 € / kg · Hinta sis. ALV 13,5 % 9,08 € / kg · Pyyntipäivämäärä 2026-04-30 · Erätunnus FIN23456260430FPP50-3",
+        { hideTraceability: true },
+      )).toBe("Kuha");
     });
   });
 
