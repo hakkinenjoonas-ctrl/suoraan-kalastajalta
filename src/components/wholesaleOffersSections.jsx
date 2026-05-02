@@ -233,7 +233,6 @@ export function BuyerResponsesSection({
                   ))
                   : (
                     <>
-                      {getOfferSummaryBatchItems(offer.species_summary)[0]?.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryBatchItems(offer.species_summary)[0].catchDate}</div> : null}
                       {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
                     </>
                   )}
@@ -470,7 +469,6 @@ export function OfferedEntriesDetailsSection({
                                 ))
                                 : (
                                   <>
-                                    {getOfferSummaryBatchItems(offer.species_summary)[0]?.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryBatchItems(offer.species_summary)[0].catchDate}</div> : null}
                                     {showTraceability && offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
                                   </>
                                 )}

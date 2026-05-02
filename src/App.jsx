@@ -7811,6 +7811,7 @@ export default function App() {
               seller_name: offer.seller_name || sellerProfile.company_name || sellerProfile.display_name || "",
               seller_company_name: sellerProfile.company_name || "",
               seller_business_id: sellerProfile.business_id || "",
+              sellerBusinessIdFallback: sellerProfile.business_id || "",
               seller_address: sellerProfile.address || "",
               seller_postcode: sellerProfile.postcode || "",
               seller_city: sellerProfile.city || "",
@@ -12180,7 +12181,7 @@ export default function App() {
                           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
                             <strong>Kalastajan tiedot</strong>
                             <div style={styles.muted}>Nimi: {sellerInfo.sellerName || "-"}</div>
-                            <div style={styles.muted}>Y-tunnus: {sellerInfo.sellerBusinessId || "-"}</div>
+                            <div style={styles.muted}>Y-tunnus: {sellerInfo.sellerBusinessId || o.seller_business_id || o.sellerBusinessIdFallback || "-"}</div>
                             {sellerInfo.sellerAddress ? <div style={styles.muted}>Yrityksen osoite: {sellerInfo.sellerAddress}</div> : null}
                             <div style={styles.muted}>Sähköposti: {sellerInfo.sellerEmail || "-"}</div>
                             <div style={styles.muted}>Puhelin: {sellerInfo.sellerPhone || "-"}</div>
