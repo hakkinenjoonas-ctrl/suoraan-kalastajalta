@@ -166,6 +166,7 @@ Deno.serve(async (req) => {
           notes: offerInsertBase.notes || null,
           status: "sent",
           billing_status: "unbilled",
+          owner_commission_status: "unbilled",
         };
 
         const { data, error } = await adminClient

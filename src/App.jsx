@@ -4431,19 +4431,22 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
   const acceptedOffers = (buyerOffers || []).filter((offer) => {
     if (offer.status !== "accepted") return false;
     if (billingFilter === "all") return true;
-    return (offer.billing_status || "unbilled") === billingFilter;
+    return getOwnerCommissionStatus(offer) === billingFilter;
   });
 
   const grouped = acceptedOffers.reduce((acc, offer) => {
-    const dateValue = offer.updated_at || offer.created_at || new Date().toISOString();
-    const monthKey = (() => {
-      try {
-        const d = new Date(dateValue);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      } catch {
-        return "Ei kuukautta";
-      }
-    })();
+    const monthKey = String(
+      offer.owner_commission_month ||
+      offer.billing_month ||
+      (() => {
+        try {
+          const d = new Date(offer.updated_at || offer.created_at || new Date().toISOString());
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        } catch {
+          return "Ei kuukautta";
+        }
+      })()
+    ).trim() || "Ei kuukautta";
 
     const sellerKey = offer.seller_user_id || offer.seller_name || "Tuntematon myyjä";
     const sellerLabel = offer.seller_name || "Tuntematon myyjä";
@@ -4452,8 +4455,10 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
       : "Anonyymi ostaja";
     const kilos = Number(offer.reserved_kilos || offer.total_kilos || 0);
     const pricePerKg = Number(offer.counter_price_per_kg || offer.price_per_kg || 0);
-    const tradeValue = kilos * pricePerKg;
-    const commissionValue = tradeValue * COMMISSION_RATE;
+    const calculatedTradeValue = kilos * pricePerKg;
+    const calculatedCommissionValue = calculatedTradeValue * COMMISSION_RATE;
+    const tradeValue = Number(offer.owner_trade_value ?? calculatedTradeValue);
+    const commissionValue = Number(offer.owner_commission_amount ?? calculatedCommissionValue);
     const groupKey = `${monthKey}__${sellerKey}`;
 
     if (!acc[groupKey]) {
@@ -4577,12 +4582,12 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
                 <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary) || "-"}</div>
                 {getOfferSummaryCatchDates(offer.species_summary).length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryCatchDates(offer.species_summary).join(", ")}</div> : null}
                 <div style={styles.muted}><strong>Päivä:</strong> {offer.updated_at || offer.created_at || "-"}</div>
-                <div style={styles.muted}><strong>Laskutustila:</strong> {offer.billing_status === "paid" ? "Maksettu" : offer.billing_status === "invoiced" ? "Laskutettu" : "Laskuttamaton"}</div>
+                <div style={styles.muted}><strong>Komission tila:</strong> {getOwnerCommissionStatusLabel(offer)}</div>
                 {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
                 <div style={{ ...styles.row, marginTop: 10 }}>
-                  {offer.billing_status !== "invoiced" ? <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "invoiced")}>Merkitse laskutetuksi</button> : null}
-                  {offer.billing_status !== "paid" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBillingStatus(offer, "paid")}>Merkitse maksetuksi</button> : null}
-                  {offer.billing_status !== "unbilled" ? <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "unbilled")}>Palauta laskuttamattomaksi</button> : null}
+                  {getOwnerCommissionStatus(offer) !== "invoiced" ? <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "invoiced")}>Merkitse komissio laskutetuksi</button> : null}
+                  {getOwnerCommissionStatus(offer) !== "paid" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onUpdateBillingStatus(offer, "paid")}>Merkitse komissio maksetuksi</button> : null}
+                  {getOwnerCommissionStatus(offer) !== "unbilled" ? <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "unbilled")}>Palauta komissio laskuttamattomaksi</button> : null}
                 </div>
               </div>
             ))}
@@ -5152,6 +5157,18 @@ function getOfferBillingMonthValue(offer) {
   } catch {
     return "";
   }
+}
+
+function getOwnerCommissionStatus(offer) {
+  const status = String(offer?.owner_commission_status || "").trim();
+  return ["invoiced", "paid", "unbilled"].includes(status) ? status : "unbilled";
+}
+
+function getOwnerCommissionStatusLabel(offer) {
+  const status = getOwnerCommissionStatus(offer);
+  if (status === "paid") return "Maksettu";
+  if (status === "invoiced") return "Laskutettu";
+  return "Laskuttamaton";
 }
 
 function buildSellerGroupInvoiceReference(offers) {
@@ -7823,6 +7840,13 @@ export default function App() {
               seller_commercial_fishing_id: offer.seller_commercial_fishing_id || sellerProfile.commercial_fishing_id || "",
               billing_status: offer.billing_status || "unbilled",
               billing_month: offer.billing_month || "",
+              owner_commission_status: offer.owner_commission_status || "unbilled",
+              owner_commission_billed_at: offer.owner_commission_billed_at || null,
+              owner_commission_paid_at: offer.owner_commission_paid_at || null,
+              owner_commission_month: offer.owner_commission_month || "",
+              owner_commission_rate: offer.owner_commission_rate == null ? "" : Number(offer.owner_commission_rate),
+              owner_trade_value: offer.owner_trade_value == null ? "" : Number(offer.owner_trade_value),
+              owner_commission_amount: offer.owner_commission_amount == null ? "" : Number(offer.owner_commission_amount),
               fulfillment_status: offer.fulfillment_status || (isBuyerOfferAccepted(offer.status) ? "awaiting_contact" : ""),
             };
           }));
@@ -8916,9 +8940,10 @@ export default function App() {
       setAuthInfo("Tällä käyttäjällä ei ole poistettavia testikauppoja.");
       return;
     }
+    const ownerLabel = profile.company_name || profile.display_name || profile.email || "tuntematon käyttäjä";
 
     const confirmed = window.confirm(
-      `Poistetaanko ${ownOfferCount} tämän käyttäjän tekemää tarjous-/kauppariviä? Tämä siivoaa testidatan ylläpidosta.`
+      `Poistetaanko ${ownOfferCount} käyttäjän ${ownerLabel} tekemää tarjous-/kauppariviä? Tämä siivoaa testidatan ylläpidosta.`
     );
     if (!confirmed) return;
 
@@ -9530,6 +9555,7 @@ export default function App() {
           notes: entry.notes || null,
           status: "sent",
           billing_status: "unbilled",
+          owner_commission_status: "unbilled",
         })
         .select("id")
         .single();
@@ -9767,6 +9793,7 @@ export default function App() {
           notes: entry.notes || null,
           status: "sent",
           billing_status: "unbilled",
+          owner_commission_status: "unbilled",
         })
         .select("id")
         .single();
@@ -9936,25 +9963,27 @@ export default function App() {
     }));
   };
 
-  const buildBillingStatusPatch = (offer, billingStatus) => ({
-      billing_status: billingStatus,
-      billed_at: billingStatus === "invoiced" ? new Date().toISOString() : null,
-      paid_at: billingStatus === "paid" ? new Date().toISOString() : null,
-      billing_month: offer.billing_month || (() => {
-        try {
-          const d = new Date(offer.updated_at || offer.created_at || new Date().toISOString());
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        } catch {
-          return "";
-        }
-      })(),
-      commission_rate: COMMISSION_RATE,
-      trade_value: calculateCommissionDetails(offer).tradeValue,
-      commission_amount: calculateCommissionDetails(offer).commissionValue,
-    });
+  const buildOwnerCommissionStatusPatch = (offer, billingStatus) => ({
+    owner_commission_status: billingStatus,
+    owner_commission_billed_at: billingStatus === "unbilled"
+      ? null
+      : offer.owner_commission_billed_at || new Date().toISOString(),
+    owner_commission_paid_at: billingStatus === "paid" ? new Date().toISOString() : null,
+    owner_commission_month: offer.owner_commission_month || offer.billing_month || (() => {
+      try {
+        const d = new Date(offer.updated_at || offer.created_at || new Date().toISOString());
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      } catch {
+        return "";
+      }
+    })(),
+    owner_commission_rate: COMMISSION_RATE,
+    owner_trade_value: calculateCommissionDetails(offer).tradeValue,
+    owner_commission_amount: calculateCommissionDetails(offer).commissionValue,
+  });
 
   const handleUpdateBillingStatus = async (offer, billingStatus) => {
-    const patch = buildBillingStatusPatch(offer, billingStatus);
+    const patch = buildOwnerCommissionStatusPatch(offer, billingStatus);
 
     const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offer.id);
     if (error) {
@@ -9968,10 +9997,10 @@ export default function App() {
 
     setAuthInfo(
       billingStatus === "paid"
-        ? "Kauppa merkitty maksetuksi."
+        ? "Komissio merkitty maksetuksi."
         : billingStatus === "invoiced"
-        ? "Kauppa merkitty laskutetuksi."
-        : "Kauppa palautettu laskuttamattomaksi."
+        ? "Komissio merkitty laskutetuksi."
+        : "Komissio palautettu laskuttamattomaksi."
     );
     setRefreshTick((prev) => prev + 1);
   };
@@ -9981,7 +10010,7 @@ export default function App() {
     if (targetOffers.length === 0) return;
 
     for (const offer of targetOffers) {
-      const patch = buildBillingStatusPatch(offer, billingStatus);
+      const patch = buildOwnerCommissionStatusPatch(offer, billingStatus);
       const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offer.id);
       if (error) {
         if (isMissingRefreshTokenError(error)) {
@@ -9995,10 +10024,10 @@ export default function App() {
 
     setAuthInfo(
       billingStatus === "paid"
-        ? "Koontilaskun kaikki kaupat merkitty maksetuiksi."
+        ? "Kaikki ryhmän komissiot merkitty maksetuiksi."
         : billingStatus === "invoiced"
-        ? "Koontilaskun kaikki kaupat merkitty laskutetuiksi."
-        : "Koontilaskun kaikki kaupat palautettu laskuttamattomiksi."
+        ? "Kaikki ryhmän komissiot merkitty laskutetuiksi."
+        : "Kaikki ryhmän komissiot palautettu laskuttamattomiksi."
     );
     setRefreshTick((prev) => prev + 1);
   };
@@ -11068,6 +11097,7 @@ export default function App() {
           notes,
           status: "sent",
           billing_status: "unbilled",
+          owner_commission_status: "unbilled",
         })
         .select("id")
         .single();
