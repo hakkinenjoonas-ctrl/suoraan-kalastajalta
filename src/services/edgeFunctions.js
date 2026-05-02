@@ -38,3 +38,7 @@ export async function fetchBuyerReport(accessToken) {
 export async function invokeBuyerOfferAction(accessToken, payload) {
   return invokeEdgeFunctionAuthenticated("buyer-offer-action", payload, accessToken);
 }
+
+export async function invokeBulkOfferDispatch(accessToken, payload) {
+  return invokeEdgeFunctionAuthenticated("bulk-send-offers", payload, accessToken);
+}

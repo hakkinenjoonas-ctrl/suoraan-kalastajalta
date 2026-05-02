@@ -188,6 +188,14 @@ function describeResendError(data: unknown) {
   }
 }
 
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function buildFieldRow(label: string, value: string) {
   return `
     <tr>
@@ -309,11 +317,10 @@ Deno.serve(async (req) => {
       batchId,
     });
 
-    for (const recipient of recipients) {
+    const sendRecipientEmail = async (recipient: Record<string, unknown>) => {
       const recipientEmail = safeString(recipient?.email).toLowerCase();
       if (!recipientEmail) {
-        results.push({ ok: false, email: "", error: "Missing recipient email" });
-        continue;
+        return { ok: false, email: "", error: "Missing recipient email" };
       }
 
       const offerLink = safeString(recipient?.offer_link);
@@ -414,18 +421,23 @@ Deno.serve(async (req) => {
           status: resendResponse.status,
           resendData,
         });
-        results.push({
+        return {
           ok: false,
           email: recipientEmail,
           error: `Resend ${resendResponse.status}: ${describeResendError(resendData)}`,
-        });
-      } else {
-        console.log("send-catch-offer-email:resend-ok", {
-          recipientEmail,
-          resendData,
-        });
-        results.push({ ok: true, email: recipientEmail, resend: resendData });
+        };
       }
+
+      console.log("send-catch-offer-email:resend-ok", {
+        recipientEmail,
+        resendData,
+      });
+      return { ok: true, email: recipientEmail, resend: resendData };
+    };
+
+    for (const recipientChunk of chunkArray(recipients, 10)) {
+      const chunkResults = await Promise.all(recipientChunk.map((recipient) => sendRecipientEmail(recipient)));
+      results.push(...chunkResults);
     }
 
     console.log("send-catch-offer-email:finished", {

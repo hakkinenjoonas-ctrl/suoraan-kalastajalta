@@ -79,6 +79,7 @@ import {
   fetchBuyerReport,
   getPublicBatchInfoUrl,
   invokeBuyerOfferAction,
+  invokeBulkOfferDispatch,
   invokeEdgeFunctionAuthenticated,
 } from "./services/edgeFunctions.js";
 import {
@@ -9334,6 +9335,40 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
+  const BULK_OFFER_DISPATCH_THRESHOLD = 25;
+
+  const tryBulkOfferDispatch = async ({
+    accessToken,
+    entry,
+    recipients,
+    offerInsertBase,
+    pushNotification,
+  }) => {
+    const result = await invokeBulkOfferDispatch(accessToken, {
+      entry,
+      recipients,
+      offerInsertBase,
+      pushNotification,
+    });
+
+    if (result?.error) {
+      const status = Number(result.error.status || 0);
+      const message = String(result.error.message || "");
+      const canFallbackSafely = status === 404 || status === 401 || status === 403 || message.includes("Failed to fetch");
+      if (canFallbackSafely) {
+        console.warn("bulk offer dispatch unavailable, falling back to legacy path", result.error);
+        return null;
+      }
+      throw new Error(message || "Bulk-tarjouslähetys epäonnistui.");
+    }
+
+    return {
+      skipped: false,
+      sent: result?.data?.sent || [],
+      failed: result?.data?.failed || [],
+    };
+  };
+
   const sendCatchOfferEmail = async ({ formState, rows, profileState }) => {
     const recipientAnalysis = analyzeOfferRecipients(formState, rows);
     const recipients = recipientAnalysis.matching.map((recipient) => ({
@@ -9413,6 +9448,50 @@ export default function App() {
     const accessToken = sessionData?.session?.access_token;
     if (!accessToken) {
       throw new Error("Istunto puuttuu. Kirjaudu ulos ja takaisin sisään ennen tarjouksen lähetystä.");
+    }
+
+    if (recipients.length >= BULK_OFFER_DISPATCH_THRESHOLD) {
+      const bulkResult = await tryBulkOfferDispatch({
+        accessToken,
+        entry,
+        recipients,
+        offerInsertBase: {
+          batch_id: rows[0]?.batch_id || null,
+          seller_name: profileState?.display_name || profileState?.email || null,
+          total_kilos: entry.kilos,
+          price_per_kg: entry.price_per_kg,
+          seller_origin_city: entry.originCity || null,
+          delivery_possible: Boolean(entry.deliveryPossible),
+          species_summary: summaryLines,
+          area: entry.area,
+          spot: entry.spot,
+          gear: entry.gear,
+          delivery_method: entry.deliveryMethod || "Nouto",
+          transport_mode: entry.transportMode || null,
+          origin_point_id: entry.originPointId || null,
+          transport_company_id: entry.transportCompanyId || null,
+          delivery_destinations: entry.deliveryDestinations,
+          delivery_area: entry.deliveryArea || null,
+          delivery_cost: entry.deliveryCost == null || entry.deliveryCost === "" ? null : Number(entry.deliveryCost),
+          earliest_delivery_date: entry.earliestDeliveryDate || null,
+          cold_transport: Boolean(entry.coldTransport),
+          notes: entry.notes || null,
+        },
+        pushNotification: {
+          title: "Uusi kalatarjous",
+          body: `Sinulle on lähetetty uusi tarjous: ${buildPushEventHeadline({
+            species_summary: summaryLines,
+            total_kilos: entry.kilos,
+            batch_id: rows[0]?.batch_id || "",
+          })}.`,
+          eventType: "offer_sent",
+          route: "offers",
+          batchId: rows[0]?.batch_id || "",
+        },
+      });
+      if (bulkResult) {
+        return { ...bulkResult, recipientAnalysis };
+      }
     }
 
     const sent = [];
@@ -9614,6 +9693,60 @@ export default function App() {
 
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
+
+    if (!accessToken) {
+      throw new Error("Istunto puuttuu. Kirjaudu ulos ja takaisin sisään ennen tarjouksen lähetystä.");
+    }
+
+    if (recipients.length >= BULK_OFFER_DISPATCH_THRESHOLD) {
+      const bulkResult = await tryBulkOfferDispatch({
+        accessToken,
+        entry: {
+          species: formState.productName || formState.productType || "Jaloste-erä",
+          kilos: Number(formState.kilos || 0),
+          date: formState.productionDate,
+          area: formState.area,
+          municipality: formState.municipality || "",
+          spot: formState.spot || "",
+          gear: `Jaloste / ${formState.processingMethod || formState.productType || "-"}`,
+          notes: [summaryLines, "", notes].join(String.fromCharCode(10)).trim(),
+          offerUrlBase,
+        },
+        recipients,
+        offerInsertBase: {
+          batch_id: batchId,
+          seller_name: profileState?.display_name || profileState?.email || null,
+          total_kilos: Number(formState.kilos || 0),
+          seller_origin_city: formState.originCity || formState.municipality || null,
+          delivery_possible: Boolean(formState.deliveryPossible),
+          species_summary: summaryLines,
+          area: formState.area,
+          spot: formState.spot,
+          gear: `Jaloste / ${formState.processingMethod || formState.productType || "-"}`,
+          delivery_method: formState.deliveryMethod || "Nouto",
+          transport_mode: formState.transportMode || null,
+          origin_point_id: formState.originPointId || null,
+          transport_company_id: formState.transportCompanyId || null,
+          delivery_destinations: formState.deliveryDestinations || [],
+          delivery_area: formatDeliveryDestinations(formState.deliveryDestinations) || formState.deliveryArea || null,
+          delivery_cost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
+          earliest_delivery_date: formState.earliestDeliveryDate || null,
+          cold_transport: Boolean(formState.coldTransport),
+          notes,
+        },
+        pushNotification: {
+          title: "Uusi kalatarjous",
+          body: `Sinulle on lähetetty uusi tarjous: ${formState.productName || formState.productType || "Jaloste-erä"}.`,
+          eventType: "offer_sent",
+          route: "offers",
+          batchId,
+        },
+      });
+      if (bulkResult) {
+        return { ...bulkResult, recipientAnalysis };
+      }
+    }
+
     const sent = [];
     const failed = [];
 
