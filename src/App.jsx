@@ -4453,8 +4453,12 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
       : "Anonyymi ostaja";
     const kilos = Number(offer.reserved_kilos || offer.total_kilos || 0);
     const pricePerKg = Number(offer.counter_price_per_kg || offer.price_per_kg || 0);
-    const calculatedTradeValue = kilos * pricePerKg;
-    const calculatedCommissionValue = calculatedTradeValue * COMMISSION_RATE;
+    const calculatedTradeValue = Number.isFinite(Number(offer.tradeValue))
+      ? Number(offer.tradeValue)
+      : kilos * pricePerKg;
+    const calculatedCommissionValue = Number.isFinite(Number(offer.commissionValue))
+      ? Number(offer.commissionValue)
+      : calculatedTradeValue * COMMISSION_RATE;
 
     return {
       ...offer,
