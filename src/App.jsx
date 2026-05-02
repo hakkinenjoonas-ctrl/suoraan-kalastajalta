@@ -3765,13 +3765,13 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         totalValueEur: 0,
         latestPurchaseAt: "",
         topSpecies: [],
-        topSellers: [],
+        topAreas: [],
         monthly: [],
       };
     }
 
     const speciesMap = new Map();
-    const sellerMap = new Map();
+    const areaMap = new Map();
     const monthlyMap = new Map();
     let totalQuantityKg = 0;
     let totalTradeValueEur = 0;
@@ -3788,23 +3788,25 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         purchaseCount: 0,
         quantityKg: 0,
         tradeValueEur: 0,
+        averageUnitPriceEur: 0,
       };
       speciesRow.purchaseCount += 1;
       speciesRow.quantityKg += Number(purchase.quantityKg || 0);
       speciesRow.tradeValueEur += Number(purchase.tradeValueEur || 0);
+      speciesRow.averageUnitPriceEur = speciesRow.quantityKg > 0 ? speciesRow.tradeValueEur / speciesRow.quantityKg : 0;
       speciesMap.set(speciesKey, speciesRow);
 
-      const sellerKey = String(purchase.sellerName || "Kalastaja");
-      const sellerRow = sellerMap.get(sellerKey) || {
-        sellerName: sellerKey,
+      const areaKey = [purchase.area, purchase.spot].filter(Boolean).join(" / ") || "Vesialue puuttuu";
+      const areaRow = areaMap.get(areaKey) || {
+        areaLabel: areaKey,
         purchaseCount: 0,
         quantityKg: 0,
         tradeValueEur: 0,
       };
-      sellerRow.purchaseCount += 1;
-      sellerRow.quantityKg += Number(purchase.quantityKg || 0);
-      sellerRow.tradeValueEur += Number(purchase.tradeValueEur || 0);
-      sellerMap.set(sellerKey, sellerRow);
+      areaRow.purchaseCount += 1;
+      areaRow.quantityKg += Number(purchase.quantityKg || 0);
+      areaRow.tradeValueEur += Number(purchase.tradeValueEur || 0);
+      areaMap.set(areaKey, areaRow);
 
       const monthKey = String(purchase.month || "").trim();
       if (monthKey) {
@@ -3829,7 +3831,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       totalValueEur: totalTradeValueEur + totalDeliveryCostEur,
       latestPurchaseAt: buyerPurchases[0]?.purchaseDate || "",
       topSpecies: Array.from(speciesMap.values()).sort((left, right) => right.tradeValueEur - left.tradeValueEur),
-      topSellers: Array.from(sellerMap.values()).sort((left, right) => right.tradeValueEur - left.tradeValueEur),
+      topAreas: Array.from(areaMap.values()).sort((left, right) => right.tradeValueEur - left.tradeValueEur),
       monthly: Array.from(monthlyMap.values()).sort((left, right) => left.month.localeCompare(right.month)),
     };
   }, [buyerPurchases, isBuyerRole]);
@@ -3861,6 +3863,11 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       }
     };
 
+    const formatCompactMoney = (value) => {
+      const number = Number(value || 0);
+      return `${number.toLocaleString("fi-FI", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`;
+    };
+
     const buyerReportRows = [
       [
         "Ostopäivä",
@@ -3872,8 +3879,6 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         "Kaupan arvo €",
         "Toimituskulu €",
         "Kokonaissumma €",
-        "Kalastaja",
-        "Kalastajan sähköposti",
         "Vesialue",
         "Pyyntipaikka",
         "Toimitustapa",
@@ -3892,8 +3897,6 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         purchase.tradeValueEur || 0,
         purchase.deliveryCostEur || 0,
         purchase.totalValueEur || 0,
-        purchase.sellerName || "",
-        purchase.sellerEmail || "",
         purchase.area || "",
         purchase.spot || "",
         purchase.deliveryMethod || "",
@@ -3911,7 +3914,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             <div>
               <strong>Ostoraportit</strong>
               <div style={styles.muted}>
-                Näet tästä ostohistorian, tärkeimmät kalastajat, ostetuimmat lajit ja ostojen kokonaisarvon.
+                Näet tästä ostohistorian, tärkeimmät vesialueet, ostetuimmat lajit ja ostojen kokonaisarvon.
               </div>
             </div>
             <div style={styles.row}>
@@ -3950,7 +3953,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             {"\n"}Valittu aikaväli: {reportDateLabel}
           </div>
 
-          <div style={styles.grid2}>
+          <div style={styles.stack}>
             <div style={styles.field}>
               <label>Alkupäivä</label>
               <input
@@ -4020,7 +4023,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         {buyerReportError ? <div style={styles.noticeError}>{buyerReportError}</div> : null}
         {buyerReportLoading && !buyerReportData ? <div style={styles.noticeInfo}>Haetaan ostoraporttia...</div> : null}
 
-        <div style={styles.grid2}>
+        <div style={styles.stack}>
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.muted}>Hyväksytyt ostot</div>
             <div style={styles.metric}>{buyerSummary.purchaseCount}</div>
@@ -4045,7 +4048,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
           </div>
         </div>
 
-        <div style={styles.grid2}>
+        <div style={styles.stack}>
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}>
               <strong>Ostetuimmat lajit</strong>
@@ -4053,25 +4056,22 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             </div>
             {buyerSummary.topSpecies.length === 0 ? <div style={styles.muted}>Ei vielä ostotietoja valitulla aikavälillä.</div> : buyerSummary.topSpecies.slice(0, 8).map((row) => (
               <div key={row.species} style={{ ...styles.entry, padding: 14 }}>
-                <div style={styles.entryBadges}>
-                  <span style={styles.badge}>{row.species}</span>
-                  <span style={styles.badge}>{Number(row.quantityKg || 0).toLocaleString("fi-FI")} kg</span>
-                  <span style={styles.badge}>{euro(row.tradeValueEur || 0)}</span>
+                <div style={{ ...styles.muted, fontSize: 16 }}>
+                  <strong>{row.species}</strong>: {Number(row.quantityKg || 0).toLocaleString("fi-FI")} kg - Keskihinta: {formatCompactMoney(row.averageUnitPriceEur || 0)}/kg (ALV {formatVatPercent()}%)
                 </div>
-                <div style={styles.small}>{row.purchaseCount} ostokertaa</div>
               </div>
             ))}
           </div>
 
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}>
-              <strong>Tärkeimmät kalastajat</strong>
-              <span style={styles.badge}>{buyerSummary.topSellers.length} kalastajaa</span>
+              <strong>Tärkeimmät vesialueet</strong>
+              <span style={styles.badge}>{buyerSummary.topAreas.length} vesialuetta</span>
             </div>
-            {buyerSummary.topSellers.length === 0 ? <div style={styles.muted}>Ei vielä kalastajakohtaista ostohistoriaa.</div> : buyerSummary.topSellers.slice(0, 8).map((row) => (
-              <div key={row.sellerName} style={{ ...styles.entry, padding: 14 }}>
+            {buyerSummary.topAreas.length === 0 ? <div style={styles.muted}>Ei vielä vesialuekohtaista ostohistoriaa.</div> : buyerSummary.topAreas.slice(0, 8).map((row) => (
+              <div key={row.areaLabel} style={{ ...styles.entry, padding: 14 }}>
                 <div style={styles.entryBadges}>
-                  <span style={styles.badge}>{row.sellerName}</span>
+                  <span style={styles.badge}>{row.areaLabel}</span>
                   <span style={styles.badge}>{Number(row.quantityKg || 0).toLocaleString("fi-FI")} kg</span>
                   <span style={styles.badge}>{euro(row.tradeValueEur || 0)}</span>
                 </div>
@@ -4117,7 +4117,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
           <div style={styles.rowBetween}>
             <strong>Viimeisimmät ostot</strong>
-            <div style={styles.muted}>Näet mitä ostit, milloin, keneltä ja millä toimitusehdoilla.</div>
+            <div style={styles.muted}>Näet mitä ostit, milloin ja mistä vesialueesta sekä millä toimitusehdoilla.</div>
           </div>
           {buyerPurchases.length === 0 ? <div style={styles.muted}>Ei ostohistoriaa valitulla aikavälillä.</div> : buyerPurchases.map((purchase) => (
             <div key={purchase.id} style={styles.entry}>
@@ -4127,7 +4127,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
                     <span style={styles.badge}>{purchase.speciesHeadline || "Kalaerä"}</span>
                     <span style={styles.badge}>{Number(purchase.quantityKg || 0).toLocaleString("fi-FI")} kg</span>
                     <span style={styles.badge}>{euro(purchase.totalValueEur || 0)}</span>
-                    <span style={styles.badge}>{purchase.sellerName || "Kalastaja"}</span>
+                    <span style={styles.badge}>{purchase.area || "Vesialue puuttuu"}</span>
                   </div>
                   <div style={styles.muted}>{formatReportDate(purchase.purchaseDate)} · {purchase.area || "-"}{purchase.spot ? ` / ${purchase.spot}` : ""}</div>
                   {purchase.batchId ? <div style={styles.muted}>Erätunnus: {purchase.batchId}</div> : null}
@@ -4135,7 +4135,6 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
                   <div style={styles.muted}>Kaupan arvo: {euro(purchase.tradeValueEur || 0)} · Toimituskulu: {euro(purchase.deliveryCostEur || 0)}</div>
                   <div style={styles.muted}>Toimitustapa: {purchase.deliveryMethod || "-"} · Toimituskaupunki: {purchase.buyerDeliveryCity || "-"}</div>
                   <div style={styles.muted}>Toimituksen tila: {fulfillmentStatusLabel(purchase.fulfillmentStatus)} · Laskutustila: {purchase.billingStatus === "paid" ? "Maksettu" : purchase.billingStatus === "invoiced" ? "Laskutettu" : "Laskuttamaton"}</div>
-                  {purchase.sellerEmail ? <div style={styles.muted}>Kalastajan yhteys: {purchase.sellerEmail}</div> : null}
                   {purchase.speciesSummary ? <div style={{ ...styles.small, whiteSpace: "pre-wrap" }}>{purchase.speciesSummary}</div> : null}
                 </div>
               </div>
