@@ -58,6 +58,7 @@ export default function AdminOperationsView({
     appPushTokens,
   }), [entries, processedEntries, buyerOffers, buyers, ownerUserProfiles, appPushTokens]);
   const ownOfferCount = (buyerOffers || []).filter((offer) => String(offer?.seller_user_id || "") === String(profile?.id || "")).length;
+  const ownerLabel = profile?.company_name || profile?.display_name || profile?.email || "tuntematon käyttäjä";
 
   return (
     <div style={{ ...styles.stack, gap: 18 }}>
@@ -76,6 +77,7 @@ export default function AdminOperationsView({
             Muiden käyttäjien tarjoukset eivät poistu.
           </div>
           <div style={styles.entryBadges}>
+            <span style={styles.badge}>Käyttäjä: {ownerLabel}</span>
             <span style={styles.badge}>{ownOfferCount} omaa tarjousriviä</span>
           </div>
           <div style={styles.row}>
