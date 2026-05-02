@@ -3783,7 +3783,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       totalTradeValueEur += Number(purchase.tradeValueEur || 0);
       totalDeliveryCostEur += Number(purchase.deliveryCostEur || 0);
 
-      const speciesKey = String(purchase.speciesHeadline || "Kalaerä");
+      const speciesKey = String(purchase.speciesHeadline || "Kalaerä").split(":")[0].trim() || "Kalaerä";
       const speciesRow = speciesMap.get(speciesKey) || {
         species: speciesKey,
         purchaseCount: 0,
@@ -3851,7 +3851,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         : rawDate.slice(0, 7);
       if (!periodKey) return;
 
-      const speciesKey = String(purchase.speciesHeadline || "Kalaerä");
+      const speciesKey = String(purchase.speciesHeadline || "Kalaerä").split(":")[0].trim() || "Kalaerä";
       const currentPeriod = periodMap.get(periodKey) || new Map();
       const speciesRow = currentPeriod.get(speciesKey) || {
         species: speciesKey,
