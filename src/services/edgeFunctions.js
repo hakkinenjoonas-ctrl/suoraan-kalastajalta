@@ -30,3 +30,7 @@ export async function invokeEdgeFunctionAuthenticated(functionName, body, access
 
   return { data, error: null };
 }
+
+export async function fetchBuyerReport(accessToken) {
+  return invokeEdgeFunctionAuthenticated("buyer-report", {}, accessToken);
+}
