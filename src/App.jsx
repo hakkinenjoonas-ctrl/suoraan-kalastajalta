@@ -3651,6 +3651,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   const [reportEndDate, setReportEndDate] = useState("");
   const [reportEmail, setReportEmail] = useState("");
   const [reportSendingKey, setReportSendingKey] = useState("");
+  const [buyerSpeciesPeriod, setBuyerSpeciesPeriod] = useState("month");
   const [buyerReportLoading, setBuyerReportLoading] = useState(false);
   const [buyerReportError, setBuyerReportError] = useState("");
   const [buyerReportData, setBuyerReportData] = useState(null);
@@ -3836,6 +3837,44 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
     };
   }, [buyerPurchases, isBuyerRole]);
 
+  const buyerSpeciesByPeriod = useMemo(() => {
+    if (!isBuyerRole) return [];
+
+    const periodMap = new Map();
+
+    buyerPurchases.forEach((purchase) => {
+      const rawDate = String(purchase.purchaseDate || "").trim();
+      if (!rawDate) return;
+
+      const periodKey = buyerSpeciesPeriod === "year"
+        ? rawDate.slice(0, 4)
+        : rawDate.slice(0, 7);
+      if (!periodKey) return;
+
+      const speciesKey = String(purchase.speciesHeadline || "Kalaerä");
+      const currentPeriod = periodMap.get(periodKey) || new Map();
+      const speciesRow = currentPeriod.get(speciesKey) || {
+        species: speciesKey,
+        quantityKg: 0,
+        tradeValueEur: 0,
+        averageUnitPriceEur: 0,
+      };
+
+      speciesRow.quantityKg += Number(purchase.quantityKg || 0);
+      speciesRow.tradeValueEur += Number(purchase.tradeValueEur || 0);
+      speciesRow.averageUnitPriceEur = speciesRow.quantityKg > 0 ? speciesRow.tradeValueEur / speciesRow.quantityKg : 0;
+      currentPeriod.set(speciesKey, speciesRow);
+      periodMap.set(periodKey, currentPeriod);
+    });
+
+    return Array.from(periodMap.entries())
+      .sort((left, right) => right[0].localeCompare(left[0]))
+      .map(([periodKey, speciesMap]) => ({
+        periodKey,
+        items: Array.from(speciesMap.values()).sort((left, right) => right.quantityKg - left.quantityKg),
+      }));
+  }, [buyerPurchases, buyerSpeciesPeriod, isBuyerRole]);
+
   if (isBuyerRole) {
     const buyerInfo = buyerReportData?.buyer || {};
     const formatReportDate = (value) => {
@@ -3862,6 +3901,8 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         return String(value);
       }
     };
+
+    const formatPeriodLabel = (value) => buyerSpeciesPeriod === "year" ? value : formatMonthLabel(value);
 
     const formatCompactMoney = (value) => {
       const number = Number(value || 0);
@@ -4052,12 +4093,24 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}>
               <strong>Ostetuimmat lajit</strong>
-              <span style={styles.badge}>{buyerSummary.topSpecies.length} lajia</span>
+              <div style={styles.row}>
+                <select style={styles.input} value={buyerSpeciesPeriod} onChange={(e) => setBuyerSpeciesPeriod(e.target.value)}>
+                  <option value="month">Kuukausitaso</option>
+                  <option value="year">Vuositaso</option>
+                </select>
+              </div>
             </div>
-            {buyerSummary.topSpecies.length === 0 ? <div style={styles.muted}>Ei vielä ostotietoja valitulla aikavälillä.</div> : buyerSummary.topSpecies.slice(0, 8).map((row) => (
-              <div key={row.species} style={{ ...styles.entry, padding: 14 }}>
-                <div style={{ ...styles.muted, fontSize: 16 }}>
-                  <strong>{row.species}</strong>: {Number(row.quantityKg || 0).toLocaleString("fi-FI")} kg - Keskihinta: {formatCompactMoney(row.averageUnitPriceEur || 0)}/kg (ALV {formatVatPercent()}%)
+            {buyerSpeciesByPeriod.length === 0 ? <div style={styles.muted}>Ei vielä ostotietoja valitulla aikavälillä.</div> : buyerSpeciesByPeriod.map((periodGroup) => (
+              <div key={periodGroup.periodKey} style={{ ...styles.entry, padding: 14 }}>
+                <div style={{ ...styles.entryBadges, marginBottom: 12 }}>
+                  <span style={styles.badge}>{formatPeriodLabel(periodGroup.periodKey)}</span>
+                </div>
+                <div style={styles.stack}>
+                  {periodGroup.items.map((row) => (
+                    <div key={`${periodGroup.periodKey}-${row.species}`} style={{ ...styles.muted, fontSize: 16 }}>
+                      <strong>{row.species}</strong>: {Number(row.quantityKg || 0).toLocaleString("fi-FI")} kg - Keskihinta ALV 0 %: {formatCompactMoney(row.averageUnitPriceEur || 0)}/kg - Keskihinta sis. ALV {formatVatPercent()} %: {formatCompactMoney(calculateGrossPrice(row.averageUnitPriceEur || 0) || 0)}/kg
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
