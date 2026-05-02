@@ -72,4 +72,23 @@ describe("buildBuyerReport", () => {
     expect(report.summary.totalTradeValueEur).toBe(95);
     expect(report.purchases[0].tradeValueEur).toBe(95);
   });
+
+  it("preserves mixed-offer pricing fields for species-level buyer reporting", () => {
+    const report = buildBuyerReport([
+      {
+        id: "offer-4",
+        status: "accepted",
+        species_summary: "Siika: 120 kg · Hinta 9 €/kg\nAhven: 30 kg · Hinta 8 €/kg",
+        buyer_message: "Hyväksytty vastatarjous:\n- Siika: 7 €/kg\n- Ahven: 5 €/kg",
+        total_kilos: 150,
+        seller_name: "Kalastaja D",
+        created_at: "2026-04-30T10:00:00.000Z",
+        updated_at: "2026-04-30T10:00:00.000Z",
+      },
+    ]);
+
+    expect(report.purchases[0].buyerMessage).toContain("- Ahven: 5 €/kg");
+    expect(report.purchases[0].speciesSummary).toContain("Ahven: 30 kg");
+    expect(report.purchases[0].totalKilos).toBe(150);
+  });
 });

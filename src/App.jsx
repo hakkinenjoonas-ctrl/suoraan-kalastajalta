@@ -3756,6 +3756,38 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
     return (buyerReportData?.purchases || []).filter((purchase) => isWithinReportRange(purchase.purchaseDate));
   }, [buyerReportData, isBuyerRole, reportStartDate, reportEndDate]);
 
+  const buyerPurchaseSpeciesRows = useMemo(() => {
+    if (!isBuyerRole) return [];
+
+    return buyerPurchases.flatMap((purchase) => {
+      const lineItems = parseSellerInvoiceLineItems({
+        species_summary: purchase.speciesSummary,
+        buyer_message: purchase.buyerMessage,
+        counter_price_per_kg: purchase.counterPricePerKg,
+        price_per_kg: purchase.pricePerKg,
+        reserved_kilos: purchase.reservedKilos,
+        total_kilos: purchase.totalKilos || purchase.quantityKg,
+      });
+
+      return lineItems
+        .filter((item) => String(item?.unit || "kg").toLowerCase() === "kg")
+        .map((item) => {
+          const species = formatSpeciesForSale(item.description).split(":")[0].trim() || "Kalaerä";
+          const quantityKg = Number(item.quantity || 0);
+          const averageUnitPriceEur = Number(item.unitPrice || 0);
+          return {
+            purchaseDate: purchase.purchaseDate,
+            month: purchase.month,
+            species,
+            quantityKg,
+            averageUnitPriceEur,
+            tradeValueEur: quantityKg * averageUnitPriceEur,
+          };
+        })
+        .filter((item) => item.species && item.quantityKg > 0);
+    });
+  }, [buyerPurchases, isBuyerRole]);
+
   const buyerSummary = useMemo(() => {
     if (!isBuyerRole) {
       return {
@@ -3782,20 +3814,6 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       totalQuantityKg += Number(purchase.quantityKg || 0);
       totalTradeValueEur += Number(purchase.tradeValueEur || 0);
       totalDeliveryCostEur += Number(purchase.deliveryCostEur || 0);
-
-      const speciesKey = String(purchase.speciesHeadline || "Kalaerä").split(":")[0].trim() || "Kalaerä";
-      const speciesRow = speciesMap.get(speciesKey) || {
-        species: speciesKey,
-        purchaseCount: 0,
-        quantityKg: 0,
-        tradeValueEur: 0,
-        averageUnitPriceEur: 0,
-      };
-      speciesRow.purchaseCount += 1;
-      speciesRow.quantityKg += Number(purchase.quantityKg || 0);
-      speciesRow.tradeValueEur += Number(purchase.tradeValueEur || 0);
-      speciesRow.averageUnitPriceEur = speciesRow.quantityKg > 0 ? speciesRow.tradeValueEur / speciesRow.quantityKg : 0;
-      speciesMap.set(speciesKey, speciesRow);
 
       const areaKey = [purchase.area, purchase.spot].filter(Boolean).join(" / ") || "Vesialue puuttuu";
       const areaRow = areaMap.get(areaKey) || {
@@ -3824,6 +3842,21 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       }
     });
 
+    buyerPurchaseSpeciesRows.forEach((row) => {
+      const speciesRow = speciesMap.get(row.species) || {
+        species: row.species,
+        purchaseCount: 0,
+        quantityKg: 0,
+        tradeValueEur: 0,
+        averageUnitPriceEur: 0,
+      };
+      speciesRow.purchaseCount += 1;
+      speciesRow.quantityKg += Number(row.quantityKg || 0);
+      speciesRow.tradeValueEur += Number(row.tradeValueEur || 0);
+      speciesRow.averageUnitPriceEur = speciesRow.quantityKg > 0 ? speciesRow.tradeValueEur / speciesRow.quantityKg : 0;
+      speciesMap.set(row.species, speciesRow);
+    });
+
     return {
       purchaseCount: buyerPurchases.length,
       totalQuantityKg,
@@ -3835,14 +3868,14 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       topAreas: Array.from(areaMap.values()).sort((left, right) => right.tradeValueEur - left.tradeValueEur),
       monthly: Array.from(monthlyMap.values()).sort((left, right) => left.month.localeCompare(right.month)),
     };
-  }, [buyerPurchases, isBuyerRole]);
+  }, [buyerPurchaseSpeciesRows, buyerPurchases, isBuyerRole]);
 
   const buyerSpeciesByPeriod = useMemo(() => {
     if (!isBuyerRole) return [];
 
     const periodMap = new Map();
 
-    buyerPurchases.forEach((purchase) => {
+    buyerPurchaseSpeciesRows.forEach((purchase) => {
       const rawDate = String(purchase.purchaseDate || "").trim();
       if (!rawDate) return;
 
@@ -3851,10 +3884,9 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         : rawDate.slice(0, 7);
       if (!periodKey) return;
 
-      const speciesKey = String(purchase.speciesHeadline || "Kalaerä").split(":")[0].trim() || "Kalaerä";
       const currentPeriod = periodMap.get(periodKey) || new Map();
-      const speciesRow = currentPeriod.get(speciesKey) || {
-        species: speciesKey,
+      const speciesRow = currentPeriod.get(purchase.species) || {
+        species: purchase.species,
         quantityKg: 0,
         tradeValueEur: 0,
         averageUnitPriceEur: 0,
@@ -3863,7 +3895,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       speciesRow.quantityKg += Number(purchase.quantityKg || 0);
       speciesRow.tradeValueEur += Number(purchase.tradeValueEur || 0);
       speciesRow.averageUnitPriceEur = speciesRow.quantityKg > 0 ? speciesRow.tradeValueEur / speciesRow.quantityKg : 0;
-      currentPeriod.set(speciesKey, speciesRow);
+      currentPeriod.set(purchase.species, speciesRow);
       periodMap.set(periodKey, currentPeriod);
     });
 
@@ -3873,7 +3905,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         periodKey,
         items: Array.from(speciesMap.values()).sort((left, right) => right.quantityKg - left.quantityKg),
       }));
-  }, [buyerPurchases, buyerSpeciesPeriod, isBuyerRole]);
+  }, [buyerPurchaseSpeciesRows, buyerSpeciesPeriod, isBuyerRole]);
 
   if (isBuyerRole) {
     const buyerInfo = buyerReportData?.buyer || {};
