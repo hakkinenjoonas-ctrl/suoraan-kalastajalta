@@ -6083,6 +6083,7 @@ export default function App() {
   const [fisherInfoDirty, setFisherInfoDirty] = useState(false);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [accountSaving, setAccountSaving] = useState(false);
+  const [deletingOwnTestBuyerOffers, setDeletingOwnTestBuyerOffers] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const foregroundNotificationRef = useRef({ key: "", at: 0 });
   const pushRegistrationKeyRef = useRef("");
@@ -8905,6 +8906,45 @@ export default function App() {
     setNewAllowedForm({ email: "", displayName: "", role: "member", buyer_id: "" });
     setUserMessage(exactRoleRow ? `Rooli ${buildRoleOptionLabel(payload, buyers)} päivitetty käyttäjälle ${displayName}.` : `Uusi rooli ${buildRoleOptionLabel(payload, buyers)} lisätty käyttäjälle ${displayName}.`);
     setRefreshTick((prev) => prev + 1);
+  };
+
+  const handleDeleteOwnTestBuyerOffers = async () => {
+    if (!profile?.id) return;
+    const ownOfferCount = (buyerOffers || []).filter((offer) => String(offer?.seller_user_id || "") === String(profile.id)).length;
+    if (!ownOfferCount) {
+      setAuthInfo("Tällä käyttäjällä ei ole poistettavia testikauppoja.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Poistetaanko ${ownOfferCount} tämän käyttäjän tekemää tarjous-/kauppariviä? Tämä siivoaa testidatan ylläpidosta.`
+    );
+    if (!confirmed) return;
+
+    setDeletingOwnTestBuyerOffers(true);
+    setAuthError("");
+    setAuthInfo("");
+    try {
+      const { error } = await supabase
+        .from("buyer_offers")
+        .delete()
+        .eq("seller_user_id", profile.id);
+
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        throw error;
+      }
+
+      setAuthInfo(`${ownOfferCount} omaa testikauppaa poistettu ylläpidon näkymästä.`);
+      setRefreshTick((prev) => prev + 1);
+    } catch (error) {
+      setAuthError(String(error?.message || error));
+    } finally {
+      setDeletingOwnTestBuyerOffers(false);
+    }
   };
 
   const handleRequestAdditionalRole = async (requestedRole) => {
@@ -13908,12 +13948,15 @@ export default function App() {
 
         {activeTab === "operations" && profile.role === "owner" ? (
           <AdminOperationsView
+            profile={profile}
             entries={entries}
             processedEntries={processedEntries}
             buyerOffers={buyerOffers}
             buyers={buyers}
             ownerUserProfiles={ownerUserProfiles}
             appPushTokens={appPushTokens}
+            onDeleteOwnTestBuyerOffers={handleDeleteOwnTestBuyerOffers}
+            deletingOwnTestBuyerOffers={deletingOwnTestBuyerOffers}
           />
         ) : null}
 

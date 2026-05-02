@@ -39,12 +39,15 @@ function getActivityStyle(kind) {
 }
 
 export default function AdminOperationsView({
+  profile,
   entries,
   processedEntries,
   buyerOffers,
   buyers,
   ownerUserProfiles,
   appPushTokens,
+  onDeleteOwnTestBuyerOffers,
+  deletingOwnTestBuyerOffers = false,
 }) {
   const snapshot = useMemo(() => buildAdminOperationsSnapshot({
     entries,
@@ -54,6 +57,7 @@ export default function AdminOperationsView({
     ownerUserProfiles,
     appPushTokens,
   }), [entries, processedEntries, buyerOffers, buyers, ownerUserProfiles, appPushTokens]);
+  const ownOfferCount = (buyerOffers || []).filter((offer) => String(offer?.seller_user_id || "") === String(profile?.id || "")).length;
 
   return (
     <div style={{ ...styles.stack, gap: 18 }}>
@@ -64,6 +68,26 @@ export default function AdminOperationsView({
           ristiriitaiset tilat ja viimeisin aktiviteetti.{"\n"}
           Jos Supabase-lokissa näkyy `send-push-notification:skipped-no-tokens`, se tarkoittaa yleensä että ostajalta puuttuu
           aktiivinen puhelimen push-token, ei sitä että tarjous olisi mennyt rikki.
+        </div>
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#fff7ed", borderColor: "#fdba74" }}>
+          <strong>Testidatan siivous</strong>
+          <div style={styles.muted}>
+            Tästä voit poistaa vain tämän käyttäjän tekemät testitarjoukset ja keskeneräiset kaupparivit ylläpidon näkymästä.
+            Muiden käyttäjien tarjoukset eivät poistu.
+          </div>
+          <div style={styles.entryBadges}>
+            <span style={styles.badge}>{ownOfferCount} omaa tarjousriviä</span>
+          </div>
+          <div style={styles.row}>
+            <button
+              type="button"
+              style={{ ...styles.button, background: "#fff1f2", borderColor: "#fca5a5", color: "#b91c1c" }}
+              onClick={onDeleteOwnTestBuyerOffers}
+              disabled={!ownOfferCount || deletingOwnTestBuyerOffers}
+            >
+              {deletingOwnTestBuyerOffers ? "Poistetaan..." : "Poista omat testikaupat"}
+            </button>
+          </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 18 }}>
           <div style={{ ...styles.card, ...styles.sectionCard }}>
