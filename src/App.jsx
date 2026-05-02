@@ -76,6 +76,7 @@ import {
 } from "./lib/supabase.js";
 import { tableExists } from "./services/database.js";
 import {
+  fetchBuyerReport,
   getPublicBatchInfoUrl,
   invokeEdgeFunctionAuthenticated,
 } from "./services/edgeFunctions.js";
@@ -3644,11 +3645,19 @@ function WholesaleOffersView({
   );
 }
 
-function ReportsView({ entries, processedEntries, offers }) {
+function ReportsView({ entries, processedEntries, offers, profile }) {
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
   const [reportEmail, setReportEmail] = useState("");
   const [reportSendingKey, setReportSendingKey] = useState("");
+  const [buyerReportLoading, setBuyerReportLoading] = useState(false);
+  const [buyerReportError, setBuyerReportError] = useState("");
+  const [buyerReportData, setBuyerReportData] = useState(null);
+
+  const isBuyerRole = profile?.role === "buyer";
+  const reportDateLabel = reportStartDate || reportEndDate
+    ? `${reportStartDate || "alku"} - ${reportEndDate || "tänään"}`
+    : "kaikki";
 
   const isWithinReportRange = (value) => {
     const normalizedValue = String(value || "").trim().slice(0, 10);
@@ -3657,6 +3666,484 @@ function ReportsView({ entries, processedEntries, offers }) {
     if (reportEndDate && normalizedValue > reportEndDate) return false;
     return true;
   };
+
+  const resolveReportEmail = () => {
+    const existingEmail = normalizeEmail(reportEmail);
+    if (existingEmail) return existingEmail;
+    const promptedEmail = window.prompt("Anna sähköpostiosoite, johon raportti lähetetään:", "");
+    const normalizedPromptedEmail = normalizeEmail(promptedEmail);
+    if (!normalizedPromptedEmail) {
+      throw new Error("Lisää sähköpostiosoite, johon raportti lähetetään.");
+    }
+    setReportEmail(normalizedPromptedEmail);
+    return normalizedPromptedEmail;
+  };
+
+  const sendReportEmail = async ({ filename, rows, sheetName, reportLabel }) => {
+    const normalizedEmail = resolveReportEmail();
+
+    const workbookArray = buildSpreadsheetArray(rows, sheetName);
+    const blob = new Blob([workbookArray], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const dataUrl = await blobToDataUrl(blob);
+    const base64Content = String(dataUrl || "").split(",")[1] || "";
+    if (!base64Content) {
+      throw new Error("Raporttitiedoston muodostus epäonnistui.");
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) {
+      throw new Error("Istunto puuttuu. Kirjaudu uudelleen ennen raportin lähetystä.");
+    }
+
+    const result = await invokeEdgeFunctionAuthenticated("send-report-email", {
+      toEmail: normalizedEmail,
+      fileName: filename,
+      fileBase64: base64Content,
+      reportLabel,
+      dateRangeLabel: reportDateLabel,
+    }, accessToken);
+
+    if (result?.error) {
+      throw new Error(result.error.message || "Raportin lähetys epäonnistui.");
+    }
+  };
+
+  useEffect(() => {
+    if (!isBuyerRole) return undefined;
+
+    let active = true;
+
+    const loadBuyerReport = async () => {
+      setBuyerReportLoading(true);
+      setBuyerReportError("");
+
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData?.session?.access_token;
+        if (!accessToken) {
+          throw new Error("Istunto puuttuu. Kirjaudu uudelleen ennen raportin avaamista.");
+        }
+
+        const result = await fetchBuyerReport(accessToken);
+        if (result?.error) {
+          throw new Error(result.error.message || "Ostoraportin haku epäonnistui.");
+        }
+
+        if (!active) return;
+        setBuyerReportData(result?.data?.report || null);
+      } catch (error) {
+        if (!active) return;
+        setBuyerReportError(String(error?.message || error));
+      } finally {
+        if (active) setBuyerReportLoading(false);
+      }
+    };
+
+    void loadBuyerReport();
+
+    return () => {
+      active = false;
+    };
+  }, [isBuyerRole]);
+
+  const buyerPurchases = useMemo(() => {
+    if (!isBuyerRole) return [];
+    return (buyerReportData?.purchases || []).filter((purchase) => isWithinReportRange(purchase.purchaseDate));
+  }, [buyerReportData, isBuyerRole, reportStartDate, reportEndDate]);
+
+  const buyerSummary = useMemo(() => {
+    if (!isBuyerRole) {
+      return {
+        purchaseCount: 0,
+        totalQuantityKg: 0,
+        totalTradeValueEur: 0,
+        totalDeliveryCostEur: 0,
+        totalValueEur: 0,
+        latestPurchaseAt: "",
+        topSpecies: [],
+        topSellers: [],
+        monthly: [],
+      };
+    }
+
+    const speciesMap = new Map();
+    const sellerMap = new Map();
+    const monthlyMap = new Map();
+    let totalQuantityKg = 0;
+    let totalTradeValueEur = 0;
+    let totalDeliveryCostEur = 0;
+
+    buyerPurchases.forEach((purchase) => {
+      totalQuantityKg += Number(purchase.quantityKg || 0);
+      totalTradeValueEur += Number(purchase.tradeValueEur || 0);
+      totalDeliveryCostEur += Number(purchase.deliveryCostEur || 0);
+
+      const speciesKey = String(purchase.speciesHeadline || "Kalaerä");
+      const speciesRow = speciesMap.get(speciesKey) || {
+        species: speciesKey,
+        purchaseCount: 0,
+        quantityKg: 0,
+        tradeValueEur: 0,
+      };
+      speciesRow.purchaseCount += 1;
+      speciesRow.quantityKg += Number(purchase.quantityKg || 0);
+      speciesRow.tradeValueEur += Number(purchase.tradeValueEur || 0);
+      speciesMap.set(speciesKey, speciesRow);
+
+      const sellerKey = String(purchase.sellerName || "Kalastaja");
+      const sellerRow = sellerMap.get(sellerKey) || {
+        sellerName: sellerKey,
+        purchaseCount: 0,
+        quantityKg: 0,
+        tradeValueEur: 0,
+      };
+      sellerRow.purchaseCount += 1;
+      sellerRow.quantityKg += Number(purchase.quantityKg || 0);
+      sellerRow.tradeValueEur += Number(purchase.tradeValueEur || 0);
+      sellerMap.set(sellerKey, sellerRow);
+
+      const monthKey = String(purchase.month || "").trim();
+      if (monthKey) {
+        const monthRow = monthlyMap.get(monthKey) || {
+          month: monthKey,
+          purchaseCount: 0,
+          quantityKg: 0,
+          tradeValueEur: 0,
+        };
+        monthRow.purchaseCount += 1;
+        monthRow.quantityKg += Number(purchase.quantityKg || 0);
+        monthRow.tradeValueEur += Number(purchase.tradeValueEur || 0);
+        monthlyMap.set(monthKey, monthRow);
+      }
+    });
+
+    return {
+      purchaseCount: buyerPurchases.length,
+      totalQuantityKg,
+      totalTradeValueEur,
+      totalDeliveryCostEur,
+      totalValueEur: totalTradeValueEur + totalDeliveryCostEur,
+      latestPurchaseAt: buyerPurchases[0]?.purchaseDate || "",
+      topSpecies: Array.from(speciesMap.values()).sort((left, right) => right.tradeValueEur - left.tradeValueEur),
+      topSellers: Array.from(sellerMap.values()).sort((left, right) => right.tradeValueEur - left.tradeValueEur),
+      monthly: Array.from(monthlyMap.values()).sort((left, right) => left.month.localeCompare(right.month)),
+    };
+  }, [buyerPurchases, isBuyerRole]);
+
+  if (isBuyerRole) {
+    const buyerInfo = buyerReportData?.buyer || {};
+    const formatReportDate = (value) => {
+      if (!value) return "-";
+      try {
+        return new Date(value).toLocaleDateString("fi-FI", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        });
+      } catch {
+        return String(value);
+      }
+    };
+
+    const formatMonthLabel = (value) => {
+      if (!value) return "-";
+      try {
+        return new Intl.DateTimeFormat("fi-FI", {
+          year: "numeric",
+          month: "long",
+        }).format(new Date(`${value}-01T00:00:00`));
+      } catch {
+        return String(value);
+      }
+    };
+
+    const buyerReportRows = [
+      [
+        "Ostopäivä",
+        "Erätunnus",
+        "Laji",
+        "Lajiyhteenveto",
+        "Määrä kg",
+        "Yksikköhinta €",
+        "Kaupan arvo €",
+        "Toimituskulu €",
+        "Kokonaissumma €",
+        "Kalastaja",
+        "Kalastajan sähköposti",
+        "Vesialue",
+        "Pyyntipaikka",
+        "Toimitustapa",
+        "Toimituksen tila",
+        "Laskutustila",
+        "Toimituskaupunki",
+        "Aikaisin toimitus",
+      ],
+      ...buyerPurchases.map((purchase) => [
+        purchase.purchaseDate || "",
+        purchase.batchId || "",
+        purchase.speciesHeadline || "",
+        purchase.speciesSummary || "",
+        purchase.quantityKg || 0,
+        purchase.unitPriceEur || 0,
+        purchase.tradeValueEur || 0,
+        purchase.deliveryCostEur || 0,
+        purchase.totalValueEur || 0,
+        purchase.sellerName || "",
+        purchase.sellerEmail || "",
+        purchase.area || "",
+        purchase.spot || "",
+        purchase.deliveryMethod || "",
+        fulfillmentStatusLabel(purchase.fulfillmentStatus),
+        purchase.billingStatus === "paid" ? "Maksettu" : purchase.billingStatus === "invoiced" ? "Laskutettu" : "Laskuttamaton",
+        purchase.buyerDeliveryCity || "",
+        purchase.earliestDeliveryDate || "",
+      ]),
+    ];
+
+    return (
+      <div style={styles.stack}>
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <div style={styles.rowBetween}>
+            <div>
+              <strong>Ostoraportit</strong>
+              <div style={styles.muted}>
+                Näet tästä ostohistorian, tärkeimmät kalastajat, ostetuimmat lajit ja ostojen kokonaisarvon.
+              </div>
+            </div>
+            <div style={styles.row}>
+              <button
+                style={styles.button}
+                onClick={async () => {
+                  setBuyerReportLoading(true);
+                  setBuyerReportError("");
+                  try {
+                    const { data: sessionData } = await supabase.auth.getSession();
+                    const accessToken = sessionData?.session?.access_token;
+                    if (!accessToken) {
+                      throw new Error("Istunto puuttuu. Kirjaudu uudelleen.");
+                    }
+                    const result = await fetchBuyerReport(accessToken);
+                    if (result?.error) {
+                      throw new Error(result.error.message || "Ostoraportin päivitys epäonnistui.");
+                    }
+                    setBuyerReportData(result?.data?.report || null);
+                    setAuthInfo("Ostoraportti päivitetty.");
+                  } catch (error) {
+                    setBuyerReportError(String(error?.message || error));
+                    setAuthError(String(error?.message || error));
+                  } finally {
+                    setBuyerReportLoading(false);
+                  }
+                }}
+              >
+                {buyerReportLoading ? "Päivitetään..." : "Päivitä raportti"}
+              </button>
+            </div>
+          </div>
+
+          <div style={styles.noticeInfo}>
+            Ostaja: {buyerInfo.companyName || buyerInfo.contactName || profile?.display_name || "-"}{buyerInfo.city ? ` · ${buyerInfo.city}` : ""}
+            {"\n"}Valittu aikaväli: {reportDateLabel}
+          </div>
+
+          <div style={styles.grid2}>
+            <div style={styles.field}>
+              <label>Alkupäivä</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={reportStartDate}
+                onChange={(e) => setReportStartDate(e.target.value)}
+                max={reportEndDate || undefined}
+              />
+            </div>
+            <div style={styles.field}>
+              <label>Loppupäivä</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={reportEndDate}
+                onChange={(e) => setReportEndDate(e.target.value)}
+                min={reportStartDate || undefined}
+              />
+            </div>
+          </div>
+
+          <div style={styles.field}>
+            <label>Sähköposti raportin lähetykseen</label>
+            <input
+              style={styles.input}
+              type="email"
+              value={reportEmail}
+              onChange={(e) => setReportEmail(e.target.value)}
+              placeholder={buyerInfo.email || "esim. raportit@yritys.fi"}
+            />
+          </div>
+
+          <div style={styles.row}>
+            <button
+              style={{ ...styles.button, ...styles.primaryButton }}
+              onClick={() => { void exportSpreadsheet(`ostoraportti-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, buyerReportRows, "Ostoraportti"); }}
+              disabled={buyerReportLoading || buyerPurchases.length === 0}
+            >
+              Lataa ostoraportti Exceliin
+            </button>
+            <button
+              style={styles.button}
+              onClick={() => {
+                const filename = `ostoraportti-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
+                setReportSendingKey("buyer");
+                void sendReportEmail({
+                  filename,
+                  rows: buyerReportRows,
+                  sheetName: "Ostoraportti",
+                  reportLabel: "Ostoraportti",
+                })
+                  .then(() => setAuthInfo(`Ostoraportti lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
+                  .catch((error) => {
+                    setBuyerReportError(String(error?.message || error));
+                    setAuthError(String(error?.message || error));
+                  })
+                  .finally(() => setReportSendingKey(""));
+              }}
+              disabled={buyerReportLoading || buyerPurchases.length === 0 || reportSendingKey === "buyer"}
+            >
+              {reportSendingKey === "buyer" ? "Lähetetään..." : "Lähetä ostoraportti sähköpostiin"}
+            </button>
+          </div>
+        </div>
+
+        {buyerReportError ? <div style={styles.noticeError}>{buyerReportError}</div> : null}
+        {buyerReportLoading && !buyerReportData ? <div style={styles.noticeInfo}>Haetaan ostoraporttia...</div> : null}
+
+        <div style={styles.grid2}>
+          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={styles.muted}>Hyväksytyt ostot</div>
+            <div style={styles.metric}>{buyerSummary.purchaseCount}</div>
+            <div style={styles.small}>Kaupat valitulla aikavälillä</div>
+          </div>
+          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={styles.muted}>Ostettu määrä</div>
+            <div style={styles.metric}>{Number(buyerSummary.totalQuantityKg || 0).toLocaleString("fi-FI")} kg</div>
+            <div style={styles.small}>Yhteensä ostettu määrä</div>
+          </div>
+          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={styles.muted}>Kaupan arvo</div>
+            <div style={styles.metric}>{euro(buyerSummary.totalTradeValueEur || 0)}</div>
+            <div style={styles.small}>Ilman toimituskuluja</div>
+          </div>
+          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={styles.muted}>Kokonaissumma</div>
+            <div style={styles.metric}>{euro(buyerSummary.totalValueEur || 0)}</div>
+            <div style={styles.small}>
+              Toimituskulut mukana {buyerSummary.totalDeliveryCostEur ? `· kulut ${euro(buyerSummary.totalDeliveryCostEur)}` : ""}
+            </div>
+          </div>
+        </div>
+
+        <div style={styles.grid2}>
+          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={styles.rowBetween}>
+              <strong>Ostetuimmat lajit</strong>
+              <span style={styles.badge}>{buyerSummary.topSpecies.length} lajia</span>
+            </div>
+            {buyerSummary.topSpecies.length === 0 ? <div style={styles.muted}>Ei vielä ostotietoja valitulla aikavälillä.</div> : buyerSummary.topSpecies.slice(0, 8).map((row) => (
+              <div key={row.species} style={{ ...styles.entry, padding: 14 }}>
+                <div style={styles.entryBadges}>
+                  <span style={styles.badge}>{row.species}</span>
+                  <span style={styles.badge}>{Number(row.quantityKg || 0).toLocaleString("fi-FI")} kg</span>
+                  <span style={styles.badge}>{euro(row.tradeValueEur || 0)}</span>
+                </div>
+                <div style={styles.small}>{row.purchaseCount} ostokertaa</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div style={styles.rowBetween}>
+              <strong>Tärkeimmät kalastajat</strong>
+              <span style={styles.badge}>{buyerSummary.topSellers.length} kalastajaa</span>
+            </div>
+            {buyerSummary.topSellers.length === 0 ? <div style={styles.muted}>Ei vielä kalastajakohtaista ostohistoriaa.</div> : buyerSummary.topSellers.slice(0, 8).map((row) => (
+              <div key={row.sellerName} style={{ ...styles.entry, padding: 14 }}>
+                <div style={styles.entryBadges}>
+                  <span style={styles.badge}>{row.sellerName}</span>
+                  <span style={styles.badge}>{Number(row.quantityKg || 0).toLocaleString("fi-FI")} kg</span>
+                  <span style={styles.badge}>{euro(row.tradeValueEur || 0)}</span>
+                </div>
+                <div style={styles.small}>{row.purchaseCount} hyväksyttyä kauppaa</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <div style={styles.rowBetween}>
+            <strong>Kuukausittainen kehitys</strong>
+            <div style={styles.small}>
+              Viimeisin ostettu: {buyerSummary.latestPurchaseAt ? formatReportDate(buyerSummary.latestPurchaseAt) : "-"}
+            </div>
+          </div>
+          {buyerSummary.monthly.length === 0 ? <div style={styles.muted}>Ei kuukausittaista ostohistoriaa valitulla aikavälillä.</div> : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
+                <thead>
+                  <tr>
+                    {["Kuukausi", "Ostot", "Kg", "Kaupan arvo", "Kokonaissumma"].map((label) => (
+                      <th key={label} style={{ textAlign: "left", padding: "10px 12px", borderBottom: "1px solid #dbeafe", color: "#1e3a8a" }}>{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {buyerSummary.monthly.map((row) => (
+                    <tr key={row.month}>
+                      <td style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>{formatMonthLabel(row.month)}</td>
+                      <td style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>{row.purchaseCount}</td>
+                      <td style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>{Number(row.quantityKg || 0).toLocaleString("fi-FI")} kg</td>
+                      <td style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>{euro(row.tradeValueEur || 0)}</td>
+                      <td style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>{euro(row.tradeValueEur || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <div style={styles.rowBetween}>
+            <strong>Viimeisimmät ostot</strong>
+            <div style={styles.muted}>Näet mitä ostit, milloin, keneltä ja millä toimitusehdoilla.</div>
+          </div>
+          {buyerPurchases.length === 0 ? <div style={styles.muted}>Ei ostohistoriaa valitulla aikavälillä.</div> : buyerPurchases.map((purchase) => (
+            <div key={purchase.id} style={styles.entry}>
+              <div style={styles.entryHeader}>
+                <div>
+                  <div style={styles.entryBadges}>
+                    <span style={styles.badge}>{purchase.speciesHeadline || "Kalaerä"}</span>
+                    <span style={styles.badge}>{Number(purchase.quantityKg || 0).toLocaleString("fi-FI")} kg</span>
+                    <span style={styles.badge}>{euro(purchase.totalValueEur || 0)}</span>
+                    <span style={styles.badge}>{purchase.sellerName || "Kalastaja"}</span>
+                  </div>
+                  <div style={styles.muted}>{formatReportDate(purchase.purchaseDate)} · {purchase.area || "-"}{purchase.spot ? ` / ${purchase.spot}` : ""}</div>
+                  {purchase.batchId ? <div style={styles.muted}>Erätunnus: {purchase.batchId}</div> : null}
+                  <div style={styles.muted}>Hinta ALV 0 %: {euro(purchase.unitPriceEur || 0)} / kg</div>
+                  <div style={styles.muted}>Kaupan arvo: {euro(purchase.tradeValueEur || 0)} · Toimituskulu: {euro(purchase.deliveryCostEur || 0)}</div>
+                  <div style={styles.muted}>Toimitustapa: {purchase.deliveryMethod || "-"} · Toimituskaupunki: {purchase.buyerDeliveryCity || "-"}</div>
+                  <div style={styles.muted}>Toimituksen tila: {fulfillmentStatusLabel(purchase.fulfillmentStatus)} · Laskutustila: {purchase.billingStatus === "paid" ? "Maksettu" : purchase.billingStatus === "invoiced" ? "Laskutettu" : "Laskuttamaton"}</div>
+                  {purchase.sellerEmail ? <div style={styles.muted}>Kalastajan yhteys: {purchase.sellerEmail}</div> : null}
+                  {purchase.speciesSummary ? <div style={{ ...styles.small, whiteSpace: "pre-wrap" }}>{purchase.speciesSummary}</div> : null}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   const filteredEntries = entries.filter((entry) => isWithinReportRange(entry.date));
   const filteredProcessedEntries = processedEntries.filter((entry) => isWithinReportRange(entry.productionDate));
@@ -3780,57 +4267,9 @@ function ReportsView({ entries, processedEntries, offers }) {
     entry.notes,
   ]);
 
-  const reportDateLabel = reportStartDate || reportEndDate
-    ? `${reportStartDate || "alku"} - ${reportEndDate || "tänään"}`
-    : "kaikki";
-
   const catchReportRows = [catchReportHeader, ...reportRows];
   const offerReportRows = [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows];
   const processedReportRows = [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows];
-
-  const resolveReportEmail = () => {
-    const existingEmail = normalizeEmail(reportEmail);
-    if (existingEmail) return existingEmail;
-    const promptedEmail = window.prompt("Anna sähköpostiosoite, johon raportti lähetetään:", "");
-    const normalizedPromptedEmail = normalizeEmail(promptedEmail);
-    if (!normalizedPromptedEmail) {
-      throw new Error("Lisää sähköpostiosoite, johon raportti lähetetään.");
-    }
-    setReportEmail(normalizedPromptedEmail);
-    return normalizedPromptedEmail;
-  };
-
-  const sendReportEmail = async ({ filename, rows, sheetName, reportLabel }) => {
-    const normalizedEmail = resolveReportEmail();
-
-    const workbookArray = buildSpreadsheetArray(rows, sheetName);
-    const blob = new Blob([workbookArray], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    const dataUrl = await blobToDataUrl(blob);
-    const base64Content = String(dataUrl || "").split(",")[1] || "";
-    if (!base64Content) {
-      throw new Error("Raporttitiedoston muodostus epäonnistui.");
-    }
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData?.session?.access_token;
-    if (!accessToken) {
-      throw new Error("Istunto puuttuu. Kirjaudu uudelleen ennen raportin lähetystä.");
-    }
-
-    const result = await invokeEdgeFunctionAuthenticated("send-report-email", {
-      toEmail: normalizedEmail,
-      fileName: filename,
-      fileBase64: base64Content,
-      reportLabel,
-      dateRangeLabel: reportDateLabel,
-    }, accessToken);
-
-    if (result?.error) {
-      throw new Error(result.error.message || "Raportin lähetys epäonnistui.");
-    }
-  };
 
   return (
     <div style={styles.stack}>
@@ -13346,7 +13785,7 @@ export default function App() {
           />
         ) : null}
 
-        {activeTab === "reports" ? <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} /> : null}
+        {activeTab === "reports" ? <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} profile={profile} /> : null}
 
         {activeTab === "operations" && profile.role === "owner" ? (
           <AdminOperationsView
