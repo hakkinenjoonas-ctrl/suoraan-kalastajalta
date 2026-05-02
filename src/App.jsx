@@ -4693,7 +4693,7 @@ function parseSellerInvoiceLineItems(offer) {
       hideCatchDate: true,
     });
     const description = formatSpeciesForSale((visibleLine.split(":")[0] || visibleLine || "Kalaerä").trim());
-    const priceMatch = String(line || "").match(/Hinta\s+([0-9]+(?:[.,][0-9]+)?)/i);
+    const priceMatch = String(line || "").match(/Hinta(?:\s+ALV\s+0\s*%)?\s+([0-9]+(?:[.,][0-9]+)?)/i);
     const pieceMatch = String(visibleLine || "").match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
     const kiloMatch = String(visibleLine || "").match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kg/i);
     const isCrayfishLine = isCrayfishSpecies(description);
