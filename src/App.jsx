@@ -3763,18 +3763,34 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       const lineItems = parseSellerInvoiceLineItems({
         species_summary: purchase.speciesSummary,
         buyer_message: purchase.buyerMessage,
+        notes: purchase.notes,
+        offer_price_per_kg: purchase.offerPricePerKg,
         counter_price_per_kg: purchase.counterPricePerKg,
         price_per_kg: purchase.pricePerKg,
         reserved_kilos: purchase.reservedKilos,
         total_kilos: purchase.totalKilos || purchase.quantityKg,
       });
+      const isSingleSpeciesOffer = getOfferSummaryLines(purchase.speciesSummary).length <= 1;
+      const singleSpeciesFallbackPrice = isSingleSpeciesOffer
+        ? Number(
+          purchase.unitPriceEur ||
+          purchase.counterPricePerKg ||
+          purchase.pricePerKg ||
+          purchase.offerPricePerKg ||
+          parsePricePerKgFromNotes(purchase.notes) ||
+          0
+        )
+        : 0;
 
       return lineItems
         .filter((item) => String(item?.unit || "kg").toLowerCase() === "kg")
         .map((item) => {
           const species = formatSpeciesForSale(item.description).split(":")[0].trim() || "Kalaerä";
           const quantityKg = Number(item.quantity || 0);
-          const averageUnitPriceEur = Number(item.unitPrice || 0);
+          const parsedUnitPrice = Number(item.unitPrice || 0);
+          const averageUnitPriceEur = parsedUnitPrice > 0
+            ? parsedUnitPrice
+            : singleSpeciesFallbackPrice;
           return {
             purchaseDate: purchase.purchaseDate,
             month: purchase.month,
