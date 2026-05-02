@@ -4457,8 +4457,8 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
     const pricePerKg = Number(offer.counter_price_per_kg || offer.price_per_kg || 0);
     const calculatedTradeValue = kilos * pricePerKg;
     const calculatedCommissionValue = calculatedTradeValue * COMMISSION_RATE;
-    const tradeValue = Number(offer.owner_trade_value ?? calculatedTradeValue);
-    const commissionValue = Number(offer.owner_commission_amount ?? calculatedCommissionValue);
+    const tradeValue = resolveOwnerCommissionNumber(offer.owner_trade_value, calculatedTradeValue);
+    const commissionValue = resolveOwnerCommissionNumber(offer.owner_commission_amount, calculatedCommissionValue);
     const groupKey = `${monthKey}__${sellerKey}`;
 
     if (!acc[groupKey]) {
@@ -5169,6 +5169,12 @@ function getOwnerCommissionStatusLabel(offer) {
   if (status === "paid") return "Maksettu";
   if (status === "invoiced") return "Laskutettu";
   return "Laskuttamaton";
+}
+
+function resolveOwnerCommissionNumber(value, fallbackValue) {
+  if (value === "" || value == null) return Number(fallbackValue || 0);
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : Number(fallbackValue || 0);
 }
 
 function buildSellerGroupInvoiceReference(offers) {
