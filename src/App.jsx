@@ -4058,7 +4058,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
               <div style={styles.stack}>
                 {periodGroup.items.map((row) => (
                   <div key={`${periodGroup.periodKey}-${row.species}`} style={{ ...styles.muted, fontSize: 16 }}>
-                    <strong>{row.species}</strong> · {Number(row.quantityKg || 0).toLocaleString("fi-FI")} kg · ALV 0 % {formatCompactMoney(row.averageUnitPriceEur || 0)}/kg · ALV {formatVatPercent()} % {formatCompactMoney(calculateGrossPrice(row.averageUnitPriceEur || 0) || 0)}/kg
+                    <strong>{row.species}</strong> · {Number(row.quantityKg || 0).toLocaleString("fi-FI")} kg · Keskihinta: ALV 0 % {formatCompactMoney(row.averageUnitPriceEur || 0)}/kg · ALV {formatVatPercent()} % {formatCompactMoney(calculateGrossPrice(row.averageUnitPriceEur || 0) || 0)}/kg
                   </div>
                 ))}
               </div>
