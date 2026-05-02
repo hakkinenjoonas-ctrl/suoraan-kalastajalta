@@ -12007,8 +12007,15 @@ export default function App() {
                           <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, marginBottom: 8 }}>{buildOfferHeadline(o)}</div>
                           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
                             {mixedOffer ? (
-                              <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
-                                {getOfferSummaryLines(o.species_summary).length} lajia samassa erässä
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
+                                  {getOfferSummaryLines(o.species_summary).length} lajia samassa erässä
+                                </div>
+                                {offerCatchDates.length > 0 ? (
+                                  <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
+                                    Pyyntipäivä: {offerCatchDates.join(", ")}
+                                  </div>
+                                ) : null}
                               </div>
                             ) : visiblePrice !== "" && visiblePrice != null ? (
                               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -12018,6 +12025,15 @@ export default function App() {
                                 <div style={{ fontSize: 16, fontWeight: 700, color: "#475569" }}>
                                   {`Hinta sis. ALV ${formatVatPercent()} %:`} {euro(calculateGrossPrice(visiblePrice) || 0)} / {getOfferDisplayUnit(o)}
                                 </div>
+                                {offerCatchDates.length > 0 ? (
+                                  <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
+                                    Pyyntipäivä: {offerCatchDates.join(", ")}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : offerCatchDates.length > 0 ? (
+                              <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
+                                Pyyntipäivä: {offerCatchDates.join(", ")}
                               </div>
                             ) : null}
                           </div>
@@ -12046,7 +12062,6 @@ export default function App() {
                             </div>
                             {!mixedOffer ? <div style={styles.muted}>Määrä: {getOfferQuantityDisplay(o)}</div> : null}
                             {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? formatNetAndGrossPriceLines(o, visiblePrice).map((line) => <div key={line} style={styles.muted}>{line}</div>) : null}
-                            {!mixedOffer && offerCatchDates.length > 0 ? <div style={styles.muted}>Pyyntipäivämäärä: {offerCatchDates.join(", ")}</div> : null}
                             {ownDeliveryPrice != null ? <div style={styles.muted}>Toimitushinta omaan kaupunkiin ({o.delivery_destination_city || linkedBuyerRecord?.delivery_city || linkedBuyerRecord?.city || "-" }): {formatDeliveryPrice(ownDeliveryPrice)}</div> : null}
                             {ownTotalPrice != null ? <div style={styles.muted}>Kokonaishinta: {formatDeliveryPrice(ownTotalPrice)}</div> : null}
                             {ownDeliveredPricePerKg != null ? <div style={styles.muted}>Toimitettuna: {formatDeliveredPricePerKg(ownDeliveredPricePerKg)}</div> : null}
