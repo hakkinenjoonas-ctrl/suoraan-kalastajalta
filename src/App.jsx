@@ -4702,9 +4702,14 @@ function parseSellerInvoiceLineItems(offer) {
     const unit = isCrayfishLine ? "kpl" : "kg";
     const summaryUnitPrice = Number(parseLocaleNumber(priceMatch?.[1]) || 0);
     const acceptedPriceRow = acceptedSpeciesPrices[description] || null;
+    const explicitCounterPrice = !mixedOffer && offer?.counter_price_per_kg !== "" && offer?.counter_price_per_kg != null
+      ? Number(offer.counter_price_per_kg)
+      : null;
     const unitPrice = Number(
       acceptedPriceRow?.price ??
-      (!mixedOffer && offer?.counter_price_per_kg !== "" && offer?.counter_price_per_kg != null ? offer.counter_price_per_kg : summaryUnitPrice) ??
+      explicitCounterPrice ??
+      (summaryUnitPrice > 0 ? summaryUnitPrice : null) ??
+      (fallbackPrice > 0 ? fallbackPrice : null) ??
       0
     );
 
