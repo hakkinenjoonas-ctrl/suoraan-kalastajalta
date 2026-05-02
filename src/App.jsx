@@ -4434,7 +4434,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
     return getOwnerCommissionStatus(offer) === billingFilter;
   });
 
-  const grouped = acceptedOffers.reduce((acc, offer) => {
+  const normalizedAcceptedOffers = acceptedOffers.map((offer) => {
     const monthKey = String(
       offer.owner_commission_month ||
       offer.billing_month ||
@@ -4448,8 +4448,6 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
       })()
     ).trim() || "Ei kuukautta";
 
-    const sellerKey = offer.seller_user_id || offer.seller_name || "Tuntematon myyjä";
-    const sellerLabel = offer.seller_name || "Tuntematon myyjä";
     const buyerLabel = shouldRevealBuyerIdentity(offer.status)
       ? (offer.buyer_company_name || offer.buyer_email || "Ostaja")
       : "Anonyymi ostaja";
@@ -4457,13 +4455,49 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
     const pricePerKg = Number(offer.counter_price_per_kg || offer.price_per_kg || 0);
     const calculatedTradeValue = kilos * pricePerKg;
     const calculatedCommissionValue = calculatedTradeValue * COMMISSION_RATE;
-    const tradeValue = resolveOwnerCommissionNumber(offer.owner_trade_value, calculatedTradeValue);
-    const commissionValue = resolveOwnerCommissionNumber(offer.owner_commission_amount, calculatedCommissionValue);
-    const groupKey = `${monthKey}__${sellerKey}`;
+
+    return {
+      ...offer,
+      ownerCommissionMonthKey: monthKey,
+      buyerLabel,
+      billingKilos: kilos,
+      billingPricePerKg: pricePerKg,
+      tradeValue: resolveOwnerCommissionNumber(offer.owner_trade_value, calculatedTradeValue),
+      commissionValue: resolveOwnerCommissionNumber(offer.owner_commission_amount, calculatedCommissionValue),
+    };
+  });
+
+  const availableMonths = Array.from(new Set(normalizedAcceptedOffers.map((offer) => offer.ownerCommissionMonthKey)))
+    .sort((a, b) => b.localeCompare(a, "fi"));
+  const [billingMonthFilter, setBillingMonthFilter] = useState("latest");
+  const [expandedBillingGroupKey, setExpandedBillingGroupKey] = useState("");
+
+  useEffect(() => {
+    if (availableMonths.length === 0) {
+      if (billingMonthFilter !== "latest") setBillingMonthFilter("latest");
+      return;
+    }
+    if (billingMonthFilter === "latest") return;
+    if (!availableMonths.includes(billingMonthFilter)) {
+      setBillingMonthFilter("latest");
+    }
+  }, [availableMonths, billingMonthFilter]);
+
+  const activeMonthKey = billingMonthFilter === "latest"
+    ? (availableMonths[0] || "all")
+    : billingMonthFilter;
+  const monthScopedOffers = activeMonthKey === "all"
+    ? normalizedAcceptedOffers
+    : normalizedAcceptedOffers.filter((offer) => offer.ownerCommissionMonthKey === activeMonthKey);
+
+  const grouped = monthScopedOffers.reduce((acc, offer) => {
+    const sellerKey = offer.seller_user_id || offer.seller_name || "Tuntematon myyjä";
+    const sellerLabel = offer.seller_name || "Tuntematon myyjä";
+    const groupKey = `${offer.ownerCommissionMonthKey}__${sellerKey}`;
 
     if (!acc[groupKey]) {
       acc[groupKey] = {
-        monthKey,
+        monthKey: offer.ownerCommissionMonthKey,
         sellerKey,
         sellerLabel,
         offers: [],
@@ -4473,23 +4507,37 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
       };
     }
 
-    acc[groupKey].offers.push({
-      ...offer,
-      buyerLabel,
-      billingKilos: kilos,
-      billingPricePerKg: pricePerKg,
-      tradeValue,
-      commissionValue,
-    });
-    acc[groupKey].totalKilos += kilos;
-    acc[groupKey].totalTradeValue += tradeValue;
-    acc[groupKey].totalCommissionValue += commissionValue;
+    acc[groupKey].offers.push(offer);
+    acc[groupKey].totalKilos += offer.billingKilos;
+    acc[groupKey].totalTradeValue += offer.tradeValue;
+    acc[groupKey].totalCommissionValue += offer.commissionValue;
     return acc;
   }, {});
 
-  const groups = Object.values(grouped).sort((a, b) => {
-    if (a.monthKey === b.monthKey) return a.sellerLabel.localeCompare(b.sellerLabel, "fi");
-    return b.monthKey.localeCompare(a.monthKey, "fi");
+  const groups = Object.values(grouped).sort((a, b) => a.sellerLabel.localeCompare(b.sellerLabel, "fi"));
+
+  useEffect(() => {
+    if (groups.length === 0) {
+      if (expandedBillingGroupKey) setExpandedBillingGroupKey("");
+      return;
+    }
+    const hasExpandedGroup = groups.some((group) => `${group.monthKey}-${group.sellerKey}` === expandedBillingGroupKey);
+    if (!hasExpandedGroup) {
+      setExpandedBillingGroupKey(`${groups[0].monthKey}-${groups[0].sellerKey}`);
+    }
+  }, [groups, expandedBillingGroupKey]);
+
+  const monthSummary = monthScopedOffers.reduce((acc, offer) => {
+    acc.totalKilos += offer.billingKilos;
+    acc.totalTradeValue += offer.tradeValue;
+    acc.totalCommissionValue += offer.commissionValue;
+    acc.totalTrades += 1;
+    return acc;
+  }, {
+    totalKilos: 0,
+    totalTradeValue: 0,
+    totalCommissionValue: 0,
+    totalTrades: 0,
   });
 
   const exportBillingCsv = (group) => {
@@ -4520,19 +4568,36 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <div style={styles.rowBetween}>
           <strong>Laskutus</strong>
-          <select style={styles.input} value={billingFilter} onChange={(e) => setBillingFilter(e.target.value)}>
-            <option value="unbilled">Laskuttamattomat</option>
-            <option value="invoiced">Laskutetut</option>
-            <option value="paid">Maksetut</option>
-            <option value="all">Kaikki</option>
-          </select>
+          <div style={{ ...styles.row, gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <select style={{ ...styles.input, minWidth: 190 }} value={billingMonthFilter} onChange={(e) => setBillingMonthFilter(e.target.value)}>
+              <option value="latest">Uusin kuukausi</option>
+              {availableMonths.length > 1 ? <option value="all">Kaikki kuukaudet</option> : null}
+              {availableMonths.map((month) => (
+                <option key={month} value={month}>{month}</option>
+              ))}
+            </select>
+            <select style={{ ...styles.input, minWidth: 190 }} value={billingFilter} onChange={(e) => setBillingFilter(e.target.value)}>
+              <option value="unbilled">Laskuttamattomat</option>
+              <option value="invoiced">Laskutetut</option>
+              <option value="paid">Maksetut</option>
+              <option value="all">Kaikki</option>
+            </select>
+          </div>
         </div>
-        <div style={styles.noticeInfo}>Tähän kerätään kaikki hyväksytyt kaupat myyjäkohtaisesti ja kuukausittain. Komissio lasketaan oletuksella {(COMMISSION_RATE * 100).toFixed(1)} % kaupan arvosta.</div>
+        <div style={styles.noticeInfo}>Käsittele ownerin komissiolaskutus yksi kuukausi kerrallaan. Komissio lasketaan oletuksella {(COMMISSION_RATE * 100).toFixed(1)} % kaupan arvosta.</div>
+        <div style={styles.entryBadges}>
+          <span style={styles.badge}>{activeMonthKey === "all" ? "Kaikki kuukaudet" : activeMonthKey === "Ei kuukautta" ? "Ei kuukautta" : `Kuukausi ${activeMonthKey}`}</span>
+          <span style={styles.badge}>{groups.length} kalastajaa</span>
+          <span style={styles.badge}>{monthSummary.totalTrades} kauppaa</span>
+          <span style={styles.badge}>{monthSummary.totalKilos.toFixed(1)} kg</span>
+          <span style={styles.badge}>{euro(monthSummary.totalTradeValue)} kaupan arvo</span>
+          <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{euro(monthSummary.totalCommissionValue)} komissio</span>
+        </div>
       </div>
 
       {groups.length === 0 ? (
         <div style={{ ...styles.card, ...styles.sectionCard }}>
-          <div style={styles.muted}>Ei vielä hyväksyttyjä kauppoja laskutettavaksi.</div>
+          <div style={styles.muted}>Ei vielä hyväksyttyjä kauppoja valitulla kuukaudella.</div>
         </div>
       ) : (
         groups.map((group) => (
@@ -4559,7 +4624,15 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
                 })()}
                 <div style={styles.muted}>Kuukausi: {group.monthKey}</div>
               </div>
-              <button style={styles.button} onClick={() => exportBillingCsv(group)}>Vie laskutus CSV</button>
+              <div style={{ ...styles.row, gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button
+                  style={styles.button}
+                  onClick={() => setExpandedBillingGroupKey((prev) => prev === `${group.monthKey}-${group.sellerKey}` ? "" : `${group.monthKey}-${group.sellerKey}`)}
+                >
+                  {expandedBillingGroupKey === `${group.monthKey}-${group.sellerKey}` ? "Piilota kaupat" : "Avaa kaupat"}
+                </button>
+                <button style={styles.button} onClick={() => exportBillingCsv(group)}>Vie laskutus CSV</button>
+              </div>
             </div>
 
             <div style={styles.entryBadges}>
@@ -4569,7 +4642,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
               <span style={styles.badge}>{group.offers.length} kauppaa</span>
             </div>
 
-            {group.offers.map((offer) => (
+            {expandedBillingGroupKey === `${group.monthKey}-${group.sellerKey}` ? group.offers.map((offer) => (
               <div key={offer.id} style={styles.entry}>
                 <div style={styles.entryBadges}>
                   <span style={styles.badge}>{offer.buyerLabel}</span>
@@ -4590,7 +4663,9 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
                   {getOwnerCommissionStatus(offer) !== "unbilled" ? <button style={styles.button} onClick={() => onUpdateBillingStatus(offer, "unbilled")}>Palauta komissio laskuttamattomaksi</button> : null}
                 </div>
               </div>
-            ))}
+            )) : (
+              <div style={styles.muted}>Avaa kalastajan kaupat nähdäksesi yksittäiset laskutusrivit.</div>
+            )}
           </div>
         ))
       )}
