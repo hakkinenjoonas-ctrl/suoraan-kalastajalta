@@ -6944,6 +6944,14 @@ export default function App() {
       publicSpot: revealIdentity ? (sellerIdentity.sellerSpot || "") : "",
     };
   };
+
+  const resolveBuyerVisibleSellerBusinessId = (offer, sellerInfo) => {
+    return sellerInfo?.sellerBusinessId ||
+      offer?.seller_business_id ||
+      offer?.sellerBusinessIdFallback ||
+      offer?.business_id ||
+      "";
+  };
   const getEntryReservation = (entry) => {
     const matches = (buyerOffers || []).filter((offer) => {
       if (offer.status !== "reserved" && offer.status !== "accepted") return false;
@@ -12353,7 +12361,12 @@ export default function App() {
                               </div>
                             ) : null}
                           </div>
-                          {showTraceability && o.batch_id && !mixedOffer ? <div style={{ ...styles.muted, marginBottom: 8 }}><strong>Erätunnus:</strong> {o.batch_id}</div> : null}
+                          {showTraceability && o.batch_id && !mixedOffer ? (
+                            <div style={{ ...styles.muted, marginBottom: 8 }}>
+                              <strong>Erätunnus:</strong>
+                              <div style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{o.batch_id}</div>
+                            </div>
+                          ) : null}
                           {showTraceability && o.batch_id && !mixedOffer ? <div style={{ ...styles.qrBlock, marginBottom: 8 }}><img src={getBatchQrImageUrl(o.batch_id)} alt={`QR ${o.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                           <div style={styles.entryBadges}>
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
@@ -12486,7 +12499,7 @@ export default function App() {
                           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
                             <strong>Kalastajan tiedot</strong>
                             <div style={styles.muted}>Nimi: {sellerInfo.sellerName || "-"}</div>
-                            <div style={styles.muted}>Y-tunnus: {sellerInfo.sellerBusinessId || o.seller_business_id || o.sellerBusinessIdFallback || "-"}</div>
+                            <div style={styles.muted}>Y-tunnus: {resolveBuyerVisibleSellerBusinessId(o, sellerInfo) || "-"}</div>
                             {sellerInfo.sellerAddress ? <div style={styles.muted}>Yrityksen osoite: {sellerInfo.sellerAddress}</div> : null}
                             <div style={styles.muted}>Sähköposti: {sellerInfo.sellerEmail || "-"}</div>
                             <div style={styles.muted}>Puhelin: {sellerInfo.sellerPhone || "-"}</div>
