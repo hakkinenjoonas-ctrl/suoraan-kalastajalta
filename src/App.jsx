@@ -7539,10 +7539,21 @@ export default function App() {
                 .order("last_seen_at", { ascending: false })
             : Promise.resolve({ data: [], error: null }),
           hasOffersTable
-            ? supabase.from("wholesale_offers").select("*").order("created_at", { ascending: false })
+            ? (profile.role === "owner"
+              ? supabase.from("wholesale_offers").select("*").order("created_at", { ascending: false })
+              : supabase.from("wholesale_offers").select("*").eq("created_by_user_id", profile.id).order("created_at", { ascending: false }))
             : Promise.resolve({ data: [], error: null }),
           hasBuyersTable
-            ? supabase.from("buyers").select("*").order("company_name", { ascending: true })
+            ? (profile.role === "owner"
+              ? supabase.from("buyers").select("*").order("company_name", { ascending: true })
+              : profile.role === "buyer"
+                ? (() => {
+                    const query = supabase.from("buyers").select("*").order("company_name", { ascending: true });
+                    return profile.buyer_id
+                      ? query.or(`id.eq.${profile.buyer_id},email.eq.${normalizedProfileEmail}`)
+                      : query.eq("email", normalizedProfileEmail);
+                  })()
+                : supabase.from("buyers").select("*").eq("is_active", true).order("company_name", { ascending: true }))
             : Promise.resolve({ data: [], error: null }),
           buyerOffersPromise,
           processorAcceptedOffersPromise,
