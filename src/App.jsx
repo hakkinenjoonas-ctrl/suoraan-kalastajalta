@@ -14139,13 +14139,18 @@ export default function App() {
                     <div key={entry.id} style={styles.entry}>
                       <div style={styles.entryHeader}>
                         <div>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", lineHeight: 1.1, marginBottom: 6 }}>
+                            {formatSpeciesForSale(entry.species)}
+                          </div>
+                          <div style={{ fontSize: 18, fontWeight: 700, color: "#1d4ed8", marginBottom: 10 }}>
+                            Pyyntipäivä: {entry.date || "-"}
+                          </div>
                           <div style={styles.entryBadges}>
-                            <span style={styles.badge}>{formatSpeciesForSale(entry.species)}</span>
                             <span style={styles.badge}>{entry.kilos} kg</span>
                             <span style={styles.badge}>{formatCatchGearDisplay(entry)}</span>
                             <span style={styles.badge}>{entry.ownerName}</span>
                           </div>
-                          <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
+                          <div style={styles.muted}>{entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                           {entry.landingPlace ? <div style={styles.muted}>Purkamispaikka: {entry.landingPlace}</div> : null}
                           {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
                           {entry.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
