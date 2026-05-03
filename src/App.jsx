@@ -11988,7 +11988,9 @@ export default function App() {
 
     const buildOfferHeadline = (offer) => {
       if (isMixedOffer(offer)) return "Monilajinen erä";
-      return getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true });
+      const speciesHeadline = getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true }) || "Kalaerä";
+      const quantity = getOfferQuantityDisplay(offer);
+      return quantity && quantity !== "-" ? `${speciesHeadline} · ${quantity}` : speciesHeadline;
     };
 
     const getVisibleOfferPrice = (offer) => {
@@ -12368,11 +12370,15 @@ export default function App() {
                             <div style={styles.muted}><strong>Erän tiedot</strong></div>
                             {mixedOffer ? <div style={{ ...styles.noticeInfo, marginBottom: 8 }}>Tämä monilajinen erä myydään kokonaisuutena. Kalalajit, hinnat ja erätunnukset näkyvät alla riveittäin.</div> : null}
                             <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>
-                              {formatSpeciesSummaryText(o.species_summary, {
-                                hideTraceability: !showTraceability,
-                                hidePrice: !mixedOffer,
-                                hideCatchDate: !mixedOffer,
-                              }) || "-"}
+                              {mixedOffer
+                                ? (formatSpeciesSummaryText(o.species_summary, {
+                                    hideTraceability: !showTraceability,
+                                    hidePrice: !mixedOffer,
+                                    hideCatchDate: !mixedOffer,
+                                  }) || "-")
+                                : (getOfferSpeciesHeadline(o.species_summary, {
+                                    hideTraceability: !showTraceability,
+                                  }) || "-")}
                             </div>
                             {!mixedOffer ? <div style={styles.muted}>Määrä: {getOfferQuantityDisplay(o)}</div> : null}
                             {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? formatNetAndGrossPriceLines(o, visiblePrice).map((line) => <div key={line} style={styles.muted}>{line}</div>) : null}
