@@ -25,7 +25,6 @@ async function resolveBuyerId(adminClient: ReturnType<typeof createClient>, prof
   const candidateEmails = Array.from(new Set([
     safeString(profile?.email).toLowerCase(),
     safeString(profile?.contact_email).toLowerCase(),
-    safeString(profile?.billing_email).toLowerCase(),
   ].filter(Boolean)));
 
   for (const candidateEmail of candidateEmails) {

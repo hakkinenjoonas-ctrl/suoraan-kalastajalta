@@ -6363,13 +6363,11 @@ export default function App() {
 
   const buyerLoginEmail = normalizeEmail(profile?.email);
   const buyerContactEmail = normalizeEmail(profile?.contact_email);
-  const buyerBillingEmail = normalizeEmail(profile?.billing_email);
 
   const buyerIdentityEmails = useMemo(() => Array.from(new Set([
     buyerLoginEmail,
     buyerContactEmail,
-    buyerBillingEmail,
-  ].filter(Boolean))), [buyerBillingEmail, buyerContactEmail, buyerLoginEmail]);
+  ].filter(Boolean))), [buyerContactEmail, buyerLoginEmail]);
 
   const buyerCandidateRecords = useMemo(() => {
     if (!profile || profile.role !== "buyer") return null;
@@ -6391,18 +6389,9 @@ export default function App() {
     ));
     if (contactEmailCandidates.length > 0) return contactEmailCandidates;
 
-    const billingEmailCandidates = buyers.filter((buyer) => (
-      buyerBillingEmail &&
-      (
-        normalizeEmail(buyer.email) === buyerBillingEmail ||
-        normalizeEmail(buyer.billing_email) === buyerBillingEmail
-      )
-    ));
-    if (billingEmailCandidates.length > 0) return billingEmailCandidates;
-
     const exactIdCandidates = buyers.filter((buyer) => String(buyer.id || "") === String(profile.buyer_id || ""));
     return exactIdCandidates;
-  }, [buyerBillingEmail, buyerContactEmail, buyerLoginEmail, buyers, profile]);
+  }, [buyerContactEmail, buyerLoginEmail, buyers, profile]);
 
   const linkedBuyerRecord = useMemo(() => {
     if (!buyerCandidateRecords || buyerCandidateRecords.length === 0) return null;

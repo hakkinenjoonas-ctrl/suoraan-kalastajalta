@@ -19,7 +19,6 @@ export async function resolveBuyerRecord(
   const candidateEmails = uniqueNonEmpty([
     profile?.email,
     profile?.contact_email,
-    profile?.billing_email,
   ]);
 
   for (const candidateEmail of candidateEmails) {
