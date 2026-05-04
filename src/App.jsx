@@ -6361,12 +6361,18 @@ export default function App() {
     return preferredBonus + dataScore;
   }, []);
 
+  const buyerIdentityEmails = useMemo(() => Array.from(new Set([
+    normalizeEmail(profile?.email),
+    normalizeEmail(profile?.contact_email),
+    normalizeEmail(profile?.billing_email),
+  ].filter(Boolean))), [profile?.billing_email, profile?.contact_email, profile?.email]);
+
   const linkedBuyerRecord = useMemo(() => {
     if (!profile || profile.role !== "buyer") return null;
-    const normalizedProfileEmail = normalizeEmail(profile.email);
     const buyerCandidates = buyers.filter((buyer) => (
       String(buyer.id || "") === String(profile.buyer_id || "") ||
-      normalizeEmail(buyer.email) === normalizedProfileEmail
+      buyerIdentityEmails.includes(normalizeEmail(buyer.email)) ||
+      buyerIdentityEmails.includes(normalizeEmail(buyer.billing_email))
     ));
     if (buyerCandidates.length === 0) return null;
 
@@ -6374,7 +6380,30 @@ export default function App() {
       getBuyerRecordCompletenessScore(b, profile.buyer_id) -
       getBuyerRecordCompletenessScore(a, profile.buyer_id)
     ))[0] || null;
-  }, [buyers, getBuyerRecordCompletenessScore, profile]);
+  }, [buyerIdentityEmails, buyers, getBuyerRecordCompletenessScore, profile]);
+
+  const buyerOfferIdentityFilters = useMemo(() => {
+    if (!profile || profile.role !== "buyer") return [];
+    const filters = [];
+    const buyerIds = Array.from(new Set([
+      String(profile?.buyer_id || "").trim(),
+      String(linkedBuyerRecord?.id || "").trim(),
+    ].filter(Boolean)));
+    buyerIds.forEach((buyerId) => {
+      filters.push(`buyer_id.eq.${buyerId}`);
+    });
+
+    const identityEmails = Array.from(new Set([
+      ...buyerIdentityEmails,
+      normalizeEmail(linkedBuyerRecord?.email),
+      normalizeEmail(linkedBuyerRecord?.billing_email),
+    ].filter(Boolean)));
+    identityEmails.forEach((email) => {
+      filters.push(`buyer_email.eq.${email}`);
+    });
+
+    return filters;
+  }, [buyerIdentityEmails, linkedBuyerRecord?.billing_email, linkedBuyerRecord?.email, linkedBuyerRecord?.id, profile]);
 
   const activeRoleOption = useMemo(
     () => getMatchingAllowedRole(availableRoleOptions, profile),
@@ -7502,8 +7531,6 @@ export default function App() {
           tableExists(supabase, "app_push_tokens"),
         ]);
 
-        const normalizedProfileEmail = (profile.email || "").trim().toLowerCase();
-
         const buyerOffersPromise = hasBuyerOffersTable
           ? profile.role === "buyer"
             ? (() => {
@@ -7512,9 +7539,9 @@ export default function App() {
                   .select("*")
                   .in("status", BUYER_OFFER_QUERYABLE_STATUSES)
                   .order("created_at", { ascending: false });
-                return profile.buyer_id
-                  ? query.or(`buyer_id.eq.${profile.buyer_id},buyer_email.eq.${normalizedProfileEmail}`)
-                  : query.eq("buyer_email", normalizedProfileEmail);
+                return buyerOfferIdentityFilters.length > 0
+                  ? query.or(buyerOfferIdentityFilters.join(","))
+                  : query.eq("buyer_email", normalizeEmail(profile.email));
               })()
             : supabase
                 .from("buyer_offers")
@@ -7525,7 +7552,7 @@ export default function App() {
           ? supabase
               .from("buyer_offers")
               .select("id, batch_id, species_summary, buyer_email, status")
-              .eq("buyer_email", normalizedProfileEmail)
+              .eq("buyer_email", normalizeEmail(profile.email))
               .eq("status", "accepted")
               .order("updated_at", { ascending: false })
           : Promise.resolve({ data: [], error: null });
@@ -7984,7 +8011,7 @@ export default function App() {
     };
 
     loadData();
-  }, [profile, entryScope, refreshTick]);
+  }, [buyerOfferIdentityFilters, entryScope, profile, refreshTick]);
 
   useEffect(() => {
     if (!profile) return;
@@ -10004,7 +10031,6 @@ export default function App() {
   };
 
   const refreshBuyerOffers = async () => {
-    const normalizedProfileEmail = (profile?.email || "").trim().toLowerCase();
     const query = profile?.role === "buyer"
       ? (() => {
           const buyerQuery = supabase
@@ -10012,9 +10038,9 @@ export default function App() {
             .select("*")
             .in("status", ["sent", "viewed", "countered", "reserved", "accepted", "rejected", "expired", "cancelled"])
             .order("created_at", { ascending: false });
-          return profile?.buyer_id
-            ? buyerQuery.or(`buyer_id.eq.${profile.buyer_id},buyer_email.eq.${normalizedProfileEmail}`)
-            : buyerQuery.eq("buyer_email", normalizedProfileEmail);
+          return buyerOfferIdentityFilters.length > 0
+            ? buyerQuery.or(buyerOfferIdentityFilters.join(","))
+            : buyerQuery.eq("buyer_email", normalizeEmail(profile?.email));
         })()
       : supabase.from("buyer_offers").select("*").order("created_at", { ascending: false });
 
