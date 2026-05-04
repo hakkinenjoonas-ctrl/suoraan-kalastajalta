@@ -12184,6 +12184,7 @@ export default function App() {
                       objectFit: "contain",
                       display: "block",
                       flexShrink: 0,
+                      marginLeft: viewportWidth < 768 ? -10 : -6,
                     }}
                   />
               </div>
