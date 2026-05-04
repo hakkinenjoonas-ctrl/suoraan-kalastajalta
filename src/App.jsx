@@ -6414,6 +6414,7 @@ export default function App() {
   const sendPushEvent = useCallback(async ({
     targetUserId = "",
     targetBuyerId = "",
+    targetBuyerEmail = "",
     title = "",
     body = "",
     eventType = "",
@@ -6432,6 +6433,7 @@ export default function App() {
       const result = await invokeEdgeFunctionAuthenticated("send-push-notification", {
         targetUserId: String(targetUserId || "").trim() || null,
         targetBuyerId: String(targetBuyerId || "").trim() || null,
+        targetBuyerEmail: String(targetBuyerEmail || "").trim().toLowerCase() || null,
         title: trimmedTitle,
         body: trimmedBody,
         eventType: String(eventType || "").trim() || "general",
@@ -9741,6 +9743,7 @@ export default function App() {
           try {
             pushResult = await sendPushEvent({
               targetBuyerId: recipient.buyer_id || "",
+              targetBuyerEmail: recipient.email || "",
               title: "Uusi kalatarjous",
               body: `Sinulle on lähetetty uusi tarjous: ${buildPushEventHeadline({
                 species_summary: summaryLines,
@@ -10003,12 +10006,16 @@ export default function App() {
   const refreshBuyerOffers = async () => {
     const normalizedProfileEmail = (profile?.email || "").trim().toLowerCase();
     const query = profile?.role === "buyer"
-      ? supabase
-          .from("buyer_offers")
-          .select("*")
-          .eq("buyer_email", normalizedProfileEmail)
-          .in("status", ["sent", "viewed", "countered", "reserved", "accepted", "rejected", "expired", "cancelled"])
-          .order("created_at", { ascending: false })
+      ? (() => {
+          const buyerQuery = supabase
+            .from("buyer_offers")
+            .select("*")
+            .in("status", ["sent", "viewed", "countered", "reserved", "accepted", "rejected", "expired", "cancelled"])
+            .order("created_at", { ascending: false });
+          return profile?.buyer_id
+            ? buyerQuery.or(`buyer_id.eq.${profile.buyer_id},buyer_email.eq.${normalizedProfileEmail}`)
+            : buyerQuery.eq("buyer_email", normalizedProfileEmail);
+        })()
       : supabase.from("buyer_offers").select("*").order("created_at", { ascending: false });
 
     const { data, error } = await query;

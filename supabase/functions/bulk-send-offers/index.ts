@@ -261,6 +261,7 @@ Deno.serve(async (req) => {
             "send-push-notification",
             {
               targetBuyerId: recipient.buyer_id,
+              targetBuyerEmail: recipient.email,
               title: pushNotification?.title || "Uusi kalatarjous",
               body: pushNotification?.body || "Sinulle on lähetetty uusi tarjous.",
               eventType: pushNotification?.eventType || "offer_sent",

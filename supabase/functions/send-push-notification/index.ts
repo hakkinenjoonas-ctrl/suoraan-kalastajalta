@@ -132,6 +132,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const targetUserId = safeString(body.targetUserId);
     const targetBuyerId = safeString(body.targetBuyerId);
+    const targetBuyerEmail = safeString(body.targetBuyerEmail).toLowerCase();
     const title = safeString(body.title);
     const messageBody = safeString(body.body);
     const eventType = safeString(body.eventType) || "general";
@@ -144,7 +145,7 @@ Deno.serve(async (req) => {
       });
       return jsonResponse(400, { error: "Missing title or body" });
     }
-    if (!targetUserId && !targetBuyerId) {
+    if (!targetUserId && !targetBuyerId && !targetBuyerEmail) {
       console.log("send-push-notification:missing-target", {
         callerUserId: callerUserId || null,
         eventType,
@@ -156,6 +157,7 @@ Deno.serve(async (req) => {
       callerUserId: callerUserId || null,
       targetUserId: targetUserId || null,
       targetBuyerId: targetBuyerId || null,
+      targetBuyerEmail: targetBuyerEmail || null,
       eventType,
       route: safeString(data.route),
       offerId: safeString(data.offerId),
@@ -246,6 +248,119 @@ Deno.serve(async (req) => {
         }
 
         for (const row of linkedUserTokenRows || []) {
+          const rowId = safeString(row.id);
+          if (rowId) tokenRowsById.set(rowId, row);
+        }
+      }
+    }
+
+    if (targetBuyerEmail) {
+      const { data: buyerRowsByEmail, error: buyerRowsByEmailError } = await adminClient
+        .from("buyers")
+        .select("id")
+        .or(`email.eq.${targetBuyerEmail},billing_email.eq.${targetBuyerEmail}`);
+
+      if (buyerRowsByEmailError) {
+        console.error("send-push-notification:buyer-email-query-error", {
+          targetBuyerEmail: targetBuyerEmail || null,
+          eventType,
+          error: buyerRowsByEmailError.message,
+        });
+        return jsonResponse(500, { error: buyerRowsByEmailError.message });
+      }
+
+      const buyerIdsByEmail = Array.from(new Set((buyerRowsByEmail || []).map((row) => safeString(row.id)).filter(Boolean)));
+      if (buyerIdsByEmail.length > 0) {
+        const { data: emailBuyerTokenRows, error: emailBuyerTokenError } = await adminClient
+          .from("app_push_tokens")
+          .select("id, token, platform")
+          .eq("is_active", true)
+          .in("buyer_id", buyerIdsByEmail);
+
+        if (emailBuyerTokenError) {
+          console.error("send-push-notification:buyer-email-token-query-error", {
+            targetBuyerEmail: targetBuyerEmail || null,
+            eventType,
+            error: emailBuyerTokenError.message,
+          });
+          return jsonResponse(500, { error: emailBuyerTokenError.message });
+        }
+
+        for (const row of emailBuyerTokenRows || []) {
+          const rowId = safeString(row.id);
+          if (rowId) tokenRowsById.set(rowId, row);
+        }
+
+        const { data: linkedProfilesByEmailBuyer, error: linkedProfilesByEmailBuyerError } = await adminClient
+          .from("profiles")
+          .select("id")
+          .in("buyer_id", buyerIdsByEmail);
+
+        if (linkedProfilesByEmailBuyerError) {
+          console.error("send-push-notification:buyer-email-linked-profiles-query-error", {
+            targetBuyerEmail: targetBuyerEmail || null,
+            eventType,
+            error: linkedProfilesByEmailBuyerError.message,
+          });
+          return jsonResponse(500, { error: linkedProfilesByEmailBuyerError.message });
+        }
+
+        const linkedUserIdsByEmailBuyer = Array.from(new Set((linkedProfilesByEmailBuyer || []).map((row) => safeString(row.id)).filter(Boolean)));
+        if (linkedUserIdsByEmailBuyer.length > 0) {
+          const { data: linkedUserTokenRowsByEmailBuyer, error: linkedUserTokenRowsByEmailBuyerError } = await adminClient
+            .from("app_push_tokens")
+            .select("id, token, platform")
+            .eq("is_active", true)
+            .in("user_id", linkedUserIdsByEmailBuyer);
+
+          if (linkedUserTokenRowsByEmailBuyerError) {
+            console.error("send-push-notification:buyer-email-linked-user-token-query-error", {
+              targetBuyerEmail: targetBuyerEmail || null,
+              eventType,
+              error: linkedUserTokenRowsByEmailBuyerError.message,
+            });
+            return jsonResponse(500, { error: linkedUserTokenRowsByEmailBuyerError.message });
+          }
+
+          for (const row of linkedUserTokenRowsByEmailBuyer || []) {
+            const rowId = safeString(row.id);
+            if (rowId) tokenRowsById.set(rowId, row);
+          }
+        }
+      }
+
+      const { data: directProfileRowsByEmail, error: directProfileRowsByEmailError } = await adminClient
+        .from("profiles")
+        .select("id")
+        .or(`email.eq.${targetBuyerEmail},contact_email.eq.${targetBuyerEmail},billing_email.eq.${targetBuyerEmail}`);
+
+      if (directProfileRowsByEmailError) {
+        console.error("send-push-notification:direct-profile-email-query-error", {
+          targetBuyerEmail: targetBuyerEmail || null,
+          eventType,
+          error: directProfileRowsByEmailError.message,
+        });
+        return jsonResponse(500, { error: directProfileRowsByEmailError.message });
+      }
+
+      const directProfileIdsByEmail = Array.from(new Set((directProfileRowsByEmail || []).map((row) => safeString(row.id)).filter(Boolean)));
+      if (directProfileIdsByEmail.length > 0) {
+        const { data: directProfileTokenRowsByEmail, error: directProfileTokenRowsByEmailError } = await adminClient
+          .from("app_push_tokens")
+          .select("id, token, platform")
+          .eq("is_active", true)
+          .in("user_id", directProfileIdsByEmail);
+
+        if (directProfileTokenRowsByEmailError) {
+          console.error("send-push-notification:direct-profile-email-token-query-error", {
+            targetBuyerEmail: targetBuyerEmail || null,
+            eventType,
+            error: directProfileTokenRowsByEmailError.message,
+          });
+          return jsonResponse(500, { error: directProfileTokenRowsByEmailError.message });
+        }
+
+        for (const row of directProfileTokenRowsByEmail || []) {
           const rowId = safeString(row.id);
           if (rowId) tokenRowsById.set(rowId, row);
         }
