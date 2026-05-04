@@ -10638,6 +10638,16 @@ export default function App() {
         offerId: offer?.id,
         batchId: offer?.batch_id,
       });
+    } else if (fulfillmentStatus === "delivered") {
+      await sendPushEvent({
+        targetUserId: offer?.seller_user_id || "",
+        title: "Kalaerä kuitattu vastaanotetuksi",
+        body: `${getBuyerPrivateUntilAcceptedLabel(offer)} kuittasi kaupan ${buildPushEventHeadline(offer)} vastaanotetuksi. Voit nyt tehdä laskun apin kautta.`,
+        eventType: "delivery_received",
+        route: "billing",
+        offerId: offer?.id,
+        batchId: offer?.batch_id,
+      });
     }
   };
 
