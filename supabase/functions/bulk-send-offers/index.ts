@@ -248,19 +248,12 @@ Deno.serve(async (req) => {
       for (let index = 0; index < emailChunk.length; index += 1) {
         const recipient = emailChunk[index];
         const emailRow = emailRows[index] || {};
-        if (emailRow?.ok !== true) {
-          failed.push({
-            company_name: recipient.company_name,
-            contact_name: recipient.contact_name,
-            email: recipient.email,
-            channel: recipient.channel,
-            error: safeString(emailRow?.error) || "Tarjoussähköpostin lähetys epäonnistui",
-          });
-          continue;
-        }
+        const emailSucceeded = emailRow?.ok === true;
+        const emailErrorMessage = safeString(emailRow?.error) || "Tarjoussähköpostin lähetys epäonnistui";
 
         let pushSkipped = true;
         let pushSkipReason = "no_buyer_id";
+        let pushErrorMessage = "";
         if (safeString(recipient.buyer_id)) {
           const pushResult = await invokeInternalFunction(
             supabaseUrl,
@@ -278,21 +271,39 @@ Deno.serve(async (req) => {
               },
             },
           );
-          pushSkipped = Boolean((pushResult.data as Record<string, unknown>)?.skipped);
-          pushSkipReason = safeString((pushResult.data as Record<string, unknown>)?.reason);
+          if (pushResult.error) {
+            pushErrorMessage = pushResult.error;
+          } else {
+            pushSkipped = Boolean((pushResult.data as Record<string, unknown>)?.skipped);
+            pushSkipReason = safeString((pushResult.data as Record<string, unknown>)?.reason);
+          }
         }
 
-        sent.push({
-          buyer_id: recipient.buyer_id,
-          company_name: recipient.company_name,
-          contact_name: recipient.contact_name,
-          email: recipient.email,
-          channel: recipient.channel,
-          offer_id: recipient.offerId,
-          offer_link: safeString(entry.offerUrlBase) ? `${safeString(entry.offerUrlBase)}?offer=${safeString(recipient.offerId)}` : null,
-          pushSkipped,
-          pushSkipReason,
-        });
+        const pushDelivered = Boolean(safeString(recipient.buyer_id)) && !pushSkipped && !pushErrorMessage;
+
+        if (emailSucceeded || pushDelivered) {
+          sent.push({
+            buyer_id: recipient.buyer_id,
+            company_name: recipient.company_name,
+            contact_name: recipient.contact_name,
+            email: recipient.email,
+            channel: recipient.channel,
+            offer_id: recipient.offerId,
+            offer_link: safeString(entry.offerUrlBase) ? `${safeString(entry.offerUrlBase)}?offer=${safeString(recipient.offerId)}` : null,
+            pushSkipped,
+            pushSkipReason,
+            emailFailed: !emailSucceeded,
+            emailError: emailSucceeded ? "" : emailErrorMessage,
+          });
+        } else {
+          failed.push({
+            company_name: recipient.company_name,
+            contact_name: recipient.contact_name,
+            email: recipient.email,
+            channel: recipient.channel,
+            error: emailErrorMessage || pushErrorMessage || "Tarjouksen ilmoitusten lähetys epäonnistui",
+          });
+        }
       }
     }
 

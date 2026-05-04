@@ -9729,32 +9729,39 @@ export default function App() {
         const functionFailure = Array.isArray(data?.results)
           ? data.results.find((result) => result?.ok === false)
           : null;
+        const emailErrorMessage =
+          describeOfferEmailError(functionFailure?.error) ||
+          describeOfferEmailError(error?.context?.error) ||
+          describeOfferEmailError(error);
+        const emailSucceeded = !error && !functionFailure && data?.ok !== false;
 
-        if (error || functionFailure || data?.ok === false) {
-          failed.push({
-            company_name: recipient.company_name,
-            contact_name: recipient.contact_name,
-            email: recipient.email,
-            channel: recipient.channel,
-            error:
-              describeOfferEmailError(functionFailure?.error) ||
-              describeOfferEmailError(error?.context?.error) ||
-              describeOfferEmailError(error),
-          });
-        } else {
-          const pushResult = await sendPushEvent({
-            targetBuyerId: recipient.buyer_id || "",
-            title: "Uusi kalatarjous",
-            body: `Sinulle on lähetetty uusi tarjous: ${buildPushEventHeadline({
-              species_summary: summaryLines,
-              total_kilos: entry.kilos,
-              batch_id: rows[0]?.batch_id || "",
-            })}.`,
-            eventType: "offer_sent",
-            route: "offers",
-            offerId,
-            batchId: rows[0]?.batch_id || "",
-          });
+        let pushResult = null;
+        let pushErrorMessage = "";
+        if (recipient.buyer_id) {
+          try {
+            pushResult = await sendPushEvent({
+              targetBuyerId: recipient.buyer_id || "",
+              title: "Uusi kalatarjous",
+              body: `Sinulle on lähetetty uusi tarjous: ${buildPushEventHeadline({
+                species_summary: summaryLines,
+                total_kilos: entry.kilos,
+                batch_id: rows[0]?.batch_id || "",
+              })}.`,
+              eventType: "offer_sent",
+              route: "offers",
+              offerId,
+              batchId: rows[0]?.batch_id || "",
+            });
+          } catch (pushError) {
+            pushErrorMessage = pushError instanceof Error ? pushError.message : String(pushError);
+          }
+        }
+
+        const pushSkipped = Boolean(pushResult?.data?.skipped);
+        const pushSkipReason = String(pushResult?.data?.reason || "").trim();
+        const pushDelivered = Boolean(recipient.buyer_id) && !pushSkipped && !pushErrorMessage;
+
+        if (emailSucceeded || pushDelivered) {
           sent.push({
             buyer_id: recipient.buyer_id,
             company_name: recipient.company_name,
@@ -9763,9 +9770,19 @@ export default function App() {
             channel: recipient.channel,
             offer_id: offerId,
             offer_link: offerId ? `${offerUrlBase}?offer=${offerId}` : null,
-            pushSkipped: Boolean(pushResult?.data?.skipped),
-            pushSkipReason: String(pushResult?.data?.reason || "").trim(),
+            pushSkipped,
+            pushSkipReason,
+            emailFailed: !emailSucceeded,
+            emailError: emailSucceeded ? "" : emailErrorMessage,
             data,
+          });
+        } else {
+          failed.push({
+            company_name: recipient.company_name,
+            contact_name: recipient.contact_name,
+            email: recipient.email,
+            channel: recipient.channel,
+            error: emailErrorMessage || pushErrorMessage || "Tarjouksen ilmoitusten lähetys epäonnistui",
           });
         }
       } catch (err) {
@@ -11597,8 +11614,12 @@ export default function App() {
         } else {
           const parts = [`Saalis tallennettu. Tarjous lähetetty ${emailResult.sent.length} ostajalle.`];
           const skippedPushCount = emailResult.sent.filter((item) => item.pushSkipped).length;
+          const partialEmailFailureCount = emailResult.sent.filter((item) => item.emailFailed).length;
           if (skippedPushCount > 0) {
             parts.push("", `Push-ilmoitus ei lähtenyt ${skippedPushCount} ostajalle.`);
+          }
+          if (partialEmailFailureCount > 0) {
+            parts.push("", `Tarjoussähköposti epäonnistui ${partialEmailFailureCount} ostajalle, mutta appi-ilmoitus lähti.`);
           }
           if (emailResult.failed.length > 0) {
             parts.push("", `Tarjouksen lähetys epäonnistui ${emailResult.failed.length} ostajalle.`);
