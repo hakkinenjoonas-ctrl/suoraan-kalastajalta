@@ -12295,19 +12295,14 @@ export default function App() {
           />
 
           <div style={styles.stickyTabsWrap}>
-            <div style={viewportWidth < 900 ? {
-              ...styles.tabs6,
-              display: "flex",
-              flexWrap: "nowrap",
-              overflowX: "auto",
-              overflowY: "hidden",
-              WebkitOverflowScrolling: "touch",
-            } : { ...styles.tabs6, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+            <div style={{ ...styles.tabs6, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
               <button
                 style={{
-                  ...(viewportWidth < 900
-                    ? { ...styles.tab, flex: "0 0 auto", minWidth: 124, whiteSpace: "nowrap" }
-                    : styles.tab),
+                  ...styles.tab,
+                  minWidth: 0,
+                  whiteSpace: "nowrap",
+                  padding: viewportWidth < 520 ? "14px 10px" : styles.tab.padding,
+                  fontSize: viewportWidth < 520 ? 16 : styles.tab.fontSize,
                   ...((activeTab === "offers" || activeTab === "dashboard") ? styles.activeTab : {}),
                 }}
                 onClick={() => setActiveTab("offers")}
@@ -12316,9 +12311,11 @@ export default function App() {
               </button>
               <button
                 style={{
-                  ...(viewportWidth < 900
-                    ? { ...styles.tab, flex: "0 0 auto", minWidth: 124, whiteSpace: "nowrap" }
-                    : styles.tab),
+                  ...styles.tab,
+                  minWidth: 0,
+                  whiteSpace: "nowrap",
+                  padding: viewportWidth < 520 ? "14px 10px" : styles.tab.padding,
+                  fontSize: viewportWidth < 520 ? 16 : styles.tab.fontSize,
                   ...(activeTab === "reports" ? styles.activeTab : {}),
                 }}
                 onClick={() => setActiveTab("reports")}
@@ -12327,9 +12324,11 @@ export default function App() {
               </button>
               <button
                 style={{
-                  ...(viewportWidth < 900
-                    ? { ...styles.tab, flex: "0 0 auto", minWidth: 124, whiteSpace: "nowrap" }
-                    : styles.tab),
+                  ...styles.tab,
+                  minWidth: 0,
+                  whiteSpace: "nowrap",
+                  padding: viewportWidth < 520 ? "14px 10px" : styles.tab.padding,
+                  fontSize: viewportWidth < 520 ? 16 : styles.tab.fontSize,
                   ...(activeTab === "buyer_billing" ? styles.activeTab : {}),
                 }}
                 onClick={() => setActiveTab("buyer_billing")}
