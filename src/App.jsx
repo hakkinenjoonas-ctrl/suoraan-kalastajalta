@@ -7601,9 +7601,12 @@ export default function App() {
               : profile.role === "buyer"
                 ? (() => {
                     const query = supabase.from("buyers").select("*").order("company_name", { ascending: true });
-                    return profile.buyer_id
-                      ? query.or(`id.eq.${profile.buyer_id},email.eq.${normalizedProfileEmail}`)
-                      : query.eq("email", normalizedProfileEmail);
+                    return buyerOfferIdentityFilters.length > 0
+                      ? query.or(buyerOfferIdentityFilters
+                        .filter((clause) => clause.startsWith("buyer_id.eq.") || clause.startsWith("buyer_email.eq."))
+                        .map((clause) => clause.replace("buyer_id.eq.", "id.eq.").replace("buyer_email.eq.", "email.eq."))
+                        .join(","))
+                      : query.eq("email", normalizeEmail(profile.email));
                   })()
                 : supabase.from("buyers").select("*").eq("is_active", true).order("company_name", { ascending: true }))
             : Promise.resolve({ data: [], error: null }),
