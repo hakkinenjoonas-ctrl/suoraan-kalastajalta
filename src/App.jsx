@@ -7601,11 +7601,15 @@ export default function App() {
               : profile.role === "buyer"
                 ? (() => {
                     const query = supabase.from("buyers").select("*").order("company_name", { ascending: true });
-                    return buyerOfferIdentityFilters.length > 0
-                      ? query.or(buyerOfferIdentityFilters
-                        .filter((clause) => clause.startsWith("buyer_id.eq.") || clause.startsWith("buyer_email.eq."))
-                        .map((clause) => clause.replace("buyer_id.eq.", "id.eq.").replace("buyer_email.eq.", "email.eq."))
-                        .join(","))
+                    const buyerLookupFilters = Array.from(new Set([
+                      ...buyerOfferIdentityFilters
+                        .filter((clause) => clause.startsWith("buyer_id.eq."))
+                        .map((clause) => clause.replace("buyer_id.eq.", "id.eq.")),
+                      ...buyerIdentityEmails.map((email) => `email.eq.${email}`),
+                      ...buyerIdentityEmails.map((email) => `billing_email.eq.${email}`),
+                    ]));
+                    return buyerLookupFilters.length > 0
+                      ? query.or(buyerLookupFilters.join(","))
                       : query.eq("email", normalizeEmail(profile.email));
                   })()
                 : supabase.from("buyers").select("*").eq("is_active", true).order("company_name", { ascending: true }))
