@@ -6367,27 +6367,31 @@ export default function App() {
     normalizeEmail(profile?.billing_email),
   ].filter(Boolean))), [profile?.billing_email, profile?.contact_email, profile?.email]);
 
-  const linkedBuyerRecord = useMemo(() => {
+  const buyerCandidateRecords = useMemo(() => {
     if (!profile || profile.role !== "buyer") return null;
     const buyerCandidates = buyers.filter((buyer) => (
       String(buyer.id || "") === String(profile.buyer_id || "") ||
       buyerIdentityEmails.includes(normalizeEmail(buyer.email)) ||
       buyerIdentityEmails.includes(normalizeEmail(buyer.billing_email))
     ));
-    if (buyerCandidates.length === 0) return null;
+    return buyerCandidates;
+  }, [buyerIdentityEmails, buyers, profile]);
 
-    return [...buyerCandidates].sort((a, b) => (
+  const linkedBuyerRecord = useMemo(() => {
+    if (!buyerCandidateRecords || buyerCandidateRecords.length === 0) return null;
+
+    return [...buyerCandidateRecords].sort((a, b) => (
       getBuyerRecordCompletenessScore(b, profile.buyer_id) -
       getBuyerRecordCompletenessScore(a, profile.buyer_id)
     ))[0] || null;
-  }, [buyerIdentityEmails, buyers, getBuyerRecordCompletenessScore, profile]);
+  }, [buyerCandidateRecords, getBuyerRecordCompletenessScore, profile?.buyer_id]);
 
   const buyerOfferIdentityFilters = useMemo(() => {
     if (!profile || profile.role !== "buyer") return [];
     const filters = [];
     const buyerIds = Array.from(new Set([
       String(profile?.buyer_id || "").trim(),
-      String(linkedBuyerRecord?.id || "").trim(),
+      ...(buyerCandidateRecords || []).map((buyer) => String(buyer?.id || "").trim()).filter(Boolean),
     ].filter(Boolean)));
     buyerIds.forEach((buyerId) => {
       filters.push(`buyer_id.eq.${buyerId}`);
@@ -6397,13 +6401,15 @@ export default function App() {
       ...buyerIdentityEmails,
       normalizeEmail(linkedBuyerRecord?.email),
       normalizeEmail(linkedBuyerRecord?.billing_email),
+      ...(buyerCandidateRecords || []).map((buyer) => normalizeEmail(buyer?.email)).filter(Boolean),
+      ...(buyerCandidateRecords || []).map((buyer) => normalizeEmail(buyer?.billing_email)).filter(Boolean),
     ].filter(Boolean)));
     identityEmails.forEach((email) => {
       filters.push(`buyer_email.eq.${email}`);
     });
 
     return filters;
-  }, [buyerIdentityEmails, linkedBuyerRecord?.billing_email, linkedBuyerRecord?.email, linkedBuyerRecord?.id, profile]);
+  }, [buyerCandidateRecords, buyerIdentityEmails, linkedBuyerRecord?.billing_email, linkedBuyerRecord?.email, profile]);
 
   const activeRoleOption = useMemo(
     () => getMatchingAllowedRole(availableRoleOptions, profile),
