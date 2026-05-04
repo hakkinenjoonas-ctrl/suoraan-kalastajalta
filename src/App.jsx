@@ -10086,7 +10086,23 @@ export default function App() {
     owner_commission_amount: calculateCommissionDetails(offer).commissionValue,
   });
 
-  const handleUpdateBillingStatus = async (offer, billingStatus) => {
+  const buildSellerBillingStatusPatch = (offer, billingStatus) => ({
+    billing_status: billingStatus,
+    billed_at: billingStatus === "unbilled"
+      ? null
+      : offer.billed_at || new Date().toISOString(),
+    paid_at: billingStatus === "paid" ? new Date().toISOString() : null,
+    billing_month: offer.billing_month || getOfferBillingMonthValue(offer) || (() => {
+      try {
+        const d = new Date(offer.updated_at || offer.created_at || new Date().toISOString());
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      } catch {
+        return "";
+      }
+    })(),
+  });
+
+  const handleUpdateOwnerCommissionStatus = async (offer, billingStatus) => {
     const patch = buildOwnerCommissionStatusPatch(offer, billingStatus);
 
     const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offer.id);
@@ -10109,7 +10125,7 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
-  const handleUpdateGroupBillingStatus = async (offers, billingStatus) => {
+  const handleUpdateOwnerCommissionGroupStatus = async (offers, billingStatus) => {
     const targetOffers = Array.isArray(offers) ? offers.filter(Boolean) : [];
     if (targetOffers.length === 0) return;
 
@@ -10132,6 +10148,56 @@ export default function App() {
         : billingStatus === "invoiced"
         ? "Kaikki ryhmän komissiot merkitty laskutetuiksi."
         : "Kaikki ryhmän komissiot palautettu laskuttamattomiksi."
+    );
+    setRefreshTick((prev) => prev + 1);
+  };
+
+  const handleUpdateSellerBillingStatus = async (offer, billingStatus) => {
+    const patch = buildSellerBillingStatusPatch(offer, billingStatus);
+
+    const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offer.id);
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(error.message);
+      return;
+    }
+
+    setAuthInfo(
+      billingStatus === "paid"
+        ? "Lasku merkitty maksetuksi."
+        : billingStatus === "invoiced"
+        ? "Lasku merkitty laskutetuksi."
+        : "Lasku palautettu laskuttamattomaksi."
+    );
+    setRefreshTick((prev) => prev + 1);
+  };
+
+  const handleUpdateSellerGroupBillingStatus = async (offers, billingStatus) => {
+    const targetOffers = Array.isArray(offers) ? offers.filter(Boolean) : [];
+    if (targetOffers.length === 0) return;
+
+    for (const offer of targetOffers) {
+      const patch = buildSellerBillingStatusPatch(offer, billingStatus);
+      const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offer.id);
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        setAuthError(error.message);
+        return;
+      }
+    }
+
+    setAuthInfo(
+      billingStatus === "paid"
+        ? "Kaikki ryhmän laskut merkitty maksetuiksi."
+        : billingStatus === "invoiced"
+        ? "Kaikki ryhmän laskut merkitty laskutetuiksi."
+        : "Kaikki ryhmän laskut palautettu laskuttamattomiksi."
     );
     setRefreshTick((prev) => prev + 1);
   };
@@ -10280,7 +10346,7 @@ export default function App() {
     if (copyResult.authInvalidated) return;
 
     if (documentKind === "invoice") {
-      await handleUpdateBillingStatus(offer, "invoiced");
+      await handleUpdateSellerBillingStatus(offer, "invoiced");
       await sendPushEvent({
         targetBuyerId: offer?.buyer_id || "",
         title: "Uusi lasku",
@@ -10373,7 +10439,7 @@ export default function App() {
     if (copyResult.authInvalidated) return;
 
     if (documentKind === "invoice") {
-      await handleUpdateGroupBillingStatus(offers, "invoiced");
+      await handleUpdateSellerGroupBillingStatus(offers, "invoiced");
       setAuthInfo(`Koontilasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.${copyResult.statusText}`);
       return;
     }
@@ -14250,7 +14316,7 @@ export default function App() {
             shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
             billingFilter={billingFilter}
             setBillingFilter={setBillingFilter}
-            onUpdateBillingStatus={handleUpdateBillingStatus}
+            onUpdateBillingStatus={handleUpdateOwnerCommissionStatus}
           />
         ) : null}
 
@@ -14271,11 +14337,11 @@ export default function App() {
               onOpenInvoicePdf={handleOpenSellerInvoicePdf}
               onViewInvoicePdf={handleViewSellerInvoicePdf}
               onSendInvoicePdf={handleSendSellerInvoicePdf}
-              onUpdateBillingStatus={handleUpdateBillingStatus}
+              onUpdateBillingStatus={handleUpdateSellerBillingStatus}
               onOpenGroupInvoicePdf={handleOpenSellerGroupInvoicePdf}
               onViewGroupInvoicePdf={handleViewSellerGroupInvoicePdf}
               onSendGroupInvoicePdf={handleSendSellerGroupInvoicePdf}
-              onUpdateGroupBillingStatus={handleUpdateGroupBillingStatus}
+              onUpdateGroupBillingStatus={handleUpdateSellerGroupBillingStatus}
             />
         ) : null}
 
