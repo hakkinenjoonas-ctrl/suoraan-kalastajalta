@@ -6361,21 +6361,48 @@ export default function App() {
     return preferredBonus + dataScore;
   }, []);
 
+  const buyerLoginEmail = normalizeEmail(profile?.email);
+  const buyerContactEmail = normalizeEmail(profile?.contact_email);
+  const buyerBillingEmail = normalizeEmail(profile?.billing_email);
+
   const buyerIdentityEmails = useMemo(() => Array.from(new Set([
-    normalizeEmail(profile?.email),
-    normalizeEmail(profile?.contact_email),
-    normalizeEmail(profile?.billing_email),
-  ].filter(Boolean))), [profile?.billing_email, profile?.contact_email, profile?.email]);
+    buyerLoginEmail,
+    buyerContactEmail,
+    buyerBillingEmail,
+  ].filter(Boolean))), [buyerBillingEmail, buyerContactEmail, buyerLoginEmail]);
 
   const buyerCandidateRecords = useMemo(() => {
     if (!profile || profile.role !== "buyer") return null;
-    const buyerCandidates = buyers.filter((buyer) => (
-      String(buyer.id || "") === String(profile.buyer_id || "") ||
-      buyerIdentityEmails.includes(normalizeEmail(buyer.email)) ||
-      buyerIdentityEmails.includes(normalizeEmail(buyer.billing_email))
+    const exactIdCandidates = buyers.filter((buyer) => String(buyer.id || "") === String(profile.buyer_id || ""));
+    if (exactIdCandidates.length > 0) return exactIdCandidates;
+
+    const loginEmailCandidates = buyers.filter((buyer) => (
+      buyerLoginEmail &&
+      (
+        normalizeEmail(buyer.email) === buyerLoginEmail ||
+        normalizeEmail(buyer.billing_email) === buyerLoginEmail
+      )
     ));
-    return buyerCandidates;
-  }, [buyerIdentityEmails, buyers, profile]);
+    if (loginEmailCandidates.length > 0) return loginEmailCandidates;
+
+    const contactEmailCandidates = buyers.filter((buyer) => (
+      buyerContactEmail &&
+      (
+        normalizeEmail(buyer.email) === buyerContactEmail ||
+        normalizeEmail(buyer.billing_email) === buyerContactEmail
+      )
+    ));
+    if (contactEmailCandidates.length > 0) return contactEmailCandidates;
+
+    const billingEmailCandidates = buyers.filter((buyer) => (
+      buyerBillingEmail &&
+      (
+        normalizeEmail(buyer.email) === buyerBillingEmail ||
+        normalizeEmail(buyer.billing_email) === buyerBillingEmail
+      )
+    ));
+    return billingEmailCandidates;
+  }, [buyerBillingEmail, buyerContactEmail, buyerLoginEmail, buyers, profile]);
 
   const linkedBuyerRecord = useMemo(() => {
     if (!buyerCandidateRecords || buyerCandidateRecords.length === 0) return null;
