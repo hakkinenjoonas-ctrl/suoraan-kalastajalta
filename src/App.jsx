@@ -218,6 +218,19 @@ function getOfferQuantityDisplay(offer) {
   return "-";
 }
 
+function getOfferCountDisplay(offer) {
+  const summary = String(offer?.species_summary || "");
+  const countInParenthesesMatch = summary.match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
+  if (countInParenthesesMatch) return `${String(countInParenthesesMatch[1]).replace(".", ",")} kpl`;
+
+  if (isCrayfishOfferSummary(summary)) {
+    const countMatch = summary.match(/(\d+(?:[.,]\d+)?)\s*kpl/i);
+    if (countMatch) return `${String(countMatch[1]).replace(".", ",")} kpl`;
+  }
+
+  return "";
+}
+
 function formatSpeciesOfferSummaryLine(row) {
   const kilos = Number(row?.kilos || 0);
   const count = Number(row?.count || 0);
@@ -12473,6 +12486,7 @@ export default function App() {
                     const visiblePrice = getVisibleOfferPrice(o);
                     const sellerInfo = getBuyerVisibleSellerInfo(o);
                     const mixedOffer = isMixedOffer(o);
+                    const offerCountDisplay = getOfferCountDisplay(o);
                     const showTraceability = isBuyerOfferAccepted(o.status);
                     const visibleAdditionalNotes = extractVisibleAdditionalNotes(o.notes);
                     const ownDeliveryPrice = o.route_price_eur !== "" && o.route_price_eur != null ? Number(o.route_price_eur) : null;
@@ -12551,6 +12565,7 @@ export default function App() {
                                   }) || "-")}
                             </div>
                             {!mixedOffer ? <div style={styles.muted}>Määrä: {getOfferQuantityDisplay(o)}</div> : null}
+                            {!mixedOffer && offerCountDisplay ? <div style={styles.muted}>Kappalemäärä: {offerCountDisplay}</div> : null}
                             {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? formatNetAndGrossPriceLines(o, visiblePrice).map((line) => <div key={line} style={styles.muted}>{line}</div>) : null}
                             {ownDeliveryPrice != null ? <div style={styles.muted}>Toimitushinta omaan kaupunkiin ({o.delivery_destination_city || linkedBuyerRecord?.delivery_city || linkedBuyerRecord?.city || "-" }): {formatDeliveryPrice(ownDeliveryPrice)}</div> : null}
                             {ownTotalPrice != null ? <div style={styles.muted}>Kokonaishinta: {formatDeliveryPrice(ownTotalPrice)}</div> : null}
