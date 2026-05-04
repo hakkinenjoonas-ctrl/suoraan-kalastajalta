@@ -6010,6 +6010,8 @@ export default function App() {
     "seller_email",
     "seller_phone",
     "seller_commercial_fishing_id",
+    "seller_bank_account_iban",
+    "seller_bank_bic",
     "buyer_delivery_address",
     "buyer_delivery_postcode",
     "buyer_delivery_city",
@@ -7955,6 +7957,8 @@ export default function App() {
               seller_email: offer.seller_email || sellerProfile.email || "",
               seller_phone: offer.seller_phone || sellerProfile.phone || "",
               seller_commercial_fishing_id: offer.seller_commercial_fishing_id || sellerProfile.commercial_fishing_id || "",
+              seller_bank_account_iban: offer.seller_bank_account_iban || "",
+              seller_bank_bic: offer.seller_bank_bic || "",
               billing_status: offer.billing_status || "unbilled",
               billing_month: offer.billing_month || "",
               owner_commission_status: offer.owner_commission_status || "unbilled",
@@ -10075,6 +10079,8 @@ export default function App() {
         sellerCityFallback: sellerProfile.city || "",
         sellerContactEmailFallback: sellerProfile.contactEmail || "",
         sellerCommercialFishingIdFallback: sellerProfile.commercialFishingId || "",
+        seller_bank_account_iban: offer.seller_bank_account_iban || "",
+        seller_bank_bic: offer.seller_bank_bic || "",
         fulfillment_status: offer.fulfillment_status || (offer.status === "accepted" ? "awaiting_contact" : ""),
       };
     }));
@@ -10231,6 +10237,30 @@ export default function App() {
     }
     setAuthError("");
     await openSellerInvoicePdf(offer, profile);
+  };
+
+  const handleOpenBuyerInvoicePdf = async (offer) => {
+    const sellerProfileLike = {
+      company_name: offer?.seller_name || offer?.seller_company_name || offer?.sellerCompanyNameFallback || "",
+      display_name: offer?.seller_name || offer?.sellerDisplayNameFallback || "",
+      business_id: offer?.seller_business_id || offer?.sellerBusinessIdFallback || "",
+      address: offer?.seller_address || offer?.sellerAddressFallback || "",
+      postcode: offer?.seller_postcode || offer?.sellerPostcodeFallback || "",
+      city: offer?.seller_city || offer?.sellerCityFallback || "",
+      contact_email: offer?.seller_contact_email || offer?.sellerContactEmailFallback || offer?.seller_email || offer?.sellerEmail || "",
+      email: offer?.seller_email || offer?.sellerEmail || offer?.seller_contact_email || offer?.sellerContactEmailFallback || "",
+      phone: offer?.seller_phone || offer?.sellerPhone || "",
+      bank_account_iban: offer?.seller_bank_account_iban || "",
+      bank_bic: offer?.seller_bank_bic || "",
+    };
+
+    if (!sellerProfileLike.bank_account_iban) {
+      setAuthError("Laskun PDF ei ole vielä saatavilla tälle kaupalle, koska kalastajan tilinumero puuttuu laskutiedoista.");
+      return;
+    }
+
+    setAuthError("");
+    await openSellerInvoicePdf(offer, sellerProfileLike);
   };
 
   const sendSellerInvoiceEmailMessage = async ({
@@ -11033,6 +11063,8 @@ export default function App() {
         seller_email: sellerProfileForTrade?.email || offer.seller_email || null,
         seller_phone: sellerProfileForTrade?.phone || offer.seller_phone || null,
         seller_commercial_fishing_id: sellerProfileForTrade?.commercial_fishing_id || offer.seller_commercial_fishing_id || null,
+        seller_bank_account_iban: sellerProfileForTrade?.bank_account_iban || offer.seller_bank_account_iban || null,
+        seller_bank_bic: sellerProfileForTrade?.bank_bic || offer.seller_bank_bic || null,
       };
 
       if (buyerRecord) {
@@ -12385,6 +12417,8 @@ export default function App() {
                   contact_email: offer.seller_contact_email || offer.sellerContactEmailFallback || "",
                   email: offer.seller_email || offer.sellerEmail || "",
                   phone: offer.seller_phone || offer.sellerPhone || "",
+                  bank_account_iban: offer.seller_bank_account_iban || "",
+                  bank_bic: offer.seller_bank_bic || "",
                 };
                 const invoicePayload = getSellerInvoicePayload(offer, sellerProfileLike);
                 const sellerStatusLabel = String(offer.billing_status || "unbilled") === "paid"
@@ -12420,6 +12454,20 @@ export default function App() {
                     {invoicePayload.sellerBusinessId ? <div style={styles.muted}><strong>Kalastajan Y-tunnus:</strong> {invoicePayload.sellerBusinessId}</div> : null}
                     {invoicePayload.sellerEmail ? <div style={styles.muted}><strong>Kalastajan sähköposti:</strong> {invoicePayload.sellerEmail}</div> : null}
                     {invoicePayload.sellerPhone ? <div style={styles.muted}><strong>Kalastajan puhelin:</strong> {invoicePayload.sellerPhone}</div> : null}
+
+                    <div style={styles.row}>
+                      <button
+                        type="button"
+                        style={styles.button}
+                        onClick={() => handleOpenBuyerInvoicePdf(offer)}
+                        disabled={!invoicePayload.sellerIban}
+                      >
+                        Avaa lasku (PDF)
+                      </button>
+                    </div>
+                    {!invoicePayload.sellerIban ? (
+                      <div style={styles.noticeInfo}>PDF tulee näkyviin heti kun laskun maksutiedot ovat mukana tällä laskulla.</div>
+                    ) : null}
                   </div>
                 );
               })}
