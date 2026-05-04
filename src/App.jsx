@@ -10530,7 +10530,7 @@ export default function App() {
       fulfillmentStatus === "delivery_agreed"
         ? "Toimitus merkitty sovituksi."
         : fulfillmentStatus === "delivered"
-        ? "Kauppa merkitty toimitetuksi."
+        ? "Kalaerä kuitattu vastaanotetuksi."
         : "Toimituksen tila päivitetty."
     );
     if (profile?.role !== "buyer") {
@@ -12108,6 +12108,13 @@ export default function App() {
     const acceptedBuyerOffers = (buyerOffers || []).filter(
       (offer) => isBuyerOfferAccepted(offer.status) && formatOfferDay(offer.updated_at || offer.created_at) === todayLabel
     );
+    const buyerInvoiceOffers = (buyerOffers || [])
+      .filter((offer) => ["invoiced", "paid"].includes(String(offer.billing_status || "")))
+      .sort((a, b) => {
+        const aTime = new Date(a.paid_at || a.billed_at || a.updated_at || a.created_at || 0).getTime();
+        const bTime = new Date(b.paid_at || b.billed_at || b.updated_at || b.created_at || 0).getTime();
+        return bTime - aTime;
+      });
     const logoHeight = viewportWidth < 768
       ? 172
       : viewportWidth < 1024
@@ -12295,7 +12302,7 @@ export default function App() {
               overflowX: "auto",
               overflowY: "hidden",
               WebkitOverflowScrolling: "touch",
-            } : { ...styles.tabs6, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+            } : { ...styles.tabs6, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
               <button
                 style={{
                   ...(viewportWidth < 900
@@ -12318,6 +12325,17 @@ export default function App() {
               >
                 Raportit
               </button>
+              <button
+                style={{
+                  ...(viewportWidth < 900
+                    ? { ...styles.tab, flex: "0 0 auto", minWidth: 124, whiteSpace: "nowrap" }
+                    : styles.tab),
+                  ...(activeTab === "buyer_billing" ? styles.activeTab : {}),
+                }}
+                onClick={() => setActiveTab("buyer_billing")}
+              >
+                Laskut
+              </button>
             </div>
           </div>
 
@@ -12325,7 +12343,73 @@ export default function App() {
             <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} profile={profile} />
           ) : null}
 
-          {activeTab !== "reports" && acceptedBuyerOffers.length > 0 ? (
+          {activeTab === "buyer_billing" ? (
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div style={styles.rowBetween}>
+                <div>
+                  <strong>Minulle lähetetyt laskut</strong>
+                  <div style={styles.muted}>Tässä näkyvät kaikki juuri tälle ostajalle sovelluksesta lähetetyt laskut ja niiden tila.</div>
+                </div>
+                <span style={styles.badge}>{buyerInvoiceOffers.length} laskua</span>
+              </div>
+              <div style={styles.noticeInfo}>
+                Muista kuitata kalaerä vastaanotetuksi heti kun olet saanut toimituksen. Kalastaja voi lähettää laskun vasta sen jälkeen.
+              </div>
+              {buyerInvoiceOffers.length === 0 ? (
+                <div style={styles.muted}>Tälle ostajalle ei ole vielä lähetetty laskuja.</div>
+              ) : buyerInvoiceOffers.map((offer) => {
+                const sellerProfileLike = {
+                  company_name: offer.seller_name || offer.seller_company_name || offer.sellerCompanyNameFallback || "",
+                  display_name: offer.seller_name || offer.sellerDisplayNameFallback || "",
+                  business_id: resolveBuyerVisibleSellerBusinessId(offer, getBuyerVisibleSellerInfo(offer)) || "",
+                  address: offer.seller_address || offer.sellerAddressFallback || "",
+                  postcode: offer.seller_postcode || offer.sellerPostcodeFallback || "",
+                  city: offer.seller_city || offer.sellerCityFallback || "",
+                  contact_email: offer.seller_contact_email || offer.sellerContactEmailFallback || "",
+                  email: offer.seller_email || offer.sellerEmail || "",
+                  phone: offer.seller_phone || offer.sellerPhone || "",
+                };
+                const invoicePayload = getSellerInvoicePayload(offer, sellerProfileLike);
+                const sellerStatusLabel = String(offer.billing_status || "unbilled") === "paid"
+                  ? "Maksettu"
+                  : String(offer.billing_status || "unbilled") === "invoiced"
+                  ? "Lähetetty"
+                  : "Laskuttamaton";
+
+                return (
+                  <div key={`buyer-invoice-${offer.id}`} style={{ ...styles.entry, background: "#f8fafc" }}>
+                    <div style={styles.rowBetween}>
+                      <div>
+                        <strong>{invoicePayload.sellerName || "Kalastaja"}</strong>
+                        <div style={styles.muted}>Lasku: {invoicePayload.invoiceNumber}</div>
+                      </div>
+                      <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{sellerStatusLabel}</span>
+                    </div>
+
+                    <div style={styles.entryBadges}>
+                      <span style={styles.badge}>{euro(invoicePayload.grandTotal)} lasku</span>
+                      <span style={styles.badge}>{euro(invoicePayload.netTotal)} veroton</span>
+                      <span style={styles.badge}>ALV {(invoicePayload.vatRate * 100).toLocaleString("fi-FI")} % {euro(invoicePayload.vatAmount)}</span>
+                    </div>
+
+                    <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>
+                      <strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideTraceability: false }) || "-"}
+                    </div>
+                    {invoicePayload.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{invoicePayload.batchId}</span></div> : null}
+                    {invoicePayload.catchDates.length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {invoicePayload.catchDates.join(", ")}</div> : null}
+                    <div style={styles.muted}><strong>Laskun päiväys:</strong> {invoicePayload.invoiceDate}</div>
+                    <div style={styles.muted}><strong>Eräpäivä:</strong> {invoicePayload.dueDate}</div>
+                    <div style={styles.muted}><strong>Viitenumero:</strong> {invoicePayload.referenceDisplay}</div>
+                    {invoicePayload.sellerBusinessId ? <div style={styles.muted}><strong>Kalastajan Y-tunnus:</strong> {invoicePayload.sellerBusinessId}</div> : null}
+                    {invoicePayload.sellerEmail ? <div style={styles.muted}><strong>Kalastajan sähköposti:</strong> {invoicePayload.sellerEmail}</div> : null}
+                    {invoicePayload.sellerPhone ? <div style={styles.muted}><strong>Kalastajan puhelin:</strong> {invoicePayload.sellerPhone}</div> : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {activeTab !== "reports" && activeTab !== "buyer_billing" && acceptedBuyerOffers.length > 0 ? (
             <div style={{ ...styles.successHighlightBox, ...styles.stack, marginBottom: 16 }}>
               <div style={styles.rowBetween}>
                 <div>
@@ -12334,6 +12418,9 @@ export default function App() {
                     {acceptedBuyerOffers.length === 1
                       ? "Sinulla on 1 hyväksytty kauppa. Tarkemmat tiedot löytyvät alempaa tarjouslistan vetolaatikosta."
                       : `Sinulla on ${acceptedBuyerOffers.length} hyväksyttyä kauppaa. Tarkemmat tiedot löytyvät alempaa tarjouslistan vetolaatikosta.`}
+                  </div>
+                  <div style={{ ...styles.muted, marginTop: 6 }}>
+                    Muista kuitata kalaerä vastaanotetuksi, jotta kalastaja voi lähettää laskun.
                   </div>
                 </div>
                 <button
@@ -12346,7 +12433,7 @@ export default function App() {
             </div>
           ) : null}
 
-          {activeTab !== "reports" ? (
+          {activeTab !== "reports" && activeTab !== "buyer_billing" ? (
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}>
               <strong>Minulle tarjotut erät</strong>
@@ -12577,9 +12664,14 @@ export default function App() {
                             <div style={styles.muted}>Aikaisin toimitus: {sellerInfo.earliestDeliveryDate || "-"}</div>
                             <div style={styles.muted}>Kylmäkuljetus: {sellerInfo.coldTransport ? "kyllä" : "ei"}</div>
                             <div style={styles.muted}>Toimituksen tila: {fulfillmentStatusLabel(o.fulfillment_status)}</div>
+                            {!["delivered", "received"].includes(String(o.fulfillment_status || "")) ? (
+                              <div style={styles.noticeInfo}>
+                                Muista kuitata kalaerä vastaanotetuksi heti toimituksen jälkeen. Kalastaja voi lähettää laskun vasta sen jälkeen.
+                              </div>
+                            ) : null}
                             <div style={styles.row}>
                               {!["delivery_agreed", "delivered", "received"].includes(String(o.fulfillment_status || "")) ? <button style={styles.button} onClick={() => updateFulfillmentStatus(o, "delivery_agreed")}>Merkitse toimitus sovituksi</button> : null}
-                              {!["delivered", "received"].includes(String(o.fulfillment_status || "")) ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => updateFulfillmentStatus(o, "delivered")}>Merkitse toimitetuksi</button> : null}
+                              {!["delivered", "received"].includes(String(o.fulfillment_status || "")) ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => updateFulfillmentStatus(o, "delivered")}>Kuittaa vastaanotetuksi</button> : null}
                             </div>
                           </div>
                         ) : null}
