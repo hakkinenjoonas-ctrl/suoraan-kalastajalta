@@ -258,7 +258,7 @@ Deno.serve(async (req) => {
       const { data: buyerRowsByEmail, error: buyerRowsByEmailError } = await adminClient
         .from("buyers")
         .select("id")
-        .or(`email.eq.${targetBuyerEmail},billing_email.eq.${targetBuyerEmail}`);
+        .eq("email", targetBuyerEmail);
 
       if (buyerRowsByEmailError) {
         console.error("send-push-notification:buyer-email-query-error", {
@@ -332,7 +332,7 @@ Deno.serve(async (req) => {
       const { data: directProfileRowsByEmail, error: directProfileRowsByEmailError } = await adminClient
         .from("profiles")
         .select("id")
-        .or(`email.eq.${targetBuyerEmail},contact_email.eq.${targetBuyerEmail},billing_email.eq.${targetBuyerEmail}`);
+        .or(`email.eq.${targetBuyerEmail},contact_email.eq.${targetBuyerEmail}`);
 
       if (directProfileRowsByEmailError) {
         console.error("send-push-notification:direct-profile-email-query-error", {

@@ -16,19 +16,6 @@ export async function resolveBuyerRecord(
   adminClient: ReturnType<typeof createClient>,
   profile: Record<string, unknown>,
 ) {
-  const existingBuyerId = safeString(profile?.buyer_id);
-
-  if (existingBuyerId) {
-    const { data, error } = await adminClient
-      .from("buyers")
-      .select("*")
-      .eq("id", existingBuyerId)
-      .maybeSingle();
-
-    if (error) throw new Error(error.message);
-    if (data) return data;
-  }
-
   const candidateEmails = uniqueNonEmpty([
     profile?.email,
     profile?.contact_email,
@@ -39,7 +26,7 @@ export async function resolveBuyerRecord(
     const { data, error } = await adminClient
       .from("buyers")
       .select("*")
-      .or(`email.eq.${candidateEmail},billing_email.eq.${candidateEmail}`)
+      .eq("email", candidateEmail)
       .limit(1)
       .maybeSingle();
 
@@ -51,6 +38,19 @@ export async function resolveBuyerRecord(
       continue;
     }
 
+    if (data) return data;
+  }
+
+  const existingBuyerId = safeString(profile?.buyer_id);
+
+  if (existingBuyerId) {
+    const { data, error } = await adminClient
+      .from("buyers")
+      .select("*")
+      .eq("id", existingBuyerId)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
     if (data) return data;
   }
 

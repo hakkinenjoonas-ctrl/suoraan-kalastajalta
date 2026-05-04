@@ -22,9 +22,6 @@ function safeString(value: unknown) {
 async function resolveBuyerId(adminClient: ReturnType<typeof createClient>, profile: Record<string, unknown>, explicitBuyerId: string) {
   if (explicitBuyerId) return explicitBuyerId;
 
-  const existingBuyerId = safeString(profile?.buyer_id);
-  if (existingBuyerId) return existingBuyerId;
-
   const candidateEmails = Array.from(new Set([
     safeString(profile?.email).toLowerCase(),
     safeString(profile?.contact_email).toLowerCase(),
@@ -35,7 +32,7 @@ async function resolveBuyerId(adminClient: ReturnType<typeof createClient>, prof
     const { data, error } = await adminClient
       .from("buyers")
       .select("id")
-      .or(`email.eq.${candidateEmail},billing_email.eq.${candidateEmail}`)
+      .eq("email", candidateEmail)
       .limit(1)
       .maybeSingle();
 
@@ -50,6 +47,9 @@ async function resolveBuyerId(adminClient: ReturnType<typeof createClient>, prof
     const buyerId = safeString(data?.id);
     if (buyerId) return buyerId;
   }
+
+  const existingBuyerId = safeString(profile?.buyer_id);
+  if (existingBuyerId) return existingBuyerId;
 
   return "";
 }
