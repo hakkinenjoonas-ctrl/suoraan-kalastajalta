@@ -12512,7 +12512,7 @@ export default function App() {
                   <option value="all">Kaikki</option>
                 </select>
                 <input
-                  style={{ ...styles.input, width: 320 }}
+                  style={{ ...styles.input, width: viewportWidth < 768 ? "100%" : 320, flex: "1 1 320px", minWidth: 0 }}
                   placeholder="Hae myyjällä, alueella, lajilla..."
                   value={buyerOffersSearch}
                   onChange={(e) => setBuyerOffersSearch(e.target.value)}
@@ -12597,7 +12597,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div style={{ ...styles.grid2, marginBottom: 10 }}>
+                        <div style={{ ...(viewportWidth < 768 ? { display: "grid", gridTemplateColumns: "1fr", gap: 18 } : styles.grid2), marginBottom: 10 }}>
                           <div>
                             <div style={styles.muted}><strong>Erän tiedot</strong></div>
                             {mixedOffer ? <div style={{ ...styles.noticeInfo, marginBottom: 8 }}>Tämä monilajinen erä myydään kokonaisuutena. Kalalajit, hinnat ja erätunnukset näkyvät alla riveittäin.</div> : null}

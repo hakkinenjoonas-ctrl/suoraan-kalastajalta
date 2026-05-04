@@ -1,12 +1,15 @@
 export const styles = {
   app: {
     minHeight: "100vh",
+    width: "100%",
     background: "radial-gradient(circle at top left, rgba(191,219,254,0.55) 0%, rgba(239,246,255,0.96) 26%, rgba(219,234,254,0.82) 54%, rgba(239,246,255,1) 100%)",
     color: "#0f172a",
     fontFamily: '"Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     padding: 20,
+    boxSizing: "border-box",
+    overflowX: "hidden",
   },
-  container: { maxWidth: 1320, margin: "0 auto" },
+  container: { maxWidth: 1320, width: "100%", margin: "0 auto", boxSizing: "border-box" },
   card: {
     background: "rgba(255,255,255,0.88)",
     border: "1px solid rgba(148, 184, 255, 0.28)",
