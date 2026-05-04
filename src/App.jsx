@@ -12163,10 +12163,15 @@ export default function App() {
                   ))}
                 </select>
               ) : null}
-              <div style={styles.toolbarActions}>
-                <button type="button" style={styles.button} onClick={handleManualRefresh}>Päivitä</button>
-                <button type="button" style={styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
-                <button type="button" style={styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
+              <div style={viewportWidth < 560 ? {
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 8,
+                width: "100%",
+              } : styles.toolbarActions}>
+                <button type="button" style={viewportWidth < 560 ? { ...styles.button, minWidth: 0, padding: "11px 8px", fontSize: 14 } : styles.button} onClick={handleManualRefresh}>Päivitä</button>
+                <button type="button" style={viewportWidth < 560 ? { ...styles.button, minWidth: 0, padding: "11px 8px", fontSize: 14 } : styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje tiedot" : "Omat tiedot"}</button>
+                <button type="button" style={viewportWidth < 560 ? { ...styles.button, minWidth: 0, padding: "11px 8px", fontSize: 14 } : styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
               </div>
             </div>
             </div>
