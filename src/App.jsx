@@ -12879,7 +12879,7 @@ export default function App() {
                         ) : (
                           <>
                             <div style={styles.field}>
-                              <label>Vastatarjous €/kg</label>
+                              <label>{`Vastatarjous €/${getOfferDisplayUnit(o)}`}</label>
                               <input
                                 style={styles.input}
                                 type="text"
