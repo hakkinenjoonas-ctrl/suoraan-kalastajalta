@@ -9,6 +9,26 @@ import {
 } from "../lib/offerLogic.js";
 import { FISH_VAT_RATE } from "../lib/pricing.js";
 
+function isCrayfishOfferSummary(summary) {
+  const text = String(summary || "").toLowerCase();
+  return text.includes("täplärapu") ||
+    text.includes("jokirapu") ||
+    text.includes("pacifastacus leniusculus") ||
+    text.includes("astacus astacus");
+}
+
+function getCrayfishCountDisplay(summary) {
+  const countMatch = String(summary || "").match(/(\d+(?:[.,]\d+)?)\s*kpl/i);
+  return countMatch ? `${String(countMatch[1]).replace(".", ",")} kpl` : null;
+}
+
+function getOfferAmountDisplay(offer, fallbackValue) {
+  if (isCrayfishOfferSummary(offer?.species_summary)) {
+    return getCrayfishCountDisplay(offer?.species_summary) || `${fallbackValue} kg`;
+  }
+  return `${fallbackValue} kg`;
+}
+
 function euro(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
@@ -237,10 +257,10 @@ export function BuyerResponsesSection({
                     </>
                   )}
                 {!isMixedOffer(offer) && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
-                <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
+                <div style={styles.muted}><strong>Määrä:</strong> {getOfferAmountDisplay(offer, offer.total_kilos)}</div>
                 {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous ALV 0 %:</strong> {netPriceLabel(offer.counter_price_per_kg)}</div> : null}
                 {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>{`Vastatarjous sis. ALV ${(FISH_VAT_RATE * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %:`}</strong> {grossPriceLabel(offer.counter_price_per_kg)}</div> : null}
-                {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos} kg</div> : null}
+                {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {getOfferAmountDisplay(offer, offer.reserved_kilos)}</div> : null}
                 {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
                 {revealIdentity ? <div style={styles.muted}><strong>Ostaja:</strong> {offer.buyer_company_name || offer.buyer_contact_name || offer.buyer_email || "-"}</div> : null}
                 {revealIdentity && offer.buyer_business_id ? <div style={styles.muted}><strong>Y-tunnus:</strong> {offer.buyer_business_id}</div> : null}
@@ -473,7 +493,7 @@ export function OfferedEntriesDetailsSection({
                                   </>
                                 )}
                               {!isMixedOffer(offer) && showTraceability && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
-                              <div style={styles.muted}><strong>Määrä:</strong> {offer.total_kilos} kg</div>
+                              <div style={styles.muted}><strong>Määrä:</strong> {getOfferAmountDisplay(offer, offer.total_kilos)}</div>
                               <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{entry.municipality ? ` · ${entry.municipality}` : ""}{offer.spot ? ` / ${offer.spot}` : ""}</div>
                             </div>
                             <div>
@@ -481,7 +501,7 @@ export function OfferedEntriesDetailsSection({
                               <div style={styles.muted}><strong>{`Vastatarjous sis. ALV ${(FISH_VAT_RATE * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %:`}</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? grossPriceLabel(offer.counter_price_per_kg) : "-"}</div>
                               {isBuyerOfferAccepted(offer.status) ? <div style={styles.muted}><strong>Kaupan arvo:</strong> {euro(calculateCommissionDetails(offer).tradeValue)}</div> : null}
                               {isBuyerOfferAccepted(offer.status) ? <div style={styles.muted}><strong>Komissio ({(COMMISSION_RATE * 100).toFixed(1)} %):</strong> {euro(calculateCommissionDetails(offer).commissionValue)}</div> : null}
-                              <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? `${offer.reserved_kilos} kg` : "-"}</div>
+                              <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? getOfferAmountDisplay(offer, offer.reserved_kilos) : "-"}</div>
                               <div style={styles.muted}><strong>Pyydys:</strong> {formatCatchGearDisplay(entry)}</div>
                             </div>
                           </div>
