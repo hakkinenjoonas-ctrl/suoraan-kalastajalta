@@ -6371,26 +6371,21 @@ export default function App() {
 
   const buyerCandidateRecords = useMemo(() => {
     if (!profile || profile.role !== "buyer") return null;
+    const exactIdCandidates = buyers.filter((buyer) => String(buyer.id || "") === String(profile.buyer_id || ""));
+    if (exactIdCandidates.length > 0) return exactIdCandidates;
+
     const loginEmailCandidates = buyers.filter((buyer) => (
       buyerLoginEmail &&
-      (
-        normalizeEmail(buyer.email) === buyerLoginEmail ||
-        normalizeEmail(buyer.billing_email) === buyerLoginEmail
-      )
+      normalizeEmail(buyer.email) === buyerLoginEmail
     ));
     if (loginEmailCandidates.length > 0) return loginEmailCandidates;
 
     const contactEmailCandidates = buyers.filter((buyer) => (
       buyerContactEmail &&
-      (
-        normalizeEmail(buyer.email) === buyerContactEmail ||
-        normalizeEmail(buyer.billing_email) === buyerContactEmail
-      )
+      normalizeEmail(buyer.email) === buyerContactEmail
     ));
     if (contactEmailCandidates.length > 0) return contactEmailCandidates;
-
-    const exactIdCandidates = buyers.filter((buyer) => String(buyer.id || "") === String(profile.buyer_id || ""));
-    return exactIdCandidates;
+    return [];
   }, [buyerContactEmail, buyerLoginEmail, buyers, profile]);
 
   const linkedBuyerRecord = useMemo(() => {
@@ -6406,6 +6401,8 @@ export default function App() {
     if (!profile || profile.role !== "buyer") return [];
     const filters = [];
     const buyerIds = Array.from(new Set([
+      String(profile?.buyer_id || "").trim(),
+      String(linkedBuyerRecord?.id || "").trim(),
       ...(buyerCandidateRecords || []).map((buyer) => String(buyer?.id || "").trim()).filter(Boolean),
     ].filter(Boolean)));
     buyerIds.forEach((buyerId) => {
@@ -6415,16 +6412,14 @@ export default function App() {
     const identityEmails = Array.from(new Set([
       ...buyerIdentityEmails,
       normalizeEmail(linkedBuyerRecord?.email),
-      normalizeEmail(linkedBuyerRecord?.billing_email),
       ...(buyerCandidateRecords || []).map((buyer) => normalizeEmail(buyer?.email)).filter(Boolean),
-      ...(buyerCandidateRecords || []).map((buyer) => normalizeEmail(buyer?.billing_email)).filter(Boolean),
     ].filter(Boolean)));
     identityEmails.forEach((email) => {
       filters.push(`buyer_email.eq.${email}`);
     });
 
     return filters;
-  }, [buyerCandidateRecords, buyerIdentityEmails, linkedBuyerRecord?.billing_email, linkedBuyerRecord?.email, profile]);
+  }, [buyerCandidateRecords, buyerIdentityEmails, linkedBuyerRecord?.email, linkedBuyerRecord?.id, profile]);
 
   const activeRoleOption = useMemo(
     () => getMatchingAllowedRole(availableRoleOptions, profile),
@@ -7229,7 +7224,17 @@ export default function App() {
         matching.push(recipient);
       });
 
-    const dedupedMatching = matching.filter((recipient, index, array) => index === array.findIndex((item) => (item.email || "").trim().toLowerCase() === (recipient.email || "").trim().toLowerCase()));
+    const dedupedMatching = matching.filter((recipient, index, array) => {
+      const recipientKey = String(recipient.buyer_id || "").trim()
+        || (recipient.email || "").trim().toLowerCase()
+        || `${recipient.company_name || ""}::${recipient.channel || ""}`;
+      return index === array.findIndex((item) => {
+        const itemKey = String(item.buyer_id || "").trim()
+          || (item.email || "").trim().toLowerCase()
+          || `${item.company_name || ""}::${item.channel || ""}`;
+        return itemKey === recipientKey;
+      });
+    });
     return {
       totalKilos,
       selectedTypes,
