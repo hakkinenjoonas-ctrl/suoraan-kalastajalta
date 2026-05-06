@@ -1783,11 +1783,11 @@ async function presentFileBlob(blob, fileName, options = {}) {
   }, 60000);
 }
 
-async function presentPdfDocument(doc, fileName) {
+async function presentPdfDocument(doc, fileName, options = {}) {
   const blob = doc.output("blob");
   await presentFileBlob(blob, fileName, {
     mimeType: "application/pdf",
-    browserAction: "download",
+    browserAction: options.browserAction === "open" ? "open" : "download",
     shareTitle: fileName,
     shareText: "Avaa tai jaa PDF-tiedosto",
     dialogTitle: "PDF-tiedosto",
@@ -5235,13 +5235,13 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
 
 async function openSellerInvoicePdf(offer, sellerProfile) {
   const { doc, invoice } = await buildSellerInvoicePdfDoc(offer, sellerProfile);
-  await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`);
+  await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`, { browserAction: "open" });
   return invoice;
 }
 
 async function openSellerGroupInvoicePdf(offers, sellerProfile) {
   const { doc, invoice } = await buildSellerGroupInvoicePdfDoc(offers, sellerProfile);
-  await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`);
+  await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`, { browserAction: "open" });
   return invoice;
 }
 
@@ -6228,6 +6228,9 @@ export default function App() {
   const foregroundNotificationRef = useRef({ key: "", at: 0 });
   const pushRegistrationKeyRef = useRef("");
   const currentPushTokenRef = useRef("");
+  const tabsScrollRef = useRef(null);
+  const [tabsOverflowing, setTabsOverflowing] = useState(false);
+  const [showTabsScrollHint, setShowTabsScrollHint] = useState(false);
   const [accountForm, setAccountForm] = useState({
     displayName: "",
     buyerType: "ravintola",
@@ -10408,7 +10411,11 @@ export default function App() {
     }
 
     setAuthError("");
-    await openSellerInvoicePdf(offer, sellerProfileLike);
+    try {
+      await openSellerInvoicePdf(offer, sellerProfileLike);
+    } catch (error) {
+      setAuthError(`Lasku-PDF:n avaaminen epäonnistui: ${String(error?.message || error)}`);
+    }
   };
 
   const sendSellerInvoiceEmailMessage = async ({
@@ -13059,6 +13066,34 @@ export default function App() {
     ? 206
     : 228;
 
+  useEffect(() => {
+    const tabScroller = tabsScrollRef.current;
+    const shouldTrackScrollHint = Boolean(tabScroller) && isCompactTabs && profile?.role !== "buyer";
+
+    if (!shouldTrackScrollHint) {
+      setTabsOverflowing(false);
+      setShowTabsScrollHint(false);
+      return undefined;
+    }
+
+    const updateScrollHintState = () => {
+      const maxScrollLeft = Math.max(0, tabScroller.scrollWidth - tabScroller.clientWidth);
+      const hasOverflow = maxScrollLeft > 16;
+      const isNearStart = tabScroller.scrollLeft < 24;
+      setTabsOverflowing(hasOverflow);
+      setShowTabsScrollHint(hasOverflow && isNearStart);
+    };
+
+    updateScrollHintState();
+    tabScroller.addEventListener("scroll", updateScrollHintState, { passive: true });
+    window.addEventListener("resize", updateScrollHintState);
+
+    return () => {
+      tabScroller.removeEventListener("scroll", updateScrollHintState);
+      window.removeEventListener("resize", updateScrollHintState);
+    };
+  }, [isCompactTabs, profile?.role, viewportWidth, availableRoleOptions.length]);
+
   return (
     <div style={styles.app}>
       <div style={styles.container}>
@@ -13415,8 +13450,30 @@ export default function App() {
           viewportWidth={viewportWidth}
         />
 
-        <div style={styles.stickyTabsWrap}>
-          <div style={visibleTabStyle}>
+        <div style={{ ...styles.stickyTabsWrap, position: "sticky" }}>
+          {showTabsScrollHint ? (
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 8,
+                padding: "8px 12px",
+                borderRadius: 999,
+                background: "rgba(255,255,255,0.96)",
+                border: "1px solid rgba(147, 197, 253, 0.72)",
+                color: "#1e3a8a",
+                fontSize: 13,
+                fontWeight: 700,
+                boxShadow: "0 10px 22px rgba(37, 99, 235, 0.08)",
+              }}
+            >
+              <span>←</span>
+              <span>Pyyhkäise oikealle nähdäksesi lisää välilehtiä</span>
+              <span>→</span>
+            </div>
+          ) : null}
+          <div ref={tabsScrollRef} style={visibleTabStyle}>
             <button style={{ ...visibleSingleTabStyle, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
             {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button> : null}
             {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button> : null}
@@ -13428,6 +13485,20 @@ export default function App() {
             {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
             {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
           </div>
+          {tabsOverflowing && !showTabsScrollHint ? (
+            <div
+              style={{
+                position: "absolute",
+                right: 8,
+                top: 18,
+                width: 42,
+                height: 54,
+                borderRadius: 18,
+                background: "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.96) 70%)",
+                pointerEvents: "none",
+              }}
+            />
+          ) : null}
         </div>
 
         {activeTab === "dashboard" ? (
