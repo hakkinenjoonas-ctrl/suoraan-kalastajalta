@@ -6183,6 +6183,7 @@ export default function App() {
     reserved_kilos: "",
     buyer_message: "",
   });
+  const [buyerOfferInlineError, setBuyerOfferInlineError] = useState({ offerId: "", message: "" });
   const [offerForm, setOfferForm] = useState({
     company_name: "",
     contact_name: "",
@@ -10945,9 +10946,15 @@ export default function App() {
     const missingBuyerFields = getMissingBuyerTradeFields(linkedBuyerRecord, profile);
     if (missingBuyerFields.length > 0) {
       setAccountPanelOpen(true);
+      setBuyerOfferInlineError({
+        offerId: String(offer?.id || ""),
+        message: `Täytä omat tiedot ennen kuin voit tehdä vastatarjouksen. Puuttuvat tiedot: ${missingBuyerFields.join(", ")}.`,
+      });
       setAuthError(`Täytä ensin Omat tiedot ennen kuin voit tehdä vastatarjouksen. Puuttuvat tiedot: ${missingBuyerFields.join(", ")}.`);
       return;
     }
+
+    setBuyerOfferInlineError({ offerId: "", message: "" });
 
     const mixedOffer = isMixedOffer(offer);
     let price = parseLocaleNumber(buyerAction.counter_price_per_kg);
@@ -11026,9 +11033,15 @@ export default function App() {
     const missingBuyerFields = getMissingBuyerTradeFields(linkedBuyerRecord, profile);
     if (missingBuyerFields.length > 0) {
       setAccountPanelOpen(true);
+      setBuyerOfferInlineError({
+        offerId: String(offer?.id || ""),
+        message: `Täytä omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerFields.join(", ")}.`,
+      });
       setAuthError(`Täytä ensin Omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerFields.join(", ")}.`);
       return;
     }
+
+    setBuyerOfferInlineError({ offerId: "", message: "" });
 
     const confirmed = typeof window === "undefined"
       ? true
@@ -12809,6 +12822,7 @@ export default function App() {
                     const offerCatchDates = getOfferSummaryCatchDates(o.species_summary);
                     const buyerOfferActionsOpen = hasBuyerOfferStatus(o.status, BUYER_OFFER_OPEN_RESPONSE_STATUSES);
                     const showCounterAction = isActive && buyerActionMode === "counter";
+                    const offerInlineError = buyerOfferInlineError.offerId === String(o?.id || "") ? buyerOfferInlineError.message : "";
                     return (
                       <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
                         <div style={{ marginBottom: 10 }}>
@@ -12915,6 +12929,11 @@ export default function App() {
                             MYYTY JO TOISELLE OSTAJALLE. Tämä erä ei ole enää myynnissä, eikä siihen voi tehdä toimenpiteitä.
                           </div>
                         ) : null}
+                        {offerInlineError ? (
+                          <div style={{ ...styles.noticeError, marginTop: 12, marginBottom: 12 }}>
+                            {offerInlineError}
+                          </div>
+                        ) : null}
 
                         <div style={{ ...styles.row, marginTop: 12 }}>
                           {buyerOfferActionsOpen ? (
@@ -12930,9 +12949,14 @@ export default function App() {
                                 onClick={() => {
                                   if (buyerTradeProfileIncomplete) {
                                     setAccountPanelOpen(true);
+                                    setBuyerOfferInlineError({
+                                      offerId: String(o?.id || ""),
+                                      message: `Täytä omat tiedot ennen kuin voit tehdä vastatarjouksen. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`,
+                                    });
                                     setAuthError(`Täytä ensin Omat tiedot ennen kuin voit tehdä vastatarjouksen. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`);
                                     return;
                                   }
+                                  setBuyerOfferInlineError({ offerId: "", message: "" });
                                   if (o.status === "sent") {
                                     void markBuyerOfferViewed(o);
                                   }
@@ -12952,9 +12976,14 @@ export default function App() {
                                 onClick={async () => {
                                   if (buyerTradeProfileIncomplete) {
                                     setAccountPanelOpen(true);
+                                    setBuyerOfferInlineError({
+                                      offerId: String(o?.id || ""),
+                                      message: `Täytä omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`,
+                                    });
                                     setAuthError(`Täytä ensin Omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`);
                                     return;
                                   }
+                                  setBuyerOfferInlineError({ offerId: "", message: "" });
                                   if (o.status === "sent") {
                                     const viewedOk = await markBuyerOfferViewed(o);
                                     if (!viewedOk) return;
@@ -12966,7 +12995,10 @@ export default function App() {
                               </button>
                             </>
                           ) : (
-                            <button style={styles.button} onClick={() => setBuyerActiveOfferId(isActive ? null : o.id)}>
+                            <button style={styles.button} onClick={() => {
+                              setBuyerOfferInlineError({ offerId: "", message: "" });
+                              setBuyerActiveOfferId(isActive ? null : o.id);
+                            }}>
                               {isActive ? "Sulje" : "Näytä tiedot"}
                             </button>
                           )}
