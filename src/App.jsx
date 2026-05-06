@@ -6286,6 +6286,34 @@ export default function App() {
   const labelModalHistoryActiveRef = useRef(false);
 
   useEffect(() => {
+    const tabScroller = tabsScrollRef.current;
+    const shouldTrackScrollHint = Boolean(tabScroller) && isCompactTabs && profile?.role !== "buyer";
+
+    if (!shouldTrackScrollHint) {
+      setTabsOverflowing(false);
+      setShowTabsScrollHint(false);
+      return undefined;
+    }
+
+    const updateScrollHintState = () => {
+      const maxScrollLeft = Math.max(0, tabScroller.scrollWidth - tabScroller.clientWidth);
+      const hasOverflow = maxScrollLeft > 16;
+      const isNearStart = tabScroller.scrollLeft < 24;
+      setTabsOverflowing(hasOverflow);
+      setShowTabsScrollHint(hasOverflow && isNearStart);
+    };
+
+    updateScrollHintState();
+    tabScroller.addEventListener("scroll", updateScrollHintState, { passive: true });
+    window.addEventListener("resize", updateScrollHintState);
+
+    return () => {
+      tabScroller.removeEventListener("scroll", updateScrollHintState);
+      window.removeEventListener("resize", updateScrollHintState);
+    };
+  }, [isCompactTabs, profile?.role, viewportWidth, availableRoleOptions.length]);
+
+  useEffect(() => {
     const nextStorageKey = getCatchFormDefaultsStorageKey(profile);
     if (catchDefaultsStorageKeyRef.current === nextStorageKey) return;
 
@@ -13065,34 +13093,6 @@ export default function App() {
     : viewportWidth < 1024
     ? 206
     : 228;
-
-  useEffect(() => {
-    const tabScroller = tabsScrollRef.current;
-    const shouldTrackScrollHint = Boolean(tabScroller) && isCompactTabs && profile?.role !== "buyer";
-
-    if (!shouldTrackScrollHint) {
-      setTabsOverflowing(false);
-      setShowTabsScrollHint(false);
-      return undefined;
-    }
-
-    const updateScrollHintState = () => {
-      const maxScrollLeft = Math.max(0, tabScroller.scrollWidth - tabScroller.clientWidth);
-      const hasOverflow = maxScrollLeft > 16;
-      const isNearStart = tabScroller.scrollLeft < 24;
-      setTabsOverflowing(hasOverflow);
-      setShowTabsScrollHint(hasOverflow && isNearStart);
-    };
-
-    updateScrollHintState();
-    tabScroller.addEventListener("scroll", updateScrollHintState, { passive: true });
-    window.addEventListener("resize", updateScrollHintState);
-
-    return () => {
-      tabScroller.removeEventListener("scroll", updateScrollHintState);
-      window.removeEventListener("resize", updateScrollHintState);
-    };
-  }, [isCompactTabs, profile?.role, viewportWidth, availableRoleOptions.length]);
 
   return (
     <div style={styles.app}>
