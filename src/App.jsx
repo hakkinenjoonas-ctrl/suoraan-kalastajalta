@@ -6231,6 +6231,7 @@ export default function App() {
   const tabsScrollRef = useRef(null);
   const [tabsOverflowing, setTabsOverflowing] = useState(false);
   const [showTabsScrollHint, setShowTabsScrollHint] = useState(false);
+  const isCompactTabs = viewportWidth < 900;
   const [accountForm, setAccountForm] = useState({
     displayName: "",
     buyerType: "ravintola",
@@ -13059,7 +13060,6 @@ export default function App() {
     : profile.role === "member"
     ? { ...styles.tabs6, gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }
     : styles.tabs6;
-  const isCompactTabs = viewportWidth < 900;
   const visibleTabStyle = isCompactTabs
     ? {
         ...tabStyle,
