@@ -6939,6 +6939,26 @@ export default function App() {
       .map((item) => item.label);
   };
 
+  const getMissingBuyerTradeFields = (buyerLike, profileLike) => {
+    const checks = [
+      { label: "yrityksen nimi", value: buyerLike?.company_name || profileLike?.company_name || profileLike?.companyName || profileLike?.display_name },
+      { label: "Y-tunnus", value: buyerLike?.business_id || profileLike?.business_id || profileLike?.businessId },
+      { label: "yhteyssähköposti", value: buyerLike?.contact_email || profileLike?.contact_email || profileLike?.contactEmail || profileLike?.email },
+      { label: "puhelin", value: buyerLike?.phone || profileLike?.phone },
+      { label: "toimitusosoite", value: buyerLike?.delivery_address || profileLike?.delivery_address || profileLike?.deliveryAddress || profileLike?.address },
+      { label: "toimituksen postinumero", value: buyerLike?.delivery_postcode || profileLike?.delivery_postcode || profileLike?.deliveryPostcode || profileLike?.postcode },
+      { label: "toimituskaupunki", value: buyerLike?.delivery_city || profileLike?.delivery_city || profileLike?.deliveryCity || profileLike?.city },
+      { label: "laskutusosoite", value: buyerLike?.billing_address || profileLike?.billing_address || profileLike?.billingAddress },
+      { label: "laskutuksen postinumero", value: buyerLike?.billing_postcode || profileLike?.billing_postcode || profileLike?.billingPostcode },
+      { label: "laskutuskaupunki", value: buyerLike?.billing_city || profileLike?.billing_city || profileLike?.billingCity },
+      { label: "laskutussähköposti", value: buyerLike?.billing_email || profileLike?.billing_email || profileLike?.billingEmail },
+    ];
+
+    return checks
+      .filter((item) => !String(item.value || "").trim())
+      .map((item) => item.label);
+  };
+
   const normalizeBuyerType = (type) => {
     const normalized = String(type || "").trim().toLowerCase();
     if (normalized === "tukku") return "tukku";
@@ -10922,6 +10942,13 @@ export default function App() {
   };
 
   const onSubmitCounter = async (offer) => {
+    const missingBuyerFields = getMissingBuyerTradeFields(linkedBuyerRecord, profile);
+    if (missingBuyerFields.length > 0) {
+      setAccountPanelOpen(true);
+      setAuthError(`Täytä ensin Omat tiedot ennen kuin voit tehdä vastatarjouksen. Puuttuvat tiedot: ${missingBuyerFields.join(", ")}.`);
+      return;
+    }
+
     const mixedOffer = isMixedOffer(offer);
     let price = parseLocaleNumber(buyerAction.counter_price_per_kg);
     let msg = buyerAction.buyer_message?.trim() || null;
@@ -10996,6 +11023,13 @@ export default function App() {
   };
 
   const onReserve = async (offer) => {
+    const missingBuyerFields = getMissingBuyerTradeFields(linkedBuyerRecord, profile);
+    if (missingBuyerFields.length > 0) {
+      setAccountPanelOpen(true);
+      setAuthError(`Täytä ensin Omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerFields.join(", ")}.`);
+      return;
+    }
+
     const confirmed = typeof window === "undefined"
       ? true
       : window.confirm("Haluatko varmasti ostaa tämän kalaerän?");
@@ -12305,6 +12339,9 @@ export default function App() {
   }
 
   if (profile.role === "buyer") {
+    const missingBuyerTradeFields = getMissingBuyerTradeFields(linkedBuyerRecord, profile);
+    const buyerTradeProfileIncomplete = missingBuyerTradeFields.length > 0;
+
     const formatOfferDate = (value) => {
       if (!value) return "-";
       try {
@@ -12891,6 +12928,11 @@ export default function App() {
                                   color: showCounterAction ? "#fff" : "#1d4ed8",
                                 }}
                                 onClick={() => {
+                                  if (buyerTradeProfileIncomplete) {
+                                    setAccountPanelOpen(true);
+                                    setAuthError(`Täytä ensin Omat tiedot ennen kuin voit tehdä vastatarjouksen. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`);
+                                    return;
+                                  }
                                   if (o.status === "sent") {
                                     void markBuyerOfferViewed(o);
                                   }
@@ -12908,6 +12950,11 @@ export default function App() {
                                   color: "#166534",
                                 }}
                                 onClick={async () => {
+                                  if (buyerTradeProfileIncomplete) {
+                                    setAccountPanelOpen(true);
+                                    setAuthError(`Täytä ensin Omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`);
+                                    return;
+                                  }
                                   if (o.status === "sent") {
                                     const viewedOk = await markBuyerOfferViewed(o);
                                     if (!viewedOk) return;
@@ -12975,6 +13022,11 @@ export default function App() {
                         <>
                         {showCounterAction ? (
                         <>
+                        {buyerTradeProfileIncomplete ? (
+                          <div style={{ ...styles.noticeError, marginBottom: 12 }}>
+                            Täytä ensin Omat tiedot ennen kuin voit tehdä vastatarjouksen tai varata erän. Puuttuvat tiedot: {missingBuyerTradeFields.join(", ")}.
+                          </div>
+                        ) : null}
                         {mixedOffer ? (
                           <>
                             <div style={styles.field}>
