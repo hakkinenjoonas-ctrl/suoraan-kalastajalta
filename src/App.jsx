@@ -122,6 +122,26 @@ function getPublicAppBaseUrl() {
   return DEFAULT_PUBLIC_APP_URL;
 }
 
+async function runWithConcurrency(items, concurrency, worker) {
+  const normalizedConcurrency = Math.max(1, Number(concurrency || 1));
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  const runWorker = async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(normalizedConcurrency, items.length) }, () => runWorker())
+  );
+
+  return results;
+}
+
 function getSpeciesRowLabel(row) {
   if (row?.species === "Muu") {
     return String(row?.customSpecies || "").trim() || "Muu";
@@ -605,6 +625,7 @@ function canPrintCatchLabels(entry) {
 
 const WATER_TYPE_FRESH = "makea";
 const WATER_TYPE_SEA = "meri";
+const OFFER_SEND_CONCURRENCY = 4;
 
 function getCatchWaterTypeLabel(value) {
   return value === WATER_TYPE_SEA ? "Meri" : value === WATER_TYPE_FRESH ? "Makea vesi" : "";
@@ -9702,13 +9723,10 @@ export default function App() {
       }
     }
 
-    const sent = [];
-    const failed = [];
-
-    for (const recipient of recipients) {
+    const recipientResults = await runWithConcurrency(recipients, OFFER_SEND_CONCURRENCY, async (recipient) => {
       const insertedOffer = await supabase
         .from("buyer_offers")
-      .insert({
+        .insert({
           batch_id: rows[0]?.batch_id || null,
           buyer_id: recipient.buyer_id || null,
           buyer_email: recipient.email,
@@ -9744,25 +9762,21 @@ export default function App() {
         .single();
 
       if (insertedOffer.error) {
-        failed.push({
+        return {
+          kind: "failed",
+          payload: {
           company_name: recipient.company_name,
           contact_name: recipient.contact_name,
           email: recipient.email,
           channel: recipient.channel,
           error: insertedOffer.error.message || "buyer_offers-rivin tallennus epäonnistui",
-        });
-        continue;
+          },
+        };
       }
 
       const offerId = insertedOffer?.data?.id || null;
 
       try {
-        console.log("About to invoke send-catch-offer-email", {
-          recipientEmail: recipient.email,
-          recipientCompany: recipient.company_name,
-          entry,
-        });
-
         const { data, error } = await invokeEdgeFunctionAuthenticated(
           "send-catch-offer-email",
           {
@@ -9825,7 +9839,9 @@ export default function App() {
         const pushDelivered = Boolean(recipient.buyer_id) && !pushSkipped && !pushErrorMessage;
 
         if (emailSucceeded || pushDelivered) {
-          sent.push({
+          return {
+            kind: "sent",
+            payload: {
             buyer_id: recipient.buyer_id,
             company_name: recipient.company_name,
             contact_name: recipient.contact_name,
@@ -9838,27 +9854,40 @@ export default function App() {
             emailFailed: !emailSucceeded,
             emailError: emailSucceeded ? "" : emailErrorMessage,
             data,
-          });
+            },
+          };
         } else {
-          failed.push({
+          return {
+            kind: "failed",
+            payload: {
             company_name: recipient.company_name,
             contact_name: recipient.contact_name,
             email: recipient.email,
             channel: recipient.channel,
             error: emailErrorMessage || pushErrorMessage || "Tarjouksen ilmoitusten lähetys epäonnistui",
-          });
+            },
+          };
         }
       } catch (err) {
-        console.error("Email sending failed", err);
-        failed.push({
+        return {
+          kind: "failed",
+          payload: {
           company_name: recipient.company_name,
           contact_name: recipient.contact_name,
           email: recipient.email,
           channel: recipient.channel,
           error: err instanceof Error ? err.message : String(err),
-        });
+          },
+        };
       }
-    }
+    });
+
+    const sent = recipientResults
+      .filter((result) => result?.kind === "sent")
+      .map((result) => result.payload);
+    const failed = recipientResults
+      .filter((result) => result?.kind === "failed")
+      .map((result) => result.payload);
 
     if (failed.length > 0 && sent.length === 0) {
       throw new Error(`Tarjouksen lähetys epäonnistui ${failed.length} ostajalle.`);
@@ -10589,7 +10618,7 @@ export default function App() {
     return { ok: true };
   };
 
-  const runBuyerOfferMutation = async ({ action, offer, payload, fallbackPatch }) => {
+  const runBuyerOfferMutation = async ({ action, offer, payload, fallbackPatch, skipRefresh = false, applyLocalOfferUpdate = null }) => {
     let result = null;
 
     try {
@@ -10619,8 +10648,14 @@ export default function App() {
     }
 
     if (result && !result.error) {
-      await refreshBuyerOffers();
-      setRefreshTick((prev) => prev + 1);
+      if (skipRefresh) {
+        if (typeof applyLocalOfferUpdate === "function") {
+          applyLocalOfferUpdate();
+        }
+      } else {
+        await refreshBuyerOffers();
+        setRefreshTick((prev) => prev + 1);
+      }
       return true;
     }
 
@@ -10638,8 +10673,14 @@ export default function App() {
       return false;
     }
 
-    await refreshBuyerOffers();
-    setRefreshTick((prev) => prev + 1);
+    if (skipRefresh) {
+      if (typeof applyLocalOfferUpdate === "function") {
+        applyLocalOfferUpdate();
+      }
+    } else {
+      await refreshBuyerOffers();
+      setRefreshTick((prev) => prev + 1);
+    }
     return true;
   };
 
@@ -10952,6 +10993,14 @@ export default function App() {
       offer,
       payload: {},
       fallbackPatch: { status: "cancelled" },
+      skipRefresh: true,
+      applyLocalOfferUpdate: () => {
+        setBuyerOffers((current) => current.map((item) => (
+          item.id === offer.id
+            ? { ...item, status: "cancelled" }
+            : item
+        )));
+      },
     });
     if (ok) {
       setBuyerActiveOfferId((current) => (current === offer.id ? null : current));
@@ -11370,10 +11419,7 @@ export default function App() {
 
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
-    const sent = [];
-    const failed = [];
-
-    for (const recipient of recipients) {
+    const recipientResults = await runWithConcurrency(recipients, OFFER_SEND_CONCURRENCY, async (recipient) => {
       const insertedOffer = await supabase
         .from("buyer_offers")
         .insert({
@@ -11411,14 +11457,16 @@ export default function App() {
         .single();
 
       if (insertedOffer.error) {
-        failed.push({
+        return {
+          kind: "failed",
+          payload: {
           company_name: recipient.company_name,
           contact_name: recipient.contact_name,
           email: recipient.email,
           channel: recipient.channel,
           error: insertedOffer.error.message || "buyer_offers-rivin tallennus epäonnistui",
-        });
-        continue;
+          },
+        };
       }
 
       const offerId = insertedOffer?.data?.id || null;
@@ -11468,7 +11516,6 @@ export default function App() {
         accessToken
       );
       if (!error) {
-        console.log("send-catch-offer-email ok", recipient.email, data);
         const pushResult = await sendPushEvent({
           targetBuyerId: recipient.buyer_id || "",
           title: "Uusi kalatarjous",
@@ -11478,7 +11525,9 @@ export default function App() {
           offerId,
           batchId,
         });
-        sent.push({
+        return {
+          kind: "sent",
+          payload: {
           buyer_id: recipient.buyer_id,
           company_name: recipient.company_name,
           contact_name: recipient.contact_name,
@@ -11489,18 +11538,28 @@ export default function App() {
           pushSkipped: Boolean(pushResult?.data?.skipped),
           pushSkipReason: String(pushResult?.data?.reason || "").trim(),
           data,
-        });
+          },
+        };
       } else {
-        console.error("send-catch-offer-email error", recipient.email, error);
-        failed.push({
+        return {
+          kind: "failed",
+          payload: {
           company_name: recipient.company_name,
           contact_name: recipient.contact_name,
           email: recipient.email,
           channel: recipient.channel,
           error: error?.context?.error || error?.message || "Tarjoussähköpostin lähetys epäonnistui",
-        });
+          },
+        };
       }
-    }
+    });
+
+    const sent = recipientResults
+      .filter((result) => result?.kind === "sent")
+      .map((result) => result.payload);
+    const failed = recipientResults
+      .filter((result) => result?.kind === "failed")
+      .map((result) => result.payload);
 
     if (failed.length > 0 && sent.length === 0) {
       throw new Error(`Tarjouksen lähetys epäonnistui ${failed.length} ostajalle.`);
