@@ -9046,6 +9046,44 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
+  const handleRejectPendingProfile = async (pendingProfile) => {
+    if (!profile || profile.role !== "owner" || !pendingProfile?.id) return;
+    if (normalizeEmail(pendingProfile.email) === normalizeEmail(profile?.email)) {
+      setUserMessage("Et voi hylätä omaa käyttäjääsi.");
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(`Hylätäänkö käyttäjän ${pendingProfile.display_name || pendingProfile.email} pyyntö ja poistetaanko tunnus kokonaan?`);
+      if (!confirmed) return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) {
+      setUserMessage("Istunto puuttuu. Kirjaudu uudelleen sisään.");
+      return;
+    }
+
+    const { error } = await invokeAdminDeleteEntity(accessToken, {
+      type: "user",
+      userId: pendingProfile.id,
+      email: pendingProfile.email || "",
+    });
+
+    if (error) {
+      if (error.status === 401) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(`Pyynnön hylkäys epäonnistui: ${error.message}`);
+      return;
+    }
+
+    setUserMessage(`Käyttäjän ${pendingProfile.display_name || pendingProfile.email} pyyntö hylätty ja tunnus poistettu.`);
+    setRefreshTick((prev) => prev + 1);
+  };
+
   const handleChangePassword = async () => {
     setAuthError("");
     setAuthInfo("");
@@ -14809,6 +14847,12 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                         </div>
                         <div style={styles.row}>
                           <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => handleApprovePendingProfile(pendingProfile)}>Hyväksy</button>
+                          <button
+                            style={{ ...styles.button, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff1f2" }}
+                            onClick={() => handleRejectPendingProfile(pendingProfile)}
+                          >
+                            Hylkää
+                          </button>
                         </div>
                       </div>
                     </div>
