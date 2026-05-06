@@ -42,3 +42,7 @@ export async function invokeBuyerOfferAction(accessToken, payload) {
 export async function invokeBulkOfferDispatch(accessToken, payload) {
   return invokeEdgeFunctionAuthenticated("bulk-send-offers", payload, accessToken);
 }
+
+export async function invokeAdminDeleteEntity(accessToken, payload) {
+  return invokeEdgeFunctionAuthenticated("admin-delete-entity", payload, accessToken);
+}

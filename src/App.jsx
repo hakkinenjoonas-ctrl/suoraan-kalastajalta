@@ -78,6 +78,7 @@ import { tableExists } from "./services/database.js";
 import {
   fetchBuyerReport,
   getPublicBatchInfoUrl,
+  invokeAdminDeleteEntity,
   invokeBuyerOfferAction,
   invokeBulkOfferDispatch,
   invokeEdgeFunctionAuthenticated,
@@ -9326,41 +9327,27 @@ export default function App() {
       if (!confirmed) return;
     }
 
-    const unlinkOperations = [
-      supabase.from("allowed_users").update({ buyer_id: null }).eq("buyer_id", buyer.id),
-      supabase.from("profiles").update({ buyer_id: null }).eq("buyer_id", buyer.id),
-      supabase.from("buyer_offers").update({ buyer_id: null }).eq("buyer_id", buyer.id),
-    ];
-
-    for (const operation of unlinkOperations) {
-      const { error } = await operation;
-      if (error) {
-        if (isMissingRefreshTokenError(error)) {
-          await invalidateSession();
-          return;
-        }
-        setUserMessage(`Ostajan poisto epäonnistui: ${error.message}`);
-        return;
-      }
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) {
+      setUserMessage("Istunto puuttuu. Kirjaudu uudelleen sisään.");
+      return;
     }
 
-    const { data: deletedRows, error } = await supabase
-      .from("buyers")
-      .delete()
-      .eq("id", buyer.id)
-      .select("id");
+    const { error } = await invokeAdminDeleteEntity(accessToken, {
+      type: "buyer",
+      buyerId: buyer.id,
+      email: buyer.email || "",
+    });
     if (error) {
-      if (isMissingRefreshTokenError(error)) {
+      if (error.status === 401) {
         await invalidateSession();
         return;
       }
       setUserMessage(`Ostajan poisto epäonnistui: ${error.message}`);
       return;
     }
-    if (!deletedRows || deletedRows.length === 0) {
-      setUserMessage("Ostajan poisto ei onnistunut. Riviä ei poistettu tietokannasta.");
-      return;
-    }
+
     if (buyerForm.id === buyer.id) {
       resetBuyerForm();
     }
@@ -9551,9 +9538,20 @@ export default function App() {
       const confirmed = window.confirm(`Poistetaanko käyttäjä ${row.display_name || row.email} kokonaan?`);
       if (!confirmed) return;
     }
-    const { error } = await supabase.from("allowed_users").delete().eq("id", row.id);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) {
+      setUserMessage("Istunto puuttuu. Kirjaudu uudelleen sisään.");
+      return;
+    }
+
+    const { error } = await invokeAdminDeleteEntity(accessToken, {
+      type: "user",
+      allowedUserId: row.id,
+      email: row.email || "",
+    });
     if (error) {
-      if (isMissingRefreshTokenError(error)) {
+      if (error.status === 401) {
         await invalidateSession();
         return;
       }
