@@ -14064,54 +14064,64 @@ export default function App() {
         />
 
         <div style={{ ...styles.stickyTabsWrap, position: "sticky" }}>
-          {showTabsScrollHint ? (
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 8,
-                padding: "8px 12px",
-                borderRadius: 999,
-                background: "rgba(255,255,255,0.96)",
-                border: "1px solid rgba(147, 197, 253, 0.72)",
-                color: "#1e3a8a",
-                fontSize: 13,
-                fontWeight: 700,
-                boxShadow: "0 10px 22px rgba(37, 99, 235, 0.08)",
-              }}
-            >
-              <span>←</span>
-              <span>Pyyhkäise oikealle nähdäksesi lisää välilehtiä</span>
-              <span>→</span>
+          <div style={{ position: "relative" }}>
+            <div ref={tabsScrollRef} style={visibleTabStyle}>
+              <button style={{ ...visibleSingleTabStyle, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
+              {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button> : null}
+              {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button> : null}
+              <button style={{ ...visibleSingleTabStyle, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
+              <button style={{ ...visibleSingleTabStyle, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
+              {profile.role === "member" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
+              {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "operations" ? styles.activeTab : {}) }} onClick={() => setActiveTab("operations")}>Ylläpito</button> : null}
+              {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
+              {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
+              {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
             </div>
-          ) : null}
-          <div ref={tabsScrollRef} style={visibleTabStyle}>
-            <button style={{ ...visibleSingleTabStyle, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
-            {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button> : null}
-            {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button> : null}
-            <button style={{ ...visibleSingleTabStyle, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
-            <button style={{ ...visibleSingleTabStyle, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
-            {profile.role === "member" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
-            {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "operations" ? styles.activeTab : {}) }} onClick={() => setActiveTab("operations")}>Ylläpito</button> : null}
-            {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
-            {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
-            {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
+            {tabsOverflowing ? (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: showTabsScrollHint ? 140 : 52,
+                  height: 58,
+                  borderRadius: 20,
+                  background: showTabsScrollHint
+                    ? "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.92) 24%, rgba(255,255,255,0.98) 100%)"
+                    : "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.96) 72%)",
+                  pointerEvents: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  paddingRight: 12,
+                  boxSizing: "border-box",
+                }}
+              >
+                {showTabsScrollHint ? (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 10px",
+                      borderRadius: 999,
+                      background: "rgba(255,255,255,0.98)",
+                      border: "1px solid rgba(147, 197, 253, 0.8)",
+                      color: "#1e3a8a",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      boxShadow: "0 8px 20px rgba(37, 99, 235, 0.08)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span>Lisää</span>
+                    <span>→</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          {tabsOverflowing && !showTabsScrollHint ? (
-            <div
-              style={{
-                position: "absolute",
-                right: 8,
-                top: 18,
-                width: 42,
-                height: 54,
-                borderRadius: 18,
-                background: "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.96) 70%)",
-                pointerEvents: "none",
-              }}
-            />
-          ) : null}
         </div>
 
         {activeTab === "dashboard" ? (
