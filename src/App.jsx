@@ -2699,10 +2699,242 @@ async function shareSpreadsheet(filename, rows, sheetName = "Raportti") {
 }
 
 function buildSpreadsheetArray(rows, sheetName = "Raportti") {
-  const worksheet = XLSX.utils.aoa_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, String(sheetName || "Raportti").slice(0, 31));
+  const workbookSheets = Array.isArray(rows) && rows.every((item) => item && typeof item === "object" && Array.isArray(item.rows))
+    ? rows
+    : [{ name: sheetName, rows }];
+
+  workbookSheets.forEach((sheet, index) => {
+    const worksheet = XLSX.utils.aoa_to_sheet(Array.isArray(sheet.rows) ? sheet.rows : []);
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      String(sheet.name || sheetName || `Raportti ${index + 1}`).slice(0, 31),
+    );
+  });
   return XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+}
+
+const OFFICIAL_GEAR_CODE_NOTES = {
+  1: "Trooli",
+  2: "Nuotta, korkeus yli 10 m",
+  3: "Nuotta, korkeus alle 10 m",
+  4: "Muikkuverkko",
+  5: "Muu verkko, solmuväli alle 25 mm",
+  6: "Muu verkko, solmuväli 25 - 40 mm",
+  7: "Muu verkko, solmuväli 41 - 54 mm",
+  8: "Muu verkko, solmuväli yli 54 mm",
+  9: "Rysä / paunetti, korkeus yli 1,5 m",
+  10: "Rysä / paunetti, korkeus alle 1,5 m",
+  11: "Katiska",
+  12: "Merta",
+  13: "Muu pyydys",
+  18: "Vapapyydys tai vetouistin",
+};
+
+function parseMeasurementNumber(value) {
+  const parsed = parseLocaleNumber(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toWholeKilo(value) {
+  const parsed = Number(value || 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.round(parsed));
+}
+
+function getOfficialCatchAreaLabel(entry) {
+  return [String(entry?.area || "").trim(), String(entry?.municipality || "").trim()]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function getOfficialLandingPlaceLabel(entry) {
+  return [String(entry?.landingPlace || "").trim(), String(entry?.municipality || "").trim()]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function getOfficialGearCodeInfo(entry) {
+  const gear = String(entry?.gear || "").trim();
+  if (!gear) {
+    return {
+      code: "",
+      label: "-",
+      note: "Pyydys puuttuu",
+    };
+  }
+
+  if (gear === "Trooli") {
+    return { code: "1", label: OFFICIAL_GEAR_CODE_NOTES[1], note: "" };
+  }
+
+  if (gear === "Nuotta") {
+    return {
+      code: "3",
+      label: OFFICIAL_GEAR_CODE_NOTES[3],
+      note: "Nuotalle käytetään oletuksena koodia 3, koska korkeustietoa ei tallenneta erikseen.",
+    };
+  }
+
+  if (gear === "Verkko") {
+    const meshSize = parseMeasurementNumber(entry?.netMeshSize);
+    if (meshSize == null) {
+      return {
+        code: "",
+        label: gear,
+        note: "Verkon solmuväli puuttuu, joten virallista verkkokoodia ei voitu päätellä.",
+      };
+    }
+    if (meshSize < 25) return { code: "5", label: OFFICIAL_GEAR_CODE_NOTES[5], note: "" };
+    if (meshSize <= 40) return { code: "6", label: OFFICIAL_GEAR_CODE_NOTES[6], note: "" };
+    if (meshSize <= 54) return { code: "7", label: OFFICIAL_GEAR_CODE_NOTES[7], note: "" };
+    return { code: "8", label: OFFICIAL_GEAR_CODE_NOTES[8], note: "" };
+  }
+
+  if (gear === "Rysä" || gear === "Paunetti/avorysä") {
+    const height = parseMeasurementNumber(entry?.fykeHeight);
+    if (height == null) {
+      return {
+        code: "",
+        label: gear,
+        note: "Rysän tai paunetin korkeus puuttuu, joten virallista koodia ei voitu päätellä.",
+      };
+    }
+    if (height > 1.5) return { code: "9", label: OFFICIAL_GEAR_CODE_NOTES[9], note: "" };
+    return { code: "10", label: OFFICIAL_GEAR_CODE_NOTES[10], note: "" };
+  }
+
+  if (gear === "Katiska") {
+    return { code: "11", label: OFFICIAL_GEAR_CODE_NOTES[11], note: "" };
+  }
+
+  if (gear === "Merta") {
+    return { code: "12", label: OFFICIAL_GEAR_CODE_NOTES[12], note: "" };
+  }
+
+  if (gear === "Vapaväline") {
+    return { code: "18", label: OFFICIAL_GEAR_CODE_NOTES[18], note: "" };
+  }
+
+  return {
+    code: "13",
+    label: OFFICIAL_GEAR_CODE_NOTES[13],
+    note: gear === "Muu" ? "Pyydys ilmoitetaan virallisessa raportissa Muu pyydys -luokkana." : "",
+  };
+}
+
+function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki") {
+  const sortedEntries = [...entries].sort((left, right) => {
+    const dateDiff = String(left?.date || "").localeCompare(String(right?.date || ""));
+    if (dateDiff !== 0) return dateDiff;
+    return String(left?.createdAt || "").localeCompare(String(right?.createdAt || ""));
+  });
+
+  const areaLabels = [];
+  const landingLabels = [];
+  const areaNumberMap = new Map();
+  const landingNumberMap = new Map();
+
+  sortedEntries.forEach((entry) => {
+    const areaLabel = getOfficialCatchAreaLabel(entry);
+    if (areaLabel && !areaNumberMap.has(areaLabel)) {
+      areaLabels.push(areaLabel);
+      areaNumberMap.set(areaLabel, String(areaLabels.length));
+    }
+
+    const landingLabel = getOfficialLandingPlaceLabel(entry);
+    if (landingLabel && !landingNumberMap.has(landingLabel)) {
+      landingLabels.push(landingLabel);
+      landingNumberMap.set(landingLabel, String(landingLabels.length));
+    }
+  });
+
+  const instructionsRows = [
+    ["Virallinen saalisilmoitusraportti (sisävesikalastus)"],
+    ["Valittu aikaväli", reportDateLabel],
+    [],
+    ["Huomiot"],
+    ["- Saalis ilmoitetaan pyyntipäivittäin, kalastamisalueittain ja pyydyksittäin."],
+    ["- Tässä raportissa saaliskilot pyöristetään täysiin kiloihin virallisen ohjeen mukaisesti."],
+    ["- Nykyinen appi tallentaa kaupankäyntiä varten myös desimaalikilojen tiedon, joka säilytetään erillisessä sarakkeessa vertailua varten."],
+    ["- Jos pyydyskoodia ei voitu päätellä varmasti, Huomio viralliseen ilmoitukseen -sarakkeessa kerrotaan miksi."],
+    [],
+    ["Pyydyskoodisto"],
+    ["Koodi", "Selite"],
+    ...Object.entries(OFFICIAL_GEAR_CODE_NOTES).map(([code, label]) => [code, label]),
+  ];
+
+  const areaRows = [
+    ["Kalastamisalueet"],
+    ["Kalastamisalueen nro", "Kalastamisalue"],
+    ...areaLabels.map((label, index) => [String(index + 1), label]),
+  ];
+
+  const landingRows = [
+    ["Purkamispaikat"],
+    ["Purkamispaikan nro", "Purkamispaikka"],
+    ...landingLabels.map((label, index) => [String(index + 1), label]),
+  ];
+
+  const reportRows = [
+    [
+      "Kalastuspäivä",
+      "KAL-tunnus / ilman alusta",
+      "Kalastamisalueen nro",
+      "Kalastamisalue",
+      "Pyydyskoodi",
+      "Pyydys",
+      "Pyydysten määrä",
+      "Pyyntiaika / pyyntipäivät",
+      "Purkamispaikan nro",
+      "Purkamispaikka",
+      "Laji",
+      "Muu laji erittely",
+      "Saalis kg (virallinen)",
+      "Saalis kg (appissa)",
+      "Lukumäärä kpl",
+      "Huomio viralliseen ilmoitukseen",
+    ],
+    ...sortedEntries.map((entry) => {
+      const areaLabel = getOfficialCatchAreaLabel(entry);
+      const landingLabel = getOfficialLandingPlaceLabel(entry);
+      const gearInfo = getOfficialGearCodeInfo(entry);
+      const speciesLabel = formatSpeciesForLabelTitle(entry?.species || "");
+      const speciesMetadata = getSpeciesMetadata(entry?.species || "");
+      const isOtherSpecies = normalizeFishSpeciesLabel(entry?.species) === "muu" || !speciesMetadata;
+      const otherSpeciesDetail = isOtherSpecies ? formatSpeciesForSale(entry?.species || "") : "";
+      const vesselLabel = String(entry?.commercialFishingVesselId || "").trim() || "Kalastus ilman alusta";
+      const kilos = Number(entry?.kilos || 0);
+      const count = Number(entry?.count || 0);
+
+      return [
+        entry?.date || "",
+        vesselLabel,
+        areaNumberMap.get(areaLabel) || "",
+        areaLabel || "-",
+        gearInfo.code || "",
+        String(entry?.gear || "").trim() || "-",
+        String(entry?.gearCount || "").trim() || "",
+        String(entry?.fishingDurationDays || "").trim() || "",
+        landingNumberMap.get(landingLabel) || "",
+        landingLabel || "-",
+        isOtherSpecies ? "Muu laji" : speciesLabel,
+        otherSpeciesDetail,
+        toWholeKilo(kilos),
+        kilos,
+        count > 0 ? count : "",
+        gearInfo.note || "",
+      ];
+    }),
+  ];
+
+  return [
+    { name: "Ohjeet", rows: instructionsRows },
+    { name: "Kalastamisalueet", rows: areaRows },
+    { name: "Purkamispaikat", rows: landingRows },
+    { name: "Saalistiedot", rows: reportRows },
+  ];
 }
 
 function runLocalTests() {
@@ -4274,6 +4506,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   ]);
 
   const catchReportRows = [catchReportHeader, ...reportRows];
+  const officialCatchWorkbook = buildOfficialCatchWorkbook(filteredEntries, reportDateLabel);
   const offerReportRows = [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows];
   const processedReportRows = [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows];
 
@@ -4340,6 +4573,37 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             disabled={reportSendingKey === "catch"}
           >
             {reportSendingKey === "catch" ? "Lähetetään..." : "Lähetä saalisraportti sähköpostiin"}
+          </button>
+        </div>
+        <div style={{ ...styles.noticeInfo, whiteSpace: "pre-line" }}>
+          Virallinen saalisilmoitus käyttää erillistä raporttia, jossa tiedot esitetään kalastamisalueen numerolla, pyydyskoodilla ja purkamispaikan numerolla täyttöohjeen mukaisesti.
+          {"\n"}Kilot pyöristetään siinä täysiin kiloihin virallisen ilmoituksen vuoksi, mutta appin oma kaupallinen data säilyy ennallaan.
+        </div>
+        <div style={styles.row}>
+          <button
+            style={{ ...styles.button, ...styles.primaryButton }}
+            onClick={() => { void exportSpreadsheet(`virallinen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, officialCatchWorkbook, "Virallinen saalisilmoitus"); }}
+          >
+            Lataa virallinen saalisilmoitus Exceliin
+          </button>
+          <button
+            style={styles.button}
+            onClick={() => {
+              const filename = `virallinen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
+              setReportSendingKey("official_catch");
+              void sendReportEmail({
+                filename,
+                rows: officialCatchWorkbook,
+                sheetName: "Virallinen saalisilmoitus",
+                reportLabel: "Virallinen saalisilmoitus",
+              })
+                .then(() => setAuthInfo(`Virallinen saalisilmoitus lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
+                .catch((error) => setAuthError(String(error?.message || error)))
+                .finally(() => setReportSendingKey(""));
+            }}
+            disabled={reportSendingKey === "official_catch"}
+          >
+            {reportSendingKey === "official_catch" ? "Lähetetään..." : "Lähetä virallinen saalisilmoitus sähköpostiin"}
           </button>
         </div>
         <div style={styles.row}>
@@ -7728,6 +7992,7 @@ export default function App() {
         } else {
           setEntries((entryData || []).map((entry) => ({
             ...extractCatchLogisticsDetailsFromNotes(entry.notes),
+            ...extractCatchGearDetailsFromNotes(entry.notes),
             id: entry.id,
             batchId: entry.batch_id,
             date: entry.date,
@@ -10950,7 +11215,6 @@ export default function App() {
         offerId: String(offer?.id || ""),
         message: `Täytä omat tiedot ennen kuin voit tehdä vastatarjouksen. Puuttuvat tiedot: ${missingBuyerFields.join(", ")}.`,
       });
-      setAuthError(`Täytä ensin Omat tiedot ennen kuin voit tehdä vastatarjouksen. Puuttuvat tiedot: ${missingBuyerFields.join(", ")}.`);
       return;
     }
 
@@ -11037,7 +11301,6 @@ export default function App() {
         offerId: String(offer?.id || ""),
         message: `Täytä omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerFields.join(", ")}.`,
       });
-      setAuthError(`Täytä ensin Omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerFields.join(", ")}.`);
       return;
     }
 
@@ -12953,7 +13216,6 @@ export default function App() {
                                       offerId: String(o?.id || ""),
                                       message: `Täytä omat tiedot ennen kuin voit tehdä vastatarjouksen. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`,
                                     });
-                                    setAuthError(`Täytä ensin Omat tiedot ennen kuin voit tehdä vastatarjouksen. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`);
                                     return;
                                   }
                                   setBuyerOfferInlineError({ offerId: "", message: "" });
@@ -12980,7 +13242,6 @@ export default function App() {
                                       offerId: String(o?.id || ""),
                                       message: `Täytä omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`,
                                     });
-                                    setAuthError(`Täytä ensin Omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`);
                                     return;
                                   }
                                   setBuyerOfferInlineError({ offerId: "", message: "" });
