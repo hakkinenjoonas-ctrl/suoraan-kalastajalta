@@ -14084,17 +14084,17 @@ export default function App() {
                   right: 10,
                   top: "50%",
                   transform: "translateY(-50%)",
-                  width: showTabsScrollHint ? 140 : 52,
+                  width: showTabsScrollHint ? 108 : 40,
                   height: 58,
                   borderRadius: 20,
                   background: showTabsScrollHint
-                    ? "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.92) 24%, rgba(255,255,255,0.98) 100%)"
-                    : "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.96) 72%)",
+                    ? "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.84) 42%, rgba(255,255,255,0.98) 100%)"
+                    : "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.96) 82%)",
                   pointerEvents: "none",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "flex-end",
-                  paddingRight: 12,
+                  paddingRight: 8,
                   boxSizing: "border-box",
                 }}
               >
