@@ -2660,6 +2660,107 @@ function buildFishingDurationValue(gearValue, duration, speed) {
   return "";
 }
 
+function validateCatchFormForOfficialReporting(form) {
+  const issues = [];
+  const gear = String(form?.gear || "").trim();
+  const normalizedGear = normalizeCatchGearValue(gear);
+  const fishingMeta = getFishingDurationFieldMeta(gear);
+  const fishingParts = parseFishingDurationValue(gear, form?.fishingDurationDays);
+
+  if (!String(form?.area || "").trim()) {
+    issues.push("Kalastamisalue puuttuu.");
+  }
+  if (!String(form?.municipality || "").trim()) {
+    issues.push("Paikkakunta puuttuu.");
+  }
+  if (!String(form?.landingPlace || "").trim()) {
+    issues.push("Purkamispaikka puuttuu.");
+  }
+  if (!gear) {
+    issues.push("Pyydys puuttuu.");
+  }
+  if (!String(form?.gearCount || "").trim()) {
+    issues.push("Pyydysten määrä puuttuu.");
+  }
+
+  if (fishingMeta.splitFields) {
+    if (!fishingParts.duration) {
+      issues.push(`${fishingMeta.durationLabel} puuttuu.`);
+    }
+    if (!fishingParts.speed) {
+      issues.push(`${fishingMeta.speedLabel} puuttuu.`);
+    }
+  } else if (!String(form?.fishingDurationDays || "").trim()) {
+    issues.push("Pyyntivuorokaudet puuttuvat.");
+  }
+
+  if (normalizedGear === "Verkko" && !String(form?.netMeshSize || "").trim()) {
+    issues.push("Verkon solmuväli puuttuu.");
+  }
+
+  if (
+    normalizedGear === "Rysä" &&
+    gear !== "Rysä / paunetti, korkeus yli 1,5 m" &&
+    gear !== "Rysä / paunetti, korkeus alle 1,5 m" &&
+    !String(form?.fykeHeight || "").trim()
+  ) {
+    issues.push("Rysän tai paunetin korkeus puuttuu.");
+  }
+
+  return issues;
+}
+
+function validateOfficialCatchEntries(entries = []) {
+  const issues = [];
+
+  entries.forEach((entry) => {
+    const gear = String(entry?.gear || "").trim();
+    const normalizedGear = normalizeCatchGearValue(gear);
+    const fishingMeta = getFishingDurationFieldMeta(gear);
+    const fishingParts = parseFishingDurationValue(gear, entry?.fishingDurationDays);
+    const gearInfo = getOfficialGearCodeInfo(entry);
+    const identifier = String(entry?.batchId || entry?.batch_id || entry?.id || "").trim() || "tuntematon erä";
+
+    const missing = [];
+    if (!String(entry?.date || "").trim()) missing.push("kalastuspäivä");
+    if (!String(entry?.area || "").trim()) missing.push("kalastamisalue");
+    if (!String(entry?.municipality || "").trim()) missing.push("paikkakunta");
+    if (!String(entry?.landingPlace || "").trim()) missing.push("purkamispaikka");
+    if (!gear) missing.push("pyydys");
+    if (!String(entry?.gearCount || "").trim()) missing.push("pyydysten määrä");
+
+    if (fishingMeta.splitFields) {
+      if (!fishingParts.duration) missing.push(fishingMeta.durationLabel.toLowerCase());
+      if (!fishingParts.speed) missing.push(fishingMeta.speedLabel.toLowerCase());
+    } else if (!String(entry?.fishingDurationDays || "").trim()) {
+      missing.push("pyyntivuorokaudet");
+    }
+
+    if (normalizedGear === "Verkko" && !String(entry?.netMeshSize || entry?.gear_mesh_size || "").trim()) {
+      missing.push("verkon solmuväli");
+    }
+
+    if (
+      normalizedGear === "Rysä" &&
+      gear !== "Rysä / paunetti, korkeus yli 1,5 m" &&
+      gear !== "Rysä / paunetti, korkeus alle 1,5 m" &&
+      !String(entry?.fykeHeight || entry?.gear_fyke_height || "").trim()
+    ) {
+      missing.push("rysän tai paunetin korkeus");
+    }
+
+    if (!gearInfo.code) {
+      missing.push("virallinen pyydyskoodi");
+    }
+
+    if (missing.length > 0) {
+      issues.push(`${identifier}: ${missing.join(", ")}`);
+    }
+  });
+
+  return issues;
+}
+
 function getCatchGearDetailLines(source) {
   const gear = normalizeCatchGearValue(source?.gear);
   const lines = [];
@@ -4649,6 +4750,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
 
   const catchReportRows = [catchReportHeader, ...reportRows];
   const officialCatchWorkbook = buildOfficialCatchWorkbook(filteredEntries, reportDateLabel);
+  const officialCatchIssues = validateOfficialCatchEntries(filteredEntries);
   const offerReportRows = [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows];
   const processedReportRows = [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows];
 
@@ -4721,16 +4823,35 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
           Virallinen saalisilmoitus käyttää erillistä raporttia, jossa tiedot esitetään kalastamisalueen numerolla, pyydyskoodilla ja purkamispaikan numerolla täyttöohjeen mukaisesti.
           {"\n"}Kilot pyöristetään siinä täysiin kiloihin virallisen ilmoituksen vuoksi, mutta appin oma kaupallinen data säilyy ennallaan.
         </div>
+        {officialCatchIssues.length > 0 ? (
+          <div style={{ ...styles.noticeError, whiteSpace: "pre-line" }}>
+            Virallista saalisilmoitusta ei voi muodostaa ennen kuin puuttuvat tiedot on täydennetty.
+            {"\n"}Puuttuvia tietoja löytyi {officialCatchIssues.length} saaliserältä.
+            {"\n"}{officialCatchIssues.slice(0, 5).map((issue) => `- ${issue}`).join("\n")}
+            {officialCatchIssues.length > 5 ? `\n- ...ja ${officialCatchIssues.length - 5} muuta puutetta` : ""}
+          </div>
+        ) : null}
         <div style={styles.row}>
           <button
             style={{ ...styles.button, ...styles.primaryButton }}
-            onClick={() => { void exportSpreadsheet(`virallinen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, officialCatchWorkbook, "Virallinen saalisilmoitus"); }}
+            onClick={() => {
+              if (officialCatchIssues.length > 0) {
+                setAuthError("Virallista saalisilmoitusta ei voi ladata ennen kuin puuttuvat tiedot on täydennetty.");
+                return;
+              }
+              void exportSpreadsheet(`virallinen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, officialCatchWorkbook, "Virallinen saalisilmoitus");
+            }}
+            disabled={officialCatchIssues.length > 0}
           >
             Lataa virallinen saalisilmoitus Exceliin
           </button>
           <button
             style={styles.button}
             onClick={() => {
+              if (officialCatchIssues.length > 0) {
+                setAuthError("Virallista saalisilmoitusta ei voi lähettää ennen kuin puuttuvat tiedot on täydennetty.");
+                return;
+              }
               const filename = `virallinen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
               setReportSendingKey("official_catch");
               void sendReportEmail({
@@ -4743,7 +4864,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
                 .catch((error) => setAuthError(String(error?.message || error)))
                 .finally(() => setReportSendingKey(""));
             }}
-            disabled={reportSendingKey === "official_catch"}
+            disabled={reportSendingKey === "official_catch" || officialCatchIssues.length > 0}
           >
             {reportSendingKey === "official_catch" ? "Lähetetään..." : "Lähetä virallinen saalisilmoitus sähköpostiin"}
           </button>
@@ -12155,6 +12276,11 @@ export default function App() {
       setAuthError("Valitse käytetty kaupallinen kalastusalus ennen saaliin tallennusta.");
       return;
     }
+    const officialFormIssues = validateCatchFormForOfficialReporting(form);
+    if (officialFormIssues.length > 0) {
+      setAuthError(`Täytä virallisen saalisilmoituksen tiedot ennen tallennusta: ${officialFormIssues.join(" ")}`);
+      return;
+    }
     setSaving(true);
     let rowsWithBatchIds;
     try {
@@ -14630,6 +14756,9 @@ export default function App() {
                     onChange={(e) => setForm({ ...form, landingPlace: e.target.value })}
                     options={savedLandingPlaces}
                   />
+                  <div style={{ ...styles.small, marginTop: 6 }}>
+                    Kirjaa purkamispaikka aina tähän. Virallinen saalisilmoitus tarvitsee purkamispaikan numeroinnin.
+                  </div>
                 </div>
                 <div style={styles.field}><label>Tarkempi pyyntipaikka</label><input style={styles.input} value={form.spot} onChange={(e) => setForm({ ...form, spot: e.target.value })} placeholder="Esim. Isoselkä" /></div>
                 <div style={styles.field}><label>Kirjaaja</label><input style={styles.input} value={profile.display_name} disabled /></div>
