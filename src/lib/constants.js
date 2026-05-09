@@ -56,7 +56,22 @@ export const fishSpecies = [
   ...fishSpeciesVariants,
   "Muu",
 ];
-export const gearTypes = ["Rysä", "Paunetti/avorysä", "Verkko", "Katiska", "Merta", "Trooli", "Nuotta", "Vapaväline", "Muu"];
+export const gearTypes = [
+  "Trooli",
+  "Nuotta, korkeus yli 10 m",
+  "Nuotta, korkeus alle 10 m",
+  "Muikkuverkko",
+  "Verkko, solmuväli alle 25 mm",
+  "Verkko, solmuväli 25 - 40 mm",
+  "Verkko, solmuväli 41 - 54 mm",
+  "Verkko, solmuväli yli 54 mm",
+  "Rysä / paunetti, korkeus yli 1,5 m",
+  "Rysä / paunetti, korkeus alle 1,5 m",
+  "Katiska",
+  "Merta",
+  "Muu pyydys",
+  "Vapapyydys tai vetouistin",
+];
 export const CATCH_FORM_DEFAULTS_KEY = "catch_form_defaults_v1";
 export const ONBOARDING_GUIDE_MAX_VIEWS = 3;
 export const ONBOARDING_GUIDE_STORAGE_PREFIX = "onboarding_guide_v1";

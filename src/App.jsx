@@ -2575,8 +2575,22 @@ function parseLocaleNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeCatchGearValue(value) {
+  const gear = String(value || "").trim();
+  if (!gear) return "";
+  if (gear === "Trooli") return "Trooli";
+  if (gear.startsWith("Nuotta")) return "Nuotta";
+  if (gear === "Muikkuverkko" || gear.startsWith("Verkko") || gear === "Verkko") return "Verkko";
+  if (gear.startsWith("Rysä / paunetti") || gear === "Rysä" || gear === "Paunetti/avorysä") return "Rysä";
+  if (gear === "Katiska") return "Katiska";
+  if (gear === "Merta") return "Merta";
+  if (gear === "Vapapyydys tai vetouistin" || gear === "Vapaväline") return "Vapaväline";
+  if (gear === "Muu pyydys" || gear === "Muu") return "Muu";
+  return gear;
+}
+
 function getCatchGearDetailLines(source) {
-  const gear = String(source?.gear || "").trim();
+  const gear = normalizeCatchGearValue(source?.gear);
   const lines = [];
 
   if (gear === "Verkko") {
@@ -2757,6 +2771,7 @@ function getOfficialLandingPlaceLabel(entry) {
 
 function getOfficialGearCodeInfo(entry) {
   const gear = String(entry?.gear || "").trim();
+  const normalizedGear = normalizeCatchGearValue(gear);
   if (!gear) {
     return {
       code: "",
@@ -2769,7 +2784,15 @@ function getOfficialGearCodeInfo(entry) {
     return { code: "1", label: OFFICIAL_GEAR_CODE_NOTES[1], note: "" };
   }
 
-  if (gear === "Nuotta") {
+  if (gear === "Nuotta, korkeus yli 10 m") {
+    return { code: "2", label: OFFICIAL_GEAR_CODE_NOTES[2], note: "" };
+  }
+
+  if (gear === "Nuotta, korkeus alle 10 m") {
+    return { code: "3", label: OFFICIAL_GEAR_CODE_NOTES[3], note: "" };
+  }
+
+  if (normalizedGear === "Nuotta") {
     return {
       code: "3",
       label: OFFICIAL_GEAR_CODE_NOTES[3],
@@ -2777,7 +2800,27 @@ function getOfficialGearCodeInfo(entry) {
     };
   }
 
-  if (gear === "Verkko") {
+  if (gear === "Muikkuverkko") {
+    return { code: "4", label: OFFICIAL_GEAR_CODE_NOTES[4], note: "" };
+  }
+
+  if (gear === "Verkko, solmuväli alle 25 mm") {
+    return { code: "5", label: OFFICIAL_GEAR_CODE_NOTES[5], note: "" };
+  }
+
+  if (gear === "Verkko, solmuväli 25 - 40 mm") {
+    return { code: "6", label: OFFICIAL_GEAR_CODE_NOTES[6], note: "" };
+  }
+
+  if (gear === "Verkko, solmuväli 41 - 54 mm") {
+    return { code: "7", label: OFFICIAL_GEAR_CODE_NOTES[7], note: "" };
+  }
+
+  if (gear === "Verkko, solmuväli yli 54 mm") {
+    return { code: "8", label: OFFICIAL_GEAR_CODE_NOTES[8], note: "" };
+  }
+
+  if (normalizedGear === "Verkko") {
     const meshSize = parseMeasurementNumber(entry?.netMeshSize);
     if (meshSize == null) {
       return {
@@ -2792,7 +2835,15 @@ function getOfficialGearCodeInfo(entry) {
     return { code: "8", label: OFFICIAL_GEAR_CODE_NOTES[8], note: "" };
   }
 
-  if (gear === "Rysä" || gear === "Paunetti/avorysä") {
+  if (gear === "Rysä / paunetti, korkeus yli 1,5 m") {
+    return { code: "9", label: OFFICIAL_GEAR_CODE_NOTES[9], note: "" };
+  }
+
+  if (gear === "Rysä / paunetti, korkeus alle 1,5 m") {
+    return { code: "10", label: OFFICIAL_GEAR_CODE_NOTES[10], note: "" };
+  }
+
+  if (normalizedGear === "Rysä") {
     const height = parseMeasurementNumber(entry?.fykeHeight);
     if (height == null) {
       return {
@@ -2813,7 +2864,7 @@ function getOfficialGearCodeInfo(entry) {
     return { code: "12", label: OFFICIAL_GEAR_CODE_NOTES[12], note: "" };
   }
 
-  if (gear === "Vapaväline") {
+  if (gear === "Vapapyydys tai vetouistin" || normalizedGear === "Vapaväline") {
     return { code: "18", label: OFFICIAL_GEAR_CODE_NOTES[18], note: "" };
   }
 
@@ -2940,7 +2991,7 @@ function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki") {
 function runLocalTests() {
   const tests = [
     { name: "Kuha on kalalistassa", pass: fishSpecies.includes("Kuha") },
-    { name: "Nuotta on pyydyslistassa", pass: gearTypes.includes("Nuotta") },
+    { name: "Nuotta on pyydyslistassa", pass: gearTypes.some((gear) => gear.startsWith("Nuotta")) },
     { name: "Merta on pyydyslistassa", pass: gearTypes.includes("Merta") },
     { name: "Muu on vesialuelistassa", pass: defaultAreas.includes("Muu") },
     { name: "Refresh token -virhe tunnistuu", pass: isMissingRefreshTokenError(new Error("Invalid Refresh Token: Refresh Token Not Found")) },
@@ -14592,7 +14643,17 @@ export default function App() {
                     );
                   })}
                 </div>
-                <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => setForm((prev) => ({ ...prev, gear: e.target.value, netHeight: e.target.value === "Verkko" ? prev.netHeight : "", netMeshSize: e.target.value === "Verkko" ? prev.netMeshSize : "", fykeHeight: e.target.value === "Rysä" ? prev.fykeHeight : "" }))}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
+                <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => {
+                  const nextGear = e.target.value;
+                  const normalizedNextGear = normalizeCatchGearValue(nextGear);
+                  setForm((prev) => ({
+                    ...prev,
+                    gear: nextGear,
+                    netHeight: normalizedNextGear === "Verkko" ? prev.netHeight : "",
+                    netMeshSize: normalizedNextGear === "Verkko" ? prev.netMeshSize : "",
+                    fykeHeight: normalizedNextGear === "Rysä" ? prev.fykeHeight : "",
+                  }));
+                }}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
                 <div style={styles.field}>
                   <label>Vesityyppi</label>
                   <select style={styles.input} value={form.waterType} onChange={(e) => setForm((prev) => ({ ...prev, waterType: e.target.value }))}>
@@ -14621,7 +14682,7 @@ export default function App() {
                     listId="fishing-duration-options"
                   />
                 </div>
-                {form.gear === "Verkko" ? (
+                {normalizeCatchGearValue(form.gear) === "Verkko" ? (
                   <>
                     <div style={styles.field}>
                       <label>Verkon korkeus</label>
@@ -14645,7 +14706,7 @@ export default function App() {
                     </div>
                   </>
                 ) : null}
-                {form.gear === "Rysä" ? (
+                {normalizeCatchGearValue(form.gear) === "Rysä" ? (
                   <div style={styles.field}>
                     <label>Rysän korkeus</label>
                     <RememberedTextInput
