@@ -2743,6 +2743,10 @@ const OFFICIAL_GEAR_CODE_NOTES = {
   11: "Katiska",
   12: "Merta",
   13: "Muu pyydys",
+  14: "Hoitokalastus troolilla",
+  15: "Hoitokalastus nuotalla",
+  16: "Hoitokalastus rysällä, paunetilla, merralla ja katiskalla",
+  17: "Hoitokalastus muulla pyydyksellä",
   18: "Vapapyydys tai vetouistin",
 };
 
@@ -2862,6 +2866,22 @@ function getOfficialGearCodeInfo(entry) {
 
   if (gear === "Merta") {
     return { code: "12", label: OFFICIAL_GEAR_CODE_NOTES[12], note: "" };
+  }
+
+  if (gear === "Hoitokalastus troolilla") {
+    return { code: "14", label: OFFICIAL_GEAR_CODE_NOTES[14], note: "" };
+  }
+
+  if (gear === "Hoitokalastus nuotalla") {
+    return { code: "15", label: OFFICIAL_GEAR_CODE_NOTES[15], note: "" };
+  }
+
+  if (gear === "Hoitokalastus rysällä, paunetilla, merralla ja katiskalla") {
+    return { code: "16", label: OFFICIAL_GEAR_CODE_NOTES[16], note: "" };
+  }
+
+  if (gear === "Hoitokalastus muulla pyydyksellä") {
+    return { code: "17", label: OFFICIAL_GEAR_CODE_NOTES[17], note: "" };
   }
 
   if (gear === "Vapapyydys tai vetouistin" || normalizedGear === "Vapaväline") {

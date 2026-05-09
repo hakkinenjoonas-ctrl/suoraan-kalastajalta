@@ -70,6 +70,10 @@ export const gearTypes = [
   "Katiska",
   "Merta",
   "Muu pyydys",
+  "Hoitokalastus troolilla",
+  "Hoitokalastus nuotalla",
+  "Hoitokalastus rysällä, paunetilla, merralla ja katiskalla",
+  "Hoitokalastus muulla pyydyksellä",
   "Vapapyydys tai vetouistin",
 ];
 export const CATCH_FORM_DEFAULTS_KEY = "catch_form_defaults_v1";
