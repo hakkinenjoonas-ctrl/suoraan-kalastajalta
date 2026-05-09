@@ -2595,9 +2595,13 @@ function getFishingDurationFieldMeta(gearValue) {
 
   if (gear === "Trooli" || gear === "Hoitokalastus troolilla") {
     return {
-      label: "Pyyntiaika ja vetonopeus (t:mm/km/h)",
-      placeholder: "Esim. 4:20/4",
+      label: "Pyyntiaika ja vetonopeus",
+      durationLabel: "Troolausaika (t:mm)",
+      speedLabel: "Vetonopeus (km/h)",
+      durationPlaceholder: "Esim. 4:20",
+      speedPlaceholder: "Esim. 4",
       help: "Troolille ilmoitetaan yhteenlaskettu troolausaika tunteina ja vetonopeus km/h.",
+      splitFields: true,
     };
   }
 
@@ -2608,9 +2612,13 @@ function getFishingDurationFieldMeta(gearValue) {
     normalizedGear === "Nuotta"
   ) {
     return {
-      label: "Pyyntiaika ja vetonopeus (t:mm/m/min)",
-      placeholder: "Esim. 6:30/240",
+      label: "Pyyntiaika ja vetonopeus",
+      durationLabel: "Nuottausaika (t:mm)",
+      speedLabel: "Vetonopeus (m/min)",
+      durationPlaceholder: "Esim. 6:30",
+      speedPlaceholder: "Esim. 240",
       help: "Nuotalle ilmoitetaan yhteenlaskettu nuottausaika tunteina ja vetonopeus metreinä minuutissa.",
+      splitFields: true,
     };
   }
 
@@ -2618,7 +2626,38 @@ function getFishingDurationFieldMeta(gearValue) {
     label: "Pyyntivuorokaudet",
     placeholder: "Esim. 6 pv",
     help: "Verkoille, rysille, katiskoille ja muille seisoville pyydyksille ilmoitetaan pyyntivuorokausien lukumäärä.",
+    splitFields: false,
   };
+}
+
+function parseFishingDurationValue(gearValue, value) {
+  const meta = getFishingDurationFieldMeta(gearValue);
+  const rawValue = String(value || "").trim();
+
+  if (!meta.splitFields) {
+    return { duration: rawValue, speed: "" };
+  }
+
+  const [duration = "", speed = ""] = rawValue.split("/");
+  return {
+    duration: String(duration || "").trim(),
+    speed: String(speed || "").trim(),
+  };
+}
+
+function buildFishingDurationValue(gearValue, duration, speed) {
+  const meta = getFishingDurationFieldMeta(gearValue);
+  const normalizedDuration = String(duration || "").trim();
+  const normalizedSpeed = String(speed || "").trim();
+
+  if (!meta.splitFields) {
+    return normalizedDuration;
+  }
+
+  if (normalizedDuration && normalizedSpeed) return `${normalizedDuration}/${normalizedSpeed}`;
+  if (normalizedDuration) return normalizedDuration;
+  if (normalizedSpeed) return `/${normalizedSpeed}`;
+  return "";
 }
 
 function getCatchGearDetailLines(source) {
@@ -14724,19 +14763,67 @@ export default function App() {
                     listId="gear-count-options"
                   />
                 </div>
-                <div style={styles.field}>
-                  <label>{getFishingDurationFieldMeta(form.gear).label}</label>
-                  <RememberedTextInput
-                    value={form.fishingDurationDays}
-                    onChange={(e) => setForm({ ...form, fishingDurationDays: e.target.value })}
-                    options={savedFishingDurationOptions}
-                    placeholder={getFishingDurationFieldMeta(form.gear).placeholder}
-                    listId="fishing-duration-options"
-                  />
-                  <div style={{ ...styles.small, marginTop: 6 }}>
-                    {getFishingDurationFieldMeta(form.gear).help}
+                {getFishingDurationFieldMeta(form.gear).splitFields ? (
+                  <>
+                    <div style={styles.field}>
+                      <label>{getFishingDurationFieldMeta(form.gear).durationLabel}</label>
+                      <RememberedTextInput
+                        value={parseFishingDurationValue(form.gear, form.fishingDurationDays).duration}
+                        onChange={(e) => setForm((prev) => ({
+                          ...prev,
+                          fishingDurationDays: buildFishingDurationValue(
+                            prev.gear,
+                            e.target.value,
+                            parseFishingDurationValue(prev.gear, prev.fishingDurationDays).speed
+                          ),
+                        }))}
+                        options={savedFishingDurationOptions
+                          .map((option) => parseFishingDurationValue(form.gear, option).duration)
+                          .filter(Boolean)}
+                        placeholder={getFishingDurationFieldMeta(form.gear).durationPlaceholder}
+                        listId="fishing-duration-options"
+                      />
+                    </div>
+                    <div style={styles.field}>
+                      <label>{getFishingDurationFieldMeta(form.gear).speedLabel}</label>
+                      <RememberedTextInput
+                        value={parseFishingDurationValue(form.gear, form.fishingDurationDays).speed}
+                        onChange={(e) => setForm((prev) => ({
+                          ...prev,
+                          fishingDurationDays: buildFishingDurationValue(
+                            prev.gear,
+                            parseFishingDurationValue(prev.gear, prev.fishingDurationDays).duration,
+                            e.target.value
+                          ),
+                        }))}
+                        options={savedFishingDurationOptions
+                          .map((option) => parseFishingDurationValue(form.gear, option).speed)
+                          .filter(Boolean)}
+                        placeholder={getFishingDurationFieldMeta(form.gear).speedPlaceholder}
+                        listId="fishing-speed-options"
+                      />
+                    </div>
+                    <div style={{ ...styles.field, ...styles.fieldFull }}>
+                      <div style={{ ...styles.small, marginTop: 6 }}>
+                        {getFishingDurationFieldMeta(form.gear).help}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div style={styles.field}>
+                    <label>{getFishingDurationFieldMeta(form.gear).label}</label>
+                    <RememberedTextInput
+                      value={form.fishingDurationDays}
+                      onChange={(e) => setForm({ ...form, fishingDurationDays: e.target.value })}
+                      options={savedFishingDurationOptions}
+                      placeholder={getFishingDurationFieldMeta(form.gear).placeholder}
+                      listId="fishing-duration-options"
+                    />
+                    <div style={{ ...styles.small, marginTop: 6 }}>
+                      {getFishingDurationFieldMeta(form.gear).help}
+                    </div>
                   </div>
-                </div>
+                )}
                 {normalizeCatchGearValue(form.gear) === "Verkko" ? (
                   <>
                     <div style={styles.field}>
