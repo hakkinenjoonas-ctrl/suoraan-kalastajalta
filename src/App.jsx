@@ -2589,6 +2589,38 @@ function normalizeCatchGearValue(value) {
   return gear;
 }
 
+function getFishingDurationFieldMeta(gearValue) {
+  const normalizedGear = normalizeCatchGearValue(gearValue);
+  const gear = String(gearValue || "").trim();
+
+  if (gear === "Trooli" || gear === "Hoitokalastus troolilla") {
+    return {
+      label: "Pyyntiaika ja vetonopeus (t:mm/km/h)",
+      placeholder: "Esim. 4:20/4",
+      help: "Troolille ilmoitetaan yhteenlaskettu troolausaika tunteina ja vetonopeus km/h.",
+    };
+  }
+
+  if (
+    gear === "Nuotta, korkeus yli 10 m" ||
+    gear === "Nuotta, korkeus alle 10 m" ||
+    gear === "Hoitokalastus nuotalla" ||
+    normalizedGear === "Nuotta"
+  ) {
+    return {
+      label: "Pyyntiaika ja vetonopeus (t:mm/m/min)",
+      placeholder: "Esim. 6:30/240",
+      help: "Nuotalle ilmoitetaan yhteenlaskettu nuottausaika tunteina ja vetonopeus metreinä minuutissa.",
+    };
+  }
+
+  return {
+    label: "Pyyntivuorokaudet",
+    placeholder: "Esim. 6 pv",
+    help: "Verkoille, rysille, katiskoille ja muille seisoville pyydyksille ilmoitetaan pyyntivuorokausien lukumäärä.",
+  };
+}
+
 function getCatchGearDetailLines(source) {
   const gear = normalizeCatchGearValue(source?.gear);
   const lines = [];
@@ -14693,14 +14725,17 @@ export default function App() {
                   />
                 </div>
                 <div style={styles.field}>
-                  <label>Pyyntiaika</label>
+                  <label>{getFishingDurationFieldMeta(form.gear).label}</label>
                   <RememberedTextInput
                     value={form.fishingDurationDays}
                     onChange={(e) => setForm({ ...form, fishingDurationDays: e.target.value })}
                     options={savedFishingDurationOptions}
-                    placeholder="Esim. 6 pv"
+                    placeholder={getFishingDurationFieldMeta(form.gear).placeholder}
                     listId="fishing-duration-options"
                   />
+                  <div style={{ ...styles.small, marginTop: 6 }}>
+                    {getFishingDurationFieldMeta(form.gear).help}
+                  </div>
                 </div>
                 {normalizeCatchGearValue(form.gear) === "Verkko" ? (
                   <>
