@@ -532,6 +532,13 @@ function getOfferProductTotal(rows) {
   }, 0);
 }
 
+function getOptionalKgLimit(value) {
+  if (value == null || value === "") return null;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return null;
+  return numericValue;
+}
+
 function formatEntryPrice(rowOrSpecies, value) {
   const unit = getSpeciesPriceUnit(typeof rowOrSpecies === "string" ? rowOrSpecies : getSpeciesRowLabel(rowOrSpecies));
   if (value === "" || value == null) return "";
@@ -7758,8 +7765,8 @@ export default function App() {
         const buyerTypes = parseBuyerTypes(buyer.buyer_type);
         const matchedBuyerType = buyerTypes.find((buyerType) => selectedTypes.includes(buyerType));
         if (!matchedBuyerType) return;
-        const minKg = buyer.min_kg == null || buyer.min_kg === "" ? null : Number(buyer.min_kg);
-        const maxKg = buyer.max_kg == null || buyer.max_kg === "" ? null : Number(buyer.max_kg);
+        const minKg = getOptionalKgLimit(buyer.min_kg);
+        const maxKg = getOptionalKgLimit(buyer.max_kg);
         const minOk = minKg == null || totalKilos >= minKg;
         const maxOk = maxKg == null || totalKilos <= maxKg;
         const recipient = {
