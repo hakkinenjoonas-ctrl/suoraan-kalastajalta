@@ -13113,6 +13113,17 @@ export default function App() {
                       <MunicipalitySelect value={accountForm.city} onChange={(e) => setAccountForm((prev) => ({ ...prev, city: e.target.value }))} />
                     </div>
                     <div style={styles.field}>
+                      <label>Min ostomäärä (kg)</label>
+                      <input style={styles.input} type="number" value={accountForm.minKg} onChange={(e) => setAccountForm((prev) => ({ ...prev, minKg: e.target.value }))} placeholder="Esim. 10" />
+                    </div>
+                    <div style={styles.field}>
+                      <label>Max ostomäärä (kg)</label>
+                      <input style={styles.input} type="number" value={accountForm.maxKg} onChange={(e) => setAccountForm((prev) => ({ ...prev, maxKg: e.target.value }))} placeholder="Esim. 200" />
+                    </div>
+                    <div style={{ ...styles.noticeInfo, marginTop: -4 }}>
+                      Jätä kenttä tyhjäksi tai aseta arvoksi 0, jos et halua ostomäärälle rajaa.
+                    </div>
+                    <div style={styles.field}>
                       <label>Toimitusosoite</label>
                       <input style={styles.input} value={accountForm.deliveryAddress} onChange={(e) => setAccountForm((prev) => ({ ...prev, deliveryAddress: e.target.value }))} placeholder="Katuosoite" />
                     </div>
