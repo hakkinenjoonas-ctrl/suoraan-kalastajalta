@@ -6731,7 +6731,9 @@ export default function App() {
   const [newAllowedForm, setNewAllowedForm] = useState({ email: "", displayName: "", role: "member", buyer_id: "" });
   const [buyerAction, setBuyerAction] = useState({
     counter_price_per_kg: "",
+    counter_price_per_kg_gross_input: "",
     mixed_counter_prices: {},
+    mixed_counter_prices_gross: {},
     reserved_kilos: "",
     buyer_message: "",
   });
@@ -7187,6 +7189,83 @@ export default function App() {
       token: String(token || "").trim() || null,
     }, accessToken);
   }, []);
+
+  const formatBuyerCounterNetPrice = useCallback((value) => {
+    const parsed = parseLocaleNumber(value);
+    return parsed == null
+      ? ""
+      : parsed.toLocaleString("fi-FI", { maximumFractionDigits: 4 });
+  }, []);
+
+  const updateBuyerCounterNetPrice = useCallback((value) => {
+    setBuyerAction((prev) => ({
+      ...prev,
+      counter_price_per_kg: value,
+      counter_price_per_kg_gross_input: "",
+    }));
+  }, []);
+
+  const updateBuyerCounterGrossPrice = useCallback((value) => {
+    setBuyerAction((prev) => {
+      if (value === "") {
+        return {
+          ...prev,
+          counter_price_per_kg: "",
+          counter_price_per_kg_gross_input: "",
+        };
+      }
+
+      const parsedGross = parseLocaleNumber(value);
+      const parsedNet = parsedGross == null ? null : calculateNetPrice(parsedGross);
+      return {
+        ...prev,
+        counter_price_per_kg_gross_input: value,
+        counter_price_per_kg: parsedNet == null ? prev.counter_price_per_kg : formatBuyerCounterNetPrice(parsedNet),
+      };
+    });
+  }, [formatBuyerCounterNetPrice]);
+
+  const updateBuyerMixedCounterNetPrice = useCallback((rowKey, value) => {
+    setBuyerAction((prev) => ({
+      ...prev,
+      mixed_counter_prices: {
+        ...(prev.mixed_counter_prices || {}),
+        [rowKey]: value,
+      },
+      mixed_counter_prices_gross: {
+        ...(prev.mixed_counter_prices_gross || {}),
+        [rowKey]: "",
+      },
+    }));
+  }, []);
+
+  const updateBuyerMixedCounterGrossPrice = useCallback((rowKey, value) => {
+    setBuyerAction((prev) => {
+      const nextNetPrices = { ...(prev.mixed_counter_prices || {}) };
+      const nextGrossPrices = { ...(prev.mixed_counter_prices_gross || {}) };
+
+      if (value === "") {
+        nextNetPrices[rowKey] = "";
+        nextGrossPrices[rowKey] = "";
+        return {
+          ...prev,
+          mixed_counter_prices: nextNetPrices,
+          mixed_counter_prices_gross: nextGrossPrices,
+        };
+      }
+
+      const parsedGross = parseLocaleNumber(value);
+      const parsedNet = parsedGross == null ? null : calculateNetPrice(parsedGross);
+      nextGrossPrices[rowKey] = value;
+      nextNetPrices[rowKey] = parsedNet == null ? nextNetPrices[rowKey] || "" : formatBuyerCounterNetPrice(parsedNet);
+
+      return {
+        ...prev,
+        mixed_counter_prices: nextNetPrices,
+        mixed_counter_prices_gross: nextGrossPrices,
+      };
+    });
+  }, [formatBuyerCounterNetPrice]);
 
   useEffect(() => {
     if (!session?.user?.id || !profile?.id || !isNativeCapacitorApp()) return undefined;
@@ -11639,7 +11718,9 @@ export default function App() {
       setAuthInfo("Vastatarjous lähetetty myyjälle.");
       setBuyerAction({
         counter_price_per_kg: "",
+        counter_price_per_kg_gross_input: "",
         mixed_counter_prices: {},
+        mixed_counter_prices_gross: {},
         reserved_kilos: "",
         buyer_message: "",
       });
@@ -11696,7 +11777,9 @@ export default function App() {
       setAuthInfo("Erä varattu. Myyjälle näkyy varaus.");
       setBuyerAction({
         counter_price_per_kg: "",
+        counter_price_per_kg_gross_input: "",
         mixed_counter_prices: {},
+        mixed_counter_prices_gross: {},
         reserved_kilos: "",
         buyer_message: "",
       });
@@ -13698,22 +13781,31 @@ export default function App() {
                               <div style={styles.stack}>
                                 {getMixedOfferCounterRows(o.species_summary).map((row) => (
                                   <div key={row.key} style={styles.field}>
-                                    <label>{row.label} ({row.unit === "kpl" ? "€/kpl" : "€/kg"})</label>
+                                    <label>{`${row.label} - Vastatarjous ALV 0 % (${row.unit === "kpl" ? "€/kpl" : "€/kg"})`}</label>
                                     <input
                                       style={styles.input}
                                       type="text"
                                       inputMode="decimal"
                                       value={buyerAction.mixed_counter_prices?.[row.key] || ""}
-                                      onChange={(e) =>
-                                        setBuyerAction((p) => ({
-                                          ...p,
-                                          mixed_counter_prices: {
-                                            ...(p.mixed_counter_prices || {}),
-                                            [row.key]: e.target.value,
-                                          },
-                                        }))
-                                      }
+                                      onChange={(e) => updateBuyerMixedCounterNetPrice(row.key, e.target.value)}
                                       placeholder="Esim. 5,80"
+                                    />
+                                    <label style={{ marginTop: 8 }}>{`${row.label} - Vastatarjous sis. ALV ${formatVatPercent()} % (${row.unit === "kpl" ? "€/kpl" : "€/kg"})`}</label>
+                                    <input
+                                      style={styles.input}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={
+                                        buyerAction.mixed_counter_prices_gross?.[row.key] !== ""
+                                          && buyerAction.mixed_counter_prices_gross?.[row.key] != null
+                                          ? buyerAction.mixed_counter_prices_gross?.[row.key]
+                                          : buyerAction.mixed_counter_prices?.[row.key] === ""
+                                            || buyerAction.mixed_counter_prices?.[row.key] == null
+                                            ? ""
+                                            : (calculateGrossPrice(parseLocaleNumber(buyerAction.mixed_counter_prices?.[row.key]) || 0) ?? 0).toLocaleString("fi-FI", { maximumFractionDigits: 4 })
+                                      }
+                                      onChange={(e) => updateBuyerMixedCounterGrossPrice(row.key, e.target.value)}
+                                      placeholder="Esim. 6,58"
                                     />
                                   </div>
                                 ))}
@@ -13726,14 +13818,30 @@ export default function App() {
                         ) : (
                           <>
                             <div style={styles.field}>
-                              <label>{`Vastatarjous €/${getOfferDisplayUnit(o)}`}</label>
+                              <label>{`Vastatarjous ALV 0 % (€/${getOfferDisplayUnit(o)})`}</label>
                               <input
                                 style={styles.input}
                                 type="text"
                                 inputMode="decimal"
                                 value={buyerAction.counter_price_per_kg}
-                                onChange={(e) => setBuyerAction((p) => ({ ...p, counter_price_per_kg: e.target.value }))}
+                                onChange={(e) => updateBuyerCounterNetPrice(e.target.value)}
                                 placeholder="Esim. 5,80"
+                              />
+                            </div>
+                            <div style={styles.field}>
+                              <label>{`Vastatarjous sis. ALV ${formatVatPercent()} % (€/${getOfferDisplayUnit(o)})`}</label>
+                              <input
+                                style={styles.input}
+                                type="text"
+                                inputMode="decimal"
+                                value={buyerAction.counter_price_per_kg_gross_input !== ""
+                                  && buyerAction.counter_price_per_kg_gross_input != null
+                                  ? buyerAction.counter_price_per_kg_gross_input
+                                  : buyerAction.counter_price_per_kg === "" || buyerAction.counter_price_per_kg == null
+                                    ? ""
+                                    : (calculateGrossPrice(parseLocaleNumber(buyerAction.counter_price_per_kg) || 0) ?? 0).toLocaleString("fi-FI", { maximumFractionDigits: 4 })}
+                                onChange={(e) => updateBuyerCounterGrossPrice(e.target.value)}
+                                placeholder="Esim. 6,58"
                               />
                             </div>
                           </>
