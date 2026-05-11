@@ -8532,8 +8532,8 @@ export default function App() {
         const buyersData = (buyersResult?.data || []).map((buyer) => ({
           ...buyer,
           email: (buyer.email || "").toLowerCase(),
-          min_kg: buyer.min_kg == null ? "" : Number(buyer.min_kg),
-          max_kg: buyer.max_kg == null ? "" : Number(buyer.max_kg),
+          min_kg: getOptionalKgLimit(buyer.min_kg) == null ? "" : Number(buyer.min_kg),
+          max_kg: getOptionalKgLimit(buyer.max_kg) == null ? "" : Number(buyer.max_kg),
         }));
 
         if (buyersResult?.error && buyersResult.error.code !== "PGRST116") {
@@ -8664,8 +8664,8 @@ export default function App() {
     const nextForm = {
       displayName: profile.display_name || "",
       buyerType: serializeBuyerTypes(buyerAccountData?.buyer_type || "ravintola"),
-      minKg: buyerAccountData?.min_kg == null ? "" : Number(buyerAccountData.min_kg),
-      maxKg: buyerAccountData?.max_kg == null ? "" : Number(buyerAccountData.max_kg),
+      minKg: getOptionalKgLimit(buyerAccountData?.min_kg) == null ? "" : Number(buyerAccountData.min_kg),
+      maxKg: getOptionalKgLimit(buyerAccountData?.max_kg) == null ? "" : Number(buyerAccountData.max_kg),
       eviraFacilityId: profile.evira_facility_id || "",
       commercialFishingVesselId: profile.commercial_fishing_vessel_id || vesselIds[0] || "",
       commercialFishingVesselIdsText: vesselIds.join("\n"),
@@ -9357,6 +9357,17 @@ export default function App() {
       setAuthError("Täytä ALV-numero, jos toiminta on ALV-velvollista.");
       return;
     }
+    const normalizedBuyerMinKg = getOptionalKgLimit(accountForm.minKg);
+    const normalizedBuyerMaxKg = getOptionalKgLimit(accountForm.maxKg);
+    if (
+      profile.role === "buyer" &&
+      normalizedBuyerMinKg != null &&
+      normalizedBuyerMaxKg != null &&
+      normalizedBuyerMinKg > normalizedBuyerMaxKg
+    ) {
+      setAuthError("Min ostomäärä ei voi olla suurempi kuin max ostomäärä.");
+      return;
+    }
 
     setAccountSaving(true);
     try {
@@ -9365,8 +9376,8 @@ export default function App() {
         ...accountForm,
         displayName,
         buyerType: serializeBuyerTypes(accountForm.buyerType),
-        minKg: accountForm.minKg === "" ? "" : Number(accountForm.minKg),
-        maxKg: accountForm.maxKg === "" ? "" : Number(accountForm.maxKg),
+        minKg: normalizedBuyerMinKg == null ? "" : normalizedBuyerMinKg,
+        maxKg: normalizedBuyerMaxKg == null ? "" : normalizedBuyerMaxKg,
         commercialFishingId: accountForm.commercialFishingId.trim(),
         commercialFishingVesselId: accountForm.commercialFishingVesselId.trim() || normalizedVesselIds[0] || "",
         commercialFishingVesselIdsText: accountForm.commercialFishingVesselIdsText.trim(),
@@ -9467,8 +9478,8 @@ export default function App() {
           buyer_type: serializeBuyerTypes(accountForm.buyerType),
           contact_name: accountForm.contactName.trim(),
           phone: accountForm.phone.trim(),
-          min_kg: accountForm.minKg === "" ? null : Number(accountForm.minKg),
-          max_kg: accountForm.maxKg === "" ? null : Number(accountForm.maxKg),
+          min_kg: normalizedBuyerMinKg,
+          max_kg: normalizedBuyerMaxKg,
           vat_liable: Boolean(accountForm.vatLiable),
           vat_number: accountForm.vatLiable ? String(accountForm.vatNumber || "").trim().toUpperCase() : "",
           city: accountForm.city.trim(),
@@ -9916,8 +9927,8 @@ export default function App() {
       email: buyer.email || "",
       phone: buyer.phone || "",
       city: buyer.city || "",
-      min_kg: buyer.min_kg === "" || buyer.min_kg == null ? "" : String(buyer.min_kg),
-      max_kg: buyer.max_kg === "" || buyer.max_kg == null ? "" : String(buyer.max_kg),
+      min_kg: getOptionalKgLimit(buyer.min_kg) == null ? "" : String(getOptionalKgLimit(buyer.min_kg)),
+      max_kg: getOptionalKgLimit(buyer.max_kg) == null ? "" : String(getOptionalKgLimit(buyer.max_kg)),
       is_active: Boolean(buyer.is_active),
       notes: buyer.notes || "",
       delivery_address: buyer.delivery_address || "",
@@ -9983,6 +9994,16 @@ export default function App() {
 
   const handleSaveBuyer = async () => {
     if (!profile || profile.role !== "owner") return;
+    const normalizedBuyerMinKg = getOptionalKgLimit(buyerForm.min_kg);
+    const normalizedBuyerMaxKg = getOptionalKgLimit(buyerForm.max_kg);
+    if (
+      normalizedBuyerMinKg != null &&
+      normalizedBuyerMaxKg != null &&
+      normalizedBuyerMinKg > normalizedBuyerMaxKg
+    ) {
+      setUserMessage("Min kg ei voi olla suurempi kuin Max kg.");
+      return;
+    }
     const payload = {
       company_name: buyerForm.company_name.trim(),
       buyer_type: serializeBuyerTypes(buyerForm.buyer_type),
@@ -9990,8 +10011,8 @@ export default function App() {
       email: buyerForm.email.trim().toLowerCase(),
       phone: buyerForm.phone.trim(),
       city: buyerForm.city.trim(),
-      min_kg: buyerForm.min_kg === "" ? null : Number(buyerForm.min_kg),
-      max_kg: buyerForm.max_kg === "" ? null : Number(buyerForm.max_kg),
+      min_kg: normalizedBuyerMinKg,
+      max_kg: normalizedBuyerMaxKg,
       is_active: buyerForm.is_active,
       notes: buyerForm.notes.trim(),
       delivery_address: (buyerForm.delivery_address || "").trim(),
@@ -13827,6 +13848,9 @@ export default function App() {
                     <label>Max ostomäärä (kg)</label>
                     <input style={styles.input} type="number" value={accountForm.maxKg} onChange={(e) => setAccountForm((prev) => ({ ...prev, maxKg: e.target.value }))} placeholder="Esim. 200" />
                   </div>
+                  <div style={{ ...styles.noticeInfo, marginTop: -4 }}>
+                    Jätä kenttä tyhjäksi tai aseta arvoksi 0, jos et halua ostomäärälle rajaa.
+                  </div>
                 </>
               ) : null}
               {profile.role === "processor" ? (
@@ -15503,6 +15527,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               <div style={styles.field}><label>Paikkakunta</label><MunicipalitySelect value={buyerForm.city} onChange={(e) => setBuyerForm((prev) => ({ ...prev, city: e.target.value }))} /></div>
               <div style={styles.field}><label>Min kg</label><input style={styles.input} type="number" value={buyerForm.min_kg} onChange={(e) => setBuyerForm((prev) => ({ ...prev, min_kg: e.target.value }))} placeholder="Esim. tukkuille" /></div>
               <div style={styles.field}><label>Max kg</label><input style={styles.input} type="number" value={buyerForm.max_kg} onChange={(e) => setBuyerForm((prev) => ({ ...prev, max_kg: e.target.value }))} placeholder="Esim. ravintoloille" /></div>
+              <div style={{ ...styles.noticeInfo, marginTop: -4 }}>Jätä tyhjäksi tai aseta 0, jos ostajalla ei ole määrärajaa.</div>
               <div style={styles.field}><label><input type="checkbox" checked={buyerForm.is_active} onChange={(e) => setBuyerForm((prev) => ({ ...prev, is_active: e.target.checked }))} /> Aktiivinen</label></div>
               <div style={styles.field}><label>Toimitusosoite</label><input style={styles.input} value={buyerForm.delivery_address} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_address: e.target.value, ...(buyerBillingSameAsDelivery ? { billing_address: e.target.value } : {}) }))} placeholder="Katuosoite" /></div>
               <div style={styles.field}><label>Toimitus postinumero</label><input style={styles.input} value={buyerForm.delivery_postcode} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_postcode: e.target.value, ...(buyerBillingSameAsDelivery ? { billing_postcode: e.target.value } : {}) }))} placeholder="00100" /></div>
@@ -15535,8 +15560,8 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                         <span style={styles.badge}>{buyerTypesBadgeLabel(buyer.buyer_type)}</span>
                         <span style={styles.badge}>{buyer.email}</span>
                         <span style={styles.badge}>{buyer.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
-                        {buyer.min_kg !== "" ? <span style={styles.badge}>Min {buyer.min_kg} kg</span> : null}
-                        {buyer.max_kg !== "" ? <span style={styles.badge}>Max {buyer.max_kg} kg</span> : null}
+                        {getOptionalKgLimit(buyer.min_kg) != null ? <span style={styles.badge}>Min {getOptionalKgLimit(buyer.min_kg)} kg</span> : null}
+                        {getOptionalKgLimit(buyer.max_kg) != null ? <span style={styles.badge}>Max {getOptionalKgLimit(buyer.max_kg)} kg</span> : null}
                       </div>
                       <div style={styles.muted}>{buyer.contact_name || "-"}{buyer.phone ? ` · ${buyer.phone}` : ""}{buyer.city ? ` · ${buyer.city}` : ""}</div>
                       {buyer.notes ? <div style={styles.muted}>{buyer.notes}</div> : null}
