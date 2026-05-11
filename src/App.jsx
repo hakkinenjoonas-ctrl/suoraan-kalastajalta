@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { renderToStaticMarkup } from "react-dom/server";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { LocalNotifications } from "@capacitor/local-notifications";
+import { Preferences } from "@capacitor/preferences";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Share } from "@capacitor/share";
 import html2canvas from "html2canvas";
@@ -122,6 +123,8 @@ function getPublicAppBaseUrl() {
 
   return DEFAULT_PUBLIC_APP_URL;
 }
+
+const PUSH_TOKEN_STORAGE_KEY = "sk:last_push_token";
 
 async function runWithConcurrency(items, concurrency, worker) {
   const normalizedConcurrency = Math.max(1, Number(concurrency || 1));
@@ -7230,6 +7233,60 @@ export default function App() {
       }, 15000);
     };
 
+    const resolveBuyerIdForPush = async () => {
+      let resolvedBuyerId = linkedBuyerRecord?.id || profile.buyer_id || null;
+
+      if (!resolvedBuyerId && profile.role === "buyer") {
+        const candidateEmails = Array.from(new Set([
+          normalizeEmail(profile.email),
+          normalizeEmail(session.user?.email),
+          normalizeEmail(profile.contact_email),
+          normalizeEmail(profile.billing_email),
+        ].filter(Boolean)));
+
+        for (const candidateEmail of candidateEmails) {
+          const { data: buyerMatch, error: buyerMatchError } = await supabase
+            .from("buyers")
+            .select("id")
+            .or(`email.eq.${candidateEmail},billing_email.eq.${candidateEmail}`)
+            .limit(1)
+            .maybeSingle();
+
+          if (buyerMatchError) {
+            console.error("[PUSH] buyer lookup failed", JSON.stringify({
+              email: candidateEmail,
+              error: buyerMatchError.message || String(buyerMatchError),
+            }));
+            continue;
+          }
+
+          if (buyerMatch?.id) {
+            resolvedBuyerId = buyerMatch.id;
+            break;
+          }
+        }
+
+        if (resolvedBuyerId && String(profile.buyer_id || "") !== String(resolvedBuyerId)) {
+          const { error: profileUpdateError } = await supabase
+            .from("profiles")
+            .update({ buyer_id: resolvedBuyerId })
+            .eq("id", profile.id);
+
+          if (profileUpdateError) {
+            console.error("[PUSH] buyer link profile update failed", JSON.stringify({
+              profileId: profile.id,
+              buyerId: resolvedBuyerId,
+              error: profileUpdateError.message || String(profileUpdateError),
+            }));
+          } else {
+            setProfile((prev) => (prev ? { ...prev, buyer_id: resolvedBuyerId } : prev));
+          }
+        }
+      }
+
+      return resolvedBuyerId || "";
+    };
+
     const registerPushNotifications = async () => {
       try {
         const permissionStatus = await PushNotifications.requestPermissions();
@@ -7276,62 +7333,50 @@ export default function App() {
           // channel may already exist
         }
 
+        try {
+          const { value: storedPushToken } = await Preferences.get({ key: PUSH_TOKEN_STORAGE_KEY });
+          const normalizedStoredToken = String(storedPushToken || "").trim();
+          if (normalizedStoredToken) {
+            const resolvedBuyerId = await resolveBuyerIdForPush();
+            const restoredRegisterResult = await registerPushTokenOwnership({
+              token: normalizedStoredToken,
+              buyerId: resolvedBuyerId,
+              platform: "android",
+              deviceLabel: "android-app",
+            });
+
+            if (restoredRegisterResult?.error) {
+              console.error("[PUSH] stored token restore failed", JSON.stringify({
+                profileId: profile.id,
+                buyerId: resolvedBuyerId || null,
+                role: profile.role || "member",
+                error: restoredRegisterResult.error.message || String(restoredRegisterResult.error),
+              }));
+            } else {
+              currentPushTokenRef.current = normalizedStoredToken;
+              console.log("[PUSH] stored token reactivated", JSON.stringify({
+                profileId: profile.id,
+                buyerId: restoredRegisterResult?.data?.buyerId || resolvedBuyerId || null,
+                role: restoredRegisterResult?.data?.role || profile.role || "member",
+                registrationKey,
+              }));
+            }
+          }
+        } catch (restoreError) {
+          console.error("[PUSH] stored token restore handler failed", JSON.stringify({
+            error: restoreError instanceof Error ? restoreError.message : String(restoreError),
+            registrationKey,
+          }));
+        }
+
         const registrationHandle = await PushNotifications.addListener("registration", async (token) => {
           if (cancelled || !token?.value) return;
           try {
-            let resolvedBuyerId = linkedBuyerRecord?.id || profile.buyer_id || null;
-
-            if (!resolvedBuyerId && profile.role === "buyer") {
-              const candidateEmails = Array.from(new Set([
-                normalizeEmail(profile.email),
-                normalizeEmail(session.user?.email),
-                normalizeEmail(profile.contact_email),
-                normalizeEmail(profile.billing_email),
-              ].filter(Boolean)));
-
-              for (const candidateEmail of candidateEmails) {
-                const { data: buyerMatch, error: buyerMatchError } = await supabase
-                  .from("buyers")
-                  .select("id")
-                  .or(`email.eq.${candidateEmail},billing_email.eq.${candidateEmail}`)
-                  .limit(1)
-                  .maybeSingle();
-
-                if (buyerMatchError) {
-                  console.error("[PUSH] buyer lookup failed", JSON.stringify({
-                    email: candidateEmail,
-                    error: buyerMatchError.message || String(buyerMatchError),
-                  }));
-                  continue;
-                }
-
-                if (buyerMatch?.id) {
-                  resolvedBuyerId = buyerMatch.id;
-                  break;
-                }
-              }
-
-              if (resolvedBuyerId && String(profile.buyer_id || "") !== String(resolvedBuyerId)) {
-                const { error: profileUpdateError } = await supabase
-                  .from("profiles")
-                  .update({ buyer_id: resolvedBuyerId })
-                  .eq("id", profile.id);
-
-                if (profileUpdateError) {
-                  console.error("[PUSH] buyer link profile update failed", JSON.stringify({
-                    profileId: profile.id,
-                    buyerId: resolvedBuyerId,
-                    error: profileUpdateError.message || String(profileUpdateError),
-                  }));
-                } else {
-                  setProfile((prev) => (prev ? { ...prev, buyer_id: resolvedBuyerId } : prev));
-                }
-              }
-            }
+            const resolvedBuyerId = await resolveBuyerIdForPush();
 
             const registerResult = await registerPushTokenOwnership({
               token: token.value,
-              buyerId: resolvedBuyerId || "",
+              buyerId: resolvedBuyerId,
               platform: "android",
               deviceLabel: "android-app",
             });
@@ -7349,6 +7394,10 @@ export default function App() {
 
             currentPushTokenRef.current = token.value;
             pushRegistrationKeyRef.current = registrationKey;
+            await Preferences.set({
+              key: PUSH_TOKEN_STORAGE_KEY,
+              value: token.value,
+            });
             console.log("[PUSH] token registered", JSON.stringify({
               profileId: profile.id,
               buyerId: registerResult?.data?.buyerId || resolvedBuyerId || null,
