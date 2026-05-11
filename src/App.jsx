@@ -3074,7 +3074,7 @@ function getOfficialGearCodeInfo(entry) {
   };
 }
 
-function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki") {
+function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fisherProfile = null) {
   const sortedEntries = [...entries].sort((left, right) => {
     const dateDiff = String(left?.date || "").localeCompare(String(right?.date || ""));
     if (dateDiff !== 0) return dateDiff;
@@ -3100,10 +3100,25 @@ function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki") {
     }
   });
 
+  const fisherVesselIds = getCommercialFishingVesselIds(fisherProfile || {});
+  const fisherInfoRows = fisherProfile ? [
+    ["Kalastajan tiedot"],
+    ["Nimi", fisherProfile.display_name || "-"],
+    ["Yritys", fisherProfile.company_name || "-"],
+    ["Y-tunnus", fisherProfile.business_id || "-"],
+    ["Kaupallisen kalastajan tunnus", fisherProfile.commercial_fishing_id || "-"],
+    ["Kaupallisen kalastusaluksen tunnukset", fisherVesselIds.length > 0 ? fisherVesselIds.join(", ") : "-"],
+    ["Osoite", [fisherProfile.address, fisherProfile.postcode, fisherProfile.city].filter(Boolean).join(", ") || "-"],
+    ["Sähköposti", fisherProfile.contact_email || fisherProfile.email || "-"],
+    ["Puhelin", fisherProfile.phone || "-"],
+    [],
+  ] : [];
+
   const instructionsRows = [
     ["Virallinen saalisilmoitusraportti (sisävesikalastus)"],
     ["Valittu aikaväli", reportDateLabel],
     [],
+    ...fisherInfoRows,
     ["Huomiot"],
     ["- Saalis ilmoitetaan pyyntipäivittäin, kalastamisalueittain ja pyydyksittäin."],
     ["- Tässä raportissa saaliskilot pyöristetään täysiin kiloihin virallisen ohjeen mukaisesti."],
@@ -4756,7 +4771,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   ]);
 
   const catchReportRows = [catchReportHeader, ...reportRows];
-  const officialCatchWorkbook = buildOfficialCatchWorkbook(filteredEntries, reportDateLabel);
+  const officialCatchWorkbook = buildOfficialCatchWorkbook(filteredEntries, reportDateLabel, profile);
   const officialCatchIssues = validateOfficialCatchEntries(filteredEntries);
   const offerReportRows = [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows];
   const processedReportRows = [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows];
