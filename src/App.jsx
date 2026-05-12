@@ -2541,6 +2541,18 @@ function getBatchSequenceNumber(batchId) {
   return Number(match[1] || 0);
 }
 
+function generateDraftCatchBatchId({ date, ownerUserId, rowIndex = 0 }) {
+  const batchDate = formatBatchDate(date) || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const ownerPart = String(ownerUserId || "LOCAL")
+    .replace(/[^a-z0-9]/gi, "")
+    .toUpperCase()
+    .slice(-6) || "LOCAL";
+  const randomPart = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID().replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 8)
+    : `${Date.now()}${Math.random()}`.replace(/[^0-9]/g, "").slice(-8);
+  return `FREE-${batchDate}-${ownerPart}${rowIndex + 1}-${randomPart}`;
+}
+
 async function generateBatchId({ sourceIdentifier, date, speciesLabels, quantity, supabaseClient, ownerUserId, insertSeparatorAfterSource = false }) {
   const batchSourceIdentifier = formatBatchSourceIdentifier(sourceIdentifier);
   if (!batchSourceIdentifier) {
@@ -12651,9 +12663,13 @@ export default function App() {
     setSaving(true);
     let rowsWithBatchIds;
     if (fisherPremiumRequired) {
-      rowsWithBatchIds = validRows.map((row) => ({
+      rowsWithBatchIds = validRows.map((row, rowIndex) => ({
         ...row,
-        batch_id: null,
+        batch_id: generateDraftCatchBatchId({
+          date: form.date,
+          ownerUserId: profile.id,
+          rowIndex,
+        }),
       }));
     } else {
       try {
