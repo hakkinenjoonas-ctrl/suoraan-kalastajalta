@@ -1729,10 +1729,14 @@ async function triggerForegroundNotificationFeedback() {
 
 async function presentFileBlob(blob, fileName, options = {}) {
   if (typeof window === "undefined") return;
-  if (shouldSkipDuplicateFilePresentation(fileName)) return;
+  const presentationKey = options.skipDuplicateGuard
+    ? ""
+    : String(options.dedupeKey || fileName || "");
+  if (presentationKey && shouldSkipDuplicateFilePresentation(presentationKey)) return;
 
   const mimeType = String(options.mimeType || blob?.type || "application/octet-stream");
   const browserAction = options.browserAction === "open" ? "open" : "download";
+  const nativeFileName = String(options.nativeFileName || fileName || "document");
 
   if (isNativeCapacitorApp()) {
     const dataUrl = await blobToDataUrl(blob);
@@ -1742,7 +1746,7 @@ async function presentFileBlob(blob, fileName, options = {}) {
     }
 
     const { uri } = await Filesystem.writeFile({
-      path: fileName,
+      path: nativeFileName,
       data: base64Data,
       directory: Directory.Cache,
       recursive: true,
@@ -1801,6 +1805,9 @@ async function presentPdfDocument(doc, fileName, options = {}) {
     shareTitle: fileName,
     shareText: "Avaa tai jaa PDF-tiedosto",
     dialogTitle: "PDF-tiedosto",
+    nativeFileName: options.nativeFileName,
+    dedupeKey: options.dedupeKey,
+    skipDuplicateGuard: options.skipDuplicateGuard,
   });
 }
 
@@ -1977,6 +1984,11 @@ async function renderProcessedLabelCanvas(label, printFormat) {
 
 function buildCatchLabelPdfFileName(entry) {
   return `kalaetiketit-${String(entry?.batchId || "era").replace(/[^a-zA-Z0-9-_]+/g, "_")}.pdf`;
+}
+
+function buildUniqueCatchLabelNativeFileName(entry) {
+  const baseName = buildCatchLabelPdfFileName(entry).replace(/\.pdf$/i, "");
+  return `${baseName}-${Date.now()}.pdf`;
 }
 
 function buildProcessedLabelPdfFileName(entry, printFormat) {
@@ -3561,6 +3573,12 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
     ? Math.min(1, Math.max(0.5, (viewportWidth - 52) / previewBaseWidth))
     : 1;
   const formatDetails = CATCH_LABEL_FORMATS.find((formatOption) => formatOption.value === printFormat) || CATCH_LABEL_FORMATS[0];
+  const emitPrintSelection = useCallback(() => ({
+    entry,
+    labelCount: Math.max(1, Number(labelCount || 1)),
+    printFormat,
+    waterType,
+  }), [entry, labelCount, printFormat, waterType]);
 
   return (
     <div style={{
@@ -3664,8 +3682,8 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
             </div>
             <div style={styles.small}>{formatDetails.label} · {formatDetails.description}. “Luo PDF” avaa tulostusikkunan, jossa voit tallentaa PDF:n.</div>
             <div style={{ ...styles.row, flexWrap: "wrap" }}>
-              <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={onGeneratePdf}>Luo PDF</button>
-              <button type="button" style={styles.button} onClick={onPrint}>Tulosta</button>
+              <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onGeneratePdf(emitPrintSelection())}>Luo PDF</button>
+              <button type="button" style={styles.button} onClick={() => onPrint(emitPrintSelection())}>Tulosta</button>
             </div>
           </div>
 
@@ -12953,15 +12971,16 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
-  const openCatchLabelPrintDialog = (entry, mode = "print") => {
-    if (!entry) return;
-    const resolvedLabelCount = Math.max(1, Number(labelPrintCount || 1));
-    const resolvedPrintFormat = labelPrintFormat;
+  const openCatchLabelPrintDialog = (entry, mode = "print", overrides = {}) => {
+    const targetEntry = overrides?.entry || entry;
+    if (!targetEntry) return;
+    const resolvedLabelCount = Math.max(1, Number(overrides?.labelCount ?? labelPrintCount ?? 1));
+    const resolvedPrintFormat = String(overrides?.printFormat || labelPrintFormat || CATCH_LABEL_FORMAT_MUNBYN_4X6);
     const storedCatchDefaults = getStoredCatchFormDefaults(profile);
     const resolvedWaterType = isThermalCatchLabelFormat(resolvedPrintFormat)
-      ? String(labelPrintWaterType || entry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim()
-      : String(entry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim();
-    const labelData = buildCatchLabelData(entry, profile, 1, resolvedLabelCount, { waterType: resolvedWaterType });
+      ? String(overrides?.waterType || labelPrintWaterType || targetEntry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim()
+      : String(targetEntry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim();
+    const labelData = buildCatchLabelData(targetEntry, profile, 1, resolvedLabelCount, { waterType: resolvedWaterType });
 
     if (!labelData.species || !labelData.batchId || !labelData.supplier) {
       setAuthError("Etikettiä ei voi tulostaa ennen kuin kalalaji, erätunnus ja toimittaja ovat täytetty.");
@@ -12978,8 +12997,11 @@ export default function App() {
     if (mode === "pdf" || (mode === "print" && isNativeCapacitorApp())) {
       void (async () => {
         try {
-          const doc = await buildCatchLabelPdf(entry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat);
-          await presentPdfDocument(doc, buildCatchLabelPdfFileName(entry));
+          const doc = await buildCatchLabelPdf(targetEntry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat);
+          await presentPdfDocument(doc, buildCatchLabelPdfFileName(targetEntry), {
+            nativeFileName: buildUniqueCatchLabelNativeFileName(targetEntry),
+            dedupeKey: `${String(targetEntry?.id || targetEntry?.batchId || "label")}::${resolvedPrintFormat}::${resolvedLabelCount}::${resolvedWaterType}::${Date.now()}`,
+          });
         } catch (error) {
           console.error("Etiketti-PDF:n luonti epäonnistui:", error);
           setAuthError(`Etiketti-PDF:n luonti epäonnistui: ${String(error?.message || error)}`);
@@ -12987,7 +13009,7 @@ export default function App() {
       })();
       return;
     }
-    const html = buildCatchLabelPrintHtml(entry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat);
+    const html = buildCatchLabelPrintHtml(targetEntry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat);
     const printWindow = window.open("", "_blank", "width=1200,height=900");
     if (!printWindow) {
       setAuthError("Tulostusikkunan avaaminen estettiin selaimessa.");
@@ -15952,8 +15974,8 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             waterType={labelPrintWaterType}
             setWaterType={setLabelPrintWaterType}
             onClose={closeLabelPrintModal}
-            onGeneratePdf={() => openCatchLabelPrintDialog(labelPrintEntry, "pdf")}
-            onPrint={() => openCatchLabelPrintDialog(labelPrintEntry, "print")}
+            onGeneratePdf={(selection) => openCatchLabelPrintDialog(labelPrintEntry, "pdf", selection)}
+            onPrint={(selection) => openCatchLabelPrintDialog(labelPrintEntry, "print", selection)}
             viewportWidth={viewportWidth}
           />
         ) : null}
