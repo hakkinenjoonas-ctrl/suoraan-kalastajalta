@@ -14119,6 +14119,7 @@ export default function App() {
   const grid2 = responsiveGridStyle(styles.grid2, viewportWidth);
   const formGrid = responsiveGridStyle(styles.formGrid, viewportWidth);
   const speciesRow = responsiveGridStyle(styles.speciesRow, viewportWidth);
+  const fisherPremiumRequired = profile.role === "member" && !hasFisherPremium;
   const logoHeight = viewportWidth < 768
     ? 172
     : viewportWidth < 1024
