@@ -8755,7 +8755,43 @@ export default function App() {
           setAuthError(allowedError.message);
         } else {
           const ownerProfilesData = ownerProfilesResult?.data || [];
-          setAllowedUsers(allowedData || []);
+          let resolvedAllowedUsers = allowedData || [];
+
+          if (profile.role === "owner") {
+            const missingAllowedPayloads = ownerProfilesData
+              .filter((row) => row?.is_active && row?.email && row?.role)
+              .filter((row) => !resolvedAllowedUsers.some((allowedRow) => (
+                normalizeEmail(allowedRow.email) === normalizeEmail(row.email) &&
+                String(allowedRow.role || "") === String(row.role || "") &&
+                String(allowedRow.buyer_id || "") === String((row.role === "buyer" ? row.buyer_id : null) || "")
+              )))
+              .map((row) => ({
+                email: normalizeEmail(row.email),
+                display_name: row.display_name || normalizeEmail(row.email),
+                role: row.role,
+                is_active: true,
+                buyer_id: row.role === "buyer" ? row.buyer_id || null : null,
+              }));
+
+            if (missingAllowedPayloads.length > 0) {
+              const { data: insertedAllowedRows, error: insertAllowedError } = await supabase
+                .from("allowed_users")
+                .insert(missingAllowedPayloads)
+                .select("*");
+
+              if (insertAllowedError) {
+                if (isMissingRefreshTokenError(insertAllowedError)) {
+                  await invalidateSession();
+                  return;
+                }
+                setAuthError(insertAllowedError.message);
+              } else if (Array.isArray(insertedAllowedRows) && insertedAllowedRows.length > 0) {
+                resolvedAllowedUsers = [...resolvedAllowedUsers, ...insertedAllowedRows];
+              }
+            }
+          }
+
+          setAllowedUsers(resolvedAllowedUsers);
           setPendingProfiles(ownerProfilesData.filter((row) => !row.is_active && row.id !== profile.id));
           setOwnerUserProfiles(ownerProfilesData.filter((row) => row.is_active));
         }
