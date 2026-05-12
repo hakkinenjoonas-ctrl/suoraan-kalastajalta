@@ -751,23 +751,10 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
 }
 
 function getCatchLabelQrImageUrl(labelData) {
-  const qrLines = [
-    labelData.species || "-",
-    labelData.catchDate ? `Pyyntipäivä: ${labelData.catchDate}` : "",
-    labelData.packDate ? `Pakkauspäivä: ${labelData.packDate}` : "",
-    labelData.batchId ? `Erätunnus: ${labelData.batchId}` : "",
-    labelData.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${labelData.commercialFishingId}` : "",
-    labelData.scientificName ? `Tieteellinen nimi: ${labelData.scientificName}` : "",
-    labelData.productionMethodText || "",
-    labelData.catchArea ? `Pyyntialue: ${labelData.catchArea}` : "",
-    labelData.gearType ? `Pyyntimenetelmä: ${labelData.gearType}` : "",
-    labelData.productForm ? `Tuote: ${labelData.productForm}` : "",
-    `Toimittaja: ${labelData.supplier || "-"}`,
-    labelData.supplierAddress ? `Osoite: ${labelData.supplierAddress}` : "",
-    labelData.supplierContact ? `Yhteystiedot: ${labelData.supplierContact}` : "",
-  ].filter(Boolean);
-
-  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrLines.join("\n"))}`;
+  const traceValue = getBatchTraceValue(labelData?.batchId);
+  return traceValue
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(traceValue)}`
+    : "";
 }
 
 function getProcessedLabelProductState(entry) {
