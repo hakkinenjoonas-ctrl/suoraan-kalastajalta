@@ -8213,7 +8213,57 @@ export default function App() {
         setAuthError(allowedError.message);
         return;
       }
-      const activeAllowedRows = (allowedRows || []).filter((row) => row.is_active);
+      let effectiveAllowedRows = allowedRows || [];
+      let activeAllowedRows = effectiveAllowedRows.filter((row) => row.is_active);
+
+      const ensureAutoAllowedUserRow = async (profileRow) => {
+        if (!profileRow || !isRoleAutomaticallyActive(profileRow.role)) {
+          return;
+        }
+        const normalizedProfileEmail = normalizeEmail(profileRow.email || email || "");
+        if (!normalizedProfileEmail) return;
+
+        const allowedPayload = {
+          email: normalizedProfileEmail,
+          display_name: profileRow.display_name || session.user.user_metadata?.display_name || normalizedProfileEmail,
+          role: profileRow.role || "member",
+          is_active: true,
+          buyer_id: profileRow.role === "buyer" ? profileRow.buyer_id || null : null,
+        };
+
+        const exactRoleRow = effectiveAllowedRows.find((row) => (
+          normalizeEmail(row.email) === normalizedProfileEmail &&
+          row.role === allowedPayload.role &&
+          String(row.buyer_id || "") === String(allowedPayload.buyer_id || "")
+        )) || null;
+
+        const needsUpdate = exactRoleRow && (
+          !exactRoleRow.is_active ||
+          String(exactRoleRow.display_name || "") !== String(allowedPayload.display_name || "")
+        );
+
+        const { data: ensuredRow, error: ensureAllowedError } = exactRoleRow
+          ? (needsUpdate
+            ? await supabase.from("allowed_users").update(allowedPayload).eq("id", exactRoleRow.id).select("*").single()
+            : { data: exactRoleRow, error: null })
+          : await supabase.from("allowed_users").insert(allowedPayload).select("*").single();
+
+        if (ensureAllowedError) {
+          if (isMissingRefreshTokenError(ensureAllowedError)) {
+            await invalidateSession();
+            return;
+          }
+          setAuthError(ensureAllowedError.message);
+          return;
+        }
+
+        if (ensuredRow) {
+          effectiveAllowedRows = exactRoleRow
+            ? effectiveAllowedRows.map((row) => (row.id === ensuredRow.id ? ensuredRow : row))
+            : [...effectiveAllowedRows, ensuredRow];
+          activeAllowedRows = effectiveAllowedRows.filter((row) => row.is_active);
+        }
+      };
 
       const { data: existingProfile, error: profileError } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
       if (profileError && profileError.code !== "PGRST116") {
@@ -8237,6 +8287,7 @@ export default function App() {
             profileToUse = autoActivatedProfile;
           }
         }
+        await ensureAutoAllowedUserRow(profileToUse);
         const matchingAllowedRole = getMatchingAllowedRole(activeAllowedRows, existingProfile);
         const selectedAllowedRole = matchingAllowedRole || (activeAllowedRows.length === 1 ? activeAllowedRows[0] : null);
         if (!selectedAllowedRole) {
@@ -8315,6 +8366,7 @@ export default function App() {
         setAuthError(insertError.message);
         return;
       }
+      await ensureAutoAllowedUserRow(insertedProfile);
       const normalizedInsertedProfile = {
         ...insertedProfile,
         email: (insertedProfile.email || email || "").trim().toLowerCase(),
