@@ -634,6 +634,20 @@ function canPrintCatchLabels(entry) {
   return Boolean(entry?.batchId && entry?.species && entry?.date);
 }
 
+function isRoleAutomaticallyActive(role) {
+  return role === "buyer" || role === "member";
+}
+
+function isFisherPremiumProfile(profileLike) {
+  if (!profileLike) return false;
+  if (profileLike.role !== "member") return true;
+  return Boolean(profileLike.fisher_premium_enabled || profileLike.fisherPremiumEnabled);
+}
+
+function buildFisherPremiumMessage(featureLabel) {
+  return `${featureLabel} kuuluu kalastajalisenssiin. Voit edelleen kirjata ja selata saaliita ilmaiseksi, mutta myynti, jäljitettävyystunnus, etikettien tulostus ja virallinen saalisilmoitus vaativat aktiivisen kalastajalisenssin.`;
+}
+
 const WATER_TYPE_FRESH = "makea";
 const WATER_TYPE_SEA = "meri";
 const OFFER_SEND_CONCURRENCY = 4;
@@ -2354,7 +2368,7 @@ function getRoleOnboardingGuideContent(role) {
       title: "Aloita ownerina näin",
       intro: "Tämä pikamuistilista näkyy vain alussa ja sen voi sulkea pysyvästi.",
       steps: [
-        "Hyväksy uudet käyttäjät Käyttäjät-välilehdellä, jotta he pääsevät aloittamaan roolinsa käytön.",
+        "Hyväksy erikoisroolit ja hallitse kalastajalisenssejä Käyttäjät-välilehdellä.",
         "Päivitä ostajarekisteri Ostajat-välilehdellä, jotta tarjoukset ohjautuvat oikeille yrityksille.",
         "Tarkista Raportit ja Laskutus säännöllisesti, jos haluat seurata kaupankäyntiä ja komissioita.",
       ],
@@ -2366,8 +2380,8 @@ function getRoleOnboardingGuideContent(role) {
     intro: "Nämä ohjeet näkyvät vain ensimmäisillä käyttökerroilla tai kunnes valitset Älä näytä enää.",
     steps: [
       "Täytä ensin Omat tiedot: yrityksen tiedot, kaupallisen kalastajan tunnus ja käytössä olevat kaupallisen kalastusaluksen tunnukset.",
-      "Siirry Lisää saalis -välilehdelle, täytä saalistiedot ja tallenna erä saaliskirjanpitoon tai lähetä se tarjouksena ostajille.",
-      "Tulosta etiketit Saaliit-välilehdeltä ja seuraa ostajien varauksia sekä vastatarjouksia Tarjoukset-välilehdellä.",
+      "Siirry Lisää saalis -välilehdelle, täytä saalistiedot ja tallenna erä saaliskirjanpitoon.",
+      "Kalastajalisenssi avaa myyntiin tarjoamisen, jäljitettävyystunnuksen, etikettien tulostuksen ja virallisen saalisilmoituksen.",
       "Kun ostaja on merkinnyt toimituksen vastaanotetuksi, muodosta lasku Laskutus-välilehdellä.",
     ],
   };
@@ -3865,7 +3879,7 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
             </button>
           )}
 
-          {authMode === "signup" ? <div style={styles.muted}>Rekisteröitymisen jälkeen owner hyväksyy käyttöoikeuden ennen kuin appi avautuu.</div> : null}
+          {authMode === "signup" ? <div style={styles.muted}>Ostaja ja kalastaja pääsevät appiin heti rekisteröitymisen jälkeen. Vain erikoisroolit voivat vaatia ownerin hyväksynnän.</div> : null}
 
         </form>
       </div>
@@ -3905,7 +3919,7 @@ function PendingApprovalView({ profile, onLogout }) {
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
           <h1 style={styles.title}>Odottaa hyväksyntää</h1>
           <div style={styles.muted}>
-            Tunnus on luotu sähköpostille <strong>{profile?.email || "-"}</strong>, mutta ownerin pitää vielä hyväksyä käyttöoikeus ennen kuin appi aukeaa.
+            Tunnus on luotu sähköpostille <strong>{profile?.email || "-"}</strong>, mutta valittu rooli tarvitsee vielä ownerin hyväksynnän ennen kuin tämä näkymä aukeaa kokonaan.
           </div>
           <div style={styles.noticeInfo}>
             Valittu rooli: <strong>{roleLabel(profile?.role || "member")}</strong>
@@ -4198,6 +4212,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   const [buyerReportData, setBuyerReportData] = useState(null);
 
   const isBuyerRole = profile?.role === "buyer";
+  const hasFisherPremium = isFisherPremiumProfile(profile);
   const reportDateLabel = reportStartDate || reportEndDate
     ? `${reportStartDate || "alku"} - ${reportEndDate || "tänään"}`
     : "kaikki";
@@ -4651,6 +4666,22 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (profile?.role === "member" && !hasFisherPremium) {
+    return (
+      <div style={styles.stack}>
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <strong>Raportit</strong>
+          <div style={styles.noticeWarning}>
+            {buildFisherPremiumMessage("Virallinen saalisraportti ja raporttivienti")}
+          </div>
+          <div style={styles.muted}>
+            Ilmaisversiossa voit kirjata saaliita ja selata niitä Saaliit-välilehdellä. Raporttien vienti ja virallinen saalisilmoitus avautuvat, kun owner aktivoi kalastajalisenssin.
+          </div>
         </div>
       </div>
     );
@@ -7039,6 +7070,10 @@ export default function App() {
     () => getMatchingAllowedRole(availableRoleOptions, profile),
     [availableRoleOptions, getMatchingAllowedRole, profile],
   );
+  const hasFisherPremium = useMemo(
+    () => isFisherPremiumProfile(profile),
+    [profile],
+  );
   const hasBuyerRoleOption = useMemo(
     () => (availableRoleOptions || []).some((option) => option.role === "buyer"),
     [availableRoleOptions],
@@ -7051,6 +7086,13 @@ export default function App() {
     () => getCommercialFishingVesselIds(profile),
     [profile],
   );
+
+  const showFisherPremiumRequired = useCallback((featureLabel) => {
+    setAuthError("");
+    setAuthInfo("");
+    setAuthWarning(buildFisherPremiumMessage(featureLabel));
+    setAccountPanelOpen(true);
+  }, []);
 
   const handleNotificationNavigation = useCallback((payload = {}) => {
     const nextTab = getNotificationRouteTarget(payload);
@@ -7786,7 +7828,7 @@ export default function App() {
     if (matches.length === 0) return null;
     return matches.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
   };
-  const shouldSendOffer = form.listForSale && (form.offerToShops || form.offerToRestaurants || form.offerToWholesalers);
+  const shouldSendOffer = hasFisherPremium && form.listForSale && (form.offerToShops || form.offerToRestaurants || form.offerToWholesalers);
   const shouldSendProcessedOffer = processedForm.listForSale && (processedForm.offerToShops || processedForm.offerToRestaurants || processedForm.offerToWholesalers);
   const currentOriginCity = form.originCity || form.municipality || "";
   const currentProcessedOriginCity = processedForm.originCity || processedForm.municipality || "";
@@ -8185,18 +8227,29 @@ export default function App() {
       }
       if (existingProfile) {
         let profileToUse = existingProfile;
+        if (!existingProfile.is_active && activeAllowedRows.length === 0 && isRoleAutomaticallyActive(existingProfile.role)) {
+          const { data: autoActivatedProfile, error: autoActivateError } = await supabase
+            .from("profiles")
+            .update({ is_active: true })
+            .eq("id", session.user.id)
+            .select("*")
+            .single();
+          if (!autoActivateError && autoActivatedProfile) {
+            profileToUse = autoActivatedProfile;
+          }
+        }
         const matchingAllowedRole = getMatchingAllowedRole(activeAllowedRows, existingProfile);
         const selectedAllowedRole = matchingAllowedRole || (activeAllowedRows.length === 1 ? activeAllowedRows[0] : null);
         if (!selectedAllowedRole) {
           const normalizedProfile = {
             ...profileToUse,
             email: (profileToUse.email || email || "").trim().toLowerCase(),
-            is_active: activeAllowedRows.some((row) => row.is_active),
+            is_active: Boolean(profileToUse.is_active || isRoleAutomaticallyActive(profileToUse.role) || activeAllowedRows.some((row) => row.is_active)),
           };
           setProfile(normalizedProfile);
           setAvailableRoleOptions(activeAllowedRows);
           setRoleSelectionOpen(activeAllowedRows.length > 1);
-          if (activeAllowedRows.length === 0) {
+          if (activeAllowedRows.length === 0 && !normalizedProfile.is_active) {
             setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
           }
           return;
@@ -8242,6 +8295,7 @@ export default function App() {
         : session.user.user_metadata?.requested_role === "processor"
           ? "processor"
           : "member";
+      const autoActiveRole = isRoleAutomaticallyActive(defaultAllowedRole?.role || requestedRole);
       const { data: insertedProfile, error: insertError } = await supabase
         .from("profiles")
         .insert({
@@ -8249,7 +8303,7 @@ export default function App() {
           email,
           display_name: defaultAllowedRole?.display_name || session.user.user_metadata?.display_name || email,
           role: defaultAllowedRole?.role || requestedRole,
-          is_active: defaultAllowedRole?.is_active || false,
+          is_active: defaultAllowedRole?.is_active || autoActiveRole,
           buyer_id: defaultAllowedRole?.buyer_id || null,
         })
         .select("*")
@@ -8269,9 +8323,11 @@ export default function App() {
       setProfile(normalizedInsertedProfile);
       setAvailableRoleOptions(activeAllowedRows);
       setRoleSelectionOpen(false);
-      if (!defaultAllowedRole) {
+      if (!defaultAllowedRole && !autoActiveRole) {
         setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
         await notifyOwnersAboutPendingApproval(insertedProfile);
+      } else if (autoActiveRole) {
+        setAuthInfo("Tunnus luotu. Voit käyttää appia heti ja täydentää omat tiedot ennen kaupallisia toimintoja.");
       }
       fisherInfoSyncingRef.current = true;
       setFisherInfoForm({
@@ -9356,7 +9412,11 @@ export default function App() {
         setAuthError(error.message);
         return;
       }
-      setAuthInfo("Tunnus luotu ja lähetetty hyväksyttäväksi. Voit kirjautua sisään, mutta appi aukeaa vasta kun owner hyväksyy roolin.");
+      if (requestedRole === "processor") {
+        setAuthInfo("Tunnus luotu. Jalostajarooli odottaa vielä ownerin hyväksyntää ennen kuin appi aukeaa.");
+      } else {
+        setAuthInfo("Tunnus luotu. Voit kirjautua sisään heti ja täydentää omat tiedot ennen kaupallisten toimintojen käyttöä.");
+      }
       setAuthMode("signin");
     } finally {
       setAuthSubmitting(false);
@@ -9991,11 +10051,16 @@ export default function App() {
     }
 
     const matchingBuyer = buyers.find((buyer) => normalizeEmail(buyer.email) === normalizedEmail) || null;
+    if (role === "buyer" && !matchingBuyer) {
+      setAuthError("Ostajaroolia ei voi avata automaattisesti, koska sähköpostille ei löytynyt liitettyä ostajayritystä. Pyydä owneria lisäämään tai linkittämään ostajarekisterin yritys ensin.");
+      return;
+    }
+
     const requestPayload = {
       email: normalizedEmail,
       display_name: profile.display_name || accountForm.displayName || normalizedEmail,
       role,
-      is_active: false,
+      is_active: role === "buyer",
       buyer_id: role === "buyer" ? (matchingBuyer?.id || null) : null,
     };
 
@@ -10034,7 +10099,7 @@ export default function App() {
 
     setAuthInfo(
       role === "buyer"
-        ? "Ostajaroolipyyntö lähetetty ownerille hyväksyttäväksi."
+        ? "Ostajarooli avattu. Kirjaudu ulos ja takaisin sisään tai vaihda roolia yläreunan valitsimesta."
         : "Jalostajaroolipyyntö lähetetty ownerille hyväksyttäväksi."
     );
     setRefreshTick((prev) => prev + 1);
@@ -10262,6 +10327,34 @@ export default function App() {
       setUserMessage(error.message);
       return;
     }
+    setRefreshTick((prev) => prev + 1);
+  };
+
+  const toggleFisherPremium = async (user, linkedProfile) => {
+    if (!profile || profile.role !== "owner") return;
+
+    const targetProfileId = linkedProfile?.id || null;
+    if (!targetProfileId) {
+      setUserMessage("Kalastajaprofiilia ei löytynyt premium-tilan vaihtamista varten.");
+      return;
+    }
+
+    const nextValue = !Boolean(linkedProfile?.fisher_premium_enabled);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ fisher_premium_enabled: nextValue })
+      .eq("id", targetProfileId);
+
+    if (error) {
+      if (isMissingRefreshTokenError(error)) {
+        await invalidateSession();
+        return;
+      }
+      setUserMessage(error.message);
+      return;
+    }
+
+    setUserMessage(`Kalastajalisenssi ${nextValue ? "aktivoitu" : "poistettu"} käyttäjälle ${user.display_name || user.email}.`);
     setRefreshTick((prev) => prev + 1);
   };
 
@@ -12395,6 +12488,7 @@ export default function App() {
 
   const handleSave = async () => {
     if (!profile) return;
+    const fisherPremiumRequired = profile.role === "member" && !hasFisherPremium;
     const totalKilosForOffer = speciesRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
     const selectedVesselId = form.fishingWithoutVessel ? "" : String(form.selectedVesselId || commercialFishingVesselOptions[0] || "").trim();
     const batchSourceIdentifier = form.fishingWithoutVessel
@@ -12415,6 +12509,10 @@ export default function App() {
     }
     if (shouldSendOffer && validRows.some((row) => parseLocaleNumber(row.price_per_kg) == null)) {
       setAuthError("Täytä hinta jokaiselle kalalajille ennen saaliin tallennusta.");
+      return;
+    }
+    if (form.listForSale && fisherPremiumRequired) {
+      showFisherPremiumRequired("Tarjoa myyntiin, jäljitettävyystunnus ja tarjouslähetys");
       return;
     }
     if (validRows.some((row) => isCrayfishSpecies(getSpeciesRowLabel(row)) && Number(row.count || 0) <= 0)) {
@@ -12463,32 +12561,39 @@ export default function App() {
     }
     setSaving(true);
     let rowsWithBatchIds;
-    try {
-      rowsWithBatchIds = await Promise.all(validRows.map(async (row) => ({
+    if (fisherPremiumRequired) {
+      rowsWithBatchIds = validRows.map((row) => ({
         ...row,
-        batch_id: await generateBatchId({
-          sourceIdentifier: batchSourceIdentifier,
-          date: form.date,
-          speciesLabels: [getSpeciesRowLabel(row)],
-          quantity: Number(row.kilos || 0) > 0 ? Number(row.kilos || 0) : Number(row.count || 0),
-          supabaseClient: supabase,
-          ownerUserId: profile.id,
-          insertSeparatorAfterSource: Boolean(form.fishingWithoutVessel),
-        }),
-      })));
-    } catch (error) {
-      setSaving(false);
-      if (isMissingRefreshTokenError(error)) {
-        await invalidateSession();
+        batch_id: null,
+      }));
+    } else {
+      try {
+        rowsWithBatchIds = await Promise.all(validRows.map(async (row) => ({
+          ...row,
+          batch_id: await generateBatchId({
+            sourceIdentifier: batchSourceIdentifier,
+            date: form.date,
+            speciesLabels: [getSpeciesRowLabel(row)],
+            quantity: Number(row.kilos || 0) > 0 ? Number(row.kilos || 0) : Number(row.count || 0),
+            supabaseClient: supabase,
+            ownerUserId: profile.id,
+            insertSeparatorAfterSource: Boolean(form.fishingWithoutVessel),
+          }),
+        })));
+      } catch (error) {
+        setSaving(false);
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        setAuthError(error.message || "Batch ID:n luonti epäonnistui.");
         return;
       }
-      setAuthError(error.message || "Batch ID:n luonti epäonnistui.");
-      return;
     }
     const payload = rowsWithBatchIds.map((row) => ({
-      offer_to_shops: form.listForSale ? form.offerToShops : false,
-      offer_to_restaurants: form.listForSale ? form.offerToRestaurants : false,
-      offer_to_wholesalers: form.listForSale ? form.offerToWholesalers : false,
+      offer_to_shops: !fisherPremiumRequired && form.listForSale ? form.offerToShops : false,
+      offer_to_restaurants: !fisherPremiumRequired && form.listForSale ? form.offerToRestaurants : false,
+      offer_to_wholesalers: !fisherPremiumRequired && form.listForSale ? form.offerToWholesalers : false,
       date: form.date,
       area: form.area,
       municipality: form.municipality,
@@ -12499,17 +12604,17 @@ export default function App() {
       kilos: Number(row.kilos || 0),
       count: Number(row.count || 0),
       gear: form.gear,
-      delivery_possible: form.listForSale ? Boolean(form.deliveryPossible) : false,
-      delivery_method: form.listForSale ? form.deliveryMethod : null,
-      transport_mode: form.listForSale ? (form.transportMode || null) : null,
-      origin_point_id: form.listForSale ? (form.originPointId || null) : null,
-      transport_company_id: form.listForSale ? (form.transportCompanyId || null) : null,
-      pickup_address: form.listForSale ? (resolvedPickupAddress || null) : null,
-      delivery_destinations: form.listForSale ? form.deliveryDestinations : [],
-      delivery_area: form.listForSale ? derivedDeliveryArea : null,
-      delivery_cost: form.listForSale ? parseLocaleNumber(form.deliveryCost) : null,
-      earliest_delivery_date: form.listForSale ? (form.earliestDeliveryDate || null) : null,
-      cold_transport: form.listForSale ? form.coldTransport : false,
+      delivery_possible: !fisherPremiumRequired && form.listForSale ? Boolean(form.deliveryPossible) : false,
+      delivery_method: !fisherPremiumRequired && form.listForSale ? form.deliveryMethod : null,
+      transport_mode: !fisherPremiumRequired && form.listForSale ? (form.transportMode || null) : null,
+      origin_point_id: !fisherPremiumRequired && form.listForSale ? (form.originPointId || null) : null,
+      transport_company_id: !fisherPremiumRequired && form.listForSale ? (form.transportCompanyId || null) : null,
+      pickup_address: !fisherPremiumRequired && form.listForSale ? (resolvedPickupAddress || null) : null,
+      delivery_destinations: !fisherPremiumRequired && form.listForSale ? form.deliveryDestinations : [],
+      delivery_area: !fisherPremiumRequired && form.listForSale ? derivedDeliveryArea : null,
+      delivery_cost: !fisherPremiumRequired && form.listForSale ? parseLocaleNumber(form.deliveryCost) : null,
+      earliest_delivery_date: !fisherPremiumRequired && form.listForSale ? (form.earliestDeliveryDate || null) : null,
+      cold_transport: !fisherPremiumRequired && form.listForSale ? form.coldTransport : false,
       commercial_fishing_id: profile.commercial_fishing_id || null,
       commercial_fishing_vessel_id: selectedVesselId || null,
       price_per_kg: parseLocaleNumber(row.price_per_kg),
@@ -12596,6 +12701,8 @@ export default function App() {
             setAuthInfo(parts.join(String.fromCharCode(10)));
           }
         }
+      } else if (fisherPremiumRequired) {
+        setAuthInfo("Saalis tallennettu. Jäljitettävyystunnus, myyntiin tarjoaminen, etiketit ja virallinen saalisilmoitus avautuvat, kun kalastajalisenssi aktivoidaan.");
       } else {
         setAuthInfo("Saalis tallennettu.");
       }
@@ -12961,6 +13068,10 @@ export default function App() {
   const openCatchLabelPrintDialog = (entry, mode = "print", overrides = {}) => {
     const targetEntry = overrides?.entry || entry;
     if (!targetEntry) return;
+    if (profile?.role === "member" && !hasFisherPremium) {
+      showFisherPremiumRequired("Etikettien tulostus ja jäljitettävyystunnus");
+      return;
+    }
     const resolvedLabelCount = Math.max(1, Number(overrides?.labelCount ?? labelPrintCount ?? 1));
     const resolvedPrintFormat = String(overrides?.printFormat || labelPrintFormat || CATCH_LABEL_FORMAT_MUNBYN_4X6);
     const storedCatchDefaults = getStoredCatchFormDefaults(profile);
@@ -14012,6 +14123,14 @@ export default function App() {
                 <label>Kirjautumissähköposti</label>
                 <input style={styles.input} value={profile.email || ""} disabled />
               </div>
+              {profile.role === "member" ? (
+                <div style={{ ...styles.noticeInfo, ...(hasFisherPremium ? styles.noticeSuccess : styles.noticeWarning) }}>
+                  <strong>{hasFisherPremium ? "Kalastajalisenssi aktiivinen." : "Kalastajalisenssi ei ole aktiivinen."}</strong>{" "}
+                  {hasFisherPremium
+                    ? "Voit käyttää jäljitettävyystunnuksia, etikettien tulostusta, myyntiin tarjoamista ja virallista saalisilmoitusta."
+                    : "Ilmaisversiossa voit kirjata ja selata saaliita. Myyntiin tarjoaminen, jäljitettävyystunnus, etikettien tulostus ja virallinen saalisilmoitus vaativat ownerin aktivoiman kalastajalisenssin."}
+                </div>
+              ) : null}
               {profile.role === "buyer" ? (
                 <>
                   <div style={styles.field}>
@@ -14223,7 +14342,7 @@ export default function App() {
             {profile.role !== "owner" && (!hasBuyerRoleOption || !hasProcessorRoleOption) ? (
               <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
                 <strong>Pyydä lisäroolia</strong>
-                <div style={styles.muted}>Voit pyytää samalla sähköpostilla myös ostaja- tai jalostajaroolia. Owner hyväksyy pyynnön ennen kuin rooli tulee käyttöön.</div>
+                <div style={styles.muted}>Voit pyytää samalla sähköpostilla myös ostaja- tai jalostajaroolia. Ostajarooli avautuu heti, jos sähköposti on linkitetty ostajayritykseen. Jalostajarooli tarvitsee ownerin hyväksynnän.</div>
                 <div style={{ ...styles.row, justifyContent: "flex-end" }}>
                   {!hasBuyerRoleOption ? (
                     <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => handleRequestAdditionalRole("buyer")}>
@@ -15227,6 +15346,7 @@ export default function App() {
                     <input
                       type="checkbox"
                       checked={form.listForSale}
+                      disabled={fisherPremiumRequired}
                       onChange={(e) => setForm((prev) => ({
                         ...prev,
                         listForSale: e.target.checked,
@@ -15241,6 +15361,13 @@ export default function App() {
                     Laita kalaerä myyntiin
                   </label>
                 </div>
+                {fisherPremiumRequired ? (
+                  <div style={{ ...styles.field, ...styles.fieldFull }}>
+                    <div style={styles.noticeWarning}>
+                      {buildFisherPremiumMessage("Myyntiin tarjoaminen")}
+                    </div>
+                  </div>
+                ) : null}
                 {form.listForSale ? (
                   <>
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
@@ -15598,7 +15725,18 @@ export default function App() {
                           {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                         </div>
                         <div style={styles.row}>
-                          {canPrintCatchLabels(entry) ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); }}>Tulosta etiketit</button> : null}
+                          {canPrintCatchLabels(entry) ? (
+                            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); }}>
+                              Tulosta etiketit
+                            </button>
+                          ) : profile.role === "member" && !hasFisherPremium ? (
+                            <button
+                              style={styles.button}
+                              onClick={() => showFisherPremiumRequired("Etikettien tulostus")}
+                            >
+                              Tulosta etiketit (Premium)
+                            </button>
+                          ) : null}
                           <button style={styles.button} onClick={() => handleDeleteEntry(entry)}>Poista saalistieto</button>
                         </div>
                       </div>
@@ -15780,7 +15918,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
         {activeTab === "users" && profile.role === "owner" ? (
           <div style={grid2}>
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-              <div style={styles.noticeInfo}>Lisää tähän kollegan sähköposti. Sen jälkeen hän voi rekisteröityä itse omalla salasanallaan.</div>
+              <div style={styles.noticeInfo}>Lisää tähän uuden käyttäjän sähköposti ja rooli. Ostaja ja kalastaja pääsevät käyttämään appia heti rekisteröitymisen jälkeen, kun taas erikoisroolit voidaan edelleen hyväksyä erikseen.</div>
               <div style={styles.field}><label>Nimi</label><input style={styles.input} value={newAllowedForm.displayName} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Antti Kalastaja" /></div>
               <div style={styles.field}><label>Sähköposti</label><input style={styles.input} type="email" value={newAllowedForm.email} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. antti@yritys.fi" /></div>
               <div style={styles.field}><label>Rooli</label><select style={styles.input} value={newAllowedForm.role} onChange={(e) => setNewAllowedForm((prev) => ({ ...prev, role: e.target.value }))}><option value="member">Kalastaja</option><option value="processor">Jalostaja</option><option value="buyer">Ostaja</option><option value="owner">Omistaja</option></select></div>
@@ -15910,6 +16048,11 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                                     <span style={styles.badge}>{user.email}</span>
                                     <span style={styles.badge}>{roleLabel(user.role)}</span>
                                     <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
+                                    {user.role === "member" ? (
+                                      <span style={{ ...styles.badge, background: linkedProfile?.fisher_premium_enabled ? "#ecfdf5" : "#fff7ed", borderColor: linkedProfile?.fisher_premium_enabled ? "#86efac" : "#fdba74", color: linkedProfile?.fisher_premium_enabled ? "#166534" : "#9a3412" }}>
+                                        {linkedProfile?.fisher_premium_enabled ? "Premium" : "Ilmainen"}
+                                      </span>
+                                    ) : null}
                                     {linkedBuyer ? <span style={styles.badge}>Ostaja: {linkedBuyer.company_name}</span> : null}
                                   </div>
                                   {profileSummary ? <div style={styles.muted}>{profileSummary}</div> : null}
@@ -15925,6 +16068,14 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                                   ) : null}
                                 </div>
                                 <div style={styles.row}>
+                                  {user.role === "member" ? (
+                                    <button
+                                      style={linkedProfile?.fisher_premium_enabled ? styles.button : { ...styles.button, ...styles.primaryButton }}
+                                      onClick={() => toggleFisherPremium(user, linkedProfile)}
+                                    >
+                                      {linkedProfile?.fisher_premium_enabled ? "Poista premium" : "Aktivoi premium"}
+                                    </button>
+                                  ) : null}
                                   {user.is_active ? (
                                     <button style={styles.button} onClick={() => toggleAllowedUserActive(user)}>Poista käytöstä</button>
                                   ) : (
