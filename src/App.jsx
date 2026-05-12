@@ -2234,7 +2234,7 @@ function parseStoredCatchFormDefaults(raw) {
     customSeaAreas: Array.isArray(parsed?.customSeaAreas) ? parsed.customSeaAreas.map((item) => String(item || "").trim()).filter(Boolean) : [],
     municipality: String(parsed?.municipality || ""),
     landingPlace: String(parsed?.landingPlace || ""),
-    landingPlaces: Array.isArray(parsed?.landingPlaces) ? parsed.landingPlaces.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    landingPlaces: sanitizeLandingPlaceHistory(Array.isArray(parsed?.landingPlaces) ? parsed.landingPlaces : []),
     deliveryDestinations: normalizeDestinationCities(parsed?.deliveryDestinations),
     deliveryArea: String(parsed?.deliveryArea || ""),
     gear: String(parsed?.gear || "Rysä"),
@@ -2403,12 +2403,27 @@ function buildAreaHistory(currentValue, previousValues = []) {
   ].filter(Boolean))).slice(0, 20);
 }
 
+function sanitizeLandingPlaceHistory(values = []) {
+  const uniqueValues = Array.from(new Set(
+    values
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+  ));
+
+  return uniqueValues.filter((value) => {
+    const normalizedValue = value.toLowerCase();
+    return !uniqueValues.some((candidate) => {
+      const normalizedCandidate = String(candidate || "").trim().toLowerCase();
+      return normalizedCandidate.length > normalizedValue.length && normalizedCandidate.startsWith(normalizedValue);
+    });
+  }).slice(0, 20);
+}
+
 function buildLandingPlaceHistory(currentLandingPlace, previousLandingPlaces = []) {
-  const values = [
+  return sanitizeLandingPlaceHistory([
     String(currentLandingPlace || "").trim(),
     ...previousLandingPlaces.map((item) => String(item || "").trim()),
-  ].filter(Boolean);
-  return Array.from(new Set(values)).slice(0, 20);
+  ]);
 }
 
 function buildRememberedOptions(currentValue, previousValues = [], limit = 20) {
@@ -9065,7 +9080,6 @@ export default function App() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const landingPlaces = buildLandingPlaceHistory(form.landingPlace, savedLandingPlaces);
       const gearCountOptions = buildRememberedOptions(form.gearCount, savedGearCountOptions);
       const fishingDurationOptions = buildRememberedOptions(form.fishingDurationDays, savedFishingDurationOptions);
       const netHeightOptions = buildRememberedOptions(form.netHeight, savedNetHeightOptions);
@@ -9078,7 +9092,7 @@ export default function App() {
         customSeaAreas: savedCustomSeaAreas,
         municipality: form.municipality || "",
         landingPlace: form.landingPlace || "",
-        landingPlaces,
+        landingPlaces: savedLandingPlaces,
         deliveryDestinations: normalizeDestinationCities(form.deliveryDestinations),
         deliveryArea: derivedDeliveryArea || "",
         gear: form.gear || "Rysä",
@@ -9093,11 +9107,6 @@ export default function App() {
         fykeHeight: form.fykeHeight || "",
         fykeHeightOptions,
       }));
-      setSavedLandingPlaces((prev) => {
-        const next = buildLandingPlaceHistory(form.landingPlace, prev);
-        if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
-        return next;
-      });
       setSavedGearCountOptions((prev) => {
         const next = buildRememberedOptions(form.gearCount, prev);
         if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
@@ -12818,6 +12827,11 @@ export default function App() {
     }
 
     setSaving(false);
+    setSavedLandingPlaces((prev) => {
+      const next = buildLandingPlaceHistory(form.landingPlace, prev);
+      if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
+      return next;
+    });
     if (catchAreaSelector === CUSTOM_LAKE_AREA_OPTION) {
       setSavedCustomLakeAreas((prev) => buildAreaHistory(form.area, prev));
     }
