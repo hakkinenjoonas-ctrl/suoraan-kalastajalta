@@ -3794,7 +3794,7 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
           </div>
           <p style={styles.subtitle}>
             {authMode === "signup"
-              ? "Luo tunnus kalastajalle, ostajalle tai jalostajalle."
+              ? "Luo tunnus kalastajalle tai ostajalle."
               : authMode === "recovery"
               ? "Aseta uusi salasana turvallisesti."
               : "Kirjaudu sisään jatkaaksesi sovellukseen."}
@@ -3845,7 +3845,6 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
                 <label>Rooli</label>
                 <select style={styles.input} value={authForm.requestedRole} onChange={(e) => setAuthForm((prev) => ({ ...prev, requestedRole: e.target.value }))}>
                   <option value="member">Kalastaja</option>
-                  <option value="processor">Jalostaja</option>
                   <option value="buyer">Ostaja</option>
                 </select>
               </div>
@@ -14339,19 +14338,14 @@ export default function App() {
                 <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSaveOwnDetails} disabled={accountSaving}>{accountSaving ? "Tallennetaan..." : "Tallenna tiedot"}</button>
               </div>
             </div>
-            {profile.role !== "owner" && (!hasBuyerRoleOption || !hasProcessorRoleOption) ? (
+            {profile.role !== "owner" && !hasBuyerRoleOption ? (
               <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
                 <strong>Pyydä lisäroolia</strong>
-                <div style={styles.muted}>Voit pyytää samalla sähköpostilla myös ostaja- tai jalostajaroolia. Ostajarooli avautuu heti, jos sähköposti on linkitetty ostajayritykseen. Jalostajarooli tarvitsee ownerin hyväksynnän.</div>
+                <div style={styles.muted}>Voit pyytää samalla sähköpostilla myös ostajaroolia. Ostajarooli avautuu heti, jos sähköposti on linkitetty ostajayritykseen.</div>
                 <div style={{ ...styles.row, justifyContent: "flex-end" }}>
                   {!hasBuyerRoleOption ? (
                     <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => handleRequestAdditionalRole("buyer")}>
                       Pyydä ostajaroolia
-                    </button>
-                  ) : null}
-                  {!hasProcessorRoleOption ? (
-                    <button style={styles.button} onClick={() => handleRequestAdditionalRole("processor")}>
-                      Pyydä jalostajaroolia
                     </button>
                   ) : null}
                 </div>
