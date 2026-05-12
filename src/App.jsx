@@ -12633,18 +12633,20 @@ export default function App() {
         return;
       }
     }
-    if (form.fishingWithoutVessel && !String(profile.commercial_fishing_id || "").trim()) {
-      setAuthError("Aseta kaupallisen kalastajan tunnus kohdassa Omat tiedot ennen eräkoodin luontia, kun kalastat ilman alusta.");
-      return;
-    }
-    if (!form.fishingWithoutVessel && commercialFishingVesselOptions.length > 0 && !selectedVesselId) {
-      setAuthError("Valitse käytetty kaupallinen kalastusalus ennen saaliin tallennusta.");
-      return;
-    }
-    const officialFormIssues = validateCatchFormForOfficialReporting(form);
-    if (officialFormIssues.length > 0) {
-      setAuthError(`Täytä virallisen saalisilmoituksen tiedot ennen tallennusta: ${officialFormIssues.join(" ")}`);
-      return;
+    if (!fisherPremiumRequired) {
+      if (form.fishingWithoutVessel && !String(profile.commercial_fishing_id || "").trim()) {
+        setAuthError("Aseta kaupallisen kalastajan tunnus kohdassa Omat tiedot ennen eräkoodin luontia, kun kalastat ilman alusta.");
+        return;
+      }
+      if (!form.fishingWithoutVessel && commercialFishingVesselOptions.length > 0 && !selectedVesselId) {
+        setAuthError("Valitse käytetty kaupallinen kalastusalus ennen saaliin tallennusta.");
+        return;
+      }
+      const officialFormIssues = validateCatchFormForOfficialReporting(form);
+      if (officialFormIssues.length > 0) {
+        setAuthError(`Täytä virallisen saalisilmoituksen tiedot ennen tallennusta: ${officialFormIssues.join(" ")}`);
+        return;
+      }
     }
     setSaving(true);
     let rowsWithBatchIds;
