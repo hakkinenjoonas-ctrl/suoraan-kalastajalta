@@ -2365,7 +2365,7 @@ function getRoleOnboardingGuideContent(role) {
 
   if (role === "owner") {
     return {
-      title: "Aloita ownerina näin",
+      title: "Aloita yllapitajana näin",
       intro: "Tämä pikamuistilista näkyy vain alussa ja sen voi sulkea pysyvästi.",
       steps: [
         "Hyväksy erikoisroolit ja hallitse kalastajalisenssejä Käyttäjät-välilehdellä.",
@@ -3878,7 +3878,7 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
             </button>
           )}
 
-          {authMode === "signup" ? <div style={styles.muted}>Ostaja ja kalastaja pääsevät appiin heti rekisteröitymisen jälkeen. Vain erikoisroolit voivat vaatia ownerin hyväksynnän.</div> : null}
+          {authMode === "signup" ? <div style={styles.muted}>Ostaja ja kalastaja pääsevät appiin heti rekisteröitymisen jälkeen. Vain erikoisroolit voivat vaatia yllapitajan hyväksynnän.</div> : null}
 
         </form>
       </div>
@@ -3918,7 +3918,7 @@ function PendingApprovalView({ profile, onLogout }) {
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
           <h1 style={styles.title}>Odottaa hyväksyntää</h1>
           <div style={styles.muted}>
-            Tunnus on luotu sähköpostille <strong>{profile?.email || "-"}</strong>, mutta valittu rooli tarvitsee vielä ownerin hyväksynnän ennen kuin tämä näkymä aukeaa kokonaan.
+            Tunnus on luotu sähköpostille <strong>{profile?.email || "-"}</strong>, mutta valittu rooli tarvitsee vielä yllapitajan hyväksynnän ennen kuin tämä näkymä aukeaa kokonaan.
           </div>
           <div style={styles.noticeInfo}>
             Valittu rooli: <strong>{roleLabel(profile?.role || "member")}</strong>
@@ -4679,7 +4679,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             {buildFisherPremiumMessage("Virallinen saalisraportti ja raporttivienti")}
           </div>
           <div style={styles.muted}>
-            Ilmaisversiossa voit kirjata saaliita ja selata niitä Saaliit-välilehdellä. Raporttien vienti ja virallinen saalisilmoitus avautuvat, kun owner aktivoi kalastajalisenssin.
+            Ilmaisversiossa voit kirjata saaliita ja selata niitä Saaliit-välilehdellä. Raporttien vienti ja virallinen saalisilmoitus avautuvat, kun yllapitaja aktivoi kalastajalisenssin.
           </div>
         </div>
       </div>
@@ -5210,7 +5210,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
             </select>
           </div>
         </div>
-        <div style={styles.noticeInfo}>Käsittele ownerin komissiolaskutus yksi kuukausi kerrallaan. Komissio lasketaan oletuksella {(COMMISSION_RATE * 100).toFixed(1)} % kaupan arvosta.</div>
+        <div style={styles.noticeInfo}>Kasittele yllapitajan komissiolaskutus yksi kuukausi kerrallaan. Komissio lasketaan oletuksella {(COMMISSION_RATE * 100).toFixed(1)} % kaupan arvosta.</div>
         <div style={styles.entryBadges}>
           <span style={styles.badge}>{activeMonthKey === "all" ? "Kaikki kuukaudet" : activeMonthKey === "Ei kuukautta" ? "Ei kuukautta" : `Kuukausi ${activeMonthKey}`}</span>
           <span style={styles.badge}>{groups.length} kalastajaa</span>
@@ -7197,7 +7197,7 @@ export default function App() {
           sendPushEvent({
             targetUserId: ownerId,
             title: "Uusi käyttäjä odottaa hyväksyntää",
-            body: `${pendingLabel} (${pendingRole}) odottaa ownerin hyväksyntää.`,
+            body: `${pendingLabel} (${pendingRole}) odottaa yllapitajan hyväksyntää.`,
             eventType: "pending_user_approval",
             route: "users",
           })
@@ -8249,7 +8249,7 @@ export default function App() {
           setAvailableRoleOptions(activeAllowedRows);
           setRoleSelectionOpen(activeAllowedRows.length > 1);
           if (activeAllowedRows.length === 0 && !normalizedProfile.is_active) {
-            setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
+            setAuthInfo("Tunnus odottaa yllapitajan hyväksyntää.");
           }
           return;
         }
@@ -8323,7 +8323,7 @@ export default function App() {
       setAvailableRoleOptions(activeAllowedRows);
       setRoleSelectionOpen(false);
       if (!defaultAllowedRole && !autoActiveRole) {
-        setAuthInfo("Tunnus odottaa ownerin hyväksyntää.");
+        setAuthInfo("Tunnus odottaa yllapitajan hyväksyntää.");
         await notifyOwnersAboutPendingApproval(insertedProfile);
       } else if (autoActiveRole) {
         setAuthInfo("Tunnus luotu. Voit käyttää appia heti ja täydentää omat tiedot ennen kaupallisia toimintoja.");
@@ -9404,7 +9404,7 @@ export default function App() {
         const message = String(error.message || "");
         if (message.toLowerCase().includes("user already registered")) {
           setAuthInfo("");
-          setAuthError("Tällä sähköpostilla on jo käyttäjätili. Et tarvitse uutta tiliä ostajaroolia varten. Kirjaudu sisään olemassa olevalla tunnuksella ja pyydä owneria lisäämään sinulle myös ostajarooli.");
+          setAuthError("Tällä sähköpostilla on jo käyttäjätili. Et tarvitse uutta tiliä ostajaroolia varten. Kirjaudu sisään olemassa olevalla tunnuksella ja pyydä yllapitajaa lisäämään sinulle myös ostajarooli.");
           setAuthMode("signin");
           return;
         }
@@ -9412,7 +9412,7 @@ export default function App() {
         return;
       }
       if (requestedRole === "processor") {
-        setAuthInfo("Tunnus luotu. Jalostajarooli odottaa vielä ownerin hyväksyntää ennen kuin appi aukeaa.");
+        setAuthInfo("Tunnus luotu. Jalostajarooli odottaa vielä yllapitajan hyväksyntää ennen kuin appi aukeaa.");
       } else {
         setAuthInfo("Tunnus luotu. Voit kirjautua sisään heti ja täydentää omat tiedot ennen kaupallisten toimintojen käyttöä.");
       }
@@ -10051,7 +10051,7 @@ export default function App() {
 
     const matchingBuyer = buyers.find((buyer) => normalizeEmail(buyer.email) === normalizedEmail) || null;
     if (role === "buyer" && !matchingBuyer) {
-      setAuthError("Ostajaroolia ei voi avata automaattisesti, koska sähköpostille ei löytynyt liitettyä ostajayritystä. Pyydä owneria lisäämään tai linkittämään ostajarekisterin yritys ensin.");
+      setAuthError("Ostajaroolia ei voi avata automaattisesti, koska sähköpostille ei löytynyt liitettyä ostajayritystä. Pyydä yllapitajaa lisäämään tai linkittämään ostajarekisterin yritys ensin.");
       return;
     }
 
@@ -10099,7 +10099,7 @@ export default function App() {
     setAuthInfo(
       role === "buyer"
         ? "Ostajarooli avattu. Kirjaudu ulos ja takaisin sisään tai vaihda roolia yläreunan valitsimesta."
-        : "Jalostajaroolipyyntö lähetetty ownerille hyväksyttäväksi."
+        : "Jalostajaroolipyyntö lähetetty yllapitajalle hyväksyttäväksi."
     );
     setRefreshTick((prev) => prev + 1);
   };
@@ -14127,7 +14127,7 @@ export default function App() {
                   <strong>{hasFisherPremium ? "Kalastajalisenssi aktiivinen." : "Kalastajalisenssi ei ole aktiivinen."}</strong>{" "}
                   {hasFisherPremium
                     ? "Voit käyttää jäljitettävyystunnuksia, etikettien tulostusta, myyntiin tarjoamista ja virallista saalisilmoitusta."
-                    : "Ilmaisversiossa voit kirjata ja selata saaliita. Myyntiin tarjoaminen, jäljitettävyystunnus, etikettien tulostus ja virallinen saalisilmoitus vaativat ownerin aktivoiman kalastajalisenssin."}
+                    : "Ilmaisversiossa voit kirjata ja selata saaliita. Myyntiin tarjoaminen, jäljitettävyystunnus, etikettien tulostus ja virallinen saalisilmoitus vaativat yllapitajan aktivoiman kalastajalisenssin."}
                 </div>
               ) : null}
               {profile.role === "buyer" ? (
