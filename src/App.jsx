@@ -4697,23 +4697,128 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
     );
   }
 
+  const filteredEntries = entries.filter((entry) => isWithinReportRange(entry.date));
+  const freeCatchReportHeader = ["Pvm", "Kalalaji", "Määrä", "Pyyntiväline"];
+  const freeCatchReportBody = filteredEntries.map((entry) => {
+    const normalized = normalizeFishSpeciesLabel(entry.species);
+    const speciesLabel = fishSpeciesByName[normalized]?.name_fi || String(entry.species || "").split(",")[0].trim() || "Muu";
+    const kilos = Number(entry.kilos || 0);
+    const count = Number(entry.count || 0);
+    const quantityLabel = isCrayfishSpecies(speciesLabel)
+      ? `${count.toLocaleString("fi-FI")} kpl${kilos > 0 ? ` (${kilos.toLocaleString("fi-FI")} kg)` : ""}`
+      : `${kilos.toLocaleString("fi-FI")} kg${count > 0 ? ` (${count.toLocaleString("fi-FI")} kpl)` : ""}`;
+
+    return [
+      entry.date || "",
+      speciesLabel,
+      quantityLabel,
+      formatCatchGearDisplay(entry),
+    ];
+  });
+  const freeCatchReportRows = [freeCatchReportHeader, ...freeCatchReportBody];
+
   if (profile?.role === "member" && !hasFisherPremium) {
     return (
       <div style={styles.stack}>
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-          <strong>Raportit</strong>
+          <div style={styles.rowBetween}>
+            <strong>Raportit</strong>
+            <div style={styles.muted}>Valittu aikaväli: {reportDateLabel}</div>
+          </div>
+          <div style={styles.grid2}>
+            <div style={styles.field}>
+              <label>Alkupäivä</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={reportStartDate}
+                onChange={(e) => setReportStartDate(e.target.value)}
+                max={reportEndDate || undefined}
+              />
+            </div>
+            <div style={styles.field}>
+              <label>Loppupäivä</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={reportEndDate}
+                onChange={(e) => setReportEndDate(e.target.value)}
+                min={reportStartDate || undefined}
+              />
+            </div>
+          </div>
+          <div style={styles.noticeInfo}>
+            Ilmaisversiossa voit katsella ja ladata Exceliin perusraportin, jossa näkyvät päivämäärä, kalalaji, määrä ja pyyntiväline.
+          </div>
+          <div style={styles.row}>
+            <button
+              style={{ ...styles.button, ...styles.primaryButton }}
+              onClick={() => { void exportSpreadsheet(`perusraportti-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, freeCatchReportRows, "Perusraportti"); }}
+              disabled={freeCatchReportBody.length === 0}
+            >
+              Lataa perusraportti Exceliin
+            </button>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+              <thead>
+                <tr>
+                  {freeCatchReportHeader.map((label) => (
+                    <th
+                      key={label}
+                      style={{
+                        textAlign: "left",
+                        padding: "12px 10px",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "#0f172a",
+                        borderBottom: "1px solid #cbd5e1",
+                        background: "#eff6ff",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {freeCatchReportBody.length === 0 ? (
+                  <tr>
+                    <td colSpan={freeCatchReportHeader.length} style={{ padding: "16px 10px", color: "#64748b" }}>
+                      Ei vielä tallennettuja saaliita valitulla aikavälillä.
+                    </td>
+                  </tr>
+                ) : freeCatchReportBody.map((row, index) => (
+                  <tr key={`${row[0]}-${row[1]}-${index}`}>
+                    {row.map((cell, cellIndex) => (
+                      <td
+                        key={`${row[0]}-${row[1]}-${cellIndex}`}
+                        style={{
+                          padding: "12px 10px",
+                          borderBottom: "1px solid #e2e8f0",
+                          verticalAlign: "top",
+                          color: "#0f172a",
+                        }}
+                      >
+                        {cell || "-"}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div style={styles.noticeWarning}>
             {buildFisherPremiumMessage("Virallinen saalisraportti ja raporttivienti")}
           </div>
           <div style={styles.muted}>
-            Ilmaisversiossa voit kirjata saaliita ja selata niitä Saaliit-välilehdellä. Raporttien vienti ja virallinen saalisilmoitus avautuvat, kun ylläpitäjä aktivoi kalastajalisenssin.
+            Virallinen saalisilmoitus, jäljitettävyys ja muut laajemmat raportit avautuvat, kun ylläpitäjä aktivoi kalastajalisenssin.
           </div>
         </div>
       </div>
     );
   }
-
-  const filteredEntries = entries.filter((entry) => isWithinReportRange(entry.date));
   const filteredProcessedEntries = processedEntries.filter((entry) => isWithinReportRange(entry.productionDate));
   const filteredOffers = offers.filter((offer) => isWithinReportRange(offer.created_at));
 
