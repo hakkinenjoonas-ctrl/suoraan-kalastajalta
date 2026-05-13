@@ -3442,17 +3442,17 @@ function getWaterTemperatureCacheEntry(areaKey) {
   if (typeof window === "undefined" || !areaKey) return null;
 
   try {
-    const raw = window.localStorage.getItem(`sk:water-temperature:${areaKey}`);
+    const raw = window.localStorage.getItem(`sk:weather-header:${areaKey}:v2`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     const cachedAt = Number(parsed?.cachedAt || 0);
     if (!cachedAt || Date.now() - cachedAt > WATER_TEMPERATURE_CACHE_TTL_MS) {
-      window.localStorage.removeItem(`sk:water-temperature:${areaKey}`);
+      window.localStorage.removeItem(`sk:weather-header:${areaKey}:v2`);
       return null;
     }
     return parsed?.payload || null;
   } catch (error) {
-    console.warn("water temperature cache read failed", error);
+    console.warn("weather header cache read failed", error);
     return null;
   }
 }
@@ -3460,12 +3460,12 @@ function getWaterTemperatureCacheEntry(areaKey) {
 function setWaterTemperatureCacheEntry(areaKey, payload) {
   if (typeof window === "undefined" || !areaKey) return;
   try {
-    window.localStorage.setItem(`sk:water-temperature:${areaKey}`, JSON.stringify({
+    window.localStorage.setItem(`sk:weather-header:${areaKey}:v2`, JSON.stringify({
       cachedAt: Date.now(),
       payload,
     }));
   } catch (error) {
-    console.warn("water temperature cache write failed", error);
+    console.warn("weather header cache write failed", error);
   }
 }
 
@@ -3491,6 +3491,20 @@ function formatWaterTemperatureObservedAt(value) {
     hour: "2-digit",
     minute: "2-digit",
   })}`;
+}
+
+function formatWindSpeedMs(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "-";
+  return numeric.toFixed(1).replace(".", ",");
+}
+
+function formatWindDirection(value, label) {
+  const numeric = Number(value);
+  const text = typeof label === "string" ? label.trim() : "";
+  if (Number.isFinite(numeric) && text) return `${Math.round(numeric)}° (${text})`;
+  if (Number.isFinite(numeric)) return `${Math.round(numeric)}°`;
+  return text || "-";
 }
 
 function buildWaterTemperatureLookupCandidate(fishingArea, fishingMunicipality) {
@@ -3554,7 +3568,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
       setWaterTemperatureState({
         loading: false,
         data: null,
-        error: "Pintaveden lämpötilaa ei juuri nyt saatavilla",
+        error: "Säätietoa ei juuri nyt saatavilla",
         debug: null,
       });
       return;
@@ -3564,7 +3578,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
       setWaterTemperatureState({
         loading: false,
         data: null,
-        error: "Pintaveden lämpötilaa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta.",
+        error: "Säätietoa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta.",
         debug: null,
       });
       return;
@@ -3579,7 +3593,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
         setWaterTemperatureState({
           loading: false,
           data: cached.success ? cached : null,
-          error: cached.success ? "" : (cached.message || "Pintaveden lämpötilaa ei juuri nyt saatavilla"),
+          error: cached.success ? "" : (cached.message || "Säätietoa ei juuri nyt saatavilla"),
           debug: cached.debug || null,
         });
         return;
@@ -3623,7 +3637,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
     setWaterTemperatureState({
       loading: false,
       data: null,
-      error: lastData?.message || lastError?.message || "Pintaveden lämpötilaa ei juuri nyt saatavilla",
+      error: lastData?.message || lastError?.message || "Säätietoa ei juuri nyt saatavilla",
       debug: lastData?.debug || null,
     });
   }, [accessToken, lookups, waterTemperatureDebugEnabled]);
@@ -3652,7 +3666,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: "#0369a1", letterSpacing: "0.01em" }}>🌊 Pintaveden lämpötila</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#0369a1", letterSpacing: "0.01em" }}>🌬️ Sää lähialueella</div>
           <div style={{ fontSize: compact ? 14 : 15, color: "#0f172a", marginTop: 4, opacity: 0.8 }}>
             {resolvedLocationLabel}
           </div>
@@ -3663,11 +3677,20 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
       </div>
 
       {waterTemperatureState.loading ? (
-        <div style={{ marginTop: 14, color: "#0f172a", fontWeight: 600 }}>Haetaan pintaveden lämpötilaa…</div>
+        <div style={{ marginTop: 14, color: "#0f172a", fontWeight: 600 }}>Haetaan säätietoa…</div>
       ) : waterTemperatureState.data ? (
         <div style={{ marginTop: 14, display: "grid", gap: 6 }}>
           <div style={{ fontSize: compact ? 34 : 40, lineHeight: 1, fontWeight: 900, color: "#0f172a" }}>
-            {formatWaterTemperatureC(waterTemperatureState.data.waterTemperatureC)} °C
+            {formatWaterTemperatureC(waterTemperatureState.data.airTemperatureC)} °C
+          </div>
+          <div style={{ fontSize: 15, color: "#0f172a" }}>
+            Sää: <strong>{waterTemperatureState.data.weatherType || "-"}</strong>
+          </div>
+          <div style={{ fontSize: 15, color: "#0f172a" }}>
+            Tuuli: <strong>{formatWindSpeedMs(waterTemperatureState.data.windSpeedMs)} m/s</strong>, {formatWindDirection(
+              waterTemperatureState.data.windDirectionDeg,
+              waterTemperatureState.data.windDirectionText,
+            )}
           </div>
           <div style={{ fontSize: 15, color: "#0f172a" }}>
             Lähin mittauspiste: <strong>{waterTemperatureState.data.stationName || "-"}</strong>
@@ -3679,7 +3702,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
             Päivitetty: {formatWaterTemperatureObservedAt(waterTemperatureState.data.observedAt)}
           </div>
           <div style={{ fontSize: 12, color: "#475569" }}>
-            Lähde: {waterTemperatureState.data.source === "SYKE" ? "SYKE" : "FMI"}
+            Lähde: {waterTemperatureState.data.source || "FMI"}
           </div>
           {waterTemperatureDebugEnabled && waterTemperatureState.debug ? (
             <div style={{ fontSize: 12, color: "#475569", whiteSpace: "pre-wrap", marginTop: 6 }}>
@@ -3687,36 +3710,36 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
 alue=${waterTemperatureState.debug.fishingArea || "-"}
 paikkakunta=${waterTemperatureState.debug.fishingMunicipality || "-"}
 koordinaatit=${waterTemperatureState.debug.resolvedCoordinates ? `${waterTemperatureState.debug.resolvedCoordinates.lat}, ${waterTemperatureState.debug.resolvedCoordinates.lon}` : "-"}
-SYKE=${waterTemperatureState.debug.sykeTried ? "yritetty" : "ei"}
 FMI=${waterTemperatureState.debug.fmiTried ? "yritetty" : "ei"}
 lähde=${waterTemperatureState.debug.sourceUsed || "-"}
 FMI-ehdokkaita=${waterTemperatureState.debug.fmiCandidateCount ?? "-"}
-SYKE-osuma=${waterTemperatureState.debug.sykeMatched ? "kyllä" : "ei"}
-asema=${waterTemperatureState.debug.matchedFmiStation || waterTemperatureState.debug.nearestFmiStation || "-"}`}
+asema=${waterTemperatureState.debug.matchedFmiStation || waterTemperatureState.debug.nearestFmiStation || "-"}
+sää=${waterTemperatureState.debug.weatherType || "-"}
+tuuli=${waterTemperatureState.debug.windSpeedMs ?? "-"} m/s`}
             </div>
           ) : null}
         </div>
       ) : (
         <div style={{ marginTop: 14, display: "grid", gap: 6 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>
-            Pintaveden lämpötilaa ei juuri nyt saatavilla
+            Säätietoa ei juuri nyt saatavilla
           </div>
           <div style={{ fontSize: 14, color: "#475569" }}>
-            {waterTemperatureState.error || "Pintaveden lämpötilaa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta."}
+            {waterTemperatureState.error || "Säätietoa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta."}
           </div>
-          <div style={{ fontSize: 12, color: "#64748b" }}>Lähde: SYKE / FMI</div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>Lähde: FMI</div>
           {waterTemperatureDebugEnabled && waterTemperatureState.debug ? (
             <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "pre-wrap", marginTop: 6 }}>
               {`Debug:
 alue=${waterTemperatureState.debug.fishingArea || "-"}
 paikkakunta=${waterTemperatureState.debug.fishingMunicipality || "-"}
 koordinaatit=${waterTemperatureState.debug.resolvedCoordinates ? `${waterTemperatureState.debug.resolvedCoordinates.lat}, ${waterTemperatureState.debug.resolvedCoordinates.lon}` : "-"}
-SYKE=${waterTemperatureState.debug.sykeTried ? "yritetty" : "ei"}
 FMI=${waterTemperatureState.debug.fmiTried ? "yritetty" : "ei"}
 lähde=${waterTemperatureState.debug.sourceUsed || "-"}
 FMI-ehdokkaita=${waterTemperatureState.debug.fmiCandidateCount ?? "-"}
-SYKE-osuma=${waterTemperatureState.debug.sykeMatched ? "kyllä" : "ei"}
-asema=${waterTemperatureState.debug.matchedFmiStation || waterTemperatureState.debug.nearestFmiStation || "-"}`}
+asema=${waterTemperatureState.debug.matchedFmiStation || waterTemperatureState.debug.nearestFmiStation || "-"}
+sää=${waterTemperatureState.debug.weatherType || "-"}
+tuuli=${waterTemperatureState.debug.windSpeedMs ?? "-"} m/s`}
             </div>
           ) : null}
         </div>

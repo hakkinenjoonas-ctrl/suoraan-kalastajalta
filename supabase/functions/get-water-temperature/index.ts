@@ -1,6 +1,6 @@
 import { corsHeaders, jsonResponse, safeString } from "../_shared/http.ts";
 
-type WaterTemperatureRequest = {
+type WeatherRequest = {
   fishingArea?: string;
   fishingMunicipality?: string;
   latitude?: number;
@@ -13,29 +13,20 @@ type Coordinates = {
   lon: number;
 };
 
-type ObservationCandidate = {
-  waterTemperatureC: number;
+type WeatherCandidate = {
+  airTemperatureC: number;
+  windSpeedMs: number;
+  windDirectionDeg: number | null;
+  weatherType: string;
   stationName: string;
   stationLatitude: number;
   stationLongitude: number;
+  stationDistanceKm: number;
   observedAt: string;
 };
 
-type SykePlaceCandidate = {
-  id: string;
-  name: string;
-  municipality: string;
-  lat: number;
-  lon: number;
-};
-
-type SykeQueryResult = {
-  payload: Record<string, unknown>;
-  debug: Record<string, unknown>;
-};
-
 const MAX_OBSERVATION_AGE_MS = 24 * 60 * 60 * 1000;
-const MAX_STATION_DISTANCE_KM = 50;
+const MAX_STATION_DISTANCE_KM = 100;
 
 const fishingAreaCoordinates: Record<string, Coordinates> = {
   "Saimaa|Kyläniemi": { lat: 61.24, lon: 28.2 },
@@ -43,23 +34,48 @@ const fishingAreaCoordinates: Record<string, Coordinates> = {
   "Saimaa|Taipalsaari": { lat: 61.166, lon: 28.061 },
   "Saimaa|Lauritsala": { lat: 61.0587, lon: 28.286 },
   "Pien-Saimaa|Lappeenranta": { lat: 61.12, lon: 28.05 },
-  "Päijänne|Sysmä": { lat: 61.5, lon: 25.68 },
+  "Päijänne|Sysmä": { lat: 61.5004, lon: 25.6848 },
   "Kallavesi|Kuopio": { lat: 62.8949, lon: 27.6782 },
-  "Oulujärvi|Kajaani": { lat: 64.2841, lon: 27.7285 },
+  "Oulujärvi|Kajaani": { lat: 64.2273, lon: 27.7285 },
   "Inarijärvi|Inari": { lat: 68.9056, lon: 27.0286 },
-  "Saimaa|": { lat: 61.25, lon: 28.08 },
-  "Pien-Saimaa|": { lat: 61.12, lon: 28.05 },
-  "Päijänne|": { lat: 61.5, lon: 25.68 },
-  "Kallavesi|": { lat: 62.8949, lon: 27.6782 },
-  "Oulujärvi|": { lat: 64.2841, lon: 27.7285 },
-  "Inarijärvi|": { lat: 68.9056, lon: 27.0286 },
+  "Suur-Saimaa|Lappeenranta": { lat: 61.0587, lon: 28.1887 },
+  "Suur-Saimaa|Taipalsaari": { lat: 61.166, lon: 28.061 },
   "|Lappeenranta": { lat: 61.0587, lon: 28.1887 },
-  "|Taipalsaari": { lat: 61.166, lon: 28.061 },
   "|Lauritsala": { lat: 61.0587, lon: 28.286 },
+  "|Taipalsaari": { lat: 61.166, lon: 28.061 },
   "|Kuopio": { lat: 62.8949, lon: 27.6782 },
   "|Kajaani": { lat: 64.2273, lon: 27.7285 },
   "|Inari": { lat: 68.9056, lon: 27.0286 },
   "|Sysmä": { lat: 61.5004, lon: 25.6848 },
+};
+
+const weatherSymbolMap: Record<number, string> = {
+  1: "Selkeää",
+  2: "Puolipilvistä",
+  3: "Pilvistä",
+  21: "Heikkoja sadekuuroja",
+  22: "Sadekuuroja",
+  23: "Voimakkaita sadekuuroja",
+  31: "Heikkoa vesisadetta",
+  32: "Vesisadetta",
+  33: "Voimakasta vesisadetta",
+  41: "Heikkoja lumikuuroja",
+  42: "Lumikuuroja",
+  43: "Voimakkaita lumikuuroja",
+  51: "Heikkoa lumisadetta",
+  52: "Lumisadetta",
+  53: "Voimakasta lumisadetta",
+  61: "Ukkoskuuroja",
+  62: "Ukkosta",
+  63: "Voimakasta ukkosta",
+  71: "Heikkoja räntäkuuroja",
+  72: "Räntäkuuroja",
+  73: "Voimakkaita räntäkuuroja",
+  81: "Heikkoa räntäsadetta",
+  82: "Räntäsadetta",
+  83: "Voimakasta räntäsadetta",
+  91: "Utua",
+  92: "Sumua",
 };
 
 function normalizePart(value: unknown) {
@@ -73,19 +89,6 @@ function buildAreaKey(area: unknown, municipality: unknown) {
 function toNumber(value: unknown) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
-}
-
-function escapeODataString(value: string) {
-  return value.replace(/'/g, "''");
-}
-
-function getCollectionItems(payload: unknown): Array<Record<string, unknown>> {
-  if (!payload || typeof payload !== "object") return [];
-  const root = payload as Record<string, unknown>;
-  if (Array.isArray(root.value)) return root.value as Array<Record<string, unknown>>;
-  const d = root.d as Record<string, unknown> | undefined;
-  if (Array.isArray(d?.results)) return d.results as Array<Record<string, unknown>>;
-  return [];
 }
 
 function haversineKm(fromLat: number, fromLon: number, toLat: number, toLon: number) {
@@ -108,111 +111,7 @@ function isFreshObservation(observedAt: string) {
   return Date.now() - timestamp <= MAX_OBSERVATION_AGE_MS;
 }
 
-function extractLatLon(record: Record<string, unknown>): Coordinates | null {
-  const latCandidates = [
-    record.latitude,
-    record.lat,
-    record.Latitude,
-    record.Lat,
-    record.WGS84Latitude,
-    record.Wgs84Latitude,
-    record.Leveysaste,
-  ];
-  const lonCandidates = [
-    record.longitude,
-    record.lon,
-    record.lng,
-    record.Longitude,
-    record.Lon,
-    record.WGS84Longitude,
-    record.Wgs84Longitude,
-    record.Pituusaste,
-  ];
-
-  for (const latValue of latCandidates) {
-    const lat = toNumber(latValue);
-    if (lat == null || Math.abs(lat) > 90) continue;
-    for (const lonValue of lonCandidates) {
-      const lon = toNumber(lonValue);
-      if (lon == null || Math.abs(lon) > 180) continue;
-      return { lat, lon };
-    }
-  }
-
-  return null;
-}
-
-function extractSykePlaceId(record: Record<string, unknown>) {
-  const keys = [
-    "Paikka_Id",
-    "PaikkaID",
-    "PaikkaId",
-    "PaikkaNro",
-    "PaikkaNumero",
-    "Id",
-    "ID",
-    "id",
-  ];
-  for (const key of keys) {
-    const value = safeString(record[key]);
-    if (value) return value;
-  }
-  return "";
-}
-
-function extractSykePlaceName(record: Record<string, unknown>) {
-  return (
-    findStringValue(record, ["Nimi", "PaikkaNimi", "name", "station"]) ||
-    "Tuntematon mittauspiste"
-  );
-}
-
-function extractSykeMunicipality(record: Record<string, unknown>) {
-  return findStringValue(record, ["Kunta", "KuntaNimi", "municipality", "kunta"]);
-}
-
-function extractSykeObservationPlaceId(record: Record<string, unknown>) {
-  const keys = [
-    "Paikka_Id",
-    "PaikkaID",
-    "PaikkaId",
-    "PaikkaNro",
-    "PaikkaNumero",
-    "Paikka",
-    "paikkaId",
-    "placeId",
-  ];
-  for (const key of keys) {
-    const value = safeString(record[key]);
-    if (value) return value;
-  }
-  return "";
-}
-
-function extractSykeTemperature(record: Record<string, unknown>) {
-  const directKeys = [
-    "LampoPintavesi",
-    "Lampo",
-    "Lämpötila",
-    "Arvo",
-    "Value",
-    "value",
-  ];
-  for (const key of directKeys) {
-    const numeric = findNumericValue(record[key]);
-    if (numeric != null) return numeric;
-  }
-
-  for (const [key, value] of Object.entries(record)) {
-    if (!/(lampo|lämpö|temp|arvo|value)/i.test(key)) continue;
-    const numeric = findNumericValue(value);
-    if (numeric != null) return numeric;
-  }
-
-  return null;
-}
-
-function resolveCoordinates(body: WaterTemperatureRequest) {
+function resolveCoordinates(body: WeatherRequest) {
   const latitude = toNumber(body.latitude);
   const longitude = toNumber(body.longitude);
   if (latitude != null && longitude != null) {
@@ -243,8 +142,7 @@ function findNumericValue(source: unknown): number | null {
   if (source == null) return null;
   if (typeof source === "number") return Number.isFinite(source) ? source : null;
   if (typeof source === "string") {
-    const normalized = source.replace(",", ".").trim();
-    const numeric = Number(normalized);
+    const numeric = Number(source.replace(",", ".").trim());
     return Number.isFinite(numeric) ? numeric : null;
   }
   if (Array.isArray(source)) {
@@ -318,7 +216,7 @@ function extractCoordinatesFromFeature(feature: Record<string, unknown>): Coordi
   return lat != null && lon != null ? { lat, lon } : null;
 }
 
-function extractTemperatureCandidatesFromJson(payload: unknown): ObservationCandidate[] {
+function extractWeatherCandidatesFromJson(payload: unknown, coords: Coordinates): WeatherCandidate[] {
   const features = Array.isArray((payload as Record<string, unknown>)?.features)
     ? ((payload as Record<string, unknown>).features as Array<Record<string, unknown>>)
     : [];
@@ -326,302 +224,162 @@ function extractTemperatureCandidatesFromJson(payload: unknown): ObservationCand
   return features
     .map((feature) => {
       const properties = (feature.properties || {}) as Record<string, unknown>;
-      const coords = extractCoordinatesFromFeature(feature);
-      if (!coords) return null;
+      const featureCoords = extractCoordinatesFromFeature(feature);
+      if (!featureCoords) return null;
 
-      const temperatureKeys = [
-        "TemperatureSea",
-        "temperatureSea",
-        "waterTemperature",
-        "WaterTemperature",
-        "water_temperature",
-        "sea_temperature",
-      ];
-
-      let waterTemperatureC: number | null = null;
-      for (const key of temperatureKeys) {
-        waterTemperatureC = findNumericValue(properties[key]);
-        if (waterTemperatureC != null) break;
-      }
-
-      if (waterTemperatureC == null) {
-        for (const [key, value] of Object.entries(properties)) {
-          if (!/(water.*temp|temp.*water|temperaturesea|sea.*temp)/i.test(key)) continue;
-          waterTemperatureC = findNumericValue(value);
-          if (waterTemperatureC != null) break;
-        }
-      }
-
-      if (waterTemperatureC == null) return null;
-
+      const airTemperatureC = findNumericValue(
+        properties.AirTemperature ?? properties.airTemperature ?? properties.temperature,
+      );
+      const windSpeedMs = findNumericValue(
+        properties.WindSpeedMS ?? properties.windSpeedMS ?? properties.windspeedms ?? properties.windSpeed,
+      );
+      const windDirectionDeg = findNumericValue(
+        properties.WindDirection ?? properties.windDirection ?? properties.winddirection,
+      );
+      const weatherSymbol = findNumericValue(
+        properties.WeatherSymbol3 ?? properties.weatherSymbol3 ?? properties.weathersymbol3,
+      );
       const observedAt = findObservedAt(properties);
+
+      if (airTemperatureC == null || windSpeedMs == null || !observedAt) return null;
+
       return {
-        waterTemperatureC,
+        airTemperatureC,
+        windSpeedMs,
+        windDirectionDeg,
+        weatherType: weatherSymbol != null ? (weatherSymbolMap[Math.round(weatherSymbol)] || `Sääsymboli ${Math.round(weatherSymbol)}`) : "Säätyyppi ei saatavilla",
         stationName:
-          findStringValue(properties, ["stationName", "name", "fmisid", "region", "locality"]) || "Tuntematon mittauspiste",
-        stationLatitude: coords.lat,
-        stationLongitude: coords.lon,
+          findStringValue(properties, ["stationName", "name", "fmisid", "region", "locality"]) ||
+          "Tuntematon mittauspiste",
+        stationLatitude: featureCoords.lat,
+        stationLongitude: featureCoords.lon,
+        stationDistanceKm: haversineKm(coords.lat, coords.lon, featureCoords.lat, featureCoords.lon),
         observedAt,
       };
     })
-    .filter((candidate): candidate is ObservationCandidate => Boolean(candidate && candidate.observedAt));
+    .filter((candidate): candidate is WeatherCandidate => Boolean(candidate && isFreshObservation(candidate.observedAt)))
+    .sort((left, right) => left.stationDistanceKm - right.stationDistanceKm);
 }
 
-async function querySykeWaterTemperature(coords: Coordinates, body: WaterTemperatureRequest): Promise<SykeQueryResult | null> {
-  const municipality = normalizePart(body.fishingMunicipality);
-  const area = normalizePart(body.fishingArea);
-  const base = "https://rajapinnat.ymparisto.fi/api/Hydrologiarajapinta/1.1/odata";
-  const areaFragments = [area, municipality].filter(Boolean);
-
-  const placeUrl = municipality
-    ? `${base}/Paikka?$format=json&$top=100&$filter=${encodeURIComponent(`KuntaNimi eq '${escapeODataString(municipality)}'`)}`
-    : `${base}/Paikka?$format=json&$top=100`;
-
-  try {
-    const placeResponse = await fetchWithTimeout(placeUrl, 9000);
-    if (!placeResponse.ok) return null;
-    const placePayload = await placeResponse.json();
-    const places = getCollectionItems(placePayload)
-      .map((record) => {
-        const placeCoords = extractLatLon(record);
-        const id = extractSykePlaceId(record);
-        if (!placeCoords || !id) return null;
-        const name = extractSykePlaceName(record);
-        const municipalityName = extractSykeMunicipality(record);
-        const haystack = `${name} ${municipalityName}`.toLowerCase();
-        if (areaFragments.length && !areaFragments.some((fragment) => haystack.includes(fragment.toLowerCase()))) {
-          // Municipality-only matches are still accepted below if we found them via filter.
-          if (!(municipalityName && municipality && municipalityName.toLowerCase() === municipality.toLowerCase())) {
-            return null;
-          }
-        }
-        return {
-          id,
-          name,
-          municipality: municipalityName,
-          lat: placeCoords.lat,
-          lon: placeCoords.lon,
-        };
-      })
-      .filter((candidate): candidate is SykePlaceCandidate => Boolean(candidate))
-      .sort((left, right) => {
-        const distanceDelta =
-          haversineKm(coords.lat, coords.lon, left.lat, left.lon) -
-          haversineKm(coords.lat, coords.lon, right.lat, right.lon);
-        if (distanceDelta !== 0) return distanceDelta;
-        return left.name.localeCompare(right.name, "fi");
-      });
-
-    if (!places.length) return null;
-
-    const observationWindowStart = new Date(Date.now() - MAX_OBSERVATION_AGE_MS).toISOString();
-    const observationUrl = `${base}/LampoPintavesi?$format=json&$top=5000&$orderby=Aika desc&$filter=${encodeURIComponent(`Aika ge datetime'${observationWindowStart}'`)}`;
-    const observationResponse = await fetchWithTimeout(observationUrl, 9000);
-    if (!observationResponse.ok) return null;
-    const observationPayload = await observationResponse.json();
-    const observations = getCollectionItems(observationPayload);
-    if (!observations.length) return null;
-
-    const placeMap = new Map(places.map((place) => [place.id, place]));
-    const candidates = observations
-      .map((record) => {
-        const placeId = extractSykeObservationPlaceId(record);
-        const place = placeMap.get(placeId);
-        if (!place) return null;
-        const waterTemperatureC = extractSykeTemperature(record);
-        if (waterTemperatureC == null) return null;
-        const observedAt = findObservedAt(record);
-        if (!observedAt || !isFreshObservation(observedAt)) return null;
-        const stationDistanceKm = haversineKm(coords.lat, coords.lon, place.lat, place.lon);
-        return {
-          waterTemperatureC,
-          stationName: place.name,
-          stationLatitude: place.lat,
-          stationLongitude: place.lon,
-          stationDistanceKm,
-          observedAt,
-          municipality: place.municipality,
-        };
-      })
-      .filter((candidate): candidate is ObservationCandidate & { stationDistanceKm: number; municipality: string } => Boolean(candidate))
-      .sort((left, right) => left.stationDistanceKm - right.stationDistanceKm);
-
-    const nearestObservation = candidates.find((candidate) => candidate.stationDistanceKm <= 100);
-    if (!nearestObservation) return null;
-
-    return {
-      payload: {
-        success: true,
-        waterTemperatureC: nearestObservation.waterTemperatureC,
-        lakeOrSeaArea: area || municipality,
-        locationName: municipality || area || nearestObservation.municipality,
-        stationName: nearestObservation.stationName,
-        stationLatitude: nearestObservation.stationLatitude,
-        stationLongitude: nearestObservation.stationLongitude,
-        stationDistanceKm: nearestObservation.stationDistanceKm,
-        observedAt: nearestObservation.observedAt,
-        source: "SYKE",
-      },
-      debug: {
-        sykePlaceCount: places.length,
-        sykeObservationCount: observations.length,
-        sykeNearestStation: nearestObservation.stationName,
-        sykeNearestDistanceKm: nearestObservation.stationDistanceKm,
-      },
-    };
-  } catch (_error) {
-    return null;
-  }
-}
-
-function buildFmiQueryUrls(coords: Coordinates) {
+function buildFmiQueryUrl(coords: Coordinates) {
   const starttime = new Date(Date.now() - MAX_OBSERVATION_AGE_MS).toISOString();
   const endtime = new Date().toISOString();
-  const lonDelta = 0.7;
-  const latDelta = 0.45;
+  const lonDelta = 1.2;
+  const latDelta = 0.8;
   const bbox = [
     (coords.lon - lonDelta).toFixed(4),
     (coords.lat - latDelta).toFixed(4),
     (coords.lon + lonDelta).toFixed(4),
     (coords.lat + latDelta).toFixed(4),
   ].join(",");
-
   const base = "https://opendata.fmi.fi/wfs?service=WFS&version=2.0.0&request=getFeature";
 
-  return [
-    `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=TemperatureSea&outputFormat=application/json`,
-    `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=WaterTemperature&outputFormat=application/json`,
-    `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=temperatureSea&outputFormat=application/json`,
-  ];
+  return `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=AirTemperature,WindSpeedMS,WindDirection,WeatherSymbol3&outputFormat=application/json`;
 }
 
-async function queryFmiWaterTemperature(coords: Coordinates) {
-  const queryUrls = buildFmiQueryUrls(coords);
-
-  for (const url of queryUrls) {
-    try {
-      const response = await fetchWithTimeout(url);
-      if (!response.ok) continue;
-      const contentType = response.headers.get("content-type") || "";
-      if (!contentType.includes("json")) continue;
-      const payload = await response.json();
-      const candidates = extractTemperatureCandidatesFromJson(payload);
-      if (candidates.length > 0) return candidates;
-    } catch (_error) {
-      // Ignore FMI transport and payload errors. Fallback is handled by caller.
-    }
-  }
-
-  return [];
-}
-
-function pickNearestObservation(coords: Coordinates, candidates: ObservationCandidate[]) {
-  return candidates
-    .filter((candidate) => isFreshObservation(candidate.observedAt))
-    .map((candidate) => ({
-      ...candidate,
-      stationDistanceKm: haversineKm(coords.lat, coords.lon, candidate.stationLatitude, candidate.stationLongitude),
-    }))
-    .filter((candidate) => candidate.stationDistanceKm <= MAX_STATION_DISTANCE_KM)
-    .sort((left, right) => left.stationDistanceKm - right.stationDistanceKm)[0] || null;
+async function queryFmiWeather(coords: Coordinates) {
+  const url = buildFmiQueryUrl(coords);
+  const response = await fetchWithTimeout(url);
+  if (!response.ok) return [];
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("json")) return [];
+  const payload = await response.json();
+  return extractWeatherCandidatesFromJson(payload, coords);
 }
 
 function withDebug<T extends Record<string, unknown>>(payload: T, debugEnabled: boolean, debug: Record<string, unknown>) {
   if (!debugEnabled) return payload;
-  return {
-    ...payload,
-    debug,
-  };
+  return { ...payload, debug };
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return jsonResponse(405, { error: "Method not allowed" });
 
-  if (req.method !== "POST") {
-    return jsonResponse(405, { error: "Method not allowed" });
-  }
+  const body = (await req.json().catch(() => ({}))) as WeatherRequest;
+  const debugEnabled = body.debug === true;
 
   try {
-    const body = (await req.json().catch(() => ({}))) as WaterTemperatureRequest;
     const fishingArea = normalizePart(body.fishingArea);
     const fishingMunicipality = normalizePart(body.fishingMunicipality);
     const coords = resolveCoordinates(body);
-    const debugEnabled = body.debug === true;
     const debugPayload: Record<string, unknown> = {
       fishingArea,
       fishingMunicipality,
       resolvedCoordinates: coords,
-      sykeTried: false,
       fmiTried: false,
     };
 
     if (!coords) {
       return jsonResponse(200, withDebug({
         success: false,
-        message: "Pintaveden lämpötilaa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta.",
+        message: "Säätietoa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta.",
         source: "fallback",
       }, debugEnabled, debugPayload));
     }
 
-    debugPayload.sykeTried = true;
-    const sykeResult = await querySykeWaterTemperature(coords, body);
-    if (sykeResult) {
-      return jsonResponse(200, withDebug(
-        sykeResult.payload,
-        debugEnabled,
-        {
-          ...debugPayload,
-          ...sykeResult.debug,
-          sourceUsed: "SYKE",
-          sykeMatched: true,
-        },
-      ));
-    }
-
     debugPayload.fmiTried = true;
-    const fmiCandidates = await queryFmiWaterTemperature(coords);
-    debugPayload.fmiCandidateCount = fmiCandidates.length;
-    const nearestObservation = pickNearestObservation(coords, fmiCandidates);
+    const candidates = await queryFmiWeather(coords);
+    debugPayload.fmiCandidateCount = candidates.length;
+    const nearest = candidates.find((candidate) => candidate.stationDistanceKm <= MAX_STATION_DISTANCE_KM) || null;
 
-    if (!nearestObservation) {
+    if (!nearest) {
       return jsonResponse(200, withDebug({
         success: false,
-        message: "Pintaveden lämpötilaa ei ole saatavilla tälle alueelle.",
+        message: "Säätietoa ei juuri nyt saatavilla",
         source: "fallback",
       }, debugEnabled, {
         ...debugPayload,
         sourceUsed: "fallback",
-        sykeMatched: false,
-        nearestFmiStation: fmiCandidates[0]?.stationName || "",
+        nearestFmiStation: candidates[0]?.stationName || "",
       }));
     }
 
     return jsonResponse(200, withDebug({
       success: true,
-      waterTemperatureC: nearestObservation.waterTemperatureC,
+      airTemperatureC: nearest.airTemperatureC,
+      windSpeedMs: nearest.windSpeedMs,
+      windDirectionDeg: nearest.windDirectionDeg,
+      windDirectionText: nearest.windDirectionDeg == null ? "" : windDirectionToFinnish(nearest.windDirectionDeg),
+      weatherType: nearest.weatherType,
       lakeOrSeaArea: fishingArea || fishingMunicipality,
       locationName: fishingMunicipality || fishingArea,
-      stationName: nearestObservation.stationName,
-      stationLatitude: nearestObservation.stationLatitude,
-      stationLongitude: nearestObservation.stationLongitude,
-      stationDistanceKm: nearestObservation.stationDistanceKm,
-      observedAt: nearestObservation.observedAt,
+      stationName: nearest.stationName,
+      stationLatitude: nearest.stationLatitude,
+      stationLongitude: nearest.stationLongitude,
+      stationDistanceKm: nearest.stationDistanceKm,
+      observedAt: nearest.observedAt,
       source: "FMI",
     }, debugEnabled, {
       ...debugPayload,
       sourceUsed: "FMI",
-      sykeMatched: false,
-      matchedFmiStation: nearestObservation.stationName,
+      matchedFmiStation: nearest.stationName,
+      weatherType: nearest.weatherType,
+      windSpeedMs: nearest.windSpeedMs,
     }));
   } catch (_error) {
     return jsonResponse(200, withDebug({
       success: false,
-      message: "Pintaveden lämpötilaa ei juuri nyt saatavilla",
+      message: "Säätietoa ei juuri nyt saatavilla",
       source: "fallback",
-    }, body?.debug === true, {
+    }, debugEnabled, {
       error: "handler_exception",
     }));
   }
 });
+
+function windDirectionToFinnish(degrees: number) {
+  const value = ((degrees % 360) + 360) % 360;
+  const directions = [
+    "pohjoisesta",
+    "koillisesta",
+    "idästä",
+    "kaakosta",
+    "etelästä",
+    "lounaasta",
+    "lännestä",
+    "luoteesta",
+  ];
+  const index = Math.round(value / 45) % 8;
+  return directions[index];
+}
