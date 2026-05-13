@@ -6438,6 +6438,7 @@ function SellerBillingView({
   onSendGroupInvoicePdf,
   onUpdateGroupBillingStatus,
 }) {
+  const hasFisherPremium = isFisherPremiumProfile(profile);
   const sellerDeliveredOffers = (buyerOffers || []).filter((offer) => (
     offer.status === "accepted" &&
     offer.fulfillment_status === "delivered" &&
@@ -6483,71 +6484,80 @@ function SellerBillingView({
         </div>
       </div>
 
-      <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
-        <div>
-          <strong>Pankkitiedot laskulle</strong>
-          <div style={styles.muted}>Nämä tallennetaan vain omiin profiilitietoihisi ja niitä käytetään laskusähköpostin muodostamiseen. Kaupan hyväksyntä estyy, jos pakolliset laskutustiedot puuttuvat. IBAN ei ole pakollinen kaupalle, mutta se tarvitaan jos lähetät laskuja suoraan sovelluksesta.</div>
-        </div>
-        <div style={styles.grid2}>
-          <div style={styles.field}>
-            <label>IBAN</label>
-            <input
-              style={styles.input}
-              value={accountForm.bankAccountIban}
-              onChange={(e) => setAccountForm((prev) => ({ ...prev, bankAccountIban: e.target.value }))}
-              placeholder="FI00 0000 0000 0000 00"
-              autoComplete="off"
-            />
+      {hasFisherPremium ? (
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+          <div>
+            <strong>Pankkitiedot laskulle</strong>
+            <div style={styles.muted}>Nämä tallennetaan vain omiin profiilitietoihisi ja niitä käytetään laskusähköpostin muodostamiseen. Kaupan hyväksyntä estyy, jos pakolliset laskutustiedot puuttuvat. IBAN ei ole pakollinen kaupalle, mutta se tarvitaan jos lähetät laskuja suoraan sovelluksesta.</div>
           </div>
-          <div style={styles.field}>
-            <label>BIC</label>
-            <input
-              style={styles.input}
-              value={accountForm.bankBic}
-              onChange={(e) => setAccountForm((prev) => ({ ...prev, bankBic: e.target.value }))}
-              placeholder="Esim. NDEAFIHH"
-              autoComplete="off"
-            />
+          <div style={styles.grid2}>
+            <div style={styles.field}>
+              <label>IBAN</label>
+              <input
+                style={styles.input}
+                value={accountForm.bankAccountIban}
+                onChange={(e) => setAccountForm((prev) => ({ ...prev, bankAccountIban: e.target.value }))}
+                placeholder="FI00 0000 0000 0000 00"
+                autoComplete="off"
+              />
+            </div>
+            <div style={styles.field}>
+              <label>BIC</label>
+              <input
+                style={styles.input}
+                value={accountForm.bankBic}
+                onChange={(e) => setAccountForm((prev) => ({ ...prev, bankBic: e.target.value }))}
+                placeholder="Esim. NDEAFIHH"
+                autoComplete="off"
+              />
+            </div>
+            <div style={styles.field}>
+              <label>Kirjanpitäjän sähköposti</label>
+              <input
+                style={styles.input}
+                type="email"
+                value={accountForm.accountantEmail}
+                onChange={(e) => setAccountForm((prev) => ({ ...prev, accountantEmail: e.target.value }))}
+                placeholder="kirjanpito@yritys.fi"
+                autoComplete="off"
+              />
+            </div>
           </div>
-          <div style={styles.field}>
-            <label>Kirjanpitäjän sähköposti</label>
-            <input
-              style={styles.input}
-              type="email"
-              value={accountForm.accountantEmail}
-              onChange={(e) => setAccountForm((prev) => ({ ...prev, accountantEmail: e.target.value }))}
-              placeholder="kirjanpito@yritys.fi"
-              autoComplete="off"
-            />
+          <div style={{ ...styles.stack, gap: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={sendInvoiceCopyToSelf}
+                onChange={(e) => setSendInvoiceCopyToSelf(e.target.checked)}
+              />
+              <span>Lähetä laskun kopio itselleni</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={sendInvoiceCopyToAccountant}
+                onChange={(e) => setSendInvoiceCopyToAccountant(e.target.checked)}
+              />
+              <span>Lähetä laskun kopio kirjanpitäjälle</span>
+            </label>
+          </div>
+          {sendInvoiceCopyToAccountant && !String(accountForm.accountantEmail || "").trim() ? (
+            <div style={styles.noticeError}>Lisää kirjanpitäjän sähköposti tai poista kirjanpitäjän kopion ruksi.</div>
+          ) : null}
+          <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={onSaveBankDetails} disabled={accountSaving}>
+              {accountSaving ? "Tallennetaan..." : "Tallenna laskutusasetukset"}
+            </button>
           </div>
         </div>
-        <div style={{ ...styles.stack, gap: 8 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={sendInvoiceCopyToSelf}
-              onChange={(e) => setSendInvoiceCopyToSelf(e.target.checked)}
-            />
-            <span>Lähetä laskun kopio itselleni</span>
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={sendInvoiceCopyToAccountant}
-              onChange={(e) => setSendInvoiceCopyToAccountant(e.target.checked)}
-            />
-            <span>Lähetä laskun kopio kirjanpitäjälle</span>
-          </label>
+      ) : (
+        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+          <strong>Laskutusasetukset</strong>
+          <div style={styles.noticeInfo}>
+            IBAN-, BIC- ja muut laskutusasetukset kuuluvat kalastajalisenssiin. Ilmaisversiossa niitä ei tarvitse täyttää.
+          </div>
         </div>
-        {sendInvoiceCopyToAccountant && !String(accountForm.accountantEmail || "").trim() ? (
-          <div style={styles.noticeError}>Lisää kirjanpitäjän sähköposti tai poista kirjanpitäjän kopion ruksi.</div>
-        ) : null}
-        <div style={{ ...styles.row, justifyContent: "flex-end" }}>
-          <button style={{ ...styles.button, ...styles.primaryButton }} onClick={onSaveBankDetails} disabled={accountSaving}>
-            {accountSaving ? "Tallennetaan..." : "Tallenna laskutusasetukset"}
-          </button>
-        </div>
-      </div>
+      )}
 
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <div>
@@ -8524,6 +8534,63 @@ export default function App() {
 
     ensureProfile();
   }, [session]);
+
+  useEffect(() => {
+    if (!profile) return;
+
+    let cancelled = false;
+
+    const verifyActiveProfileStillExists = async () => {
+      if (!session?.user?.id) return;
+
+      const { data: currentProfile, error } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        if (isMissingRefreshTokenError(error)) {
+          await invalidateSession();
+          return;
+        }
+        console.warn("profile existence check failed", error);
+        return;
+      }
+
+      if (!currentProfile) {
+        await invalidateSession("Käyttäjätili on poistettu. Kirjaudu uudelleen vain, jos ylläpitäjä on lisännyt sinut takaisin.");
+      }
+    };
+
+    verifyActiveProfileStillExists();
+
+    const intervalId = window.setInterval(() => {
+      verifyActiveProfileStillExists();
+    }, 15000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        verifyActiveProfileStillExists();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      verifyActiveProfileStillExists();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [profile?.id, session?.user?.id]);
 
   useEffect(() => {
     if (!profile) return;
