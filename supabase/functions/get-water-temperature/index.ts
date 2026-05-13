@@ -261,7 +261,7 @@ function extractWeatherCandidatesFromJson(payload: unknown, coords: Coordinates)
     .sort((left, right) => left.stationDistanceKm - right.stationDistanceKm);
 }
 
-function buildFmiQueryUrl(coords: Coordinates) {
+function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest) {
   const starttime = new Date(Date.now() - MAX_OBSERVATION_AGE_MS).toISOString();
   const endtime = new Date().toISOString();
   const lonDelta = 1.2;
@@ -273,18 +273,44 @@ function buildFmiQueryUrl(coords: Coordinates) {
     (coords.lat + latDelta).toFixed(4),
   ].join(",");
   const base = "https://opendata.fmi.fi/wfs?service=WFS&version=2.0.0&request=getFeature";
+  const municipality = normalizePart(body.fishingMunicipality);
+  const parameterVariants = [
+    "temperature,windspeedms,winddirection,weathersymbol3",
+    "temperature,windspeedms,winddirection,WeatherSymbol3",
+    "AirTemperature,WindSpeedMS,WindDirection,WeatherSymbol3",
+  ];
+  const urls: string[] = [];
 
-  return `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=AirTemperature,WindSpeedMS,WindDirection,WeatherSymbol3&outputFormat=application/json`;
+  for (const parameters of parameterVariants) {
+    if (municipality) {
+      urls.push(
+        `${base}&storedquery_id=fmi::observations::weather::simple&place=${encodeURIComponent(municipality)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=${encodeURIComponent(parameters)}&outputFormat=application/json`,
+      );
+    }
+    urls.push(
+      `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=${encodeURIComponent(parameters)}&outputFormat=application/json`,
+    );
+  }
+
+  return urls;
 }
 
-async function queryFmiWeather(coords: Coordinates) {
-  const url = buildFmiQueryUrl(coords);
-  const response = await fetchWithTimeout(url);
-  if (!response.ok) return [];
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("json")) return [];
-  const payload = await response.json();
-  return extractWeatherCandidatesFromJson(payload, coords);
+async function queryFmiWeather(coords: Coordinates, body: WeatherRequest) {
+  const urls = buildFmiQueryUrls(coords, body);
+  for (const url of urls) {
+    try {
+      const response = await fetchWithTimeout(url);
+      if (!response.ok) continue;
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("json")) continue;
+      const payload = await response.json();
+      const candidates = extractWeatherCandidatesFromJson(payload, coords);
+      if (candidates.length > 0) return candidates;
+    } catch (_error) {
+      // Fall through to next FMI query variation.
+    }
+  }
+  return [];
 }
 
 function withDebug<T extends Record<string, unknown>>(payload: T, debugEnabled: boolean, debug: Record<string, unknown>) {
@@ -319,7 +345,7 @@ Deno.serve(async (req) => {
     }
 
     debugPayload.fmiTried = true;
-    const candidates = await queryFmiWeather(coords);
+    const candidates = await queryFmiWeather(coords, body);
     debugPayload.fmiCandidateCount = candidates.length;
     const nearest = candidates.find((candidate) => candidate.stationDistanceKm <= MAX_STATION_DISTANCE_KM) || null;
 
