@@ -3493,27 +3493,44 @@ function formatWaterTemperatureObservedAt(value) {
   })}`;
 }
 
-function resolveWaterTemperatureLookup(profileLike, formState, entries) {
-  const latestEntry = Array.isArray(entries) && entries.length > 0 ? entries[0] : null;
-  const fishingArea = normalizeWaterTemperatureText(formState?.area)
-    || normalizeWaterTemperatureText(latestEntry?.area);
-  const fishingMunicipality = normalizeWaterTemperatureText(formState?.municipality)
-    || normalizeWaterTemperatureText(profileLike?.city)
-    || normalizeWaterTemperatureText(latestEntry?.municipality);
-  const locationLabel = [fishingArea, fishingMunicipality].filter(Boolean).join(" / ");
+function buildWaterTemperatureLookupCandidate(fishingArea, fishingMunicipality) {
+  const normalizedArea = normalizeWaterTemperatureText(fishingArea);
+  const normalizedMunicipality = normalizeWaterTemperatureText(fishingMunicipality);
+  const locationLabel = [normalizedArea, normalizedMunicipality].filter(Boolean).join(" / ");
 
   return {
-    fishingArea,
-    fishingMunicipality,
-    areaKey: buildWaterTemperatureAreaKey(fishingArea, fishingMunicipality),
+    fishingArea: normalizedArea,
+    fishingMunicipality: normalizedMunicipality,
+    areaKey: buildWaterTemperatureAreaKey(normalizedArea, normalizedMunicipality),
     locationLabel,
-    hasLocation: Boolean(fishingArea || fishingMunicipality),
+    hasLocation: Boolean(normalizedArea || normalizedMunicipality),
   };
 }
 
+function resolveWaterTemperatureLookups(profileLike, formState, entries) {
+  const latestEntry = Array.isArray(entries) && entries.length > 0 ? entries[0] : null;
+  const seen = new Set();
+  const candidates = [
+    buildWaterTemperatureLookupCandidate(formState?.area, formState?.municipality),
+    buildWaterTemperatureLookupCandidate(formState?.area, profileLike?.city),
+    buildWaterTemperatureLookupCandidate("", formState?.municipality),
+    buildWaterTemperatureLookupCandidate("", profileLike?.city),
+    buildWaterTemperatureLookupCandidate(latestEntry?.area, latestEntry?.municipality),
+    buildWaterTemperatureLookupCandidate(latestEntry?.area, profileLike?.city),
+    buildWaterTemperatureLookupCandidate("", latestEntry?.municipality),
+  ];
+
+  return candidates.filter((candidate) => {
+    if (!candidate.hasLocation) return false;
+    if (seen.has(candidate.areaKey)) return false;
+    seen.add(candidate.areaKey);
+    return true;
+  });
+}
+
 function WaterTemperatureHeader({ accessToken, profile, formState, entries, viewportWidth }) {
-  const lookup = useMemo(
-    () => resolveWaterTemperatureLookup(profile, formState, entries),
+  const lookups = useMemo(
+    () => resolveWaterTemperatureLookups(profile, formState, entries),
     [profile, formState?.area, formState?.municipality, entries],
   );
   const [waterTemperatureState, setWaterTemperatureState] = useState({
@@ -3532,7 +3549,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
       return;
     }
 
-    if (!lookup.hasLocation) {
+    if (!lookups.length) {
       setWaterTemperatureState({
         loading: false,
         data: null,
@@ -3542,7 +3559,10 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
     }
 
     if (!forceRefresh) {
-      const cached = getWaterTemperatureCacheEntry(lookup.areaKey);
+      const cached = lookups
+        .map((lookup) => getWaterTemperatureCacheEntry(lookup.areaKey))
+        .find(Boolean);
+
       if (cached) {
         setWaterTemperatureState({
           loading: false,
@@ -3559,36 +3579,48 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
       error: "",
     }));
 
-    const { data, error } = await fetchWaterTemperature(accessToken, {
-      fishingArea: lookup.fishingArea,
-      fishingMunicipality: lookup.fishingMunicipality,
-    });
+    let lastData = null;
+    let lastError = null;
 
-    if (error || !data) {
-      setWaterTemperatureState({
-        loading: false,
-        data: null,
-        error: "Pintaveden lämpötilaa ei juuri nyt saatavilla",
+    for (const lookup of lookups) {
+      const { data, error } = await fetchWaterTemperature(accessToken, {
+        fishingArea: lookup.fishingArea,
+        fishingMunicipality: lookup.fishingMunicipality,
       });
-      return;
+
+      if (error || !data) {
+        lastError = error;
+        continue;
+      }
+
+      setWaterTemperatureCacheEntry(lookup.areaKey, data);
+      lastData = data;
+      if (data.success) {
+        setWaterTemperatureState({
+          loading: false,
+          data,
+          error: "",
+        });
+        return;
+      }
     }
 
-    setWaterTemperatureCacheEntry(lookup.areaKey, data);
     setWaterTemperatureState({
       loading: false,
-      data: data.success ? data : null,
-      error: data.success ? "" : (data.message || "Pintaveden lämpötilaa ei juuri nyt saatavilla"),
+      data: null,
+      error: lastData?.message || lastError?.message || "Pintaveden lämpötilaa ei juuri nyt saatavilla",
     });
-  }, [accessToken, lookup]);
+  }, [accessToken, lookups]);
 
   useEffect(() => {
     loadWaterTemperature(false);
   }, [loadWaterTemperature]);
 
   const compact = viewportWidth < 768;
+  const primaryLookup = lookups[0] || null;
   const resolvedLocationLabel = waterTemperatureState.data
     ? [waterTemperatureState.data.lakeOrSeaArea, waterTemperatureState.data.locationName].filter(Boolean).join(" / ")
-    : (lookup.locationLabel || "Kalastamisalue / paikkakunta");
+    : (primaryLookup?.locationLabel || "Kalastamisalue / paikkakunta");
 
   return (
     <div

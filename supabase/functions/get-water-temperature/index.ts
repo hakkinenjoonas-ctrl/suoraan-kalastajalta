@@ -26,6 +26,8 @@ const MAX_STATION_DISTANCE_KM = 50;
 const fishingAreaCoordinates: Record<string, Coordinates> = {
   "Saimaa|Kyläniemi": { lat: 61.24, lon: 28.2 },
   "Saimaa|Lappeenranta": { lat: 61.0587, lon: 28.1887 },
+  "Saimaa|Taipalsaari": { lat: 61.166, lon: 28.061 },
+  "Saimaa|Lauritsala": { lat: 61.0587, lon: 28.286 },
   "Pien-Saimaa|Lappeenranta": { lat: 61.12, lon: 28.05 },
   "Päijänne|Sysmä": { lat: 61.5, lon: 25.68 },
   "Kallavesi|Kuopio": { lat: 62.8949, lon: 27.6782 },
@@ -38,6 +40,8 @@ const fishingAreaCoordinates: Record<string, Coordinates> = {
   "Oulujärvi|": { lat: 64.2841, lon: 27.7285 },
   "Inarijärvi|": { lat: 68.9056, lon: 27.0286 },
   "|Lappeenranta": { lat: 61.0587, lon: 28.1887 },
+  "|Taipalsaari": { lat: 61.166, lon: 28.061 },
+  "|Lauritsala": { lat: 61.0587, lon: 28.286 },
   "|Kuopio": { lat: 62.8949, lon: 27.6782 },
   "|Kajaani": { lat: 64.2273, lon: 27.7285 },
   "|Inari": { lat: 68.9056, lon: 27.0286 },
