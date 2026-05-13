@@ -3529,6 +3529,15 @@ function resolveWaterTemperatureLookups(profileLike, formState, entries) {
 }
 
 function WaterTemperatureHeader({ accessToken, profile, formState, entries, viewportWidth }) {
+  const waterTemperatureDebugEnabled = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("waterTempDebug") === "1";
+    } catch (_error) {
+      return false;
+    }
+  }, []);
   const lookups = useMemo(
     () => resolveWaterTemperatureLookups(profile, formState, entries),
     [profile, formState?.area, formState?.municipality, entries],
@@ -3537,6 +3546,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
     loading: false,
     data: null,
     error: "",
+    debug: null,
   });
 
   const loadWaterTemperature = useCallback(async (forceRefresh = false) => {
@@ -3545,6 +3555,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
         loading: false,
         data: null,
         error: "Pintaveden lämpötilaa ei juuri nyt saatavilla",
+        debug: null,
       });
       return;
     }
@@ -3554,6 +3565,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
         loading: false,
         data: null,
         error: "Pintaveden lämpötilaa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta.",
+        debug: null,
       });
       return;
     }
@@ -3568,6 +3580,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
           loading: false,
           data: cached.success ? cached : null,
           error: cached.success ? "" : (cached.message || "Pintaveden lämpötilaa ei juuri nyt saatavilla"),
+          debug: cached.debug || null,
         });
         return;
       }
@@ -3586,6 +3599,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
       const { data, error } = await fetchWaterTemperature(accessToken, {
         fishingArea: lookup.fishingArea,
         fishingMunicipality: lookup.fishingMunicipality,
+        debug: waterTemperatureDebugEnabled,
       });
 
       if (error || !data) {
@@ -3600,6 +3614,7 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
           loading: false,
           data,
           error: "",
+          debug: data.debug || null,
         });
         return;
       }
@@ -3609,8 +3624,9 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
       loading: false,
       data: null,
       error: lastData?.message || lastError?.message || "Pintaveden lämpötilaa ei juuri nyt saatavilla",
+      debug: lastData?.debug || null,
     });
-  }, [accessToken, lookups]);
+  }, [accessToken, lookups, waterTemperatureDebugEnabled]);
 
   useEffect(() => {
     loadWaterTemperature(false);
@@ -3665,6 +3681,20 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
           <div style={{ fontSize: 12, color: "#475569" }}>
             Lähde: {waterTemperatureState.data.source === "SYKE" ? "SYKE" : "FMI"}
           </div>
+          {waterTemperatureDebugEnabled && waterTemperatureState.debug ? (
+            <div style={{ fontSize: 12, color: "#475569", whiteSpace: "pre-wrap", marginTop: 6 }}>
+              {`Debug:
+alue=${waterTemperatureState.debug.fishingArea || "-"}
+paikkakunta=${waterTemperatureState.debug.fishingMunicipality || "-"}
+koordinaatit=${waterTemperatureState.debug.resolvedCoordinates ? `${waterTemperatureState.debug.resolvedCoordinates.lat}, ${waterTemperatureState.debug.resolvedCoordinates.lon}` : "-"}
+SYKE=${waterTemperatureState.debug.sykeTried ? "yritetty" : "ei"}
+FMI=${waterTemperatureState.debug.fmiTried ? "yritetty" : "ei"}
+lähde=${waterTemperatureState.debug.sourceUsed || "-"}
+FMI-ehdokkaita=${waterTemperatureState.debug.fmiCandidateCount ?? "-"}
+SYKE-osuma=${waterTemperatureState.debug.sykeMatched ? "kyllä" : "ei"}
+asema=${waterTemperatureState.debug.matchedFmiStation || waterTemperatureState.debug.nearestFmiStation || "-"}`}
+            </div>
+          ) : null}
         </div>
       ) : (
         <div style={{ marginTop: 14, display: "grid", gap: 6 }}>
@@ -3675,6 +3705,20 @@ function WaterTemperatureHeader({ accessToken, profile, formState, entries, view
             {waterTemperatureState.error || "Pintaveden lämpötilaa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta."}
           </div>
           <div style={{ fontSize: 12, color: "#64748b" }}>Lähde: SYKE / FMI</div>
+          {waterTemperatureDebugEnabled && waterTemperatureState.debug ? (
+            <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "pre-wrap", marginTop: 6 }}>
+              {`Debug:
+alue=${waterTemperatureState.debug.fishingArea || "-"}
+paikkakunta=${waterTemperatureState.debug.fishingMunicipality || "-"}
+koordinaatit=${waterTemperatureState.debug.resolvedCoordinates ? `${waterTemperatureState.debug.resolvedCoordinates.lat}, ${waterTemperatureState.debug.resolvedCoordinates.lon}` : "-"}
+SYKE=${waterTemperatureState.debug.sykeTried ? "yritetty" : "ei"}
+FMI=${waterTemperatureState.debug.fmiTried ? "yritetty" : "ei"}
+lähde=${waterTemperatureState.debug.sourceUsed || "-"}
+FMI-ehdokkaita=${waterTemperatureState.debug.fmiCandidateCount ?? "-"}
+SYKE-osuma=${waterTemperatureState.debug.sykeMatched ? "kyllä" : "ei"}
+asema=${waterTemperatureState.debug.matchedFmiStation || waterTemperatureState.debug.nearestFmiStation || "-"}`}
+            </div>
+          ) : null}
         </div>
       )}
     </div>

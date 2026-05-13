@@ -5,6 +5,7 @@ type WaterTemperatureRequest = {
   fishingMunicipality?: string;
   latitude?: number;
   longitude?: number;
+  debug?: boolean;
 };
 
 type Coordinates = {
@@ -505,6 +506,14 @@ function pickNearestObservation(coords: Coordinates, candidates: ObservationCand
     .sort((left, right) => left.stationDistanceKm - right.stationDistanceKm)[0] || null;
 }
 
+function withDebug<T extends Record<string, unknown>>(payload: T, debugEnabled: boolean, debug: Record<string, unknown>) {
+  if (!debugEnabled) return payload;
+  return {
+    ...payload,
+    debug,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -519,32 +528,56 @@ Deno.serve(async (req) => {
     const fishingArea = normalizePart(body.fishingArea);
     const fishingMunicipality = normalizePart(body.fishingMunicipality);
     const coords = resolveCoordinates(body);
+    const debugEnabled = body.debug === true;
+    const debugPayload: Record<string, unknown> = {
+      fishingArea,
+      fishingMunicipality,
+      resolvedCoordinates: coords,
+      sykeTried: false,
+      fmiTried: false,
+    };
 
     if (!coords) {
-      return jsonResponse(200, {
+      return jsonResponse(200, withDebug({
         success: false,
         message: "Pintaveden lämpötilaa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta.",
         source: "fallback",
-      });
+      }, debugEnabled, debugPayload));
     }
 
+    debugPayload.sykeTried = true;
     const sykeResult = await querySykeWaterTemperature(coords, body);
     if (sykeResult) {
-      return jsonResponse(200, sykeResult);
+      return jsonResponse(200, withDebug(
+        sykeResult,
+        debugEnabled,
+        {
+          ...debugPayload,
+          sourceUsed: "SYKE",
+          sykeMatched: true,
+        },
+      ));
     }
 
+    debugPayload.fmiTried = true;
     const fmiCandidates = await queryFmiWaterTemperature(coords);
+    debugPayload.fmiCandidateCount = fmiCandidates.length;
     const nearestObservation = pickNearestObservation(coords, fmiCandidates);
 
     if (!nearestObservation) {
-      return jsonResponse(200, {
+      return jsonResponse(200, withDebug({
         success: false,
         message: "Pintaveden lämpötilaa ei ole saatavilla tälle alueelle.",
         source: "fallback",
-      });
+      }, debugEnabled, {
+        ...debugPayload,
+        sourceUsed: "fallback",
+        sykeMatched: false,
+        nearestFmiStation: fmiCandidates[0]?.stationName || "",
+      }));
     }
 
-    return jsonResponse(200, {
+    return jsonResponse(200, withDebug({
       success: true,
       waterTemperatureC: nearestObservation.waterTemperatureC,
       lakeOrSeaArea: fishingArea || fishingMunicipality,
@@ -555,12 +588,19 @@ Deno.serve(async (req) => {
       stationDistanceKm: nearestObservation.stationDistanceKm,
       observedAt: nearestObservation.observedAt,
       source: "FMI",
-    });
+    }, debugEnabled, {
+      ...debugPayload,
+      sourceUsed: "FMI",
+      sykeMatched: false,
+      matchedFmiStation: nearestObservation.stationName,
+    }));
   } catch (_error) {
-    return jsonResponse(200, {
+    return jsonResponse(200, withDebug({
       success: false,
       message: "Pintaveden lämpötilaa ei juuri nyt saatavilla",
       source: "fallback",
-    });
+    }, body?.debug === true, {
+      error: "handler_exception",
+    }));
   }
 });
