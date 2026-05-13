@@ -502,17 +502,8 @@ function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest, mode: "obs
     ? "https://opendata.fmi.fi/wfs/eng?service=WFS&version=2.0.0&request=getFeature&storedquery_id=fmi::forecast::harmonie::surface::point::simple"
     : "https://opendata.fmi.fi/wfs/eng?service=WFS&version=2.0.0&request=getFeature";
   const municipality = normalizePart(body.fishingMunicipality);
-  const lonDelta = 1.2;
-  const latDelta = 0.8;
-  const bbox = [
-    (coords.lon - lonDelta).toFixed(4),
-    (coords.lat - latDelta).toFixed(4),
-    (coords.lon + lonDelta).toFixed(4),
-    (coords.lat + latDelta).toFixed(4),
-    "EPSG:4326",
-  ].join(",");
   const parameters = mode === "forecast"
-    ? "Temperature,WindSpeedMS,WindDirection,WeatherSymbol3"
+    ? "temperature,windspeedms,winddirection,weathersymbol3"
     : "t2m,ws_10min,wd_10min";
   const urls: Array<{ label: string; url: string }> = [];
 
@@ -521,6 +512,10 @@ function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest, mode: "obs
       urls.push({
         label: "forecast-place",
         url: `${queryBase}&place=${encodeURIComponent(municipality)}&parameters=${encodeURIComponent(parameters)}`,
+      });
+      urls.push({
+        label: "forecast-place-default-params",
+        url: `${queryBase}&place=${encodeURIComponent(municipality)}`,
       });
     } else {
       urls.push({
@@ -536,10 +531,23 @@ function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest, mode: "obs
 
   if (mode === "forecast") {
     urls.push({
-      label: "forecast-bbox",
-      url: `${queryBase}&bbox=${encodeURIComponent(bbox)}&parameters=${encodeURIComponent(parameters)}&crs=EPSG:4326`,
+      label: "forecast-latlon",
+      url: `${queryBase}&latlon=${encodeURIComponent(`${coords.lat},${coords.lon}`)}&parameters=${encodeURIComponent(parameters)}`,
+    });
+    urls.push({
+      label: "forecast-latlon-default-params",
+      url: `${queryBase}&latlon=${encodeURIComponent(`${coords.lat},${coords.lon}`)}`,
     });
   } else {
+    const lonDelta = 1.2;
+    const latDelta = 0.8;
+    const bbox = [
+      (coords.lon - lonDelta).toFixed(4),
+      (coords.lat - latDelta).toFixed(4),
+      (coords.lon + lonDelta).toFixed(4),
+      (coords.lat + latDelta).toFixed(4),
+      "EPSG:4326",
+    ].join(",");
     urls.push({
       label: "weather-bbox",
       url: `${queryBase}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&parameters=${encodeURIComponent(parameters)}&maxlocations=5&crs=EPSG:4326`,
