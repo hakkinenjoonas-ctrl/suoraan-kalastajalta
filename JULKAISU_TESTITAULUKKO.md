@@ -4,9 +4,9 @@ Kayta tata taulukkoa ennen julkaisua. Merkitse jokainen kohta `OK`, `EI OK` tai 
 
 | # | Testi | Missa testataan | Odotettu lopputulos | Tulos | Huomiot |
 |---|---|---|---|---|---|
-| 1 | Uusi ostaja rekisteroityy | Puhelin / emulaattori | Rekisteroityminen onnistuu ja tunnus siirtyy ownerille odottaa hyvaksyntaa |  |  |
-| 2 | Owner hyvaksyy ostajan | Selain | Ostaja siirtyy aktiiviseksi eika jaa virheellisesti jonoon |  |  |
-| 3 | Owner hylkaa odottavan kayttajan | Selain | Tunnus poistuu kokonaan eika silla voi kirjautua sisaan |  |  |
+| 1 | Uusi ostaja rekisteroityy | Puhelin / emulaattori | Rekisteroityminen onnistuu ja ostaja paasee heti appiin ilman yllapitajan hyvaksyntaa |  |  |
+| 2 | Uusi kalastaja rekisteroityy | Puhelin / emulaattori | Rekisteroityminen onnistuu ja kalastaja paasee heti appiin ilman yllapitajan hyvaksyntaa |  |  |
+| 3 | Uusi kayttaja nakyy yllapitajalle | Selain | Uusi ostaja tai kalastaja nakyy `Kayttajat`-valilehdella ilman erillista hyvaksyntaa |  |  |
 | 4 | Kalastaja kirjautuu sisaan | Puhelin | Kirjautuminen onnistuu ja valilehdet toimivat |  |  |
 | 5 | Ostaja kirjautuu sisaan | Puhelin / emulaattori | Kirjautuminen onnistuu ja tarjoukset-nakyma latautuu oikein |  |  |
 | 6 | Kalastaja tallentaa saaliin ilman myyntia | Puhelin | Saalis tallentuu ilman virhetta |  |  |
