@@ -406,8 +406,6 @@ function extractWeatherCandidatesFromXmlWithMeta(xmlText: string, coords: Coordi
 }
 
 function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest) {
-  const starttime = new Date(Date.now() - MAX_OBSERVATION_AGE_MS).toISOString();
-  const endtime = new Date().toISOString();
   const lonDelta = 1.2;
   const latDelta = 0.8;
   const bbox = [
@@ -415,21 +413,27 @@ function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest) {
     (coords.lat - latDelta).toFixed(4),
     (coords.lon + lonDelta).toFixed(4),
     (coords.lat + latDelta).toFixed(4),
+    "EPSG:4326",
   ].join(",");
   const base = "https://opendata.fmi.fi/wfs/eng?service=WFS&version=2.0.0&request=getFeature";
   const municipality = normalizePart(body.fishingMunicipality);
   const urls: Array<{ label: string; url: string }> = [];
+  const parameters = "t2m,ws_10min,wd_10min";
 
   if (municipality) {
     urls.push({
       label: "cities-place",
-      url: `${base}&storedquery_id=fmi::observations::weather::cities::simple&place=${encodeURIComponent(municipality)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}`,
+      url: `${base}&storedquery_id=fmi::observations::weather::cities::simple&place=${encodeURIComponent(municipality)}&parameters=${encodeURIComponent(parameters)}&maxlocations=3`,
     });
-  }
+    urls.push({
+      label: "weather-place",
+      url: `${base}&storedquery_id=fmi::observations::weather::simple&place=${encodeURIComponent(municipality)}&parameters=${encodeURIComponent(parameters)}&maxlocations=3`,
+    });
+ }
 
   urls.push({
     label: "weather-bbox",
-    url: `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}`,
+    url: `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&parameters=${encodeURIComponent(parameters)}&maxlocations=5&crs=EPSG:4326`,
   });
 
   return urls;
