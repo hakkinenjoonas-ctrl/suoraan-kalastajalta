@@ -2227,6 +2227,24 @@ function getCatchFormDefaultsStorageKey(profileLike) {
 
 function parseStoredCatchFormDefaults(raw) {
   const parsed = raw ? JSON.parse(raw) : {};
+  const parsedGearProfiles = parsed?.gearProfiles && typeof parsed.gearProfiles === "object" ? parsed.gearProfiles : {};
+  const gearProfiles = Object.fromEntries(
+    Object.entries(parsedGearProfiles).map(([gearName, profile]) => [
+      String(gearName || "").trim(),
+      {
+        gearCount: String(profile?.gearCount || ""),
+        gearCountOptions: Array.isArray(profile?.gearCountOptions) ? profile.gearCountOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+        fishingDurationDays: String(profile?.fishingDurationDays || ""),
+        fishingDurationOptions: Array.isArray(profile?.fishingDurationOptions) ? profile.fishingDurationOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+        netHeight: String(profile?.netHeight || ""),
+        netHeightOptions: Array.isArray(profile?.netHeightOptions) ? profile.netHeightOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+        netMeshSize: String(profile?.netMeshSize || ""),
+        netMeshSizeOptions: Array.isArray(profile?.netMeshSizeOptions) ? profile.netMeshSizeOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+        fykeHeight: String(profile?.fykeHeight || ""),
+        fykeHeightOptions: Array.isArray(profile?.fykeHeightOptions) ? profile.fykeHeightOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+      },
+    ]),
+  );
   return {
     area: String(parsed?.area || "Saimaa"),
     waterType: String(parsed?.waterType || ""),
@@ -2248,6 +2266,54 @@ function parseStoredCatchFormDefaults(raw) {
     netMeshSizeOptions: Array.isArray(parsed?.netMeshSizeOptions) ? parsed.netMeshSizeOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
     fykeHeight: String(parsed?.fykeHeight || ""),
     fykeHeightOptions: Array.isArray(parsed?.fykeHeightOptions) ? parsed.fykeHeightOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    gearProfiles,
+  };
+}
+
+function getStoredGearProfile(defaults, gearName) {
+  const normalizedGearName = String(gearName || "").trim();
+  if (!normalizedGearName) {
+    return {
+      gearCount: "",
+      gearCountOptions: [],
+      fishingDurationDays: "",
+      fishingDurationOptions: [],
+      netHeight: "",
+      netHeightOptions: [],
+      netMeshSize: "",
+      netMeshSizeOptions: [],
+      fykeHeight: "",
+      fykeHeightOptions: [],
+    };
+  }
+
+  const storedProfile = defaults?.gearProfiles?.[normalizedGearName];
+  if (storedProfile) {
+    return {
+      gearCount: String(storedProfile.gearCount || ""),
+      gearCountOptions: Array.isArray(storedProfile.gearCountOptions) ? storedProfile.gearCountOptions : [],
+      fishingDurationDays: String(storedProfile.fishingDurationDays || ""),
+      fishingDurationOptions: Array.isArray(storedProfile.fishingDurationOptions) ? storedProfile.fishingDurationOptions : [],
+      netHeight: String(storedProfile.netHeight || ""),
+      netHeightOptions: Array.isArray(storedProfile.netHeightOptions) ? storedProfile.netHeightOptions : [],
+      netMeshSize: String(storedProfile.netMeshSize || ""),
+      netMeshSizeOptions: Array.isArray(storedProfile.netMeshSizeOptions) ? storedProfile.netMeshSizeOptions : [],
+      fykeHeight: String(storedProfile.fykeHeight || ""),
+      fykeHeightOptions: Array.isArray(storedProfile.fykeHeightOptions) ? storedProfile.fykeHeightOptions : [],
+    };
+  }
+
+  return {
+    gearCount: String(defaults?.gearCount || ""),
+    gearCountOptions: Array.isArray(defaults?.gearCountOptions) ? defaults.gearCountOptions : [],
+    fishingDurationDays: String(defaults?.fishingDurationDays || ""),
+    fishingDurationOptions: Array.isArray(defaults?.fishingDurationOptions) ? defaults.fishingDurationOptions : [],
+    netHeight: String(defaults?.netHeight || ""),
+    netHeightOptions: Array.isArray(defaults?.netHeightOptions) ? defaults.netHeightOptions : [],
+    netMeshSize: String(defaults?.netMeshSize || ""),
+    netMeshSizeOptions: Array.isArray(defaults?.netMeshSizeOptions) ? defaults.netMeshSizeOptions : [],
+    fykeHeight: String(defaults?.fykeHeight || ""),
+    fykeHeightOptions: Array.isArray(defaults?.fykeHeightOptions) ? defaults.fykeHeightOptions : [],
   };
 }
 
@@ -6752,6 +6818,7 @@ export default function App() {
   const publicBatchId = getRequestedPublicBatchId();
   const requestedOfferId = getRequestedOfferId();
   const initialCatchDefaults = getStoredCatchFormDefaults();
+  const initialGearDefaults = getStoredGearProfile(initialCatchDefaults, initialCatchDefaults.gear);
   const buyerOffersCompatFields = [
     "seller_business_id",
     "seller_address",
@@ -6858,16 +6925,16 @@ export default function App() {
       waterType: defaults.waterType || "",
       municipality: defaults.municipality,
       landingPlace: defaults.landingPlace,
-      gearCount: defaults.gearCount,
-      fishingDurationDays: defaults.fishingDurationDays,
+      gearCount: initialGearDefaults.gearCount,
+      fishingDurationDays: initialGearDefaults.fishingDurationDays,
       originCity: "",
       selectedVesselId: "",
       fishingWithoutVessel: false,
       spot: "",
       gear: defaults.gear,
-      netHeight: defaults.netHeight,
-      netMeshSize: defaults.netMeshSize,
-      fykeHeight: defaults.fykeHeight,
+      netHeight: initialGearDefaults.netHeight,
+      netMeshSize: initialGearDefaults.netMeshSize,
+      fykeHeight: initialGearDefaults.fykeHeight,
       price_per_kg: "",
       notes: "",
       listForSale: false,
@@ -6893,11 +6960,12 @@ export default function App() {
   const [savedCustomSeaAreas, setSavedCustomSeaAreas] = useState(() => initialCatchDefaults.customSeaAreas || []);
   const [catchAreaSelector, setCatchAreaSelector] = useState(() => resolveAreaSelectorValue(initialCatchDefaults.area, initialCatchDefaults.customLakeAreas, initialCatchDefaults.customSeaAreas));
   const [savedLandingPlaces, setSavedLandingPlaces] = useState(() => getStoredCatchFormDefaults().landingPlaces || []);
-  const [savedGearCountOptions, setSavedGearCountOptions] = useState(() => getStoredCatchFormDefaults().gearCountOptions || []);
-  const [savedFishingDurationOptions, setSavedFishingDurationOptions] = useState(() => getStoredCatchFormDefaults().fishingDurationOptions || []);
-  const [savedNetHeightOptions, setSavedNetHeightOptions] = useState(() => getStoredCatchFormDefaults().netHeightOptions || []);
-  const [savedNetMeshSizeOptions, setSavedNetMeshSizeOptions] = useState(() => getStoredCatchFormDefaults().netMeshSizeOptions || []);
-  const [savedFykeHeightOptions, setSavedFykeHeightOptions] = useState(() => getStoredCatchFormDefaults().fykeHeightOptions || []);
+  const [savedGearProfiles, setSavedGearProfiles] = useState(() => initialCatchDefaults.gearProfiles || {});
+  const [savedGearCountOptions, setSavedGearCountOptions] = useState(() => initialGearDefaults.gearCountOptions || []);
+  const [savedFishingDurationOptions, setSavedFishingDurationOptions] = useState(() => initialGearDefaults.fishingDurationOptions || []);
+  const [savedNetHeightOptions, setSavedNetHeightOptions] = useState(() => initialGearDefaults.netHeightOptions || []);
+  const [savedNetMeshSizeOptions, setSavedNetMeshSizeOptions] = useState(() => initialGearDefaults.netMeshSizeOptions || []);
+  const [savedFykeHeightOptions, setSavedFykeHeightOptions] = useState(() => initialGearDefaults.fykeHeightOptions || []);
   const [speciesRows, setSpeciesRows] = useState([createSpeciesRow()]);
   const [processedForm, setProcessedForm] = useState(createInitialProcessedForm);
   const [processedProducts, setProcessedProducts] = useState([]);
@@ -7052,6 +7120,7 @@ export default function App() {
 
     catchDefaultsStorageKeyRef.current = nextStorageKey;
     const defaults = getStoredCatchFormDefaults(profile);
+    const gearDefaults = getStoredGearProfile(defaults, defaults.gear);
 
     setForm((prev) => ({
       ...prev,
@@ -7059,12 +7128,12 @@ export default function App() {
       waterType: defaults.waterType || String(profile?.water_type || "").trim(),
       municipality: defaults.municipality,
       landingPlace: defaults.landingPlace,
-      gearCount: defaults.gearCount,
-      fishingDurationDays: defaults.fishingDurationDays,
+      gearCount: gearDefaults.gearCount,
+      fishingDurationDays: gearDefaults.fishingDurationDays,
       gear: defaults.gear,
-      netHeight: defaults.netHeight,
-      netMeshSize: defaults.netMeshSize,
-      fykeHeight: defaults.fykeHeight,
+      netHeight: gearDefaults.netHeight,
+      netMeshSize: gearDefaults.netMeshSize,
+      fykeHeight: gearDefaults.fykeHeight,
       deliveryDestinations: defaults.deliveryDestinations || [],
       deliveryArea: defaults.deliveryArea || "",
     }));
@@ -7072,11 +7141,12 @@ export default function App() {
     setSavedCustomSeaAreas(defaults.customSeaAreas || []);
     setCatchAreaSelector(resolveAreaSelectorValue(defaults.area, defaults.customLakeAreas, defaults.customSeaAreas));
     setSavedLandingPlaces(defaults.landingPlaces || []);
-    setSavedGearCountOptions(defaults.gearCountOptions || []);
-    setSavedFishingDurationOptions(defaults.fishingDurationOptions || []);
-    setSavedNetHeightOptions(defaults.netHeightOptions || []);
-    setSavedNetMeshSizeOptions(defaults.netMeshSizeOptions || []);
-    setSavedFykeHeightOptions(defaults.fykeHeightOptions || []);
+    setSavedGearProfiles(defaults.gearProfiles || {});
+    setSavedGearCountOptions(gearDefaults.gearCountOptions || []);
+    setSavedFishingDurationOptions(gearDefaults.fishingDurationOptions || []);
+    setSavedNetHeightOptions(gearDefaults.netHeightOptions || []);
+    setSavedNetMeshSizeOptions(gearDefaults.netMeshSizeOptions || []);
+    setSavedFykeHeightOptions(gearDefaults.fykeHeightOptions || []);
     setProcessedForm((prev) => ({
       ...prev,
       deliveryDestinations: defaults.deliveryDestinations || [],
@@ -9257,6 +9327,21 @@ export default function App() {
       const netHeightOptions = buildRememberedOptions(form.netHeight, savedNetHeightOptions);
       const netMeshSizeOptions = buildRememberedOptions(form.netMeshSize, savedNetMeshSizeOptions);
       const fykeHeightOptions = buildRememberedOptions(form.fykeHeight, savedFykeHeightOptions);
+      const nextGearProfiles = {
+        ...savedGearProfiles,
+        [form.gear || "Rysä"]: {
+          gearCount: form.gearCount || "",
+          gearCountOptions,
+          fishingDurationDays: form.fishingDurationDays || "",
+          fishingDurationOptions,
+          netHeight: form.netHeight || "",
+          netHeightOptions,
+          netMeshSize: form.netMeshSize || "",
+          netMeshSizeOptions,
+          fykeHeight: form.fykeHeight || "",
+          fykeHeightOptions,
+        },
+      };
       window.localStorage.setItem(getCatchFormDefaultsStorageKey(profile), JSON.stringify({
         area: form.area || "Saimaa",
         waterType: form.waterType || "",
@@ -9278,7 +9363,13 @@ export default function App() {
         netMeshSizeOptions,
         fykeHeight: form.fykeHeight || "",
         fykeHeightOptions,
+        gearProfiles: nextGearProfiles,
       }));
+      setSavedGearProfiles((prev) => {
+        const previousSerialized = JSON.stringify(prev || {});
+        const nextSerialized = JSON.stringify(nextGearProfiles);
+        return previousSerialized === nextSerialized ? prev : nextGearProfiles;
+      });
       setSavedGearCountOptions((prev) => {
         const next = buildRememberedOptions(form.gearCount, prev);
         if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
@@ -9323,6 +9414,7 @@ export default function App() {
     savedCustomLakeAreas,
     savedCustomSeaAreas,
     savedLandingPlaces,
+    savedGearProfiles,
     savedGearCountOptions,
     savedFishingDurationOptions,
     savedNetHeightOptions,
@@ -15505,13 +15597,21 @@ export default function App() {
                 <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => {
                   const nextGear = e.target.value;
                   const normalizedNextGear = normalizeCatchGearValue(nextGear);
+                  const nextGearDefaults = getStoredGearProfile({ gearProfiles: savedGearProfiles }, nextGear);
                   setForm((prev) => ({
                     ...prev,
                     gear: nextGear,
-                    netHeight: normalizedNextGear === "Verkko" ? prev.netHeight : "",
-                    netMeshSize: normalizedNextGear === "Verkko" ? prev.netMeshSize : "",
-                    fykeHeight: normalizedNextGear === "Rysä" ? prev.fykeHeight : "",
+                    gearCount: nextGearDefaults.gearCount || "",
+                    fishingDurationDays: nextGearDefaults.fishingDurationDays || "",
+                    netHeight: normalizedNextGear === "Verkko" ? nextGearDefaults.netHeight || "" : "",
+                    netMeshSize: normalizedNextGear === "Verkko" ? nextGearDefaults.netMeshSize || "" : "",
+                    fykeHeight: normalizedNextGear === "Rysä" ? nextGearDefaults.fykeHeight || "" : "",
                   }));
+                  setSavedGearCountOptions(nextGearDefaults.gearCountOptions || []);
+                  setSavedFishingDurationOptions(nextGearDefaults.fishingDurationOptions || []);
+                  setSavedNetHeightOptions(normalizedNextGear === "Verkko" ? nextGearDefaults.netHeightOptions || [] : []);
+                  setSavedNetMeshSizeOptions(normalizedNextGear === "Verkko" ? nextGearDefaults.netMeshSizeOptions || [] : []);
+                  setSavedFykeHeightOptions(normalizedNextGear === "Rysä" ? nextGearDefaults.fykeHeightOptions || [] : []);
                 }}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
                 <div style={styles.field}>
                   <label>Vesityyppi</label>
