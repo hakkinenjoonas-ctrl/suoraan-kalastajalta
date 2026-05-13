@@ -139,7 +139,7 @@ function resolveCoordinates(body: WeatherRequest) {
   );
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = 9000) {
+async function fetchWithTimeout(url: string, timeoutMs = 3000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -424,10 +424,6 @@ function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest) {
     urls.push({
       label: "cities-place",
       url: `${base}&storedquery_id=fmi::observations::weather::cities::simple&place=${encodeURIComponent(municipality)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}`,
-    });
-    urls.push({
-      label: "weather-place",
-      url: `${base}&storedquery_id=fmi::observations::weather::simple&place=${encodeURIComponent(municipality)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}`,
     });
   }
 
