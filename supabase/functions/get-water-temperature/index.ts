@@ -25,6 +25,17 @@ type WeatherCandidate = {
   observedAt: string;
 };
 
+type FmiQueryDebug = {
+  candidateCount: number;
+  lastContentType: string;
+  lastQueryLabel: string;
+  lastUrl: string;
+  lastException: string;
+  lastRootElement: string;
+  lastBsElementCount: number;
+  lastParameterNames: string[];
+};
+
 const MAX_OBSERVATION_AGE_MS = 24 * 60 * 60 * 1000;
 const MAX_STATION_DISTANCE_KM = 100;
 
@@ -288,13 +299,34 @@ function parsePosText(text: string): Coordinates | null {
 }
 
 function extractWeatherCandidatesFromXml(xmlText: string, coords: Coordinates): WeatherCandidate[] {
+  return extractWeatherCandidatesFromXmlWithMeta(xmlText, coords).candidates;
+}
+
+function extractWeatherCandidatesFromXmlWithMeta(xmlText: string, coords: Coordinates) {
   const xml = new DOMParser().parseFromString(xmlText, "application/xml");
   const parseError = xml.querySelector("parsererror");
-  if (parseError) return [];
+  if (parseError) {
+    return {
+      candidates: [],
+      meta: {
+        rootElement: "parsererror",
+        exceptionText: parseError.textContent?.trim() || "",
+        bsElementCount: 0,
+        parameterNames: [],
+      },
+    };
+  }
+
+  const rootElement = xml.documentElement?.localName || xml.documentElement?.nodeName || "";
+  const exceptionTexts = Array.from(xml.getElementsByTagName("*"))
+    .filter((element) => (element.localName || "").toLowerCase() === "exceptiontext")
+    .map((element) => element.textContent?.trim() || "")
+    .filter(Boolean);
 
   const elements = Array.from(xml.getElementsByTagName("*")).filter(
     (element) => (element.localName || "").toLowerCase() === "bswfselement",
   );
+  const parameterNames = new Set<string>();
 
   const grouped = new Map<string, {
     stationName: string;
@@ -308,6 +340,7 @@ function extractWeatherCandidatesFromXml(xmlText: string, coords: Coordinates): 
 
   for (const element of elements) {
     const parameterName = getDescendantText(element, ["ParameterName", "parametername", "Parameter"]).toLowerCase();
+    if (parameterName) parameterNames.add(parameterName);
     const valueText = getDescendantText(element, ["ParameterValue", "parametervalue", "Value", "value"]);
     const observedAt = getDescendantText(element, ["Time", "time", "TimePosition", "timePosition", "MeasurementTime"]);
     const stationName =
@@ -343,7 +376,7 @@ function extractWeatherCandidatesFromXml(xmlText: string, coords: Coordinates): 
     }
   }
 
-  return Array.from(grouped.values())
+  const candidates = Array.from(grouped.values())
     .filter((candidate) => candidate.coords && candidate.airTemperatureC != null && candidate.windSpeedMs != null && isFreshObservation(candidate.observedAt))
     .map((candidate) => ({
       airTemperatureC: candidate.airTemperatureC as number,
@@ -360,6 +393,16 @@ function extractWeatherCandidatesFromXml(xmlText: string, coords: Coordinates): 
       observedAt: candidate.observedAt,
     }))
     .sort((left, right) => left.stationDistanceKm - right.stationDistanceKm);
+
+  return {
+    candidates,
+    meta: {
+      rootElement,
+      exceptionText: exceptionTexts.join(" | "),
+      bsElementCount: elements.length,
+      parameterNames: Array.from(parameterNames).slice(0, 12),
+    },
+  };
 }
 
 function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest) {
@@ -373,56 +416,70 @@ function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest) {
     (coords.lon + lonDelta).toFixed(4),
     (coords.lat + latDelta).toFixed(4),
   ].join(",");
-  const base = "https://opendata.fmi.fi/wfs?service=WFS&version=2.0.0&request=getFeature";
+  const base = "https://opendata.fmi.fi/wfs/eng?service=WFS&version=2.0.0&request=getFeature";
   const municipality = normalizePart(body.fishingMunicipality);
-  const parameterVariants = [
-    "temperature,windspeedms,winddirection,weathersymbol3",
-    "temperature,windspeedms,winddirection,WeatherSymbol3",
-    "AirTemperature,WindSpeedMS,WindDirection,WeatherSymbol3",
-  ];
-  const urls: string[] = [];
+  const urls: Array<{ label: string; url: string }> = [];
 
-  for (const parameters of parameterVariants) {
-    if (municipality) {
-      urls.push(
-        `${base}&storedquery_id=fmi::observations::weather::simple&place=${encodeURIComponent(municipality)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=${encodeURIComponent(parameters)}&outputFormat=application/json`,
-      );
-      urls.push(
-        `${base}&storedquery_id=fmi::observations::weather::simple&place=${encodeURIComponent(municipality)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=${encodeURIComponent(parameters)}`,
-      );
-    }
-    urls.push(
-      `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=${encodeURIComponent(parameters)}&outputFormat=application/json`,
-    );
-    urls.push(
-      `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}&parameters=${encodeURIComponent(parameters)}`,
-    );
+  if (municipality) {
+    urls.push({
+      label: "cities-place",
+      url: `${base}&storedquery_id=fmi::observations::weather::cities::simple&place=${encodeURIComponent(municipality)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}`,
+    });
+    urls.push({
+      label: "weather-place",
+      url: `${base}&storedquery_id=fmi::observations::weather::simple&place=${encodeURIComponent(municipality)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}`,
+    });
   }
+
+  urls.push({
+    label: "weather-bbox",
+    url: `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&starttime=${encodeURIComponent(starttime)}&endtime=${encodeURIComponent(endtime)}`,
+  });
 
   return urls;
 }
 
 async function queryFmiWeather(coords: Coordinates, body: WeatherRequest) {
   const urls = buildFmiQueryUrls(coords, body);
-  for (const url of urls) {
+  const debug: FmiQueryDebug = {
+    candidateCount: 0,
+    lastContentType: "",
+    lastQueryLabel: "",
+    lastUrl: "",
+    lastException: "",
+    lastRootElement: "",
+    lastBsElementCount: 0,
+    lastParameterNames: [],
+  };
+
+  for (const { label, url } of urls) {
+    debug.lastQueryLabel = label;
+    debug.lastUrl = url;
     try {
       const response = await fetchWithTimeout(url);
       if (!response.ok) continue;
       const contentType = response.headers.get("content-type") || "";
+      debug.lastContentType = contentType;
       let candidates: WeatherCandidate[] = [];
       if (contentType.includes("json")) {
         const payload = await response.json();
         candidates = extractWeatherCandidatesFromJson(payload, coords);
       } else {
         const xmlText = await response.text();
-        candidates = extractWeatherCandidatesFromXml(xmlText, coords);
+        const extracted = extractWeatherCandidatesFromXmlWithMeta(xmlText, coords);
+        candidates = extracted.candidates;
+        debug.lastRootElement = extracted.meta.rootElement;
+        debug.lastException = extracted.meta.exceptionText;
+        debug.lastBsElementCount = extracted.meta.bsElementCount;
+        debug.lastParameterNames = extracted.meta.parameterNames;
       }
-      if (candidates.length > 0) return candidates;
+      debug.candidateCount = candidates.length;
+      if (candidates.length > 0) return { candidates, debug };
     } catch (_error) {
       // Fall through to next FMI query variation.
     }
   }
-  return [];
+  return { candidates: [], debug };
 }
 
 function withDebug<T extends Record<string, unknown>>(payload: T, debugEnabled: boolean, debug: Record<string, unknown>) {
@@ -457,8 +514,15 @@ Deno.serve(async (req) => {
     }
 
     debugPayload.fmiTried = true;
-    const candidates = await queryFmiWeather(coords, body);
+    const fmiResult = await queryFmiWeather(coords, body);
+    const candidates = fmiResult.candidates;
     debugPayload.fmiCandidateCount = candidates.length;
+    debugPayload.fmiLastQueryLabel = fmiResult.debug.lastQueryLabel;
+    debugPayload.fmiLastContentType = fmiResult.debug.lastContentType;
+    debugPayload.fmiLastRootElement = fmiResult.debug.lastRootElement;
+    debugPayload.fmiLastException = fmiResult.debug.lastException;
+    debugPayload.fmiLastBsElementCount = fmiResult.debug.lastBsElementCount;
+    debugPayload.fmiLastParameterNames = fmiResult.debug.lastParameterNames;
     const nearest = candidates.find((candidate) => candidate.stationDistanceKm <= MAX_STATION_DISTANCE_KM) || null;
 
     if (!nearest) {
