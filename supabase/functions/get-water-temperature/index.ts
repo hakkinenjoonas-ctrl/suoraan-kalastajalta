@@ -405,42 +405,8 @@ function extractWeatherCandidatesFromXmlWithMeta(xmlText: string, coords: Coordi
   };
 }
 
-function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest) {
-  const lonDelta = 1.2;
-  const latDelta = 0.8;
-  const bbox = [
-    (coords.lon - lonDelta).toFixed(4),
-    (coords.lat - latDelta).toFixed(4),
-    (coords.lon + lonDelta).toFixed(4),
-    (coords.lat + latDelta).toFixed(4),
-    "EPSG:4326",
-  ].join(",");
-  const base = "https://opendata.fmi.fi/wfs/eng?service=WFS&version=2.0.0&request=getFeature";
-  const municipality = normalizePart(body.fishingMunicipality);
-  const urls: Array<{ label: string; url: string }> = [];
-  const parameters = "t2m,ws_10min,wd_10min";
-
-  if (municipality) {
-    urls.push({
-      label: "cities-place",
-      url: `${base}&storedquery_id=fmi::observations::weather::cities::simple&place=${encodeURIComponent(municipality)}&parameters=${encodeURIComponent(parameters)}&maxlocations=3`,
-    });
-    urls.push({
-      label: "weather-place",
-      url: `${base}&storedquery_id=fmi::observations::weather::simple&place=${encodeURIComponent(municipality)}&parameters=${encodeURIComponent(parameters)}&maxlocations=3`,
-    });
- }
-
-  urls.push({
-    label: "weather-bbox",
-    url: `${base}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&parameters=${encodeURIComponent(parameters)}&maxlocations=5&crs=EPSG:4326`,
-  });
-
-  return urls;
-}
-
 async function queryFmiWeather(coords: Coordinates, body: WeatherRequest) {
-  const urls = buildFmiQueryUrls(coords, body);
+  const urls = buildFmiObservationQueryUrls(coords, body);
   const debug: FmiQueryDebug = {
     candidateCount: 0,
     lastContentType: "",
@@ -474,12 +440,113 @@ async function queryFmiWeather(coords: Coordinates, body: WeatherRequest) {
         debug.lastParameterNames = extracted.meta.parameterNames;
       }
       debug.candidateCount = candidates.length;
-      if (candidates.length > 0) return { candidates, debug };
+      if (candidates.length > 0) return { candidates, debug, source: "FMI-observation" };
     } catch (_error) {
       // Fall through to next FMI query variation.
     }
   }
-  return { candidates: [], debug };
+
+  const forecastUrls = buildFmiForecastQueryUrls(coords, body);
+  for (const { label, url } of forecastUrls) {
+    debug.lastQueryLabel = label;
+    debug.lastUrl = url;
+    try {
+      const response = await fetchWithTimeout(url);
+      if (!response.ok) continue;
+      const contentType = response.headers.get("content-type") || "";
+      debug.lastContentType = contentType;
+      let candidates: WeatherCandidate[] = [];
+      if (contentType.includes("json")) {
+        const payload = await response.json();
+        candidates = extractWeatherCandidatesFromJson(payload, coords);
+      } else {
+        const xmlText = await response.text();
+        const extracted = extractWeatherCandidatesFromXmlWithMeta(xmlText, coords);
+        candidates = extracted.candidates;
+        debug.lastRootElement = extracted.meta.rootElement;
+        debug.lastException = extracted.meta.exceptionText;
+        debug.lastBsElementCount = extracted.meta.bsElementCount;
+        debug.lastParameterNames = extracted.meta.parameterNames;
+      }
+      debug.candidateCount = candidates.length;
+      if (candidates.length > 0) return { candidates, debug, source: "FMI-forecast" };
+    } catch (_error) {
+      // Fall through to next FMI forecast query variation.
+    }
+  }
+
+  return { candidates: [], debug, source: "fallback" };
+}
+
+function buildFmiObservationQueryUrls(coords: Coordinates, body: WeatherRequest) {
+  const debug: FmiQueryDebug = {
+    candidateCount: 0,
+    lastContentType: "",
+    lastQueryLabel: "",
+    lastUrl: "",
+    lastException: "",
+    lastRootElement: "",
+    lastBsElementCount: 0,
+    lastParameterNames: [],
+  };
+  void debug;
+  return buildFmiQueryUrls(coords, body, "observation");
+}
+
+function buildFmiForecastQueryUrls(coords: Coordinates, body: WeatherRequest) {
+  return buildFmiQueryUrls(coords, body, "forecast");
+}
+
+function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest, mode: "observation" | "forecast") {
+  const queryBase = mode === "forecast"
+    ? "https://opendata.fmi.fi/wfs/eng?service=WFS&version=2.0.0&request=getFeature&storedquery_id=fmi::forecast::harmonie::surface::point::simple"
+    : "https://opendata.fmi.fi/wfs/eng?service=WFS&version=2.0.0&request=getFeature";
+  const municipality = normalizePart(body.fishingMunicipality);
+  const lonDelta = 1.2;
+  const latDelta = 0.8;
+  const bbox = [
+    (coords.lon - lonDelta).toFixed(4),
+    (coords.lat - latDelta).toFixed(4),
+    (coords.lon + lonDelta).toFixed(4),
+    (coords.lat + latDelta).toFixed(4),
+    "EPSG:4326",
+  ].join(",");
+  const parameters = mode === "forecast"
+    ? "Temperature,WindSpeedMS,WindDirection,WeatherSymbol3"
+    : "t2m,ws_10min,wd_10min";
+  const urls: Array<{ label: string; url: string }> = [];
+
+  if (municipality) {
+    if (mode === "forecast") {
+      urls.push({
+        label: "forecast-place",
+        url: `${queryBase}&place=${encodeURIComponent(municipality)}&parameters=${encodeURIComponent(parameters)}`,
+      });
+    } else {
+      urls.push({
+        label: "cities-place",
+        url: `${queryBase}&storedquery_id=fmi::observations::weather::cities::simple&place=${encodeURIComponent(municipality)}&parameters=${encodeURIComponent(parameters)}&maxlocations=3`,
+      });
+      urls.push({
+        label: "weather-place",
+        url: `${queryBase}&storedquery_id=fmi::observations::weather::simple&place=${encodeURIComponent(municipality)}&parameters=${encodeURIComponent(parameters)}&maxlocations=3`,
+      });
+    }
+  }
+
+  if (mode === "forecast") {
+    urls.push({
+      label: "forecast-bbox",
+      url: `${queryBase}&bbox=${encodeURIComponent(bbox)}&parameters=${encodeURIComponent(parameters)}&crs=EPSG:4326`,
+    });
+  } else {
+    urls.push({
+      label: "weather-bbox",
+      url: `${queryBase}&storedquery_id=fmi::observations::weather::simple&bbox=${encodeURIComponent(bbox)}&parameters=${encodeURIComponent(parameters)}&maxlocations=5&crs=EPSG:4326`,
+    });
+  }
+
+  return urls;
 }
 
 function withDebug<T extends Record<string, unknown>>(payload: T, debugEnabled: boolean, debug: Record<string, unknown>) {
@@ -517,6 +584,7 @@ Deno.serve(async (req) => {
     const fmiResult = await queryFmiWeather(coords, body);
     const candidates = fmiResult.candidates;
     debugPayload.fmiCandidateCount = candidates.length;
+    debugPayload.fmiSourceUsed = fmiResult.source;
     debugPayload.fmiLastQueryLabel = fmiResult.debug.lastQueryLabel;
     debugPayload.fmiLastContentType = fmiResult.debug.lastContentType;
     debugPayload.fmiLastRootElement = fmiResult.debug.lastRootElement;
@@ -554,7 +622,7 @@ Deno.serve(async (req) => {
       source: "FMI",
     }, debugEnabled, {
       ...debugPayload,
-      sourceUsed: "FMI",
+      sourceUsed: fmiResult.source || "FMI",
       matchedFmiStation: nearest.stationName,
       weatherType: nearest.weatherType,
       windSpeedMs: nearest.windSpeedMs,
