@@ -78,6 +78,7 @@ import {
 import { tableExists } from "./services/database.js";
 import {
   fetchBuyerReport,
+  fetchWaterTemperature,
   getPublicBatchInfoUrl,
   invokeAdminDeleteEntity,
   invokeBuyerOfferAction,
@@ -3421,6 +3422,230 @@ function LandingPlaceInput({ value, onChange, options, placeholder = "Esim. Kyl�
         ))}
       </datalist>
     </>
+  );
+}
+
+const WATER_TEMPERATURE_CACHE_TTL_MS = 30 * 60 * 1000;
+
+function normalizeWaterTemperatureText(value) {
+  return String(value || "").trim();
+}
+
+function buildWaterTemperatureAreaKey(fishingArea, fishingMunicipality) {
+  return [
+    normalizeWaterTemperatureText(fishingArea),
+    normalizeWaterTemperatureText(fishingMunicipality),
+  ].join("|");
+}
+
+function getWaterTemperatureCacheEntry(areaKey) {
+  if (typeof window === "undefined" || !areaKey) return null;
+
+  try {
+    const raw = window.localStorage.getItem(`sk:water-temperature:${areaKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const cachedAt = Number(parsed?.cachedAt || 0);
+    if (!cachedAt || Date.now() - cachedAt > WATER_TEMPERATURE_CACHE_TTL_MS) {
+      window.localStorage.removeItem(`sk:water-temperature:${areaKey}`);
+      return null;
+    }
+    return parsed?.payload || null;
+  } catch (error) {
+    console.warn("water temperature cache read failed", error);
+    return null;
+  }
+}
+
+function setWaterTemperatureCacheEntry(areaKey, payload) {
+  if (typeof window === "undefined" || !areaKey) return;
+  try {
+    window.localStorage.setItem(`sk:water-temperature:${areaKey}`, JSON.stringify({
+      cachedAt: Date.now(),
+      payload,
+    }));
+  } catch (error) {
+    console.warn("water temperature cache write failed", error);
+  }
+}
+
+function formatWaterTemperatureC(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "-";
+  return numeric.toFixed(1).replace(".", ",");
+}
+
+function formatWaterTemperatureDistance(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "-";
+  return numeric < 10
+    ? numeric.toFixed(1).replace(".", ",")
+    : Math.round(numeric).toString();
+}
+
+function formatWaterTemperatureObservedAt(value) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return `${parsed.toLocaleDateString("fi-FI")} klo ${parsed.toLocaleTimeString("fi-FI", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
+function resolveWaterTemperatureLookup(profileLike, formState, entries) {
+  const latestEntry = Array.isArray(entries) && entries.length > 0 ? entries[0] : null;
+  const fishingArea = normalizeWaterTemperatureText(formState?.area)
+    || normalizeWaterTemperatureText(latestEntry?.area);
+  const fishingMunicipality = normalizeWaterTemperatureText(formState?.municipality)
+    || normalizeWaterTemperatureText(profileLike?.city)
+    || normalizeWaterTemperatureText(latestEntry?.municipality);
+  const locationLabel = [fishingArea, fishingMunicipality].filter(Boolean).join(" / ");
+
+  return {
+    fishingArea,
+    fishingMunicipality,
+    areaKey: buildWaterTemperatureAreaKey(fishingArea, fishingMunicipality),
+    locationLabel,
+    hasLocation: Boolean(fishingArea || fishingMunicipality),
+  };
+}
+
+function WaterTemperatureHeader({ accessToken, profile, formState, entries, viewportWidth }) {
+  const lookup = useMemo(
+    () => resolveWaterTemperatureLookup(profile, formState, entries),
+    [profile, formState?.area, formState?.municipality, entries],
+  );
+  const [waterTemperatureState, setWaterTemperatureState] = useState({
+    loading: false,
+    data: null,
+    error: "",
+  });
+
+  const loadWaterTemperature = useCallback(async (forceRefresh = false) => {
+    if (!accessToken) {
+      setWaterTemperatureState({
+        loading: false,
+        data: null,
+        error: "Pintaveden lämpötilaa ei juuri nyt saatavilla",
+      });
+      return;
+    }
+
+    if (!lookup.hasLocation) {
+      setWaterTemperatureState({
+        loading: false,
+        data: null,
+        error: "Pintaveden lämpötilaa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta.",
+      });
+      return;
+    }
+
+    if (!forceRefresh) {
+      const cached = getWaterTemperatureCacheEntry(lookup.areaKey);
+      if (cached) {
+        setWaterTemperatureState({
+          loading: false,
+          data: cached.success ? cached : null,
+          error: cached.success ? "" : (cached.message || "Pintaveden lämpötilaa ei juuri nyt saatavilla"),
+        });
+        return;
+      }
+    }
+
+    setWaterTemperatureState((prev) => ({
+      ...prev,
+      loading: true,
+      error: "",
+    }));
+
+    const { data, error } = await fetchWaterTemperature(accessToken, {
+      fishingArea: lookup.fishingArea,
+      fishingMunicipality: lookup.fishingMunicipality,
+    });
+
+    if (error || !data) {
+      setWaterTemperatureState({
+        loading: false,
+        data: null,
+        error: "Pintaveden lämpötilaa ei juuri nyt saatavilla",
+      });
+      return;
+    }
+
+    setWaterTemperatureCacheEntry(lookup.areaKey, data);
+    setWaterTemperatureState({
+      loading: false,
+      data: data.success ? data : null,
+      error: data.success ? "" : (data.message || "Pintaveden lämpötilaa ei juuri nyt saatavilla"),
+    });
+  }, [accessToken, lookup]);
+
+  useEffect(() => {
+    loadWaterTemperature(false);
+  }, [loadWaterTemperature]);
+
+  const compact = viewportWidth < 768;
+  const resolvedLocationLabel = waterTemperatureState.data
+    ? [waterTemperatureState.data.lakeOrSeaArea, waterTemperatureState.data.locationName].filter(Boolean).join(" / ")
+    : (lookup.locationLabel || "Kalastamisalue / paikkakunta");
+
+  return (
+    <div
+      style={{
+        ...styles.card,
+        marginBottom: 16,
+        padding: compact ? 18 : 20,
+        borderRadius: 24,
+        background: "linear-gradient(135deg, rgba(219,234,254,0.98) 0%, rgba(240,249,255,0.98) 54%, rgba(224,242,254,0.98) 100%)",
+        border: "1px solid rgba(96, 165, 250, 0.32)",
+        boxShadow: "0 18px 34px rgba(14, 116, 144, 0.12)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#0369a1", letterSpacing: "0.01em" }}>🌊 Pintaveden lämpötila</div>
+          <div style={{ fontSize: compact ? 14 : 15, color: "#0f172a", marginTop: 4, opacity: 0.8 }}>
+            {resolvedLocationLabel}
+          </div>
+        </div>
+        <button type="button" style={{ ...styles.button, padding: compact ? "8px 14px" : "9px 16px", minWidth: 0 }} onClick={() => loadWaterTemperature(true)}>
+          Päivitä
+        </button>
+      </div>
+
+      {waterTemperatureState.loading ? (
+        <div style={{ marginTop: 14, color: "#0f172a", fontWeight: 600 }}>Haetaan pintaveden lämpötilaa…</div>
+      ) : waterTemperatureState.data ? (
+        <div style={{ marginTop: 14, display: "grid", gap: 6 }}>
+          <div style={{ fontSize: compact ? 34 : 40, lineHeight: 1, fontWeight: 900, color: "#0f172a" }}>
+            {formatWaterTemperatureC(waterTemperatureState.data.waterTemperatureC)} °C
+          </div>
+          <div style={{ fontSize: 15, color: "#0f172a" }}>
+            Lähin mittauspiste: <strong>{waterTemperatureState.data.stationName || "-"}</strong>
+          </div>
+          <div style={{ fontSize: 14, color: "#334155" }}>
+            Etäisyys: {formatWaterTemperatureDistance(waterTemperatureState.data.stationDistanceKm)} km
+          </div>
+          <div style={{ fontSize: 14, color: "#334155" }}>
+            Päivitetty: {formatWaterTemperatureObservedAt(waterTemperatureState.data.observedAt)}
+          </div>
+          <div style={{ fontSize: 12, color: "#475569" }}>
+            Lähde: {waterTemperatureState.data.source === "SYKE" ? "SYKE" : "FMI"}
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginTop: 14, display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>
+            Pintaveden lämpötilaa ei juuri nyt saatavilla
+          </div>
+          <div style={{ fontSize: 14, color: "#475569" }}>
+            {waterTemperatureState.error || "Pintaveden lämpötilaa ei vielä saatavilla. Lisää kalastamisalue tai paikkakunta."}
+          </div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>Lähde: SYKE / FMI</div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -14425,6 +14650,15 @@ export default function App() {
   return (
     <div style={styles.app}>
       <div style={styles.container}>
+        {profile.role === "member" ? (
+          <WaterTemperatureHeader
+            accessToken={session?.access_token || ""}
+            profile={profile}
+            formState={form}
+            entries={entries}
+            viewportWidth={viewportWidth}
+          />
+        ) : null}
         <div style={{ ...styles.card, ...styles.headerCard }}>
           <div style={styles.rowBetween}>
             <div>
