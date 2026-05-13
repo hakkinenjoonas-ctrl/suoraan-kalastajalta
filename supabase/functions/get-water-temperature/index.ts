@@ -29,6 +29,11 @@ type SykePlaceCandidate = {
   lon: number;
 };
 
+type SykeQueryResult = {
+  payload: Record<string, unknown>;
+  debug: Record<string, unknown>;
+};
+
 const MAX_OBSERVATION_AGE_MS = 24 * 60 * 60 * 1000;
 const MAX_STATION_DISTANCE_KM = 50;
 
@@ -362,7 +367,7 @@ function extractTemperatureCandidatesFromJson(payload: unknown): ObservationCand
     .filter((candidate): candidate is ObservationCandidate => Boolean(candidate && candidate.observedAt));
 }
 
-async function querySykeWaterTemperature(coords: Coordinates, body: WaterTemperatureRequest) {
+async function querySykeWaterTemperature(coords: Coordinates, body: WaterTemperatureRequest): Promise<SykeQueryResult | null> {
   const municipality = normalizePart(body.fishingMunicipality);
   const area = normalizePart(body.fishingArea);
   const base = "https://rajapinnat.ymparisto.fi/api/Hydrologiarajapinta/1.1/odata";
@@ -398,12 +403,19 @@ async function querySykeWaterTemperature(coords: Coordinates, body: WaterTempera
           lon: placeCoords.lon,
         };
       })
-      .filter((candidate): candidate is SykePlaceCandidate => Boolean(candidate));
+      .filter((candidate): candidate is SykePlaceCandidate => Boolean(candidate))
+      .sort((left, right) => {
+        const distanceDelta =
+          haversineKm(coords.lat, coords.lon, left.lat, left.lon) -
+          haversineKm(coords.lat, coords.lon, right.lat, right.lon);
+        if (distanceDelta !== 0) return distanceDelta;
+        return left.name.localeCompare(right.name, "fi");
+      });
 
     if (!places.length) return null;
 
     const observationWindowStart = new Date(Date.now() - MAX_OBSERVATION_AGE_MS).toISOString();
-    const observationUrl = `${base}/LampoPintavesi?$format=json&$top=300&$orderby=Aika desc&$filter=${encodeURIComponent(`Aika ge datetime'${observationWindowStart}'`)}`;
+    const observationUrl = `${base}/LampoPintavesi?$format=json&$top=5000&$orderby=Aika desc&$filter=${encodeURIComponent(`Aika ge datetime'${observationWindowStart}'`)}`;
     const observationResponse = await fetchWithTimeout(observationUrl, 9000);
     if (!observationResponse.ok) return null;
     const observationPayload = await observationResponse.json();
@@ -438,16 +450,24 @@ async function querySykeWaterTemperature(coords: Coordinates, body: WaterTempera
     if (!nearestObservation) return null;
 
     return {
-      success: true,
-      waterTemperatureC: nearestObservation.waterTemperatureC,
-      lakeOrSeaArea: area || municipality,
-      locationName: municipality || area || nearestObservation.municipality,
-      stationName: nearestObservation.stationName,
-      stationLatitude: nearestObservation.stationLatitude,
-      stationLongitude: nearestObservation.stationLongitude,
-      stationDistanceKm: nearestObservation.stationDistanceKm,
-      observedAt: nearestObservation.observedAt,
-      source: "SYKE",
+      payload: {
+        success: true,
+        waterTemperatureC: nearestObservation.waterTemperatureC,
+        lakeOrSeaArea: area || municipality,
+        locationName: municipality || area || nearestObservation.municipality,
+        stationName: nearestObservation.stationName,
+        stationLatitude: nearestObservation.stationLatitude,
+        stationLongitude: nearestObservation.stationLongitude,
+        stationDistanceKm: nearestObservation.stationDistanceKm,
+        observedAt: nearestObservation.observedAt,
+        source: "SYKE",
+      },
+      debug: {
+        sykePlaceCount: places.length,
+        sykeObservationCount: observations.length,
+        sykeNearestStation: nearestObservation.stationName,
+        sykeNearestDistanceKm: nearestObservation.stationDistanceKm,
+      },
     };
   } catch (_error) {
     return null;
@@ -549,10 +569,11 @@ Deno.serve(async (req) => {
     const sykeResult = await querySykeWaterTemperature(coords, body);
     if (sykeResult) {
       return jsonResponse(200, withDebug(
-        sykeResult,
+        sykeResult.payload,
         debugEnabled,
         {
           ...debugPayload,
+          ...sykeResult.debug,
           sourceUsed: "SYKE",
           sykeMatched: true,
         },
