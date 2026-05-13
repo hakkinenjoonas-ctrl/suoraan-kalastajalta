@@ -302,6 +302,136 @@ function extractWeatherCandidatesFromXml(xmlText: string, coords: Coordinates): 
   return extractWeatherCandidatesFromXmlWithMeta(xmlText, coords).candidates;
 }
 
+function extractForecastCandidatesFromTimeValuePairXml(xmlText: string, coords: Coordinates) {
+  const xml = new DOMParser().parseFromString(xmlText, "application/xml");
+  const parseError = xml.querySelector("parsererror");
+  if (parseError) {
+    return {
+      candidates: [],
+      meta: {
+        rootElement: "parsererror",
+        exceptionText: parseError.textContent?.trim() || "",
+        memberCount: 0,
+        parameterNames: [],
+      },
+    };
+  }
+
+  const rootElement = xml.documentElement?.localName || xml.documentElement?.nodeName || "";
+  const exceptionTexts = Array.from(xml.getElementsByTagName("*"))
+    .filter((element) => (element.localName || "").toLowerCase() === "exceptiontext")
+    .map((element) => element.textContent?.trim() || "")
+    .filter(Boolean);
+
+  const members = Array.from(xml.getElementsByTagName("*")).filter(
+    (element) => (element.localName || "").toLowerCase() === "member",
+  );
+  const grouped = new Map<string, {
+    stationName: string;
+    coords: Coordinates;
+    observedAt: string;
+    airTemperatureC: number | null;
+    windSpeedMs: number | null;
+    windDirectionDeg: number | null;
+    weatherSymbol: number | null;
+  }>();
+  const parameterNames = new Set<string>();
+
+  for (const member of members) {
+    const observedHref = Array.from(member.getElementsByTagName("*"))
+      .find((element) => (element.localName || "").toLowerCase() === "observedproperty")
+      ?.getAttribute("xlink:href") ||
+      Array.from(member.getElementsByTagName("*"))
+        .find((element) => (element.localName || "").toLowerCase() === "observedproperty")
+        ?.getAttribute("href") ||
+      "";
+
+    const paramMatch = observedHref.match(/param=([^&]+)/i);
+    const parameterName = decodeURIComponent(paramMatch?.[1] || "").split(",")[0].trim();
+    if (!parameterName) continue;
+    parameterNames.add(parameterName);
+
+    const stationName =
+      getDescendantText(member, ["name", "Name", "GeographicalName", "geographicalname", "Location"]) ||
+      "Tuntematon mittauspiste";
+    const posText = getDescendantText(member, ["pos", "Pos"]);
+    const parsedCoords = parsePosText(posText) || coords;
+
+    const pairs = Array.from(member.getElementsByTagName("*")).filter(
+      (element) => {
+        const local = (element.localName || "").toLowerCase();
+        return local === "measurementtvp" || local === "timeseriespoint" || local === "point";
+      },
+    );
+
+    for (const pair of pairs) {
+      const timeText = getDescendantText(pair, ["time", "Time", "timePosition", "TimePosition"]);
+      const valueText = getDescendantText(pair, ["value", "Value"]);
+      const numeric = toNumber(valueText);
+      if (!timeText || numeric == null) continue;
+
+      const groupKey = `${stationName}|${timeText}|${parsedCoords.lat}|${parsedCoords.lon}`;
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, {
+          stationName,
+          coords: parsedCoords,
+          observedAt: timeText,
+          airTemperatureC: null,
+          windSpeedMs: null,
+          windDirectionDeg: null,
+          weatherSymbol: null,
+        });
+      }
+
+      const group = grouped.get(groupKey)!;
+      if (/(^|[^a-z])(temperature|t2m)($|[^a-z])/i.test(parameterName) && !/water|sea/i.test(parameterName)) {
+        group.airTemperatureC = numeric;
+      } else if (/(windspeedms|windspeed|ws_10min)/i.test(parameterName)) {
+        group.windSpeedMs = numeric;
+      } else if (/(winddirection|wd_10min)/i.test(parameterName)) {
+        group.windDirectionDeg = numeric;
+      } else if (/(weathersymbol3|weathersymbol|wawa)/i.test(parameterName)) {
+        group.weatherSymbol = numeric;
+      }
+    }
+  }
+
+  const candidates = Array.from(grouped.values())
+    .filter((candidate) => candidate.airTemperatureC != null && candidate.windSpeedMs != null)
+    .map((candidate) => ({
+      airTemperatureC: candidate.airTemperatureC as number,
+      windSpeedMs: candidate.windSpeedMs as number,
+      windDirectionDeg: candidate.windDirectionDeg,
+      weatherType:
+        candidate.weatherSymbol != null
+          ? (weatherSymbolMap[Math.round(candidate.weatherSymbol)] || `Sääsymboli ${Math.round(candidate.weatherSymbol)}`)
+          : "Säätyyppi ei saatavilla",
+      stationName: candidate.stationName,
+      stationLatitude: candidate.coords.lat,
+      stationLongitude: candidate.coords.lon,
+      stationDistanceKm: haversineKm(coords.lat, coords.lon, candidate.coords.lat, candidate.coords.lon),
+      observedAt: candidate.observedAt,
+    }))
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.observedAt);
+      const rightTime = Date.parse(right.observedAt);
+      const now = Date.now();
+      const leftDelta = Number.isFinite(leftTime) ? Math.abs(leftTime - now) : Number.MAX_SAFE_INTEGER;
+      const rightDelta = Number.isFinite(rightTime) ? Math.abs(rightTime - now) : Number.MAX_SAFE_INTEGER;
+      return leftDelta - rightDelta || left.stationDistanceKm - right.stationDistanceKm;
+    });
+
+  return {
+    candidates,
+    meta: {
+      rootElement,
+      exceptionText: exceptionTexts.join(" | "),
+      memberCount: members.length,
+      parameterNames: Array.from(parameterNames).slice(0, 12),
+    },
+  };
+}
+
 function extractWeatherCandidatesFromXmlWithMeta(xmlText: string, coords: Coordinates) {
   const xml = new DOMParser().parseFromString(xmlText, "application/xml");
   const parseError = xml.querySelector("parsererror");
@@ -432,11 +562,11 @@ async function queryFmiWeather(coords: Coordinates, body: WeatherRequest) {
         candidates = extractWeatherCandidatesFromJson(payload, coords);
       } else {
         const xmlText = await response.text();
-        const extracted = extractWeatherCandidatesFromXmlWithMeta(xmlText, coords);
+        const extracted = extractForecastCandidatesFromTimeValuePairXml(xmlText, coords);
         candidates = extracted.candidates;
         debug.lastRootElement = extracted.meta.rootElement;
         debug.lastException = extracted.meta.exceptionText;
-        debug.lastBsElementCount = extracted.meta.bsElementCount;
+        debug.lastBsElementCount = extracted.meta.memberCount;
         debug.lastParameterNames = extracted.meta.parameterNames;
       }
       debug.candidateCount = candidates.length;
@@ -499,7 +629,7 @@ function buildFmiForecastQueryUrls(coords: Coordinates, body: WeatherRequest) {
 
 function buildFmiQueryUrls(coords: Coordinates, body: WeatherRequest, mode: "observation" | "forecast") {
   const queryBase = mode === "forecast"
-    ? "https://opendata.fmi.fi/wfs/eng?service=WFS&version=2.0.0&request=getFeature&storedquery_id=fmi::forecast::harmonie::surface::point::simple"
+    ? "https://opendata.fmi.fi/wfs/eng?service=WFS&version=2.0.0&request=getFeature&storedquery_id=fmi::forecast::harmonie::surface::point::timevaluepair"
     : "https://opendata.fmi.fi/wfs/eng?service=WFS&version=2.0.0&request=getFeature";
   const municipality = normalizePart(body.fishingMunicipality);
   const parameters = mode === "forecast"
