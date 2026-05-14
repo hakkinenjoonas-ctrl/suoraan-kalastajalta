@@ -5991,8 +5991,8 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   doc.text(euro(invoice.deliveryVatAmount), 190, totalsY + 28, { align: "right" });
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("Maksettava yhteensä", 126, totalsY + 37);
-  doc.text(euro(invoice.grandTotal), 190, totalsY + 37, { align: "right" });
+  doc.text("Maksettava yhteensä", 124, totalsY + 37);
+  doc.text(euro(invoice.grandTotal), 192, totalsY + 37, { align: "right" });
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
@@ -6375,8 +6375,8 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
   doc.text(euro(invoice.vatAmount), 190, totalsY + 10, { align: "right" });
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("Maksettava yhteensä", 126, totalsY + 22);
-  doc.text(euro(invoice.grandTotal), 190, totalsY + 22, { align: "right" });
+  doc.text("Maksettava yhteensä", 124, totalsY + 22);
+  doc.text(euro(invoice.grandTotal), 192, totalsY + 22, { align: "right" });
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
