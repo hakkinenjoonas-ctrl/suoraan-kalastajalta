@@ -163,21 +163,19 @@ export function LinkedBuyerOfferCard({
         <strong>Avattu linkistä</strong>
         <span style={{ ...styles.badge, background: "#dbeafe", borderColor: "#93c5fd", color: "#1d4ed8" }}>{buyerStatusLabel(linkedBuyerOffer.status)}</span>
       </div>
-      <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(linkedBuyerOffer.species_summary, { hideTraceability: linkedBuyerOffer.status !== "accepted" }) || "-"}</div>
+      <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(linkedBuyerOffer.species_summary, { hideTraceability: true }) || "-"}</div>
       {getOfferSummaryCatchDates(linkedBuyerOffer.species_summary).length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryCatchDates(linkedBuyerOffer.species_summary).join(", ")}</div> : null}
       {isMixedOffer(linkedBuyerOffer)
         ? getOfferSummaryBatchItems(linkedBuyerOffer.species_summary).map((item) => (
           <div key={`${linkedBuyerOffer.id}-${item.batchId || item.label}`} style={{ ...styles.entry, background: "#fff", padding: 12 }}>
             <div style={styles.muted}><strong>{item.label || "Erä"}</strong></div>
             {item.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {item.catchDate}</div> : null}
-            <BatchIdLine batchId={item.batchId} styles={styles} />
             {item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
           </div>
         ))
         : (
           <>
             {getOfferSummaryBatchItems(linkedBuyerOffer.species_summary)[0]?.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryBatchItems(linkedBuyerOffer.species_summary)[0].catchDate}</div> : null}
-            <BatchIdLine batchId={linkedBuyerOffer.batch_id} styles={styles} />
           </>
         )}
       <div style={styles.muted}><strong>Ostaja:</strong> {shouldRevealBuyerIdentity(linkedBuyerOffer.status) ? (linkedBuyerOffer.buyer_company_name || linkedBuyerOffer.buyer_email || "Ostaja") : buyerTypeLabel(linkedBuyerOffer.buyer_type)}</div>
@@ -331,26 +329,24 @@ export function BuyerResponsesSection({
               </div>
               <div>
                 <OfferHeadlineBlock
-                  title={isMixedOffer(offer) ? "Monilajinen erä" : (formatSpeciesSummaryText(offer.species_summary, { hideCatchDate: true, hideTraceability: !isBuyerOfferAccepted(offer.status) }) || "Kalaerä")}
+                  title={isMixedOffer(offer) ? "Monilajinen erä" : (formatSpeciesSummaryText(offer.species_summary, { hideCatchDate: true, hideTraceability: true }) || "Kalaerä")}
                   date={getOfferSummaryCatchDates(offer.species_summary).join(", ") || "-"}
                   quantity={getOfferAmountDisplay(offer, offer.total_kilos)}
                   accent={isAccepted ? "#0f766e" : "#0f172a"}
                   background={isAccepted ? "#f0fdfa" : "#f8fafc"}
                 />
-                <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideTraceability: !isBuyerOfferAccepted(offer.status) }) || "-"}</div>
+                <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideTraceability: true }) || "-"}</div>
                 {getOfferSummaryCatchDates(offer.species_summary).length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryCatchDates(offer.species_summary).join(", ")}</div> : null}
                 {isMixedOffer(offer)
                   ? getOfferSummaryBatchItems(offer.species_summary).map((item) => (
                     <div key={`${offer.id}-${item.batchId || item.label}`} style={{ ...styles.entry, background: "#fff", padding: 12, marginTop: 8, marginBottom: 8 }}>
                       <div style={styles.muted}><strong>{item.label || "Erä"}</strong></div>
                       {item.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {item.catchDate}</div> : null}
-                      <BatchIdLine batchId={item.batchId} styles={styles} />
                       {item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                     </div>
                   ))
                   : (
                     <>
-                      <BatchIdLine batchId={offer.batch_id} styles={styles} />
                     </>
                   )}
                 {!isMixedOffer(offer) && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
@@ -578,14 +574,14 @@ export function OfferedEntriesDetailsSection({
                           <div style={{ ...styles.grid2, marginBottom: 10 }}>
                             <div>
                               <OfferHeadlineBlock
-                                title={isMixedOffer(offer) ? "Monilajinen erä" : (formatSpeciesSummaryText(offer.species_summary, { hideCatchDate: true, hideTraceability: !showTraceability }) || "Kalaerä")}
+                                title={isMixedOffer(offer) ? "Monilajinen erä" : (formatSpeciesSummaryText(offer.species_summary, { hideCatchDate: true, hideTraceability: true }) || "Kalaerä")}
                                 date={getOfferSummaryCatchDates(offer.species_summary).join(", ") || "-"}
                                 quantity={getOfferAmountDisplay(offer, offer.total_kilos)}
                                 accent={isAccepted ? "#166534" : "#0f172a"}
                                 background={isAccepted ? "#f0fdf4" : "#f8fafc"}
                               />
                               <div style={styles.muted}>
-                                <strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideCatchDate: !isMixedOffer(offer) }) || "-"}
+                                <strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideCatchDate: !isMixedOffer(offer), hideTraceability: true }) || "-"}
                               </div>
                               {getOfferSummaryCatchDates(offer.species_summary).length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryCatchDates(offer.species_summary).join(", ")}</div> : null}
                               {isMixedOffer(offer)
@@ -593,13 +589,11 @@ export function OfferedEntriesDetailsSection({
                                   <div key={`${offer.id}-${item.batchId || item.label}`} style={{ ...styles.entry, background: "#fff", padding: 12, marginTop: 8, marginBottom: 8 }}>
                                     <div style={styles.muted}><strong>{item.label || "Erä"}</strong></div>
                                     {item.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {item.catchDate}</div> : null}
-                                    {showTraceability ? <BatchIdLine batchId={item.batchId} styles={styles} /> : null}
                                     {showTraceability && item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                                   </div>
                                 ))
                                 : (
                                   <>
-                                    {showTraceability ? <BatchIdLine batchId={offer.batch_id} styles={styles} /> : null}
                                   </>
                                 )}
                               {!isMixedOffer(offer) && showTraceability && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
