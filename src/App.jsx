@@ -3956,17 +3956,17 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
 
           {authMode === "signin" ? (
             <>
-              <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={onSignIn} disabled={authSubmitting}>
+              <button type="submit" style={{ ...styles.button, ...styles.primaryButton }} disabled={authSubmitting}>
                 {authSubmitting ? "Kirjaudutaan..." : "Kirjaudu sisään"}
               </button>
               <button type="button" style={styles.button} onClick={onForgotPassword} disabled={authSubmitting}>Unohditko salasanan?</button>
             </>
           ) : authMode === "recovery" ? (
-            <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={onResetRecoveredPassword} disabled={authSubmitting}>
+            <button type="submit" style={{ ...styles.button, ...styles.primaryButton }} disabled={authSubmitting}>
               {authSubmitting ? "Tallennetaan..." : "Tallenna uusi salasana"}
             </button>
           ) : (
-            <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={onSignUp} disabled={authSubmitting}>
+            <button type="submit" style={{ ...styles.button, ...styles.primaryButton }} disabled={authSubmitting}>
               {authSubmitting ? "Luodaan..." : "Luo tunnus"}
             </button>
           )}
