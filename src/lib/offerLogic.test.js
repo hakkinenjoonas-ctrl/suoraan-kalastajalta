@@ -77,16 +77,23 @@ describe("offerLogic", () => {
   });
 
   describe("buildPushEventHeadline", () => {
-    it("strips traceability text from push headlines", () => {
+    it("strips traceability text from push headlines and keeps quantity", () => {
       expect(buildPushEventHeadline({
         species_summary: "Ahven: 15 kg · Erätunnus 10303-260411FPE39-6",
-      })).toBe("Ahven");
+      })).toBe("Ahven 15 kg");
     });
 
-    it("preserves product variants in push headlines", () => {
+    it("preserves product variants and quantity in push headlines", () => {
       expect(buildPushEventHeadline({
         species_summary: "Kuha filee: 15 kg",
-      })).toBe("Kuha filee");
+      })).toBe("Kuha filee 15 kg");
+    });
+
+    it("prefers total kilos when they are available", () => {
+      expect(buildPushEventHeadline({
+        species_summary: "Kuha: 15 kg",
+        total_kilos: 300,
+      })).toBe("Kuha 300 kg");
     });
 
     it("returns a default headline when species summary is missing", () => {

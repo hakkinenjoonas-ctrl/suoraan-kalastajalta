@@ -158,6 +158,26 @@ function stripOfferTraceabilityText(line) {
     .trim();
 }
 
+function getOfferQuantityHeadline(offer) {
+  const totalKilos = Number(offer?.total_kilos || 0);
+  if (Number.isFinite(totalKilos) && totalKilos > 0) {
+    return `${String(totalKilos).replace(".", ",")} kg`;
+  }
+
+  const firstLine = stripOfferTraceabilityText((String(offer?.species_summary || "").split("\n")[0] || "").trim());
+  const countMatch = firstLine.match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kpl(?:\s*\([^)]*\))?$/i);
+  if (countMatch) {
+    return `${String(countMatch[1] || "").replace(".", ",")} kpl`;
+  }
+
+  const kiloMatch = firstLine.match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kg(?:\s*\([^)]*\))?$/i);
+  if (kiloMatch) {
+    return `${String(kiloMatch[1] || "").replace(".", ",")} kg`;
+  }
+
+  return "";
+}
+
 export function getOfferSpeciesHeadline(summary, options = {}) {
   const hideTraceability = Boolean(options?.hideTraceability);
   const firstLine = (String(summary || "Kalaerä").split("\n")[0] || "Kalaerä");
@@ -195,7 +215,9 @@ export function offersShareSameLot(left, right) {
 }
 
 export function buildPushEventHeadline(offer) {
-  return getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true }) || "Kalaerä";
+  const speciesHeadline = getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true }) || "Kalaerä";
+  const quantityHeadline = getOfferQuantityHeadline(offer);
+  return quantityHeadline ? `${speciesHeadline} ${quantityHeadline}` : speciesHeadline;
 }
 
 export function getAcceptedInvoiceSourceLabel(offer) {
