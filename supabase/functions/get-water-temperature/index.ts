@@ -302,6 +302,146 @@ function extractWeatherCandidatesFromXml(xmlText: string, coords: Coordinates): 
   return extractWeatherCandidatesFromXmlWithMeta(xmlText, coords).candidates;
 }
 
+function parseObservedPropertyParams(href: string) {
+  const match = href.match(/[?&]param=([^&]+)/i);
+  if (!match) return [];
+  return decodeURIComponent(match[1])
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function parseScalarList(valueText: string) {
+  return valueText
+    .trim()
+    .split(/[,\s]+/)
+    .map((part) => Number(part))
+    .filter((part) => Number.isFinite(part));
+}
+
+function extractForecastCandidatesFromObservationXml(xmlText: string, coords: Coordinates) {
+  const xml = new DOMParser().parseFromString(xmlText, "application/xml");
+  const parseError = xml.querySelector("parsererror");
+  if (parseError) {
+    return {
+      candidates: [],
+      meta: {
+        rootElement: "parsererror",
+        exceptionText: parseError.textContent?.trim() || "",
+        memberCount: 0,
+        parameterNames: [],
+      },
+    };
+  }
+
+  const rootElement = xml.documentElement?.localName || xml.documentElement?.nodeName || "";
+  const exceptionTexts = Array.from(xml.getElementsByTagName("*"))
+    .filter((element) => (element.localName || "").toLowerCase() === "exceptiontext")
+    .map((element) => element.textContent?.trim() || "")
+    .filter(Boolean);
+
+  const observations = Array.from(xml.getElementsByTagName("*")).filter((element) => {
+    const local = (element.localName || "").toLowerCase();
+    return local === "pointtimeseriesobservation" || local === "gridseriesobservation";
+  });
+  const candidates: WeatherCandidate[] = [];
+  const allParams = new Set<string>();
+
+  for (const observation of observations) {
+    const observedPropertyElement = Array.from(observation.getElementsByTagName("*")).find(
+      (element) => (element.localName || "").toLowerCase() === "observedproperty",
+    );
+    const observedHref =
+      observedPropertyElement?.getAttribute("xlink:href") ||
+      observedPropertyElement?.getAttribute("href") ||
+      "";
+    const params = parseObservedPropertyParams(observedHref);
+    params.forEach((param) => allParams.add(param));
+    if (!params.length) continue;
+
+    const stationName =
+      getDescendantText(observation, ["name", "Name", "GeographicalName", "geographicalname", "Location"]) ||
+      "Tuntematon mittauspiste";
+    const posText = getDescendantText(observation, ["pos", "Pos"]);
+    const parsedCoords = parsePosText(posText) || coords;
+
+    const tvps = Array.from(observation.getElementsByTagName("*")).filter((element) => {
+      const local = (element.localName || "").toLowerCase();
+      return local === "measurementtvp" || local === "timeseriespoint";
+    });
+
+    for (const tvp of tvps) {
+      const timeText = getDescendantText(tvp, ["time", "Time", "timePosition", "TimePosition"]);
+      const valueText = getDescendantText(tvp, ["value", "Value"]);
+      if (!timeText || !valueText) continue;
+
+      const values = parseScalarList(valueText);
+      if (!values.length) continue;
+
+      const byParam = new Map<string, number>();
+      params.forEach((param, index) => {
+        if (index < values.length) byParam.set(param, values[index]);
+      });
+
+      const airTemperatureC =
+        byParam.get("Temperature") ??
+        byParam.get("temperature") ??
+        byParam.get("t2m") ??
+        null;
+      const windSpeedMs =
+        byParam.get("WindSpeedMS") ??
+        byParam.get("windspeedms") ??
+        byParam.get("ws_10min") ??
+        null;
+      const windDirectionDeg =
+        byParam.get("WindDirection") ??
+        byParam.get("winddirection") ??
+        byParam.get("wd_10min") ??
+        null;
+      const weatherSymbol =
+        byParam.get("WeatherSymbol3") ??
+        byParam.get("weathersymbol3") ??
+        null;
+
+      if (airTemperatureC == null || windSpeedMs == null) continue;
+
+      candidates.push({
+        airTemperatureC,
+        windSpeedMs,
+        windDirectionDeg,
+        weatherType:
+          weatherSymbol != null
+            ? (weatherSymbolMap[Math.round(weatherSymbol)] || `Sääsymboli ${Math.round(weatherSymbol)}`)
+            : "Säätyyppi ei saatavilla",
+        stationName,
+        stationLatitude: parsedCoords.lat,
+        stationLongitude: parsedCoords.lon,
+        stationDistanceKm: haversineKm(coords.lat, coords.lon, parsedCoords.lat, parsedCoords.lon),
+        observedAt: timeText,
+      });
+    }
+  }
+
+  candidates.sort((left, right) => {
+    const leftTime = Date.parse(left.observedAt);
+    const rightTime = Date.parse(right.observedAt);
+    const now = Date.now();
+    const leftDelta = Number.isFinite(leftTime) ? Math.abs(leftTime - now) : Number.MAX_SAFE_INTEGER;
+    const rightDelta = Number.isFinite(rightTime) ? Math.abs(rightTime - now) : Number.MAX_SAFE_INTEGER;
+    return leftDelta - rightDelta || left.stationDistanceKm - right.stationDistanceKm;
+  });
+
+  return {
+    candidates,
+    meta: {
+      rootElement,
+      exceptionText: exceptionTexts.join(" | "),
+      memberCount: observations.length,
+      parameterNames: Array.from(allParams).slice(0, 20),
+    },
+  };
+}
+
 function extractForecastCandidatesFromTimeValuePairXml(xmlText: string, coords: Coordinates) {
   const xml = new DOMParser().parseFromString(xmlText, "application/xml");
   const parseError = xml.querySelector("parsererror");
@@ -562,7 +702,10 @@ async function queryFmiWeather(coords: Coordinates, body: WeatherRequest) {
         candidates = extractWeatherCandidatesFromJson(payload, coords);
       } else {
         const xmlText = await response.text();
-        const extracted = extractForecastCandidatesFromTimeValuePairXml(xmlText, coords);
+        let extracted = extractForecastCandidatesFromObservationXml(xmlText, coords);
+        if (!extracted.candidates.length) {
+          extracted = extractForecastCandidatesFromTimeValuePairXml(xmlText, coords);
+        }
         candidates = extracted.candidates;
         debug.lastRootElement = extracted.meta.rootElement;
         debug.lastException = extracted.meta.exceptionText;
