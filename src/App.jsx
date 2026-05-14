@@ -6958,6 +6958,7 @@ export default function App() {
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [pendingEntriesScrollTarget, setPendingEntriesScrollTarget] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -7156,6 +7157,33 @@ export default function App() {
   const [sendInvoiceCopyToSelf, setSendInvoiceCopyToSelf] = useState(true);
   const [sendInvoiceCopyToAccountant, setSendInvoiceCopyToAccountant] = useState(false);
   const [accountFormDirty, setAccountFormDirty] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== "entries" || !pendingEntriesScrollTarget || typeof document === "undefined") return;
+
+    let cancelled = false;
+    let timeoutId = null;
+    const targetId = `catch-entry-${pendingEntriesScrollTarget}`;
+
+    const attemptScroll = (attempt = 0) => {
+      if (cancelled) return;
+      const target = document.getElementById(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        setPendingEntriesScrollTarget("");
+        return;
+      }
+      if (attempt >= 12) return;
+      timeoutId = window.setTimeout(() => attemptScroll(attempt + 1), 120);
+    };
+
+    timeoutId = window.setTimeout(() => attemptScroll(0), 80);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [activeTab, pendingEntriesScrollTarget, entries, search, entryScope]);
   const [accountBillingSameAsDelivery, setAccountBillingSameAsDelivery] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ newPassword: "", confirmPassword: "" });
   const [publicBatchData, setPublicBatchData] = useState(null);
@@ -13207,6 +13235,8 @@ export default function App() {
       }
     }
 
+    const savedCatchScrollTarget = String(rowsWithBatchIds?.[0]?.batch_id || "");
+
     try {
       const emailResult = await sendCatchOfferEmail({
         formState: form,
@@ -13304,6 +13334,7 @@ export default function App() {
       coldTransport: false,
     }));
     setSpeciesRows([createSpeciesRow()]);
+    setPendingEntriesScrollTarget(savedCatchScrollTarget);
     setRefreshTick((prev) => prev + 1);
     setActiveTab("entries");
   };
@@ -16243,7 +16274,7 @@ export default function App() {
                     ) : null}
                   </div>
                   {group.entries.map((entry) => (
-                    <div key={entry.id} style={styles.entry}>
+                    <div key={entry.id} id={`catch-entry-${entry.batchId || entry.id}`} style={styles.entry}>
                       <div style={styles.entryHeader}>
                         <div>
                           <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", lineHeight: 1.1, marginBottom: 6 }}>
