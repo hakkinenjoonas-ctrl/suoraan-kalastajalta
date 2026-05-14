@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "fi.suoraankalastajalta.app",
+      "sha256_cert_fingerprints": [
+        "8A:03:19:AF:3B:39:FF:D0:20:4A:0B:00:07:4F:66:01:11:8A:3F:51:DB:AB:BB:B9:8B:24:A4:7C:AD:9A:F8:E4"
+      ]
+    }
+  }
+]

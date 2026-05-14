@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { App as CapacitorApp } from "@capacitor/app";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
@@ -2216,6 +2217,36 @@ function getRequestedOfferId() {
   if (typeof window === "undefined") return "";
   const params = new URLSearchParams(window.location.search);
   return String(params.get("offer") || "").trim();
+}
+
+function applyIncomingAppUrl(urlString, handlers = {}) {
+  if (typeof window === "undefined" || !urlString) return;
+
+  let parsedUrl = null;
+  try {
+    parsedUrl = new URL(urlString);
+  } catch {
+    return;
+  }
+
+  const currentUrl = new URL(window.location.href);
+  const nextPath = `${parsedUrl.pathname || "/"}${parsedUrl.search || ""}${parsedUrl.hash || ""}`;
+  const currentPath = `${currentUrl.pathname || "/"}${currentUrl.search || ""}${currentUrl.hash || ""}`;
+  if (nextPath !== currentPath) {
+    window.history.replaceState({}, "", nextPath);
+  }
+
+  const nextParams = new URLSearchParams(parsedUrl.search || "");
+  const linkedOfferId = String(nextParams.get("offer") || "").trim();
+  const batchPathMatch = String(parsedUrl.pathname || "").match(/^\/batch\/(.+)$/);
+  const linkedBatchId = batchPathMatch ? decodeURIComponent(String(batchPathMatch[1] || "")).trim() : String(nextParams.get("batch") || "").trim();
+
+  if (linkedOfferId) {
+    handlers.setBuyerActiveOfferId?.(linkedOfferId);
+    handlers.setActiveTab?.("offers");
+  } else if (linkedBatchId) {
+    handlers.setActiveTab?.("offers");
+  }
 }
 
 function getCatchFormDefaultsStorageKey(profileLike) {
@@ -8361,8 +8392,53 @@ export default function App() {
 
     setBuyerActiveOfferId(linkedOffer.id);
 
-    setBuyerOffersFilter(getBuyerOffersFilterForStatus(linkedOffer.status));
+      setBuyerOffersFilter(getBuyerOffersFilterForStatus(linkedOffer.status));
   }, [requestedOfferId, profile?.role, buyerOffers]);
+
+  useEffect(() => {
+    if (!isNativeCapacitorApp()) return undefined;
+
+    const urlHandlers = {
+      setActiveTab,
+      setBuyerActiveOfferId,
+    };
+
+    const handleInitialUrl = async () => {
+      try {
+        const launchUrl = await CapacitorApp.getLaunchUrl();
+        const initialUrl = String(launchUrl?.url || "").trim();
+        if (initialUrl) {
+          applyIncomingAppUrl(initialUrl, urlHandlers);
+        }
+      } catch {
+        // ignore launch URL lookup failure
+      }
+    };
+
+    void handleInitialUrl();
+
+    let listenerHandle = null;
+    const registerListener = async () => {
+      try {
+        listenerHandle = await CapacitorApp.addListener("appUrlOpen", ({ url }) => {
+          const nextUrl = String(url || "").trim();
+          if (nextUrl) {
+            applyIncomingAppUrl(nextUrl, urlHandlers);
+          }
+        });
+      } catch {
+        listenerHandle = null;
+      }
+    };
+
+    void registerListener();
+
+    return () => {
+      if (listenerHandle?.remove) {
+        void listenerHandle.remove();
+      }
+    };
+  }, [setActiveTab, setBuyerActiveOfferId]);
 
   useEffect(() => {
     if (!publicBatchId) {

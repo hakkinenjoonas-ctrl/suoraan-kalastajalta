@@ -43,6 +43,14 @@ function formatPrice(value: unknown, unit = "kg") {
   return `${number.toLocaleString("fi-FI")} €/${unit} (ALV 0 %)`;
 }
 
+function formatGrossPrice(value: unknown, unit = "kg") {
+  if (value === null || value === undefined || value === "") return "-";
+  const number = Number(value);
+  if (Number.isNaN(number)) return safeString(value);
+  const gross = number * 1.135;
+  return `${gross.toLocaleString("fi-FI")} €/${unit} (ALV 13,5 %)`;
+}
+
 function parsePriceFromNotes(notesValue: unknown) {
   const match = safeString(notesValue).match(/Hinta:\s*([0-9]+(?:[.,][0-9]+)?)\s*€/i);
   if (!match) return "";
@@ -261,10 +269,12 @@ Deno.serve(async (req) => {
     const area = safeString(entry.area);
     const gear = safeString(entry.gear);
     const primaryUnit = safeString(((rawLineItems[0] || {}) as Record<string, unknown>).price_unit || "kg");
-    const price = formatPrice(
-      entry.price_per_kg === null || entry.price_per_kg === undefined || entry.price_per_kg === "" ? parsePriceFromNotes(entry.notes) : entry.price_per_kg,
-      primaryUnit,
-    );
+    const priceSource = entry.price_per_kg === null || entry.price_per_kg === undefined || entry.price_per_kg === "" ? parsePriceFromNotes(entry.notes) : entry.price_per_kg;
+    const price = formatPrice(priceSource, primaryUnit);
+    const grossPrice = formatGrossPrice(priceSource, primaryUnit);
+    const priceWithVat = price !== "-" && grossPrice !== "-"
+      ? `${price} / ${grossPrice}`
+      : price;
     const sellerName = "Anonyymi kalastaja";
     const batchId = safeString(entry.batch_id);
     const extraNotes = formatAdditionalNotes(entry.notes);
@@ -297,7 +307,7 @@ Deno.serve(async (req) => {
       buildFieldRow(dateLabel, date),
       buildFieldRow("Vesialue", area),
       buildFieldRow("Pyydys", gear || "-"),
-      !mixedOffer ? buildFieldRow("Hinta", price) : "",
+      !mixedOffer ? buildFieldRow("Hinta", priceWithVat) : "",
       batchId && !mixedOffer ? buildFieldRow("Erätunnus", batchId) : "",
       buildFieldRow("Tarjoaja", sellerName),
       ...additionalNoteRows.map((item) => buildFieldRow(item.label, item.value)),
@@ -314,6 +324,7 @@ Deno.serve(async (req) => {
       species,
       kilos,
       price,
+      grossPrice,
       batchId,
     });
 
@@ -344,7 +355,7 @@ Deno.serve(async (req) => {
         `${dateLabel}: ${date || "-"}`,
         `Vesialue: ${area || "-"}`,
         `Pyydys: ${gear || "-"}`,
-        !mixedOffer ? `Hinta: ${price}` : null,
+        !mixedOffer ? `Hinta: ${priceWithVat}` : null,
         routePrice !== "-" ? `Toimitushinta: ${routePrice}` : null,
         totalPrice !== "-" ? `Kokonaishinta: ${totalPrice}` : null,
         deliveredPricePerKg !== "-" ? `Toimitettuna: ${deliveredPricePerKg}` : null,
