@@ -35,6 +35,33 @@ function euro(value) {
   return `${number.toLocaleString("fi-FI")} €`;
 }
 
+function OfferHeadlineBlock({
+  title,
+  date,
+  quantity,
+  accent = "#0f172a",
+  background = "#f8fafc",
+}) {
+  return (
+    <div
+      style={{
+        marginBottom: 10,
+        padding: "14px 16px",
+        borderRadius: 16,
+        background,
+        border: "1px solid #dbe4ee",
+      }}
+    >
+      <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05, color: accent }}>
+        {title || "Kalaerä"}
+      </div>
+      <div style={{ marginTop: 8, fontSize: 16, fontWeight: 700, color: "#334155" }}>
+        {[date, quantity].filter(Boolean).join(" · ") || "-"}
+      </div>
+    </div>
+  );
+}
+
 function CounterOfferHighlight({ offer, netPriceLabel, grossPriceLabel }) {
   if (offer?.counter_price_per_kg === "" || offer?.counter_price_per_kg == null) return null;
 
@@ -161,9 +188,12 @@ export function OfferedEntriesSummarySection({
       ) : (
         offeredEntriesSummary.map((item) => (
           <div key={item.id} style={{ ...styles.entry, background: "#f8fafc" }}>
+            <OfferHeadlineBlock
+              title={item.species}
+              date={item.date || "-"}
+              quantity={item.kilos ? `${item.kilos} kg` : "-"}
+            />
             <div style={styles.entryBadges}>
-              <span style={styles.badge}>{item.species}</span>
-              <span style={styles.badge}>{item.kilos} kg</span>
               {item.reservationStatus === "reserved" ? <span style={buyerStatusBadgeStyle("reserved", styles.badge)}>Varattu</span> : null}
               {item.reservationStatus === "" ? <span style={styles.badge}>Odottaa ostajia</span> : null}
               {item.reservationStatus === "reserved" ? (
@@ -384,9 +414,12 @@ export function OfferedEntriesDetailsSection({
             <div key={entry.id} id={`offer-entry-${entry.id}`} style={styles.entry}>
               <div style={styles.entryHeader}>
                 <div>
+                  <OfferHeadlineBlock
+                    title={formatSpeciesForSale(entry.species)}
+                    date={entry.date || "-"}
+                    quantity={entry.kilos !== "" && entry.kilos != null ? `${entry.kilos} kg` : "-"}
+                  />
                   <div style={styles.entryBadges}>
-                    <span style={styles.badge}>{formatSpeciesForSale(entry.species)}</span>
-                    <span style={styles.badge}>{entry.kilos} kg</span>
                     <span style={styles.badge}>{entry.ownerName}</span>
                     {reservation?.status === "reserved" ? <span style={buyerStatusBadgeStyle("reserved", styles.badge)}>Varattu</span> : null}
                     {reservation?.status === "accepted" ? <span style={buyerStatusBadgeStyle("accepted", styles.badge)}>Myyty</span> : null}
@@ -519,6 +552,13 @@ export function OfferedEntriesDetailsSection({
 
                           <div style={{ ...styles.grid2, marginBottom: 10 }}>
                             <div>
+                              <OfferHeadlineBlock
+                                title={isMixedOffer(offer) ? "Monilajinen erä" : (formatSpeciesSummaryText(offer.species_summary, { hideCatchDate: true, hideTraceability: !showTraceability }) || "Kalaerä")}
+                                date={getOfferSummaryCatchDates(offer.species_summary).join(", ") || "-"}
+                                quantity={getOfferAmountDisplay(offer, offer.total_kilos)}
+                                accent={isAccepted ? "#166534" : "#0f172a"}
+                                background={isAccepted ? "#f0fdf4" : "#f8fafc"}
+                              />
                               <div style={styles.muted}>
                                 <strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideCatchDate: !isMixedOffer(offer) }) || "-"}
                               </div>
