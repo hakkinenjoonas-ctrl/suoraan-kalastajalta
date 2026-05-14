@@ -66,6 +66,49 @@ function extractCatchDates(value: unknown) {
   return Array.from(new Set(matches)).join(", ");
 }
 
+function formatAcceptedPrice(value: number) {
+  return value.toLocaleString("fi-FI");
+}
+
+function calculateAcceptedGrossPrice(value: number) {
+  return value * 1.135;
+}
+
+function buildAcceptedSpeciesSummary(summary: unknown, acceptedPrice: unknown, unit: string) {
+  const parsedAcceptedPrice = Number(acceptedPrice);
+  if (!Number.isFinite(parsedAcceptedPrice) || parsedAcceptedPrice <= 0) {
+    return String(summary || "Kalaera");
+  }
+
+  const acceptedNetText = `${formatAcceptedPrice(parsedAcceptedPrice)} € / ${unit}`;
+  const acceptedGrossText = `${formatAcceptedPrice(calculateAcceptedGrossPrice(parsedAcceptedPrice))} € / ${unit}`;
+
+  return String(summary || "Kalaera")
+    .split("\n")
+    .map((line) => {
+      const rawLine = String(line || "").trim();
+      if (!rawLine) return rawLine;
+
+      const hasNetPrice = /Hinta\s+ALV\s+0\s*%/i.test(rawLine);
+      const hasGrossPrice = /Hinta\s+sis\.\s*ALV/i.test(rawLine);
+      if (!hasNetPrice && !hasGrossPrice) return rawLine;
+
+      let updatedLine = rawLine
+        .replace(/Hinta\s+ALV\s+0\s*%\s+[^·]+/gi, `Hinta ALV 0 % ${acceptedNetText}`)
+        .replace(/Hinta\s+sis\.\s*ALV\s+[0-9]+(?:[.,][0-9]+)?\s*%\s+[^·]+/gi, `Hinta sis. ALV 13,5 % ${acceptedGrossText}`);
+
+      if (!/Hinta\s+ALV\s+0\s*%/i.test(updatedLine)) {
+        updatedLine = `${updatedLine} · Hinta ALV 0 % ${acceptedNetText}`;
+      }
+      if (!/Hinta\s+sis\.\s*ALV/i.test(updatedLine)) {
+        updatedLine = `${updatedLine} · Hinta sis. ALV 13,5 % ${acceptedGrossText}`;
+      }
+
+      return updatedLine;
+    })
+    .join("\n");
+}
+
 async function fetchImageAsDataUrl(url: string) {
   if (!url) return "";
   try {
@@ -106,7 +149,8 @@ Deno.serve(async (req) => {
     const sellerEmail = String(offer.sellerEmail || "").trim();
     const sellerPhone = String(offer.sellerPhone || "").trim();
     const sellerCommercialFishingId = String(offer.sellerCommercialFishingId || "").trim();
-    const speciesSummary = String(offer.species_summary || "Kalaera");
+    const acceptedCounterPrice = offer.counter_price_per_kg;
+    const speciesSummary = buildAcceptedSpeciesSummary(offer.species_summary, acceptedCounterPrice, isCrayfishOffer(offer.species_summary) ? "kpl" : "kg");
     const priceUnit = isCrayfishOffer(speciesSummary) ? "EUR/kpl" : "EUR/kg";
     const scientificNames = extractScientificNames(speciesSummary);
     const catchDates = extractCatchDates(speciesSummary);
@@ -117,9 +161,9 @@ Deno.serve(async (req) => {
     const earliestDeliveryDate = String(offer.earliest_delivery_date || "").trim();
     const coldTransport = offer.cold_transport ? "Kyllä" : "Ei";
     const kilos = String(offer.accepted_kilos || offer.reserved_kilos || offer.total_kilos || "-");
-    const pricePerKg = offer.counter_price_per_kg == null || offer.counter_price_per_kg === ""
+    const pricePerKg = acceptedCounterPrice == null || acceptedCounterPrice === ""
       ? "-"
-      : `${offer.counter_price_per_kg} ${priceUnit}`;
+      : `${acceptedCounterPrice} ${priceUnit}`;
     const tradeValue = String(offer.trade_value || "-");
     const batchId = String(offer.batch_id || "").trim();
     const qrImageUrl = String(offer.qr_image_url || "").trim();
