@@ -62,6 +62,24 @@ function OfferHeadlineBlock({
   );
 }
 
+function BatchIdLine({ batchId, styles, strongLabel = true }) {
+  if (!batchId) return null;
+  return (
+    <div
+      style={{
+        ...styles.muted,
+        fontSize: 12,
+        lineHeight: 1.35,
+        overflowWrap: "anywhere",
+        wordBreak: "break-word",
+      }}
+    >
+      {strongLabel ? <strong>Erätunnus:</strong> : "Erätunnus:"}{" "}
+      <span>{batchId}</span>
+    </div>
+  );
+}
+
 function CounterOfferHighlight({ offer, netPriceLabel, grossPriceLabel }) {
   if (offer?.counter_price_per_kg === "" || offer?.counter_price_per_kg == null) return null;
 
@@ -152,14 +170,14 @@ export function LinkedBuyerOfferCard({
           <div key={`${linkedBuyerOffer.id}-${item.batchId || item.label}`} style={{ ...styles.entry, background: "#fff", padding: 12 }}>
             <div style={styles.muted}><strong>{item.label || "Erä"}</strong></div>
             {item.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {item.catchDate}</div> : null}
-            {item.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> {item.batchId}</div> : null}
+            <BatchIdLine batchId={item.batchId} styles={styles} />
             {item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
           </div>
         ))
         : (
           <>
             {getOfferSummaryBatchItems(linkedBuyerOffer.species_summary)[0]?.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryBatchItems(linkedBuyerOffer.species_summary)[0].catchDate}</div> : null}
-            {linkedBuyerOffer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {linkedBuyerOffer.batch_id}</div> : null}
+            <BatchIdLine batchId={linkedBuyerOffer.batch_id} styles={styles} />
           </>
         )}
       <div style={styles.muted}><strong>Ostaja:</strong> {shouldRevealBuyerIdentity(linkedBuyerOffer.status) ? (linkedBuyerOffer.buyer_company_name || linkedBuyerOffer.buyer_email || "Ostaja") : buyerTypeLabel(linkedBuyerOffer.buyer_type)}</div>
@@ -326,13 +344,13 @@ export function BuyerResponsesSection({
                     <div key={`${offer.id}-${item.batchId || item.label}`} style={{ ...styles.entry, background: "#fff", padding: 12, marginTop: 8, marginBottom: 8 }}>
                       <div style={styles.muted}><strong>{item.label || "Erä"}</strong></div>
                       {item.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {item.catchDate}</div> : null}
-                      {item.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> {item.batchId}</div> : null}
+                      <BatchIdLine batchId={item.batchId} styles={styles} />
                       {item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                     </div>
                   ))
                   : (
                     <>
-                      {offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
+                      <BatchIdLine batchId={offer.batch_id} styles={styles} />
                     </>
                   )}
                 {!isMixedOffer(offer) && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
@@ -436,7 +454,7 @@ export function OfferedEntriesDetailsSection({
                   </div>
                   <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                   {entry.landingPlace ? <div style={styles.muted}>Purkamispaikka: {entry.landingPlace}</div> : null}
-                  {entry.batchId ? <div style={styles.muted}>Erätunnus: {entry.batchId}</div> : null}
+                  <BatchIdLine batchId={entry.batchId} styles={styles} strongLabel={false} />
                   {entry.batchId ? <div style={styles.qrBlock}><img src={getBatchQrImageUrl(entry.batchId)} alt={`QR ${entry.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                   <div style={styles.muted}>Pyydys: {formatCatchGearDisplay(entry)}</div>
                   {entry.gearCount ? <div style={styles.muted}>Pyydysten määrä: {entry.gearCount}</div> : null}
@@ -575,13 +593,13 @@ export function OfferedEntriesDetailsSection({
                                   <div key={`${offer.id}-${item.batchId || item.label}`} style={{ ...styles.entry, background: "#fff", padding: 12, marginTop: 8, marginBottom: 8 }}>
                                     <div style={styles.muted}><strong>{item.label || "Erä"}</strong></div>
                                     {item.catchDate ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {item.catchDate}</div> : null}
-                                    {showTraceability && item.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> {item.batchId}</div> : null}
+                                    {showTraceability ? <BatchIdLine batchId={item.batchId} styles={styles} /> : null}
                                     {showTraceability && item.batchId ? <div style={{ ...styles.qrBlock, marginTop: 8 }}><img src={getBatchQrImageUrl(item.batchId)} alt={`QR ${item.batchId}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                                   </div>
                                 ))
                                 : (
                                   <>
-                                    {showTraceability && offer.batch_id ? <div style={styles.muted}><strong>Erätunnus:</strong> {offer.batch_id}</div> : null}
+                                    {showTraceability ? <BatchIdLine batchId={offer.batch_id} styles={styles} /> : null}
                                   </>
                                 )}
                               {!isMixedOffer(offer) && showTraceability && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
