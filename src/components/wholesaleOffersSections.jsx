@@ -35,6 +35,48 @@ function euro(value) {
   return `${number.toLocaleString("fi-FI")} €`;
 }
 
+function CounterOfferHighlight({ offer, netPriceLabel, grossPriceLabel }) {
+  if (offer?.counter_price_per_kg === "" || offer?.counter_price_per_kg == null) return null;
+
+  const vatLabel = (FISH_VAT_RATE * 100).toLocaleString("fi-FI", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  const isAccepted = isBuyerOfferAccepted(offer?.status);
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        marginBottom: 10,
+        padding: "14px 16px",
+        borderRadius: 14,
+        background: isAccepted ? "#ecfdf5" : "#eff6ff",
+        border: `2px solid ${isAccepted ? "#86efac" : "#93c5fd"}`,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 800,
+          letterSpacing: "0.03em",
+          textTransform: "uppercase",
+          color: isAccepted ? "#166534" : "#1d4ed8",
+          marginBottom: 8,
+        }}
+      >
+        {isAccepted ? "Hyväksytty kauppahinta" : "Ostajan vastatarjous"}
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15, color: "#0f172a", marginBottom: 6 }}>
+        Vastatarjous ALV 0 %: {netPriceLabel(offer.counter_price_per_kg)}
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.2, color: "#334155" }}>
+        {`Vastatarjous sis. ALV ${vatLabel} %:`} {grossPriceLabel(offer.counter_price_per_kg)}
+      </div>
+    </div>
+  );
+}
+
 export function WholesaleOffersOverviewSection({
   actionRequiredCount,
   openEntriesCount,
@@ -258,8 +300,11 @@ export function BuyerResponsesSection({
                   )}
                 {!isMixedOffer(offer) && offer.batch_id ? <div style={{ ...styles.qrBlock, marginTop: 8, marginBottom: 8 }}><img src={getBatchQrImageUrl(offer.batch_id)} alt={`QR ${offer.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
                 <div style={styles.muted}><strong>Määrä:</strong> {getOfferAmountDisplay(offer, offer.total_kilos)}</div>
-                {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>Vastatarjous ALV 0 %:</strong> {netPriceLabel(offer.counter_price_per_kg)}</div> : null}
-                {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? <div style={styles.muted}><strong>{`Vastatarjous sis. ALV ${(FISH_VAT_RATE * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %:`}</strong> {grossPriceLabel(offer.counter_price_per_kg)}</div> : null}
+                <CounterOfferHighlight
+                  offer={offer}
+                  netPriceLabel={netPriceLabel}
+                  grossPriceLabel={grossPriceLabel}
+                />
                 {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? <div style={styles.muted}><strong>Varattu:</strong> {getOfferAmountDisplay(offer, offer.reserved_kilos)}</div> : null}
                 {offer.buyer_message ? <div style={styles.muted}><strong>Viesti:</strong> {offer.buyer_message}</div> : null}
                 {revealIdentity ? <div style={styles.muted}><strong>Ostaja:</strong> {offer.buyer_company_name || offer.buyer_contact_name || offer.buyer_email || "-"}</div> : null}
@@ -497,8 +542,11 @@ export function OfferedEntriesDetailsSection({
                               <div style={styles.muted}><strong>Alue:</strong> {offer.area || "-"}{entry.municipality ? ` · ${entry.municipality}` : ""}{offer.spot ? ` / ${offer.spot}` : ""}</div>
                             </div>
                             <div>
-                              <div style={styles.muted}><strong>Vastatarjous ALV 0 %:</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? netPriceLabel(offer.counter_price_per_kg) : "-"}</div>
-                              <div style={styles.muted}><strong>{`Vastatarjous sis. ALV ${(FISH_VAT_RATE * 100).toLocaleString("fi-FI", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %:`}</strong> {offer.counter_price_per_kg !== "" && offer.counter_price_per_kg != null ? grossPriceLabel(offer.counter_price_per_kg) : "-"}</div>
+                              <CounterOfferHighlight
+                                offer={offer}
+                                netPriceLabel={netPriceLabel}
+                                grossPriceLabel={grossPriceLabel}
+                              />
                               {isBuyerOfferAccepted(offer.status) ? <div style={styles.muted}><strong>Kaupan arvo:</strong> {euro(calculateCommissionDetails(offer).tradeValue)}</div> : null}
                               {isBuyerOfferAccepted(offer.status) ? <div style={styles.muted}><strong>Komissio ({(COMMISSION_RATE * 100).toFixed(1)} %):</strong> {euro(calculateCommissionDetails(offer).commissionValue)}</div> : null}
                               <div style={styles.muted}><strong>Varattu:</strong> {offer.reserved_kilos !== "" && offer.reserved_kilos != null ? getOfferAmountDisplay(offer, offer.reserved_kilos) : "-"}</div>
