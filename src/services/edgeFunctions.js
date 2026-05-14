@@ -46,7 +46,3 @@ export async function invokeBulkOfferDispatch(accessToken, payload) {
 export async function invokeAdminDeleteEntity(accessToken, payload) {
   return invokeEdgeFunctionAuthenticated("admin-delete-entity", payload, accessToken);
 }
-
-export async function fetchWaterTemperature(accessToken, payload) {
-  return invokeEdgeFunctionAuthenticated("get-water-temperature", payload, accessToken);
-}
