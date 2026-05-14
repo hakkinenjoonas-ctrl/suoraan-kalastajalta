@@ -5845,6 +5845,20 @@ function getSellerInvoicePayload(offer, sellerProfile) {
   };
 }
 
+function formatInvoiceLineItemsSummary(lineItems, vatRate) {
+  const normalizedVatRate = Number(vatRate || 0);
+  const rows = Array.isArray(lineItems) ? lineItems : [];
+  const visibleRows = rows.filter((item) => String(item?.description || "").trim() && String(item?.description || "").trim().toLowerCase() !== "toimituskulu");
+  if (visibleRows.length === 0) return "-";
+  return visibleRows.map((item) => {
+    const description = String(item.description || "Kalaerä").trim();
+    const quantityDisplay = String(item.quantityDisplay || "-").trim();
+    const unitPrice = Number(item.unitPrice || 0);
+    const unitGrossPrice = Number(item.unitGrossPrice || (unitPrice * (1 + normalizedVatRate)) || 0);
+    return `${description}: ${quantityDisplay} · Hinta ALV 0 % ${euro(unitPrice)} / ${item.unit || "kg"} · Hinta sis. ALV ${(normalizedVatRate * 100).toLocaleString("fi-FI")} % ${euro(unitGrossPrice)} / ${item.unit || "kg"}`;
+  }).join("\n");
+}
+
 async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   const invoice = getSellerInvoicePayload(offer, sellerProfile);
   const documentKind = options.documentKind === "reminder" ? "reminder" : "invoice";
@@ -6822,7 +6836,7 @@ function SellerBillingView({
               </div>
 
               <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>
-                <strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary) || "-"}
+                <strong>Erä:</strong> {formatInvoiceLineItemsSummary(invoicePayload.lineItems, invoicePayload.vatRate)}
               </div>
               {getOfferSummaryCatchDates(offer.species_summary).length > 0 ? (
                 <div style={styles.muted}>
@@ -14080,7 +14094,7 @@ export default function App() {
                     </div>
 
                     <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>
-                      <strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideTraceability: false }) || "-"}
+                      <strong>Erä:</strong> {formatInvoiceLineItemsSummary(invoicePayload.lineItems, invoicePayload.vatRate)}
                     </div>
                     {invoicePayload.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{invoicePayload.batchId}</span></div> : null}
                     {invoicePayload.catchDates.length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {invoicePayload.catchDates.join(", ")}</div> : null}
