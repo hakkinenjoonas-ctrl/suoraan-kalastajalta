@@ -312,6 +312,13 @@ export function BuyerResponsesSection({
                 </div>
               </div>
               <div>
+                <OfferHeadlineBlock
+                  title={isMixedOffer(offer) ? "Monilajinen erä" : (formatSpeciesSummaryText(offer.species_summary, { hideCatchDate: true, hideTraceability: !isBuyerOfferAccepted(offer.status) }) || "Kalaerä")}
+                  date={getOfferSummaryCatchDates(offer.species_summary).join(", ") || "-"}
+                  quantity={getOfferAmountDisplay(offer, offer.total_kilos)}
+                  accent={isAccepted ? "#0f766e" : "#0f172a"}
+                  background={isAccepted ? "#f0fdfa" : "#f8fafc"}
+                />
                 <div style={styles.muted}><strong>Erä:</strong> {formatSpeciesSummaryText(offer.species_summary, { hideTraceability: !isBuyerOfferAccepted(offer.status) }) || "-"}</div>
                 {getOfferSummaryCatchDates(offer.species_summary).length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {getOfferSummaryCatchDates(offer.species_summary).join(", ")}</div> : null}
                 {isMixedOffer(offer)
