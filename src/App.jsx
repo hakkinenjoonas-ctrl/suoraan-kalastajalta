@@ -1772,13 +1772,25 @@ async function presentFileBlob(blob, fileName, options = {}) {
 
   const blobUrl = URL.createObjectURL(new Blob([blob], { type: mimeType }));
   if (browserAction === "open") {
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const targetWindow = options.targetWindow && !options.targetWindow.closed
+      ? options.targetWindow
+      : null;
+    if (targetWindow) {
+      targetWindow.location.replace(blobUrl);
+      try {
+        targetWindow.focus();
+      } catch {
+        // ignore focus failures
+      }
+    } else {
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   } else {
     const link = document.createElement("a");
     link.href = blobUrl;
@@ -1808,7 +1820,21 @@ async function presentPdfDocument(doc, fileName, options = {}) {
     nativeFileName: options.nativeFileName,
     dedupeKey: options.dedupeKey,
     skipDuplicateGuard: options.skipDuplicateGuard,
+    targetWindow: options.targetWindow,
   });
+}
+
+function openPendingPdfWindow() {
+  if (typeof window === "undefined" || isNativeCapacitorApp()) return null;
+  const pendingWindow = window.open("", "_blank", "noopener,noreferrer");
+  if (!pendingWindow) return null;
+  try {
+    pendingWindow.document.write(`<!doctype html><html lang="fi"><head><meta charset="utf-8" /><title>Avataan PDF...</title></head><body style="font-family: Arial, sans-serif; padding: 24px; color: #0f172a;">Avataan lasku-PDF...</body></html>`);
+    pendingWindow.document.close();
+  } catch {
+    // ignore placeholder rendering failures
+  }
+  return pendingWindow;
 }
 
 async function fetchImageDataUrl(url) {
@@ -6053,15 +6079,25 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   return { doc, invoice };
 }
 
-async function openSellerInvoicePdf(offer, sellerProfile) {
+async function openSellerInvoicePdf(offer, sellerProfile, options = {}) {
   const { doc, invoice } = await buildSellerInvoicePdfDoc(offer, sellerProfile);
-  await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`, { browserAction: "open" });
+  await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`, {
+    browserAction: "open",
+    targetWindow: options.targetWindow,
+    dedupeKey: options.dedupeKey,
+    skipDuplicateGuard: options.skipDuplicateGuard,
+  });
   return invoice;
 }
 
-async function openSellerGroupInvoicePdf(offers, sellerProfile) {
+async function openSellerGroupInvoicePdf(offers, sellerProfile, options = {}) {
   const { doc, invoice } = await buildSellerGroupInvoicePdfDoc(offers, sellerProfile);
-  await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`, { browserAction: "open" });
+  await presentPdfDocument(doc, `${invoice.invoiceNumber}.pdf`, {
+    browserAction: "open",
+    targetWindow: options.targetWindow,
+    dedupeKey: options.dedupeKey,
+    skipDuplicateGuard: options.skipDuplicateGuard,
+  });
   return invoice;
 }
 
@@ -11688,7 +11724,11 @@ export default function App() {
       return;
     }
     setAuthError("");
-    await openSellerInvoicePdf(offer, profile);
+    const targetWindow = openPendingPdfWindow();
+    await openSellerInvoicePdf(offer, profile, {
+      targetWindow,
+      dedupeKey: `seller-invoice-view-${String(offer?.id || offer?.batch_id || "invoice")}`,
+    });
   };
 
   const handleOpenBuyerInvoicePdf = async (offer) => {
@@ -11712,9 +11752,20 @@ export default function App() {
     }
 
     setAuthError("");
+    const targetWindow = openPendingPdfWindow();
     try {
-      await openSellerInvoicePdf(offer, sellerProfileLike);
+      await openSellerInvoicePdf(offer, sellerProfileLike, {
+        targetWindow,
+        dedupeKey: `buyer-invoice-view-${String(offer?.id || offer?.batch_id || "invoice")}`,
+      });
     } catch (error) {
+      if (targetWindow && !targetWindow.closed) {
+        try {
+          targetWindow.close();
+        } catch {
+          // ignore close failures
+        }
+      }
       setAuthError(`Lasku-PDF:n avaaminen epäonnistui: ${String(error?.message || error)}`);
     }
   };
