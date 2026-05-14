@@ -5801,12 +5801,12 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   const pageBottomY = 287;
   const lineHeight = 4.6;
   const tableBottomLimit = 207;
-  const quantityX = 104;
-  const unitPriceNetX = 124;
-  const unitPriceGrossX = 144;
-  const vatAmountX = 160;
-  const totalNetX = 176;
-  const totalGrossX = rightX - 2;
+  const quantityX = 102;
+  const unitPriceNetX = 121;
+  const unitPriceGrossX = 140;
+  const vatAmountX = 156;
+  const totalNetX = 172;
+  const totalGrossX = rightX;
   const drawInvoiceTableHeader = (headerY) => {
     doc.setFillColor(15, 23, 42);
     doc.rect(leftX, headerY - 6, 178, 9, "F");
@@ -5895,7 +5895,7 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
   doc.setFontSize(10);
   doc.setTextColor(15, 23, 42);
   invoice.lineItems.forEach((item) => {
-    const itemLines = doc.splitTextToSize(item.description, 90);
+    const itemLines = doc.splitTextToSize(item.description, 74);
     const rowHeight = Math.max(10, (itemLines.length * lineHeight) + 4);
     if (y + rowHeight > tableBottomLimit) {
       doc.addPage("a4", "portrait");
@@ -5907,13 +5907,16 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
       doc.setTextColor(15, 23, 42);
     }
     const textY = y + 3.5;
+    doc.setFontSize(10);
     doc.text(itemLines, leftX + 2, textY);
+    doc.setFontSize(8.4);
     doc.text(item.quantityDisplay || "-", quantityX, textY, { align: "right" });
     doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", unitPriceNetX, textY, { align: "right" });
     doc.text(item.unitGrossPrice > 0 ? euro(item.unitGrossPrice) : "-", unitPriceGrossX, textY, { align: "right" });
     doc.text(euro(item.vatAmount || 0), vatAmountX, textY, { align: "right" });
     doc.text(euro(item.lineTotal || 0), totalNetX, textY, { align: "right" });
     doc.text(euro(item.grossTotal || 0), totalGrossX, textY, { align: "right" });
+    doc.setFontSize(10);
     doc.setDrawColor(226, 232, 240);
     doc.line(leftX, y + rowHeight, rightX, y + rowHeight);
     y += rowHeight;
@@ -5931,13 +5934,16 @@ async function buildSellerInvoicePdfDoc(offer, sellerProfile, options = {}) {
       doc.setTextColor(15, 23, 42);
     }
     const deliveryTextY = y + 3.5;
+    doc.setFontSize(10);
     doc.text("Toimituskulu", leftX + 2, deliveryTextY);
+    doc.setFontSize(8.4);
     doc.text("-", quantityX, deliveryTextY, { align: "right" });
     doc.text("-", unitPriceNetX, deliveryTextY, { align: "right" });
     doc.text("-", unitPriceGrossX, deliveryTextY, { align: "right" });
     doc.text(euro(invoice.deliveryVatAmount || 0), vatAmountX, deliveryTextY, { align: "right" });
     doc.text(euro(invoice.deliveryCost), totalNetX, deliveryTextY, { align: "right" });
     doc.text(euro((invoice.deliveryCost || 0) + (invoice.deliveryVatAmount || 0)), totalGrossX, deliveryTextY, { align: "right" });
+    doc.setFontSize(10);
     doc.setDrawColor(226, 232, 240);
     doc.line(leftX, y + deliveryRowHeight, rightX, y + deliveryRowHeight);
     y += deliveryRowHeight;
@@ -6204,12 +6210,12 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
   const rightX = 194;
   const lineHeight = 4.6;
   const tableBottomLimit = 207;
-  const quantityX = 104;
-  const unitPriceNetX = 124;
-  const unitPriceGrossX = 144;
-  const vatAmountX = 160;
-  const totalNetX = 176;
-  const totalGrossX = rightX - 2;
+  const quantityX = 102;
+  const unitPriceNetX = 121;
+  const unitPriceGrossX = 140;
+  const vatAmountX = 156;
+  const totalNetX = 172;
+  const totalGrossX = rightX;
   const pageBottomY = 279;
 
   const drawInvoiceTableHeader = (headerY) => {
@@ -6297,8 +6303,8 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
   doc.setTextColor(15, 23, 42);
 
   invoice.lineItems.forEach((item) => {
-    const titleLines = doc.splitTextToSize(item.description, 76);
-    const detailLines = item.detailLine ? doc.splitTextToSize(String(item.detailLine), 76) : [];
+    const titleLines = doc.splitTextToSize(item.description, 70);
+    const detailLines = item.detailLine ? doc.splitTextToSize(String(item.detailLine), 70) : [];
     const rowHeight = Math.max(10, ((titleLines.length + detailLines.length) * lineHeight) + 4);
     if (y + rowHeight > tableBottomLimit) {
       doc.addPage("a4", "portrait");
@@ -6321,12 +6327,14 @@ async function buildSellerGroupInvoicePdfDoc(offers, sellerProfile, options = {}
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(9.2);
     }
+    doc.setFontSize(8.2);
     doc.text(item.quantityDisplay || "-", quantityX, textY, { align: "right" });
     doc.text(item.unitPrice > 0 ? euro(item.unitPrice) : "-", unitPriceNetX, textY, { align: "right" });
     doc.text(item.unitGrossPrice > 0 ? euro(item.unitGrossPrice) : "-", unitPriceGrossX, textY, { align: "right" });
     doc.text(euro(item.vatAmount || 0), vatAmountX, textY, { align: "right" });
     doc.text(euro(item.lineTotal || 0), totalNetX, textY, { align: "right" });
     doc.text(euro(item.grossTotal || 0), totalGrossX, textY, { align: "right" });
+    doc.setFontSize(9.2);
     doc.setDrawColor(226, 232, 240);
     doc.line(leftX, y + rowHeight, rightX, y + rowHeight);
     y += rowHeight;
@@ -11883,6 +11891,8 @@ export default function App() {
   const runBuyerOfferMutation = async ({ action, offer, payload, fallbackPatch, skipRefresh = false, applyLocalOfferUpdate = null }) => {
     let result = null;
 
+    setAuthError("");
+
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData?.session?.access_token;
@@ -11918,6 +11928,7 @@ export default function App() {
         await refreshBuyerOffers();
         setRefreshTick((prev) => prev + 1);
       }
+      setAuthError("");
       return true;
     }
 
@@ -11943,6 +11954,7 @@ export default function App() {
       await refreshBuyerOffers();
       setRefreshTick((prev) => prev + 1);
     }
+    setAuthError("");
     return true;
   };
 
