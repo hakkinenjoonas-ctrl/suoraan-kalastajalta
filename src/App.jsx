@@ -1771,15 +1771,13 @@ async function presentFileBlob(blob, fileName, options = {}) {
 
   const blobUrl = URL.createObjectURL(new Blob([blob], { type: mimeType }));
   if (browserAction === "open") {
-    const openedWindow = window.open(blobUrl, "_blank", "noopener,noreferrer");
-    if (!openedWindow) {
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   } else {
     const link = document.createElement("a");
     link.href = blobUrl;
