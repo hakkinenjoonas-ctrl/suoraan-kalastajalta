@@ -1826,7 +1826,7 @@ async function presentPdfDocument(doc, fileName, options = {}) {
 
 function openPendingPdfWindow() {
   if (typeof window === "undefined" || isNativeCapacitorApp()) return null;
-  const pendingWindow = window.open("", "_blank", "noopener,noreferrer");
+  const pendingWindow = window.open("about:blank", "_blank");
   if (!pendingWindow) return null;
   try {
     pendingWindow.document.write(`<!doctype html><html lang="fi"><head><meta charset="utf-8" /><title>Avataan PDF...</title></head><body style="font-family: Arial, sans-serif; padding: 24px; color: #0f172a;">Avataan lasku-PDF...</body></html>`);
@@ -11739,6 +11739,10 @@ export default function App() {
     }
     setAuthError("");
     const targetWindow = openPendingPdfWindow();
+    if (!targetWindow && typeof window !== "undefined" && !isNativeCapacitorApp()) {
+      setAuthError("Selain esti lasku-PDF:n avauksen. Salli ponnahdusikkunat tälle sivulle ja yritä uudelleen.");
+      return;
+    }
     await openSellerInvoicePdf(offer, profile, {
       targetWindow,
       dedupeKey: `seller-invoice-view-${String(offer?.id || offer?.batch_id || "invoice")}`,
@@ -11767,6 +11771,10 @@ export default function App() {
 
     setAuthError("");
     const targetWindow = openPendingPdfWindow();
+    if (!targetWindow && typeof window !== "undefined" && !isNativeCapacitorApp()) {
+      setAuthError("Selain esti lasku-PDF:n avauksen. Salli ponnahdusikkunat tälle sivulle ja yritä uudelleen.");
+      return;
+    }
     try {
       await openSellerInvoicePdf(offer, sellerProfileLike, {
         targetWindow,
