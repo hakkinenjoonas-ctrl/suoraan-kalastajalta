@@ -8122,12 +8122,19 @@ export default function App() {
   const getBuyerVisibleSellerInfo = (offer) => {
     const sellerIdentity = getSellerIdentityForBuyer(offer);
     const revealIdentity = offer?.status === "accepted";
+    const publicLocation = [sellerIdentity.sellerArea || offer?.area || "-", sellerIdentity.municipality || ""]
+      .filter((value, index, array) => {
+        const normalized = String(value || "").trim();
+        if (!normalized) return false;
+        return array.findIndex((item) => String(item || "").trim().toLowerCase() === normalized.toLowerCase()) === index;
+      })
+      .join(", ") || "-";
 
     return {
       ...sellerIdentity,
       revealIdentity,
       sellerLabel: revealIdentity ? sellerIdentity.sellerName : ANONYMOUS_SELLER_LABEL,
-      publicLocation: sellerIdentity.sellerArea || offer?.area || "-",
+      publicLocation,
       publicSpot: revealIdentity ? (sellerIdentity.sellerSpot || "") : "",
     };
   };
