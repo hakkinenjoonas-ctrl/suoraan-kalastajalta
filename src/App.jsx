@@ -14283,7 +14283,34 @@ export default function App() {
                               <div style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{o.batch_id}</div>
                             </div>
                           ) : null}
-                          {showTraceability && o.batch_id && !mixedOffer ? <div style={{ ...styles.qrBlock, marginBottom: 8 }}><img src={getBatchQrImageUrl(o.batch_id)} alt={`QR ${o.batch_id}`} style={styles.qrImage} /><div style={styles.small}>QR-koodi erälle</div></div> : null}
+                          {showTraceability && o.batch_id && !mixedOffer ? (
+                            <div style={{ display: "flex", gap: 12, alignItems: "stretch", flexWrap: "wrap", marginBottom: 8 }}>
+                              <div style={styles.qrBlock}>
+                                <img src={getBatchQrImageUrl(o.batch_id)} alt={`QR ${o.batch_id}`} style={styles.qrImage} />
+                                <div style={styles.small}>QR-koodi erälle</div>
+                              </div>
+                              {!["delivered", "received"].includes(String(o.fulfillment_status || "")) ? (
+                                <button
+                                  style={{
+                                    ...styles.button,
+                                    ...styles.primaryButton,
+                                    minWidth: 150,
+                                    minHeight: 86,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    textAlign: "center",
+                                    lineHeight: 1.15,
+                                    whiteSpace: "normal",
+                                    padding: "14px 12px",
+                                  }}
+                                  onClick={() => updateFulfillmentStatus(o, "delivered")}
+                                >
+                                  <span>Kuittaa<br />vastaanotetuksi</span>
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
                           <div style={styles.entryBadges}>
                             <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
                             <span style={styles.badge}>{o.area || "-"}</span>
