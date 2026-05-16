@@ -109,21 +109,6 @@ function buildAcceptedSpeciesSummary(summary: unknown, acceptedPrice: unknown, u
     .join("\n");
 }
 
-async function fetchImageAsDataUrl(url: string) {
-  if (!url) return "";
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return "";
-    const contentType = response.headers.get("content-type") || "image/png";
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    let binary = "";
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    return `data:${contentType};base64,${btoa(binary)}`;
-  } catch {
-    return "";
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -166,8 +151,6 @@ Deno.serve(async (req) => {
       : `${acceptedCounterPrice} ${priceUnit}`;
     const tradeValue = String(offer.trade_value || "-");
     const batchId = String(offer.batch_id || "").trim();
-    const qrImageUrl = String(offer.qr_image_url || "").trim();
-    const qrImageDataUrl = qrImageUrl ? await fetchImageAsDataUrl(qrImageUrl) : "";
     const deliveryAddress = buildDeliveryAddress(offer);
     const billingAddress = buildBillingAddress(offer);
     const billingEmail = String(offer.buyer_billing_email || "").trim();
@@ -222,7 +205,6 @@ Deno.serve(async (req) => {
           <strong>Hinta:</strong> ${pricePerKg}<br />
           <strong>Kaupan arvo:</strong> ${tradeValue}
         </p>
-        ${qrImageDataUrl || qrImageUrl ? `<p><strong>QR-koodi erälle</strong><br /><img src="${qrImageDataUrl || qrImageUrl}" alt="QR ${batchId || "era"}" style="width:160px;height:160px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;padding:8px;" /></p>` : ""}
         ${deliveryAddress ? `<p><strong>Toimitusosoite:</strong> ${deliveryAddress}</p>` : ""}
         ${billingAddress ? `<p><strong>Laskutusosoite:</strong> ${billingAddress}</p>` : ""}
         ${billingEmail ? `<p><strong>Laskutussähköposti:</strong> ${billingEmail}</p>` : ""}
