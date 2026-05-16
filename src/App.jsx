@@ -14488,7 +14488,6 @@ export default function App() {
                             ) : null}
                             <div style={styles.row}>
                               {!["delivery_agreed", "delivered", "received"].includes(String(o.fulfillment_status || "")) ? <button style={styles.button} onClick={() => updateFulfillmentStatus(o, "delivery_agreed")}>Merkitse toimitus sovituksi</button> : null}
-                              {!["delivered", "received"].includes(String(o.fulfillment_status || "")) ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => updateFulfillmentStatus(o, "delivered")}>Kuittaa vastaanotetuksi</button> : null}
                             </div>
                           </div>
                         ) : null}
