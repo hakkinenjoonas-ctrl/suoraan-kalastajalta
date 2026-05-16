@@ -2245,6 +2245,11 @@ function getRequestedOfferId() {
   return String(params.get("offer") || "").trim();
 }
 
+function leavePublicBatchView() {
+  if (typeof window === "undefined") return;
+  window.location.replace("/");
+}
+
 function applyIncomingAppUrl(urlString, handlers = {}) {
   if (typeof window === "undefined" || !urlString) return;
 
@@ -3550,10 +3555,18 @@ function PublicBatchView({ batchId, data, loading, error }) {
   const headerSummary = [formatSpeciesForSale(data?.species), data?.quantity != null && data?.quantity !== "" ? `${data.quantity} ${data.unit || "kg"}` : ""]
     .filter(Boolean)
     .join(" · ");
+  const saleInfoRows = [
+    ["Tarjouksia", data?.sale_info?.offer_count],
+    [
+      "Viimeisin tarjouspäivitys",
+      data?.sale_info?.updated_at ? new Date(data.sale_info.updated_at).toLocaleString("fi-FI") : "",
+    ],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
   const infoRows = [
     ["Erätunnus", data?.batch_id],
     ["Tila", data?.status],
     ["Laji", formatSpeciesForSale(data?.species)],
+    ["Erän lajit", data?.species_summary],
     ["Tuote", data?.product_name],
     ["Käsittelymenetelmä", data?.processing_method],
     ["Pyyntipäivämäärä", data?.catch_date],
@@ -3564,6 +3577,7 @@ function PublicBatchView({ batchId, data, loading, error }) {
     ["Pyydys", data?.gear],
     ["Määrä", data?.quantity != null && data?.quantity !== "" ? `${data.quantity} ${data.unit || "kg"}` : ""],
     ["Myyjä / jalostaja", data?.seller_name],
+    ["Lisätiedot", data?.notes],
     ["Luotu", data?.created_at ? new Date(data.created_at).toLocaleString("fi-FI") : ""],
   ].filter(([, value]) => value);
 
@@ -3637,8 +3651,11 @@ function PublicBatchView({ batchId, data, loading, error }) {
               {headerSummary ? <div style={{ marginTop: 8, fontSize: 18, color: "#0f172a", fontWeight: 700 }}>{headerSummary}</div> : null}
             </div>
             <div className="no-print" style={styles.row}>
+              <button style={styles.button} onClick={leavePublicBatchView}>
+                Palaa sovellukseen
+              </button>
               <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => window.print()}>
-                Print batch information
+                Tulosta erätiedot
               </button>
             </div>
           </div>
@@ -3658,6 +3675,18 @@ function PublicBatchView({ batchId, data, loading, error }) {
                 </div>
               ))}
             </div>
+
+            {saleInfoRows.length > 0 ? (
+              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
+                <strong style={{ fontSize: 20 }}>Kauppatiedot</strong>
+                {saleInfoRows.map(([label, value]) => (
+                  <div key={label} className="public-batch-row">
+                    <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
+                    <div className="public-batch-value" style={{ color: "#0f172a" }}>{String(value)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             {processingRows.length > 0 ? (
               <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
