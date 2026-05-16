@@ -3243,7 +3243,7 @@ function getOfficialGearCodeInfo(entry) {
   };
 }
 
-function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fisherProfile = null) {
+function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fisherProfile = null, reportSpotLabel = "") {
   const sortedEntries = [...entries].sort((left, right) => {
     const dateDiff = String(left?.date || "").localeCompare(String(right?.date || ""));
     if (dateDiff !== 0) return dateDiff;
@@ -3286,6 +3286,7 @@ function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fi
   const instructionsRows = [
     ["Virallinen saalisilmoitusraportti (sisävesikalastus)"],
     ["Valittu aikaväli", reportDateLabel],
+    ...(reportSpotLabel ? [["Tarkempi pyyntipaikka", reportSpotLabel]] : []),
     [],
     ...fisherInfoRows,
     ["Huomiot"],
@@ -4380,6 +4381,7 @@ function WholesaleOffersView({
 function ReportsView({ entries, processedEntries, offers, profile }) {
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
+  const [reportSpotFilter, setReportSpotFilter] = useState("");
   const [reportEmail, setReportEmail] = useState("");
   const [reportSendingKey, setReportSendingKey] = useState("");
   const [buyerSpeciesPeriod, setBuyerSpeciesPeriod] = useState("month");
@@ -4392,6 +4394,11 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   const reportDateLabel = reportStartDate || reportEndDate
     ? `${reportStartDate || "alku"} - ${reportEndDate || "tänään"}`
     : "kaikki";
+  const normalizedReportSpotFilter = String(reportSpotFilter || "").trim().toLowerCase();
+  const reportSpotLabel = String(reportSpotFilter || "").trim();
+  const reportScopeLabel = [reportDateLabel, reportSpotLabel ? `pyyntipaikka: ${reportSpotLabel}` : ""]
+    .filter(Boolean)
+    .join(" · ");
 
   const isWithinReportRange = (value) => {
     const normalizedValue = String(value || "").trim().slice(0, 10);
@@ -4399,6 +4406,11 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
     if (reportStartDate && normalizedValue < reportStartDate) return false;
     if (reportEndDate && normalizedValue > reportEndDate) return false;
     return true;
+  };
+
+  const matchesReportSpot = (entryLike) => {
+    if (!normalizedReportSpotFilter) return true;
+    return String(entryLike?.spot || "").trim().toLowerCase() === normalizedReportSpotFilter;
   };
 
   const resolveReportEmail = () => {
@@ -4437,7 +4449,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       fileName: filename,
       fileBase64: base64Content,
       reportLabel,
-      dateRangeLabel: reportDateLabel,
+      dateRangeLabel: reportScopeLabel,
     }, accessToken);
 
     if (result?.error) {
@@ -4847,8 +4859,13 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
     );
   }
 
-  const filteredEntries = entries.filter((entry) => isWithinReportRange(entry.date));
-  const freeCatchReportHeader = ["Pvm", "Kalalaji", "Määrä", "Pyyntiväline"];
+  const reportSpotOptions = useMemo(
+    () => Array.from(new Set(entries.map((entry) => String(entry?.spot || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "fi")),
+    [entries],
+  );
+
+  const filteredEntries = entries.filter((entry) => isWithinReportRange(entry.date) && matchesReportSpot(entry));
+  const freeCatchReportHeader = ["Pvm", "Kalalaji", "Määrä", "Pyyntiväline", "Tarkempi pyyntipaikka"];
   const freeCatchReportBody = filteredEntries.map((entry) => {
     const normalized = normalizeFishSpeciesLabel(entry.species);
     const speciesLabel = fishSpeciesByName[normalized]?.name_fi || String(entry.species || "").split(",")[0].trim() || "Muu";
@@ -4863,6 +4880,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       speciesLabel,
       quantityLabel,
       formatCatchGearDisplay(entry),
+      entry.spot || "",
     ];
   });
   const freeCatchReportRows = [freeCatchReportHeader, ...freeCatchReportBody];
@@ -4873,7 +4891,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
           <div style={styles.rowBetween}>
             <strong>Raportit</strong>
-            <div style={styles.muted}>Valittu aikaväli: {reportDateLabel}</div>
+            <div style={styles.muted}>Valittu rajaus: {reportScopeLabel}</div>
           </div>
           <div style={styles.grid2}>
             <div style={styles.field}>
@@ -4899,6 +4917,16 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
           </div>
           <div style={styles.noticeInfo}>
             Ilmaisversiossa voit katsella ja ladata Exceliin perusraportin, jossa näkyvät päivämäärä, kalalaji, määrä ja pyyntiväline.
+          </div>
+          <div style={styles.field}>
+            <label>Tarkempi pyyntipaikka raportille</label>
+            <RememberedTextInput
+              value={reportSpotFilter}
+              onChange={(e) => setReportSpotFilter(e.target.value)}
+              options={reportSpotOptions}
+              placeholder="Esim. osakaskunnan nimi"
+              listId="report-spot-options-free"
+            />
           </div>
           <div style={styles.row}>
             <button
@@ -4970,7 +4998,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
     );
   }
   const filteredProcessedEntries = processedEntries.filter((entry) => isWithinReportRange(entry.productionDate));
-  const filteredOffers = offers.filter((offer) => isWithinReportRange(offer.created_at));
+  const filteredOffers = offers.filter((offer) => isWithinReportRange(offer.created_at) && matchesReportSpot(offer));
 
   const catchSpeciesColumns = Array.from(new Set(
     filteredEntries
@@ -5013,6 +5041,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
         date: entry.date || "",
         vesselLabel,
         fishingAreaLabel: [entry.area, entry.municipality].filter(Boolean).join(", "),
+        spotLabel: entry.spot || "",
         landingPlace: entry.landingPlace || "",
         gearLabel: formatCatchGearDisplay(entry),
         gearCount: entry.gearCount || "",
@@ -5038,6 +5067,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
     "Kalastuspvm",
     "Alus",
     "Kalastamisalue",
+    "Tarkempi pyyntipaikka",
     "Purkamispaikka",
     "Pyydys",
     "Pyydysten määrä",
@@ -5050,6 +5080,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
     session.date,
     session.vesselLabel,
     session.fishingAreaLabel,
+    session.spotLabel,
     session.landingPlace,
     session.gearLabel,
     session.gearCount,
@@ -5091,7 +5122,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   ]);
 
   const catchReportRows = [catchReportHeader, ...reportRows];
-  const officialCatchWorkbook = buildOfficialCatchWorkbook(filteredEntries, reportDateLabel, profile);
+  const officialCatchWorkbook = buildOfficialCatchWorkbook(filteredEntries, reportDateLabel, profile, reportSpotLabel);
   const officialCatchIssues = validateOfficialCatchEntries(filteredEntries);
   const offerReportRows = [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows];
   const processedReportRows = [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows];
@@ -5124,6 +5155,16 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
           </div>
         </div>
         <div style={styles.field}>
+          <label>Tarkempi pyyntipaikka raportille</label>
+          <RememberedTextInput
+            value={reportSpotFilter}
+            onChange={(e) => setReportSpotFilter(e.target.value)}
+            options={reportSpotOptions}
+            placeholder="Esim. osakaskunnan nimi"
+            listId="report-spot-options-premium"
+          />
+        </div>
+        <div style={styles.field}>
           <label>Sähköposti raportin lähetykseen</label>
           <input
             style={styles.input}
@@ -5133,7 +5174,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             placeholder="esim. raportit@yritys.fi"
           />
         </div>
-        <div style={styles.muted}>Valittu aikaväli: {reportDateLabel}</div>
+        <div style={styles.muted}>Valittu rajaus: {reportScopeLabel}</div>
         <div style={styles.row}>
           <button
             style={{ ...styles.button, ...styles.primaryButton }}
