@@ -13143,6 +13143,10 @@ export default function App() {
       setAuthError("Kirjoita kalalajin nimi kaikille riveille, joilla lajiksi on valittu Muu.");
       return;
     }
+    if (!String(form.landingPlace || "").trim()) {
+      setAuthError("Täytä purkamispaikka ennen saaliin tallennusta. Virallinen saalisilmoitus tarvitsee purkamispaikan jokaiselle erälle.");
+      return;
+    }
     if (shouldSendOffer && validRows.some((row) => parseLocaleNumber(row.price_per_kg) == null)) {
       setAuthError("Täytä hinta jokaiselle kalalajille ennen saaliin tallennusta.");
       return;
@@ -15774,7 +15778,7 @@ export default function App() {
                   <MunicipalitySelect value={form.municipality} onChange={(e) => setForm({ ...form, municipality: e.target.value })} />
                 </div>
                 <div style={styles.field}>
-                  <label>Purkamispaikka</label>
+                  <label>Purkamispaikka (pakollinen)</label>
                   <LandingPlaceInput
                     value={form.landingPlace}
                     onChange={(e) => setForm({ ...form, landingPlace: e.target.value })}
