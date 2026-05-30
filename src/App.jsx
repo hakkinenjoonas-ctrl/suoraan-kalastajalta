@@ -12562,6 +12562,41 @@ export default function App() {
     }
   };
 
+  const deleteBuyerOffersForEntries = async (targetEntries, options = {}) => {
+    const entriesToClean = Array.isArray(targetEntries) ? targetEntries.filter(Boolean) : [targetEntries].filter(Boolean);
+    if (entriesToClean.length === 0) return { error: null };
+
+    const uniqueEntries = Array.from(
+      new Map(
+        entriesToClean.map((entry) => [String(entry.id || entry.batchId || `${entry.ownerUserId}:${entry.area}:${entry.spot}:${entry.kilos}`), entry]),
+      ).values(),
+    );
+
+    const results = await Promise.all(uniqueEntries.map(async (entry) => {
+      let query = supabase
+        .from("buyer_offers")
+        .delete()
+        .eq("seller_user_id", entry.ownerUserId || profile?.id || "");
+
+      if (options.onlyOpen) {
+        query = query.in("status", BUYER_OFFER_COMPETING_OPEN_STATUSES);
+      }
+
+      const batchId = String(entry.batchId || "").trim();
+      if (batchId) {
+        return query.eq("batch_id", batchId);
+      }
+
+      return query
+        .eq("area", entry.area || "")
+        .eq("spot", entry.spot || "")
+        .eq("total_kilos", Number(entry.kilos || 0));
+    }));
+
+    const firstError = results.find((result) => result?.error)?.error || null;
+    return { error: firstError };
+  };
+
   const handleRemoveEntryFromSale = async (entryIds) => {
     const normalizedEntryIds = Array.isArray(entryIds) ? entryIds.map(String) : [String(entryIds)];
     const targetEntries = (profile.role === "processor" ? processedSaleEntries : saleEntries)
@@ -12615,26 +12650,7 @@ export default function App() {
       return;
     }
 
-    let buyerOfferDeleteQuery = supabase
-      .from("buyer_offers")
-      .delete()
-      .eq("seller_user_id", targetEntry.ownerUserId || profile?.id || "")
-      .in("status", BUYER_OFFER_COMPETING_OPEN_STATUSES);
-
-    const batchIds = targetEntries
-      .map((entry) => String(entry.batchId || "").trim())
-      .filter(Boolean);
-
-    if (batchIds.length > 0) {
-      buyerOfferDeleteQuery = buyerOfferDeleteQuery.in("batch_id", batchIds);
-    } else {
-      buyerOfferDeleteQuery = buyerOfferDeleteQuery
-        .eq("area", targetEntry.area || "")
-        .eq("spot", targetEntry.spot || "")
-        .eq("total_kilos", Number(targetEntry.kilos || 0));
-    }
-
-    const { error: buyerOfferDeleteError } = await buyerOfferDeleteQuery;
+    const { error: buyerOfferDeleteError } = await deleteBuyerOffersForEntries(targetEntries, { onlyOpen: true });
 
     if (buyerOfferDeleteError) {
       if (isMissingRefreshTokenError(buyerOfferDeleteError)) {
@@ -13705,17 +13721,28 @@ export default function App() {
     const ok = window.confirm(`Poistetaanko saalistieto: ${formatSpeciesForSale(entry.species)} ${entry.kilos} kg / ${entry.date}?`);
     if (!ok) return;
 
-    const { error } = await supabase.from("catch_entries").delete().eq("id", entry.id);
-    if (error) {
-      if (isMissingRefreshTokenError(error)) {
+    const { error: buyerOfferDeleteError } = await deleteBuyerOffersForEntries([entry]);
+    if (buyerOfferDeleteError) {
+      if (isMissingRefreshTokenError(buyerOfferDeleteError)) {
         await invalidateSession();
         return;
       }
-      setAuthError(error.message);
+      setAuthError(buyerOfferDeleteError.message);
+      return;
+    }
+
+    const { error: entryDeleteError } = await supabase.from("catch_entries").delete().eq("id", entry.id);
+    if (entryDeleteError) {
+      if (isMissingRefreshTokenError(entryDeleteError)) {
+        await invalidateSession();
+        return;
+      }
+      setAuthError(entryDeleteError.message);
       return;
     }
 
     setAuthInfo("Saalistieto poistettu.");
+    await refreshBuyerOffers();
     setRefreshTick((prev) => prev + 1);
   };
 
