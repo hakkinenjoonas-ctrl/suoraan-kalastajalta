@@ -9213,47 +9213,10 @@ export default function App() {
         }
         const normalizedProfileEmail = normalizeEmail(profileRow.email || email || "");
         if (!normalizedProfileEmail) return;
-
-        const allowedPayload = {
-          email: normalizedProfileEmail,
-          display_name: profileRow.display_name || session.user.user_metadata?.display_name || normalizedProfileEmail,
-          role: profileRow.role || "member",
-          is_active: true,
-          buyer_id: profileRow.role === "buyer" ? profileRow.buyer_id || null : null,
-        };
-
-        const exactRoleRow = effectiveAllowedRows.find((row) => (
-          normalizeEmail(row.email) === normalizedProfileEmail &&
-          row.role === allowedPayload.role &&
-          String(row.buyer_id || "") === String(allowedPayload.buyer_id || "")
-        )) || null;
-
-        const needsUpdate = exactRoleRow && (
-          !exactRoleRow.is_active ||
-          String(exactRoleRow.display_name || "") !== String(allowedPayload.display_name || "")
-        );
-
-        const { data: ensuredRow, error: ensureAllowedError } = exactRoleRow
-          ? (needsUpdate
-            ? await supabase.from("allowed_users").update(allowedPayload).eq("id", exactRoleRow.id).select("*").single()
-            : { data: exactRoleRow, error: null })
-          : await supabase.from("allowed_users").insert(allowedPayload).select("*").single();
-
-        if (ensureAllowedError) {
-          if (isMissingRefreshTokenError(ensureAllowedError)) {
-            await invalidateSession();
-            return;
-          }
-          setAuthError(ensureAllowedError.message);
-          return;
-        }
-
-        if (ensuredRow) {
-          effectiveAllowedRows = exactRoleRow
-            ? effectiveAllowedRows.map((row) => (row.id === ensuredRow.id ? ensuredRow : row))
-            : [...effectiveAllowedRows, ensuredRow];
-          activeAllowedRows = effectiveAllowedRows.filter((row) => row.is_active);
-        }
+        // Automaattisesti aktiivinen profiili ei tarvitse kirjautumisen
+        // yhteydessä selainpuolen kirjoitusta allowed_users-tauluun.
+        // Käyttöoikeusrivit luodaan ja päivitetään vain palvelinpuolella tai
+        // admin-näkymässä, jotta RLS-suojaus ei aiheuta käyttäjälle virheitä.
       };
 
       const { data: existingProfile, error: profileError } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
@@ -9468,7 +9431,11 @@ export default function App() {
           tableExists(supabase, "app_push_tokens"),
           tableExists(supabase, "auctions"),
         ]);
-        setAuctionsAvailable(hasAuctionsTable);
+        // Huutokaupat ovat pysyvä osa nykyistä tietokantarakennetta. Androidin
+        // CapacitorHttp voi epäonnistua HEAD-pohjaisessa tableExists-
+        // tarkistuksessa, vaikka taulu on olemassa, jolloin välilehti
+        // piiloutuisi virheellisesti.
+        setAuctionsAvailable(true);
 
         const buyerOffersPromise = hasBuyerOffersTable
           ? profile.role === "buyer"
@@ -9887,12 +9854,14 @@ export default function App() {
           })));
         }
 
-        const buyersData = (buyersResult?.data || []).map((buyer) => ({
-          ...buyer,
-          email: (buyer.email || "").toLowerCase(),
-          min_kg: getOptionalKgLimit(buyer.min_kg) == null ? "" : Number(buyer.min_kg),
-          max_kg: getOptionalKgLimit(buyer.max_kg) == null ? "" : Number(buyer.max_kg),
-        }));
+        const buyersData = (buyersResult?.data || [])
+          .filter((buyer) => !String(buyer.notes || "").includes("[SYSTEM_ARCHIVED_BUYER:"))
+          .map((buyer) => ({
+            ...buyer,
+            email: (buyer.email || "").toLowerCase(),
+            min_kg: getOptionalKgLimit(buyer.min_kg) == null ? "" : Number(buyer.min_kg),
+            max_kg: getOptionalKgLimit(buyer.max_kg) == null ? "" : Number(buyer.max_kg),
+          }));
 
         if (buyersResult?.error && buyersResult.error.code !== "PGRST116") {
           if (isMissingRefreshTokenError(buyersResult.error)) {
@@ -11433,6 +11402,7 @@ export default function App() {
     if (buyerForm.id === buyer.id) {
       resetBuyerForm();
     }
+    setBuyers((previousBuyers) => previousBuyers.filter((item) => item.id !== buyer.id));
     setUserMessage(`Ostaja ${buyer.company_name || buyer.email} poistettu kokonaan.`);
     setRefreshTick((prev) => prev + 1);
   };

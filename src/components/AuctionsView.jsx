@@ -6,6 +6,7 @@ import {
   prepareAuctionImage,
 } from "../lib/auctionImage.js";
 import {
+  FISH_PACKAGING_OPTIONS,
   extractPackagingFromNotes,
   removePackagingFromNotes,
 } from "../lib/packaging.js";
@@ -269,7 +270,15 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
   const [auctionFilter, setAuctionFilter] = useState("all");
   const [focusedAuctionId, setFocusedAuctionId] = useState("");
   const [clock, setClock] = useState(Date.now());
-  const [draft, setDraft] = useState({ entryId: "", durationMinutes: 180, startingPrice: "", minimumIncrement: "0,20", reservePrice: "" });
+  const [draft, setDraft] = useState({
+    entryId: "",
+    durationMinutes: 180,
+    startingPrice: "",
+    minimumIncrement: "0,20",
+    reservePrice: "",
+    earliestDeliveryDate: "",
+    packaging: "",
+  });
   const [imageFile, setImageFile] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
 
@@ -280,6 +289,15 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
   const availableEntries = useMemo(() => entries.filter((entry) => isCrayfishLabel(entry.species) ? Number(entry.count || 0) > 0 : Number(entry.kilos || 0) > 0), [entries]);
   const selectedEntry = useMemo(() => availableEntries.find((entry) => entry.id === draft.entryId) || null, [availableEntries, draft.entryId]);
   const selectedUnit = isCrayfishLabel(selectedEntry?.species) ? "kpl" : "kg";
+
+  useEffect(() => {
+    if (!selectedEntry) return;
+    setDraft((current) => ({
+      ...current,
+      earliestDeliveryDate: selectedEntry.earliestDeliveryDate || "",
+      packaging: extractPackagingFromNotes(selectedEntry.notes),
+    }));
+  }, [selectedEntry]);
 
   useEffect(() => {
     if (selectedUnit !== "kpl") return;
@@ -429,7 +447,34 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
   const createAuction = async () => {
     const validationError = validateAuctionDraft(draft);
     if (validationError) { setError(validationError); return; }
+    if (!draft.earliestDeliveryDate) {
+      setError("Valitse aikaisin toimituspäivä.");
+      return;
+    }
+    if (!String(draft.packaging || "").trim()) {
+      setError("Valitse, miten huutokaupattava kalaerä on pakattu.");
+      return;
+    }
     setBusy(true); setError(""); setMessage("");
+
+    const notesWithoutPackaging = removePackagingFromNotes(selectedEntry?.notes);
+    const updatedNotes = [
+      notesWithoutPackaging,
+      `Pakkaustapa: ${String(draft.packaging).trim()}`,
+    ].filter(Boolean).join("\n");
+    const { error: entryUpdateError } = await supabase
+      .from("catch_entries")
+      .update({
+        earliest_delivery_date: draft.earliestDeliveryDate,
+        notes: updatedNotes,
+      })
+      .eq("id", draft.entryId);
+    if (entryUpdateError) {
+      setError(`Huutokaupan toimitustietoja ei voitu tallentaa: ${entryUpdateError.message}`);
+      setBusy(false);
+      return;
+    }
+
     let uploadedImagePath = "";
     if (imageFile) {
       const extension = imageFile.type === "image/png" ? "png" : imageFile.type === "image/webp" ? "webp" : "jpg";
@@ -467,7 +512,14 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
         }
       }
       setMessage("Huutokauppa avattiin onnistuneesti.");
-      setDraft((current) => ({ ...current, entryId: "", startingPrice: "", reservePrice: "" }));
+      setDraft((current) => ({
+        ...current,
+        entryId: "",
+        startingPrice: "",
+        reservePrice: "",
+        earliestDeliveryDate: "",
+        packaging: "",
+      }));
       setImageFile(null);
       setImagePreviewUrl("");
       await loadAuctions();
@@ -535,6 +587,22 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
             <label style={field}><span>Lähtöhinta ALV 0 % €/{selectedUnit}</span><input style={input} inputMode="decimal" value={draft.startingPrice} onChange={(event) => setDraft({ ...draft, startingPrice: event.target.value })} /></label>
             <label style={field}><span>Minimikorotus €/{selectedUnit}</span><input style={input} inputMode="decimal" value={draft.minimumIncrement} onChange={(event) => setDraft({ ...draft, minimumIncrement: event.target.value })} /></label>
             <label style={field}><span>Pohjahinta €/{selectedUnit} (valinnainen)</span><input style={input} inputMode="decimal" value={draft.reservePrice} onChange={(event) => setDraft({ ...draft, reservePrice: event.target.value })} /></label>
+            <label style={field}>
+              <span>Aikaisin toimituspäivä</span>
+              <input
+                style={input}
+                type="date"
+                value={draft.earliestDeliveryDate}
+                onChange={(event) => setDraft({ ...draft, earliestDeliveryDate: event.target.value })}
+              />
+            </label>
+            <label style={field}>
+              <span>Pakkaustapa</span>
+              <select style={input} value={draft.packaging} onChange={(event) => setDraft({ ...draft, packaging: event.target.value })}>
+                <option value="">Valitse, miten kalaerä on pakattu</option>
+                {FISH_PACKAGING_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
           </div>
           <div style={{ ...field, padding: 14, borderRadius: 12, border: "1px solid #bfdbfe", background: "#eff6ff" }}>
             <strong>Huutokaupan kuva (valinnainen)</strong>

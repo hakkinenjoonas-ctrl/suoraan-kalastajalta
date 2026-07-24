@@ -74,11 +74,31 @@ Deno.serve(async (req) => {
     .eq("id", callerUserId);
   if (profileError) return jsonResponse(500, { error: profileError.message });
 
-  const { error: allowedError } = await adminClient
+  const allowedPayload = {
+    email,
+    display_name: safeString(authContext.profile?.display_name) || companyName,
+    role: "buyer",
+    is_active: true,
+    buyer_id: buyerId,
+  };
+  const { data: existingAllowedUser, error: allowedLookupError } = await adminClient
     .from("allowed_users")
-    .update({ buyer_id: buyerId })
+    .select("id")
     .eq("role", "buyer")
-    .eq("email", email);
+    .eq("email", email)
+    .limit(1)
+    .maybeSingle();
+  if (allowedLookupError) return jsonResponse(500, { error: allowedLookupError.message });
+
+  const allowedResult = existingAllowedUser?.id
+    ? await adminClient
+      .from("allowed_users")
+      .update(allowedPayload)
+      .eq("id", existingAllowedUser.id)
+    : await adminClient
+      .from("allowed_users")
+      .insert(allowedPayload);
+  const allowedError = allowedResult.error;
   if (allowedError) return jsonResponse(500, { error: allowedError.message });
 
   return jsonResponse(200, { ok: true, buyer: buyerResult.data });

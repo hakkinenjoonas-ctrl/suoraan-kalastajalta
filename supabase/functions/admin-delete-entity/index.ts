@@ -33,6 +33,14 @@ function isMissingRelationError(error: { code?: string } | null | undefined) {
   return safeString(error?.code) === "42P01";
 }
 
+function isForeignKeyViolation(error: { code?: string } | null | undefined) {
+  return safeString(error?.code) === "23503";
+}
+
+function archivedBuyerMarker(buyerId: string) {
+  return `[SYSTEM_ARCHIVED_BUYER:${buyerId}]`;
+}
+
 async function deleteByIds(adminClient: AdminClient, table: string, ids: string[]) {
   const normalizedIds = uniqueStrings(ids);
   if (normalizedIds.length === 0) return;
@@ -226,12 +234,55 @@ async function deleteSellerOwnedData(
 }
 
 async function deleteAuthUsers(adminClient: AdminClient, userIds: string[]) {
+  const archivedUserIds: string[] = [];
   for (const userId of uniqueStrings(userIds)) {
     const { error } = await adminClient.auth.admin.deleteUser(userId);
-    if (error && !safeString(error.message).toLowerCase().includes("not found")) {
+    if (!error || safeString(error.message).toLowerCase().includes("not found")) {
+      continue;
+    }
+
+    const normalizedMessage = safeString(error.message).toLowerCase();
+    if (!normalizedMessage.includes("database error deleting user")) {
       throw new Error(`auth.users ${userId}: ${error.message}`);
     }
+
+    // Huutokauppahistoria voi viitata auth.users-tunnukseen ON DELETE
+    // RESTRICT -avaimella. Tällöin tunnus anonymisoidaan ja estetään,
+    // jotta historia säilyy mutta alkuperäinen sähköposti vapautuu.
+    const { error: archiveError } = await adminClient.auth.admin.updateUserById(userId, {
+      email: `deleted+${userId}@invalid.local`,
+      email_confirm: true,
+      ban_duration: "876000h",
+      user_metadata: {},
+    });
+    if (archiveError) {
+      throw new Error(`auth.users archive ${userId}: ${archiveError.message}`);
+    }
+    archivedUserIds.push(userId);
   }
+  return archivedUserIds;
+}
+
+async function findAuthUserIdsByEmails(adminClient: AdminClient, emails: string[]) {
+  const targetEmails = new Set(uniqueEmails(emails));
+  if (targetEmails.size === 0) return [];
+
+  const matchingUserIds: string[] = [];
+  const perPage = 1000;
+  for (let page = 1; page <= 50; page += 1) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error) throw new Error(`auth.users lookup: ${error.message}`);
+
+    const users = Array.isArray(data?.users) ? data.users : [];
+    for (const user of users) {
+      if (targetEmails.has(normalizeEmail(user?.email))) {
+        matchingUserIds.push(safeString(user?.id));
+      }
+    }
+    if (users.length < perPage) break;
+  }
+
+  return uniqueStrings(matchingUserIds);
 }
 
 async function handleDeleteBuyer(adminClient: AdminClient, body: Record<string, unknown>) {
@@ -242,7 +293,7 @@ async function handleDeleteBuyer(adminClient: AdminClient, body: Record<string, 
 
   const { data: buyer, error: buyerError } = await adminClient
     .from("buyers")
-    .select("id, email, billing_email, company_name")
+    .select("id, email, billing_email, company_name, notes")
     .eq("id", buyerId)
     .maybeSingle();
 
@@ -303,16 +354,56 @@ async function handleDeleteBuyer(adminClient: AdminClient, body: Record<string, 
   ]);
 
   const profileIds = uniqueStrings(linkedProfiles.map((row) => row.id));
-  const authUserIds = uniqueStrings(linkedProfiles.map((row) => row.id));
+  let authUserIds: string[] = [];
+  try {
+    authUserIds = uniqueStrings([
+      ...linkedProfiles.map((row) => row.id),
+      ...await findAuthUserIdsByEmails(adminClient, candidateEmails),
+    ]);
+  } catch (error) {
+    return jsonResponse(500, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   const allowedUserIds = uniqueStrings(linkedAllowedUsers.map((row) => row.id));
 
+  let archivedBuyer = false;
+  let archivedAuthUserIds: string[] = [];
   try {
     await deleteAppPushTokens(adminClient, profileIds, [buyerId]);
     await deleteBuyerOffersForBuyer(adminClient, [buyerId], candidateEmails);
     await deleteByIds(adminClient, "allowed_users", allowedUserIds);
     await deleteByIds(adminClient, "profiles", profileIds);
-    await deleteAuthUsers(adminClient, authUserIds);
-    await deleteByIds(adminClient, "buyers", [buyerId]);
+    archivedAuthUserIds = await deleteAuthUsers(adminClient, authUserIds);
+
+    const { error: buyerDeleteError } = await adminClient
+      .from("buyers")
+      .delete()
+      .eq("id", buyerId);
+    if (buyerDeleteError && !isMissingRowError(buyerDeleteError)) {
+      if (!isForeignKeyViolation(buyerDeleteError)) {
+        throw new Error(`buyers: ${buyerDeleteError.message}`);
+      }
+
+      // Huutokauppojen ja laskutuksen historia viittaa ostajaan. Säilytä
+      // historiallinen rivi, mutta irrota se kirjautumisesta ja aktiivisesta
+      // ostajarekisteristä, jotta sama sähköposti voidaan rekisteröidä uudelleen.
+      const marker = archivedBuyerMarker(buyerId);
+      const previousNotes = safeString(buyer.notes);
+      const { error: archiveError } = await adminClient
+        .from("buyers")
+        .update({
+          email: `deleted+${buyerId}@invalid.local`,
+          billing_email: null,
+          is_active: false,
+          notes: previousNotes ? `${previousNotes}\n${marker}` : marker,
+        })
+        .eq("id", buyerId);
+      if (archiveError) {
+        throw new Error(`buyers archive: ${archiveError.message}`);
+      }
+      archivedBuyer = true;
+    }
   } catch (error) {
     return jsonResponse(500, {
       error: error instanceof Error ? error.message : String(error),
@@ -326,6 +417,8 @@ async function handleDeleteBuyer(adminClient: AdminClient, body: Record<string, 
     deletedAllowedUserCount: allowedUserIds.length,
     deletedProfileCount: profileIds.length,
     deletedAuthUserCount: authUserIds.length,
+    archivedAuthUserCount: archivedAuthUserIds.length,
+    archivedBuyer,
   });
 }
 
@@ -378,7 +471,18 @@ async function handleDeleteUser(adminClient: AdminClient, body: Record<string, u
   ]);
 
   const profileIds = uniqueStrings(linkedProfiles.map((row) => row.id));
-  const authUserIds = uniqueStrings(linkedProfiles.map((row) => row.id));
+  let authUserIds: string[] = [];
+  let archivedAuthUserIds: string[] = [];
+  try {
+    authUserIds = uniqueStrings([
+      ...linkedProfiles.map((row) => row.id),
+      ...await findAuthUserIdsByEmails(adminClient, candidateEmails),
+    ]);
+  } catch (error) {
+    return jsonResponse(500, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   const allowedUserRowsByEmail = candidateEmails.length > 0
     ? await adminClient
       .from("allowed_users")
@@ -404,7 +508,7 @@ async function handleDeleteUser(adminClient: AdminClient, body: Record<string, u
     await deleteSellerOwnedData(adminClient, profileIds);
     await deleteByIds(adminClient, "allowed_users", allowedUserIds);
     await deleteByIds(adminClient, "profiles", profileIds);
-    await deleteAuthUsers(adminClient, authUserIds);
+    archivedAuthUserIds = await deleteAuthUsers(adminClient, authUserIds);
     await deactivateOrphanedBuyers(adminClient, candidateBuyerIds, candidateEmails, profileIds, allowedUserIds);
   } catch (error) {
     return jsonResponse(500, {
@@ -418,6 +522,7 @@ async function handleDeleteUser(adminClient: AdminClient, body: Record<string, u
     deletedAllowedUserCount: allowedUserIds.length,
     deletedProfileCount: profileIds.length,
     deletedAuthUserCount: authUserIds.length,
+    archivedAuthUserCount: archivedAuthUserIds.length,
   });
 }
 
