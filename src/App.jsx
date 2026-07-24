@@ -410,6 +410,13 @@ function formatSourceBatchSummary(entry) {
   return [species, isCrayfishSpecies(entry.species) ? count : kilos, isCrayfishSpecies(entry.species) && kilos ? kilos : "", entry.batchId || ""].filter(Boolean).join(" · ");
 }
 
+function formatCatchEntryQuantity(entry) {
+  if (isCrayfishSpecies(entry?.species)) {
+    return `${Number(entry?.count || 0).toLocaleString("fi-FI")} kpl`;
+  }
+  return `${Number(entry?.kilos || 0).toLocaleString("fi-FI")} kg`;
+}
+
 function isMixedOffer(offer) {
   return getOfferSummaryLines(offer?.species_summary).length > 1;
 }
@@ -712,6 +719,10 @@ function getCatchLabelProductForm(speciesValue) {
 
 function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options = {}) {
   const species = formatSpeciesForLabelTitle(entry?.species || "");
+  const isCrayfish = isCrayfishSpecies(entry?.species);
+  const pieceCount = isCrayfish && options?.pieceCount != null
+    ? String(options.pieceCount).trim()
+    : "";
   const scientificName = getCatchLabelScientificName(entry?.species);
   const productForm = getCatchLabelProductForm(entry?.species);
   const catchArea = [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / ");
@@ -758,6 +769,8 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     harvestSourceText: getCatchHarvestSourceText(waterType),
     productStateText: getCatchProductStateText(),
     weightText,
+    isCrayfish,
+    pieceCount,
     supplier,
     supplierAddress,
     supplierContact,
@@ -1519,10 +1532,10 @@ const CATCH_LABEL_FORMATS = [
   },
 ];
 
-function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = CATCH_LABEL_FORMAT_APLI_1278) {
+function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = CATCH_LABEL_FORMAT_APLI_1278, options = {}) {
   const count = Math.max(1, Number(labelCount || 1));
   const labels = Array.from({ length: count }, (_, index) => {
-    const labelData = buildCatchLabelData(entry, profileLike, index + 1, count);
+    const labelData = buildCatchLabelData(entry, profileLike, index + 1, count, options);
     return {
       ...labelData,
       qrImageUrl: getCatchLabelQrImageUrl(labelData),
@@ -1573,7 +1586,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           ${label.productForm ? `<div class="line">Tuote: ${label.productForm}</div>` : ""}
           <div class="line">Säilytys: 0–2 °C</div>
         </div>
-          <div class="weight-line"><span class="weight-label">Paino:</span><span class="weight-write"></span><span class="weight-unit">kg</span></div>
+          <div class="weight-line"><span class="weight-label">${label.isCrayfish ? "Kpl:" : "Paino:"}</span>${label.isCrayfish && label.pieceCount ? `<span class="weight-value">${label.pieceCount}</span>` : `<span class="weight-write"></span>`}<span class="weight-unit">${label.isCrayfish ? "kpl" : "kg"}</span></div>
           <div class="supplier-block">
             <div class="line">Toimittaja: ${label.supplier || "-"}</div>
             ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
@@ -1621,6 +1634,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           .weight-line { display: flex; align-items: flex-end; gap: 1.1mm; font-size: 6.5pt; margin: 1.25mm 0 0.35mm; min-height: 4.8mm; }
           .weight-label { font-weight: 700; white-space: nowrap; }
           .weight-write { flex: 1; min-width: 0; border-bottom: 0.45mm solid #0f172a; height: 3.1mm; }
+          .weight-value { flex: 1; min-width: 0; font-weight: 700; }
           .weight-unit { font-weight: 700; white-space: nowrap; }
           .label-side { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; min-width: 0; }
           .label-brand { display: flex; flex-direction: column; align-items: center; width: 100%; padding-top: 0.6mm; }
@@ -2057,9 +2071,9 @@ async function buildProcessedLabelPdf(entry, profileLike, printFormat) {
   return doc;
 }
 
-async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = CATCH_LABEL_FORMAT_APLI_1278) {
+async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = CATCH_LABEL_FORMAT_APLI_1278, options = {}) {
   const count = Math.max(1, Number(labelCount || 1));
-  const labels = Array.from({ length: count }, (_, index) => buildCatchLabelData(entry, profileLike, index + 1, count));
+  const labels = Array.from({ length: count }, (_, index) => buildCatchLabelData(entry, profileLike, index + 1, count, options));
   const [qrDataUrls, logoDataUrl] = await Promise.all([
     Promise.all(labels.map((label) => fetchImageDataUrl(getCatchLabelQrImageUrl(label)))),
     fetchImageDataUrl(getAppLogoUrl()).catch(() => ""),
@@ -2197,10 +2211,16 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     const weightY = supplierStartY - 2.8;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(6.8);
-    doc.text("Paino:", left, weightY);
-    doc.setLineWidth(0.45);
-    doc.line(left + 12.2, weightY + 0.15, qrX - 4.2, weightY + 0.15);
-    doc.text("kg", qrX - 3.6, weightY);
+    const quantityLabel = label.isCrayfish ? "Kpl:" : "Paino:";
+    const quantityUnit = label.isCrayfish ? "kpl" : "kg";
+    doc.text(quantityLabel, left, weightY);
+    if (label.isCrayfish && label.pieceCount) {
+      doc.text(label.pieceCount, left + 12.2, weightY);
+    } else {
+      doc.setLineWidth(0.45);
+      doc.line(left + 12.2, weightY + 0.15, qrX - 4.2, weightY + 0.15);
+    }
+    doc.text(quantityUnit, qrX - 3.6, weightY);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.4);
@@ -3733,12 +3753,12 @@ function PublicBatchView({ batchId, data, loading, error }) {
   );
 }
 
-function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint, viewportWidth }) {
+function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, pieceCount, setPieceCount, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint, viewportWidth }) {
   if (!entry) return null;
 
   const previewLabel = {
-    ...buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType }),
-    qrImageUrl: getCatchLabelQrImageUrl(buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType })),
+    ...buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount }),
+    qrImageUrl: getCatchLabelQrImageUrl(buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount })),
     logoUrl: getAppLogoUrl(),
   };
   const isMobile = viewportWidth < 768;
@@ -3757,7 +3777,8 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
     labelCount: Math.max(1, Number(labelCount || 1)),
     printFormat,
     waterType,
-  }), [entry, labelCount, printFormat, waterType]);
+    pieceCount: isCrayfishSpecies(entry.species) ? String(pieceCount || "").trim() : "",
+  }), [entry, labelCount, pieceCount, printFormat, waterType]);
 
   return (
     <div style={{
@@ -3829,6 +3850,21 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                 }}
               />
             </div>
+            {isCrayfishSpecies(entry.species) ? (
+              <div style={styles.field}>
+                <label>Etikettiin tuleva kpl-määrä (valinnainen)</label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Jätä tyhjäksi käsin täyttämistä varten"
+                  value={pieceCount}
+                  onChange={(e) => setPieceCount(e.target.value.replace(/\D/g, ""))}
+                />
+                <div style={styles.small}>Jos jätät kentän tyhjäksi, etikettiin tulostuu kpl-kohta ja viiva käsin kirjoittamista varten.</div>
+              </div>
+            ) : null}
             <div style={styles.field}>
               <label>Tulostuspohja</label>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
@@ -3911,9 +3947,13 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, print
                         <div style={{ fontSize: 12, lineHeight: 1.12 }}>Säilytys: 0–2 °C</div>
                       </div>
                       <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginTop: 12, minHeight: 24 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>Paino:</span>
-                        <span style={{ flex: 1, borderBottom: "2px solid #0f172a", height: 18 }} />
-                        <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>kg</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{previewLabel.isCrayfish ? "Kpl:" : "Paino:"}</span>
+                        {previewLabel.isCrayfish && previewLabel.pieceCount ? (
+                          <span style={{ flex: 1, fontSize: 12, fontWeight: 700 }}>{previewLabel.pieceCount}</span>
+                        ) : (
+                          <span style={{ flex: 1, borderBottom: "2px solid #0f172a", height: 18 }} />
+                        )}
+                        <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{previewLabel.isCrayfish ? "kpl" : "kg"}</span>
                       </div>
                       <div style={{ marginTop: "auto", fontSize: 12, lineHeight: 1.12 }}>
                         <div>Toimittaja: {previewLabel.supplier}</div>
@@ -7262,6 +7302,7 @@ export default function App() {
   const [slowBoot, setSlowBoot] = useState(false);
   const [labelPrintEntry, setLabelPrintEntry] = useState(null);
   const [labelPrintCount, setLabelPrintCount] = useState(10);
+  const [labelPrintPieceCount, setLabelPrintPieceCount] = useState("");
   const [labelPrintFormat, setLabelPrintFormat] = useState(CATCH_LABEL_FORMAT_MUNBYN_4X6);
   const [labelPrintWaterType, setLabelPrintWaterType] = useState("");
   const [onboardingGuideState, setOnboardingGuideState] = useState({ views: 0, hiddenForever: false, visible: false });
@@ -13759,7 +13800,11 @@ export default function App() {
     const resolvedWaterType = isThermalCatchLabelFormat(resolvedPrintFormat)
       ? String(overrides?.waterType || labelPrintWaterType || targetEntry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim()
       : String(targetEntry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim();
-    const labelData = buildCatchLabelData(targetEntry, profile, 1, resolvedLabelCount, { waterType: resolvedWaterType });
+    const resolvedPieceCount = isCrayfishSpecies(targetEntry?.species)
+      ? String(overrides?.pieceCount ?? labelPrintPieceCount ?? "").trim()
+      : "";
+    const labelOptions = { waterType: resolvedWaterType, pieceCount: resolvedPieceCount };
+    const labelData = buildCatchLabelData(targetEntry, profile, 1, resolvedLabelCount, labelOptions);
 
     if (!labelData.species || !labelData.batchId || !labelData.supplier) {
       setAuthError("Etikettiä ei voi tulostaa ennen kuin kalalaji, erätunnus ja toimittaja ovat täytetty.");
@@ -13776,7 +13821,7 @@ export default function App() {
     if (mode === "pdf" || (mode === "print" && isNativeCapacitorApp())) {
       void (async () => {
         try {
-          const doc = await buildCatchLabelPdf(targetEntry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat);
+          const doc = await buildCatchLabelPdf(targetEntry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat, labelOptions);
           await presentPdfDocument(doc, buildCatchLabelPdfFileName(targetEntry), {
             nativeFileName: buildUniqueCatchLabelNativeFileName(targetEntry),
             dedupeKey: `${String(targetEntry?.id || targetEntry?.batchId || "label")}::${resolvedPrintFormat}::${resolvedLabelCount}::${resolvedWaterType}::${Date.now()}`,
@@ -13788,7 +13833,7 @@ export default function App() {
       })();
       return;
     }
-    const html = buildCatchLabelPrintHtml(targetEntry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat);
+    const html = buildCatchLabelPrintHtml(targetEntry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat, labelOptions);
     const printWindow = window.open("", "_blank", "width=1200,height=900");
     if (!printWindow) {
       setAuthError("Tulostusikkunan avaaminen estettiin selaimessa.");
@@ -16418,7 +16463,7 @@ export default function App() {
                             Pyyntipäivä: {entry.date || "-"}
                           </div>
                           <div style={styles.entryBadges}>
-                            <span style={styles.badge}>{entry.kilos} kg</span>
+                            <span style={styles.badge}>{formatCatchEntryQuantity(entry)}</span>
                             <span style={styles.badge}>{formatCatchGearDisplay(entry)}</span>
                             <span style={styles.badge}>{entry.ownerName}</span>
                           </div>
@@ -16437,7 +16482,7 @@ export default function App() {
                         </div>
                         <div style={styles.row}>
                           {canPrintCatchLabels(entry) ? (
-                            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); }}>
+                            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); setLabelPrintPieceCount(""); }}>
                               Tulosta etiketit
                             </button>
                           ) : profile.role === "member" && !hasFisherPremium ? (
@@ -16818,6 +16863,8 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             profile={profile}
             labelCount={labelPrintCount}
             setLabelCount={setLabelPrintCount}
+            pieceCount={labelPrintPieceCount}
+            setPieceCount={setLabelPrintPieceCount}
             printFormat={labelPrintFormat}
             setPrintFormat={setLabelPrintFormat}
             waterType={labelPrintWaterType}
