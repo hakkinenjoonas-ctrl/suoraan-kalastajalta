@@ -210,7 +210,7 @@ export default function ThermalLabel4x3({ label }) {
           <InfoLine label="Pyyntipäivä" value={label.catchDate} emphasis />
           <InfoLine label="Kaupallisen kalastajan tunnus" value={label.commercialFishingId} />
           <InfoLine label="Tuote" value={label.productForm} />
-          <InfoLine label="Säilytys" value="0–2 °C" />
+          <InfoLine label="Säilytys" value={label.storageText} />
         </div>
 
         <div style={styles.weightLine}>

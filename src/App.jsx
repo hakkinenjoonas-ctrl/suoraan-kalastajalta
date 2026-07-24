@@ -892,6 +892,7 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     productionMethodText: buildCatchProductionMethodText(waterType, catchArea),
     harvestSourceText: getCatchHarvestSourceText(waterType),
     productStateText: getCatchProductStateText(),
+    storageText: isCrayfish ? "+4–+8 °C, kosteana ja ilmavasti." : "0–2 °C",
     weightText,
     isCrayfish,
     pieceCount,
@@ -1709,7 +1710,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           ${label.catchDate ? `<div class="line catch-date">Pyyntipäivä: ${label.catchDate}</div>` : ""}
           ${label.commercialFishingId ? `<div class="line">Kaupallisen kalastajan tunnus: ${label.commercialFishingId}</div>` : ""}
           ${label.productForm ? `<div class="line">Tuote: ${label.productForm}</div>` : ""}
-          <div class="line">Säilytys: 0–2 °C</div>
+          <div class="line">Säilytys: ${label.storageText}</div>
         </div>
           <div class="weight-line"><span class="weight-label">${label.isCrayfish ? "Kpl:" : "Paino:"}</span>${label.isCrayfish && label.pieceCount ? `<span class="weight-value">${label.pieceCount}</span>` : `<span class="weight-write"></span>`}<span class="weight-unit">${label.isCrayfish ? "kpl" : "kg"}</span></div>
           <div class="supplier-block">
@@ -2393,8 +2394,9 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     currentY += 0.8;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.2);
-    doc.text("Säilytys: 0–2 °C", left, currentY);
-    currentY += 3.6;
+    const storageLines = doc.splitTextToSize(`Säilytys: ${label.storageText}`, textWidth);
+    doc.text(storageLines, left, currentY);
+    currentY += storageLines.length * 2.8 + 0.8;
 
     const supplierLines = [
       `Toimittaja: ${label.supplier || "-"}`,
@@ -4178,7 +4180,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
                         {previewLabel.catchDate ? <div style={{ fontSize: 14, lineHeight: 1.16, fontWeight: 700 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
                         {previewLabel.commercialFishingId ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Kaupallisen kalastajan tunnus: {previewLabel.commercialFishingId}</div> : null}
                         {previewLabel.productForm ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Tuote: {previewLabel.productForm}</div> : null}
-                        <div style={{ fontSize: 12, lineHeight: 1.12 }}>Säilytys: 0–2 °C</div>
+                        <div style={{ fontSize: 12, lineHeight: 1.12 }}>Säilytys: {previewLabel.storageText}</div>
                       </div>
                       <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginTop: 12, minHeight: 24 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{previewLabel.isCrayfish ? "Kpl:" : "Paino:"}</span>
