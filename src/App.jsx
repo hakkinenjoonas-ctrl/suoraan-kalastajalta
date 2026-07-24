@@ -3573,7 +3573,16 @@ function FirstUseGuideCard({ profile, guideState, onDismissNow, onHideForever, v
 }
 
 function PublicBatchView({ batchId, data, loading, error }) {
-  const headerSummary = [formatSpeciesForSale(data?.species), data?.quantity != null && data?.quantity !== "" ? `${data.quantity} ${data.unit || "kg"}` : ""]
+  const formatPublicQuantity = (row) => {
+    if (!row) return "";
+    const crayfish = isCrayfishSpecies(row.species || row.species_summary);
+    const unit = crayfish ? "kpl" : String(row.unit || "kg");
+    const quantity = crayfish
+      ? (row.count ?? (unit === "kpl" ? row.quantity : ""))
+      : row.quantity;
+    return quantity != null && quantity !== "" ? `${quantity} ${unit}` : "";
+  };
+  const headerSummary = [formatSpeciesForSale(data?.species), formatPublicQuantity(data)]
     .filter(Boolean)
     .join(" · ");
   const saleInfoRows = [
@@ -3596,7 +3605,7 @@ function PublicBatchView({ batchId, data, loading, error }) {
     ["Alue", data?.area],
     ["Paikka", [data?.municipality, data?.spot].filter(Boolean).join(" / ")],
     ["Pyydys", data?.gear],
-    ["Määrä", data?.quantity != null && data?.quantity !== "" ? `${data.quantity} ${data.unit || "kg"}` : ""],
+    ["Määrä", formatPublicQuantity(data)],
     ["Myyjä / jalostaja", data?.seller_name],
     ["Lisätiedot", data?.notes],
     ["Luotu", data?.created_at ? new Date(data.created_at).toLocaleString("fi-FI") : ""],
@@ -3731,7 +3740,7 @@ function PublicBatchView({ batchId, data, loading, error }) {
                         <div><strong>Erätunnus:</strong> {source.batch_id || "-"}</div>
                         <div style={styles.muted}><strong>Laji:</strong> {formatSpeciesForSale(source.species)}</div>
                         {source.catch_date ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {source.catch_date}</div> : null}
-                        <div style={styles.muted}><strong>Määrä:</strong> {source.kilos != null && source.kilos !== "" ? `${source.kilos} kg` : "-"}</div>
+                        <div style={styles.muted}><strong>Määrä:</strong> {formatPublicQuantity(source) || "-"}</div>
                       </div>
                       {source.qr_image_url ? (
                         <div className="no-print" style={styles.qrBlock}>

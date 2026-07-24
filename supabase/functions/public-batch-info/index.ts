@@ -19,6 +19,26 @@ function safeString(value: unknown) {
   return String(value || "").trim();
 }
 
+function isCrayfishSpecies(value: unknown) {
+  const text = safeString(value).toLocaleLowerCase("fi-FI");
+  return text.includes("täplärapu") ||
+    text.includes("jokirapu") ||
+    text.includes("pacifastacus leniusculus") ||
+    text.includes("astacus astacus");
+}
+
+function parseCrayfishCount(value: unknown) {
+  const match = safeString(value).match(/([0-9]+(?:[.,][0-9]+)?)\s*kpl/i);
+  return match ? Number(String(match[1]).replace(",", ".")) : 0;
+}
+
+function getCatchQuantity(entry: Record<string, unknown>) {
+  if (isCrayfishSpecies(entry.species)) {
+    return { quantity: Number(entry.count || 0), unit: "kpl" };
+  }
+  return { quantity: Number(entry.kilos || 0), unit: "kg" };
+}
+
 function getBatchPublicUrl(batchId: string) {
   if (!batchId) return "";
   return `https://suoraan-kalastajalta.vercel.app/batch/${encodeURIComponent(batchId)}`;
@@ -57,6 +77,7 @@ function deriveSaleInfo(offers: Array<Record<string, unknown>>) {
 
 function buildCatchPayload(entry: Record<string, unknown>, offers: Array<Record<string, unknown>>) {
   const saleInfo = deriveSaleInfo(offers);
+  const quantity = getCatchQuantity(entry);
   return {
     batch_id: safeString(entry.batch_id),
     status: saleInfo.status,
@@ -71,8 +92,8 @@ function buildCatchPayload(entry: Record<string, unknown>, offers: Array<Record<
     municipality: safeString(entry.municipality),
     spot: safeString(entry.spot),
     gear: safeString(entry.gear),
-    quantity: entry.kilos ?? "",
-    unit: "kg",
+    quantity: quantity.quantity,
+    unit: quantity.unit,
     seller_name: safeString(entry.owner_name),
     notes: safeString(entry.notes),
     created_at: safeString(entry.created_at),
@@ -87,11 +108,19 @@ function buildCatchPayloadFromRows(rows: Array<Record<string, unknown>>, offers:
   const speciesRows = rows
     .map((row) => {
       const species = safeString(row.species);
-      const kilos = row.kilos == null || row.kilos === "" ? "" : `${row.kilos} kg`;
-      return [species, kilos].filter(Boolean).join(": ");
+      const rowQuantity = getCatchQuantity(row);
+      const quantityText = `${rowQuantity.quantity} ${rowQuantity.unit}`;
+      return [species, quantityText].filter(Boolean).join(": ");
     })
     .filter(Boolean);
-  const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
+  const allCrayfish = rows.every((row) => isCrayfishSpecies(row.species));
+  const noCrayfish = rows.every((row) => !isCrayfishSpecies(row.species));
+  const totalQuantity = allCrayfish
+    ? rows.reduce((sum, row) => sum + Number(row.count || 0), 0)
+    : noCrayfish
+      ? rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0)
+      : "";
+  const quantityUnit = allCrayfish ? "kpl" : noCrayfish ? "kg" : "";
 
   return {
     batch_id: safeString(first.batch_id),
@@ -107,8 +136,8 @@ function buildCatchPayloadFromRows(rows: Array<Record<string, unknown>>, offers:
     municipality: safeString(first.municipality),
     spot: safeString(first.spot),
     gear: safeString(first.gear),
-    quantity: totalKilos,
-    unit: "kg",
+    quantity: totalQuantity,
+    unit: quantityUnit,
     seller_name: safeString(first.owner_name),
     notes: rows.map((row) => safeString(row.notes)).filter(Boolean).join("\n\n"),
     created_at: safeString(first.created_at),
@@ -152,6 +181,9 @@ function buildProcessedPayload(
       batch_id: safeString(source.source_batch_id),
       species: safeString(source.source_species),
       kilos: source.source_kilos ?? "",
+      count: source.source_count ?? "",
+      quantity: source.source_quantity ?? source.source_kilos ?? "",
+      unit: safeString(source.source_unit) || "kg",
       catch_date: safeString(source.catch_date),
       public_url: getBatchPublicUrl(safeString(source.source_batch_id)),
       qr_image_url: getBatchQrImageUrl(safeString(source.source_batch_id)),
@@ -162,11 +194,13 @@ function buildProcessedPayload(
 
 function buildOfferFallbackPayload(offer: Record<string, unknown>, offers: Array<Record<string, unknown>>) {
   const saleInfo = deriveSaleInfo(offers);
+  const speciesSummary = safeString(offer.species_summary);
+  const isCrayfish = isCrayfishSpecies(speciesSummary);
   return {
     batch_id: safeString(offer.batch_id),
     status: saleInfo.status,
-    species: safeString(offer.species_summary).split("\n").filter(Boolean)[0] || "Kalaerä",
-    species_summary: safeString(offer.species_summary),
+    species: speciesSummary.split("\n").filter(Boolean)[0] || "Kalaerä",
+    species_summary: speciesSummary,
     product_name: "",
     processing_method: "",
     catch_date: "",
@@ -176,8 +210,8 @@ function buildOfferFallbackPayload(offer: Record<string, unknown>, offers: Array
     municipality: "",
     spot: safeString(offer.spot),
     gear: safeString(offer.gear),
-    quantity: offer.total_kilos ?? "",
-    unit: "kg",
+    quantity: isCrayfish ? parseCrayfishCount(speciesSummary) : (offer.total_kilos ?? ""),
+    unit: isCrayfish ? "kpl" : "kg",
     seller_name: safeString(offer.seller_name),
     notes: safeString(offer.notes),
     created_at: safeString(offer.created_at),
@@ -246,12 +280,23 @@ Deno.serve(async (req) => {
         if (sourceEntryIds.length > 0) {
           const { data: sourceEntries } = await supabase
             .from("catch_entries")
-            .select("id, date")
+            .select("id, date, species, kilos, count")
             .in("id", sourceEntryIds);
-          const sourceDateMap = Object.fromEntries((sourceEntries || []).map((row) => [safeString(row.id), safeString(row.date)]));
+          const sourceEntryMap = Object.fromEntries((sourceEntries || []).map((row) => [safeString(row.id), row]));
           sourceBatches = sourceBatches.map((source) => ({
             ...source,
-            catch_date: sourceDateMap[safeString(source.source_entry_id)] || "",
+            ...(() => {
+              const sourceEntry = sourceEntryMap[safeString(source.source_entry_id)] || {};
+              const sourceQuantity = getCatchQuantity(sourceEntry);
+              return {
+                catch_date: safeString(sourceEntry.date),
+                source_species: safeString(sourceEntry.species) || safeString(source.source_species),
+                source_kilos: sourceEntry.kilos ?? source.source_kilos ?? "",
+                source_count: sourceEntry.count ?? "",
+                source_quantity: sourceQuantity.quantity,
+                source_unit: sourceQuantity.unit,
+              };
+            })(),
           }));
         }
       }
