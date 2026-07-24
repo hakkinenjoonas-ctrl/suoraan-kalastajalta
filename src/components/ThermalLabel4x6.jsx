@@ -31,7 +31,7 @@ const styles = {
   },
   brandRow: {
     display: "grid",
-    gridTemplateColumns: "18mm 1fr",
+    gridTemplateColumns: "18mm 1fr auto",
     gap: "3mm",
     alignItems: "center",
     minHeight: 0,
@@ -66,6 +66,11 @@ const styles = {
     fontSize: "7pt",
     lineHeight: 1.15,
     color: palette.muted,
+  },
+  ovalWrap: {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
   },
   contentRow: {
     display: "grid",
@@ -182,6 +187,25 @@ const styles = {
   },
 };
 
+function renderOvalMark(establishmentNumber) {
+  if (!establishmentNumber) return null;
+  return (
+    <svg
+      width="28mm"
+      height="15mm"
+      viewBox="0 0 160 90"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-label={`Laitostunnus ${establishmentNumber}`}
+      style={{ display: "block" }}
+    >
+      <ellipse cx="80" cy="45" rx="72" ry="36" fill="white" stroke="black" strokeWidth="2" />
+      <text x="80" y="28" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="14" fontWeight="700" fill="black">FI</text>
+      <text x="80" y="50" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="18" fontWeight="700" fill="black">{establishmentNumber}</text>
+      <text x="80" y="72" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="14" fontWeight="700" fill="black">EC</text>
+    </svg>
+  );
+}
+
 function renderInfoLine(label, value, strong = false) {
   if (!value) return null;
   return (
@@ -206,6 +230,7 @@ export default function ThermalLabel4x6({ label }) {
           <div style={styles.brandTitle}>Suoraan Kalastajalta</div>
           <div style={styles.brandSubtitle}>Kotimainen kala suoraan pyytäjältä</div>
         </div>
+        {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
       </div>
 
       <div style={styles.contentRow}>

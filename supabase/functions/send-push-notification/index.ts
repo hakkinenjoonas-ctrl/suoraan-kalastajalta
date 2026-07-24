@@ -153,6 +153,32 @@ Deno.serve(async (req) => {
       return jsonResponse(400, { error: "Missing target user or buyer id" });
     }
 
+    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    if (eventType === "auction_opened") {
+      const eventKey = safeString(data.batchId);
+      const targetKey = targetBuyerId
+        ? `buyer:${targetBuyerId}`
+        : targetUserId
+          ? `user:${targetUserId}`
+          : `email:${targetBuyerEmail}`;
+      if (eventKey && targetKey) {
+        await adminClient
+          .from("push_notification_dedup")
+          .delete()
+          .lt("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+        const { error: dedupError } = await adminClient
+          .from("push_notification_dedup")
+          .insert({ event_type: eventType, event_key: eventKey, target_key: targetKey });
+        if (dedupError?.code === "23505") {
+          console.log("send-push-notification:duplicate-skipped", { eventType, eventKey, targetKey });
+          return jsonResponse(200, { ok: true, skipped: true, reason: "duplicate" });
+        }
+        if (dedupError) {
+          console.error("send-push-notification:dedup-error", { eventType, eventKey, targetKey, error: dedupError.message });
+        }
+      }
+    }
+
     console.log("send-push-notification:start", {
       callerUserId: callerUserId || null,
       targetUserId: targetUserId || null,
@@ -164,7 +190,6 @@ Deno.serve(async (req) => {
       batchId: safeString(data.batchId),
     });
 
-    const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const tokenRowsById = new Map<string, { id: string; token: string; platform: string }>();
 
     if (targetUserId) {

@@ -82,21 +82,39 @@ export function buildBuyerOfferActionUpdate(action, offer, payload = {}) {
     return { fulfillment_status: fulfillmentStatus };
   }
 
+  if (action === "mark_paid") {
+    const billingStatus = safeString(offer?.billing_status).toLowerCase();
+    if (!["invoiced", "paid"].includes(billingStatus)) {
+      throw new Error("Invoice can only be marked paid after it has been invoiced");
+    }
+
+    return {
+      billing_status: "paid",
+      billed_at: safeString(offer?.billed_at) || new Date().toISOString(),
+      paid_at: new Date().toISOString(),
+    };
+  }
+
   throw new Error("Unsupported buyer offer action");
 }
 
 export function canBuyerAccessOffer(offer, buyer, profile) {
   const buyerId = safeString(buyer?.id);
+  const profileBuyerId = safeString(profile?.buyer_id);
   const offerBuyerId = safeString(offer?.buyer_id);
   const offerBuyerEmail = safeString(offer?.buyer_email).toLowerCase();
-  const profileEmails = [
+  const allowedEmails = [
+    safeString(buyer?.email).toLowerCase(),
+    safeString(buyer?.contact_email).toLowerCase(),
+    safeString(buyer?.billing_email).toLowerCase(),
     safeString(profile?.email).toLowerCase(),
     safeString(profile?.contact_email).toLowerCase(),
     safeString(profile?.billing_email).toLowerCase(),
   ].filter(Boolean);
 
   if (buyerId && offerBuyerId && buyerId === offerBuyerId) return true;
-  return profileEmails.includes(offerBuyerEmail);
+  if (profileBuyerId && offerBuyerId && profileBuyerId === offerBuyerId) return true;
+  return allowedEmails.includes(offerBuyerEmail);
 }
 
 export function canManageFulfillment(offer, profile, buyer) {

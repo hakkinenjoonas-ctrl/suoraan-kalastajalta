@@ -5,9 +5,9 @@
 4,Kalastaja kirjautuu sisään,Puhelin,"Kirjautuminen onnistuu ja välilehdet toimivat",,
 5,Ostaja kirjautuu sisään,Puhelin / emulaattori,"Kirjautuminen onnistuu ja tarjoukset-näkymä latautuu oikein",,
 6,Kalastaja tallentaa saaliin ilman myyntiä,Puhelin,"Saalis tallentuu ilman virhettä",,
-7,Kalastaja tallentaa saaliin ja lähettää tarjouksen,Puhelin,"Saalis tallentuu ja tarjous lähtee oikeille ostajille",,
-8,Tarjous saapuu ostajalle appiin,Puhelin / emulaattori,"Tarjous näkyy Tarjoukset-listassa",,
-9,Tarjous saapuu ostajalle sähköpostiin,Oikea sähköposti,"Sähköposti tulee ja linkki avautuu oikein",,
+7,Kalastaja tallentaa saaliin ja lähettää tarjouksen,Puhelin,"Saalis tallentuu ja tarjous lähtee oikeille ostajille",OK,Saaliserä lisätty onnistuneesti
+8,Tarjous saapuu ostajalle appiin,Puhelin / emulaattori,"Tarjous näkyy Tarjoukset-listassa",OK,Tarjous tuli ostajille appiin
+9,Tarjous saapuu ostajalle sähköpostiin,Oikea sähköposti,"Sähköposti tulee ja linkki avautuu oikein",OK,Tarjous tuli ostajille sähköpostiin
 10,Push-ilmoitus saapuu ostajalle,Oikea puhelin,"Push tulee äänellä ja avaa appin oikein",,
 11,Ostaja ei voi varata ilman omia tietoja,Puhelin / emulaattori,"Punainen viesti näkyy nappien yläpuolella ja Omat tiedot aukeaa",,
 12,Ostaja täyttää omat tiedot,Puhelin / selain,"Tallennus onnistuu ja pakolliset kentät validioituvat oikein",,
@@ -39,3 +39,4 @@
 38,Vaakasuuntainen välilehtirivi,Puhelin,"Käyttäjä huomaa vihjeen Lisää -> ja voi pyyhkäistä lisää välilehtiä",,
 39,Ostajan poistaminen ownerina,Selain,"Ostaja poistuu kokonaan eikä voi kirjautua sisään",,
 40,Käyttäjän poistaminen ownerina,Selain,"Käyttäjä poistuu kokonaan eikä voi kirjautua sisään",,
+41,Pääasiallinen päästä-päähän ostovirta yhdelle kalaerälle,Puhelin + selain + oikea sähköposti + oikea tulostin,"Kalastaja lisää kalaerän, ostaja varaa erän, ostaja hylkää erän ja tekee vastatarjouksen, jokaisesta vaiheesta lähtee oikea sähköposti, erä- ja ostotiedot sekä QR-koodit pysyvät oikein, kalastaja tulostaa etiketit ja tekee laskun ilman virheitä",,"Vaiheet 1-2 tehty: saaliserä lisätty, tarjous tuli ostajille appiin ja sähköpostiin. Seuraavaksi vaihe 3: varaa erä ostajana"

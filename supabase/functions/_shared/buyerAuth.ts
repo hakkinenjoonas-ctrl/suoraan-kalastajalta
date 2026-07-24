@@ -12,20 +12,42 @@ function uniqueNonEmpty(values: unknown[]) {
   );
 }
 
+function isUuidLike(value: unknown) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    safeString(value),
+  );
+}
+
 export async function resolveBuyerRecord(
   adminClient: ReturnType<typeof createClient>,
   profile: Record<string, unknown>,
 ) {
+  const existingBuyerId = safeString(profile?.buyer_id);
+
+  // The explicit profile link is authoritative. Email addresses can occur on
+  // historical or duplicate buyer rows and must not override this relation.
+  if (existingBuyerId && isUuidLike(existingBuyerId)) {
+    const { data, error } = await adminClient
+      .from("buyers")
+      .select("*")
+      .eq("id", existingBuyerId)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (data) return data;
+  }
+
   const candidateEmails = uniqueNonEmpty([
     profile?.email,
     profile?.contact_email,
+    profile?.billing_email,
   ]);
 
   for (const candidateEmail of candidateEmails) {
     const { data, error } = await adminClient
       .from("buyers")
       .select("*")
-      .eq("email", candidateEmail)
+      .or(`email.eq.${candidateEmail},billing_email.eq.${candidateEmail}`)
       .limit(1)
       .maybeSingle();
 
@@ -37,19 +59,6 @@ export async function resolveBuyerRecord(
       continue;
     }
 
-    if (data) return data;
-  }
-
-  const existingBuyerId = safeString(profile?.buyer_id);
-
-  if (existingBuyerId) {
-    const { data, error } = await adminClient
-      .from("buyers")
-      .select("*")
-      .eq("id", existingBuyerId)
-      .maybeSingle();
-
-    if (error) throw new Error(error.message);
     if (data) return data;
   }
 
@@ -110,6 +119,7 @@ export async function requireAuthenticatedProfileContext(req: Request) {
 
   return {
     ok: true as const,
+    authClient,
     adminClient,
     callerUserId,
     profile,

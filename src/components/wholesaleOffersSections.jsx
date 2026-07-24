@@ -158,7 +158,7 @@ export function LinkedBuyerOfferCard({
   if (!linkedBuyerOffer) return null;
 
   return (
-    <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#eff6ff", borderColor: "#93c5fd" }}>
+    <div id={`linked-buyer-offer-${linkedBuyerOffer.id}`} style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#eff6ff", border: "2px solid #2563eb", boxShadow: "0 0 0 4px rgba(37, 99, 235, 0.16), 0 10px 28px rgba(15,23,42,0.10)" }}>
       <div style={styles.rowBetween}>
         <strong>Avattu linkistä</strong>
         <span style={{ ...styles.badge, background: "#dbeafe", borderColor: "#93c5fd", color: "#1d4ed8" }}>{buyerStatusLabel(linkedBuyerOffer.status)}</span>

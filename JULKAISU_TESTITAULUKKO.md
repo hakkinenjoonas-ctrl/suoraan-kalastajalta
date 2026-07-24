@@ -10,9 +10,9 @@ Kayta tata taulukkoa ennen julkaisua. Merkitse jokainen kohta `OK`, `EI OK` tai 
 | 4 | Kalastaja kirjautuu sisaan | Puhelin | Kirjautuminen onnistuu ja valilehdet toimivat |  |  |
 | 5 | Ostaja kirjautuu sisaan | Puhelin / emulaattori | Kirjautuminen onnistuu ja tarjoukset-nakyma latautuu oikein |  |  |
 | 6 | Kalastaja tallentaa saaliin ilman myyntia | Puhelin | Saalis tallentuu ilman virhetta |  |  |
-| 7 | Kalastaja tallentaa saaliin ja lahettaa tarjouksen | Puhelin | Saalis tallentuu ja tarjous lahtee oikeille ostajille |  |  |
-| 8 | Tarjous saapuu ostajalle appiin | Puhelin / emulaattori | Tarjous nakyy `Tarjoukset`-listassa |  |  |
-| 9 | Tarjous saapuu ostajalle sahkopostiin | Oikea sahkoposti | Sahkoposti tulee ja linkki avautuu oikein |  |  |
+| 7 | Kalastaja tallentaa saaliin ja lahettaa tarjouksen | Puhelin | Saalis tallentuu ja tarjous lahtee oikeille ostajille | OK | Saalisera lisatty onnistuneesti |
+| 8 | Tarjous saapuu ostajalle appiin | Puhelin / emulaattori | Tarjous nakyy `Tarjoukset`-listassa | OK | Tarjous tuli ostajille appiin |
+| 9 | Tarjous saapuu ostajalle sahkopostiin | Oikea sahkoposti | Sahkoposti tulee ja linkki avautuu oikein | OK | Tarjous tuli ostajille sahkopostiin |
 | 10 | Push-ilmoitus saapuu ostajalle | Oikea puhelin | Push tulee aanella ja avaa appin oikein |  |  |
 | 11 | Ostaja ei voi varata ilman omia tietoja | Puhelin / emulaattori | Punainen viesti nakyy nappien ylapuolella ja `Omat tiedot` aukeaa |  |  |
 | 12 | Ostaja tayttaa omat tiedot | Puhelin / selain | Tallennus onnistuu ja pakolliset kentat validioituvat oikein |  |  |
@@ -44,6 +44,7 @@ Kayta tata taulukkoa ennen julkaisua. Merkitse jokainen kohta `OK`, `EI OK` tai 
 | 38 | Vaakasuuntainen valilehtirivi | Puhelin | Kayttaja huomaa vihjeen `Lisaa ->` ja voi pyyhkaista lisaa valilehtia |  |  |
 | 39 | Ostajan poistaminen ownerina | Selain | Ostaja poistuu kokonaan eika voi kirjautua sisaan |  |  |
 | 40 | Kayttajan poistaminen ownerina | Selain | Kayttaja poistuu kokonaan eika voi kirjautua sisaan |  |  |
+| 41 | Paaasiallinen paasta-paatyyppinen ostovirta yhdelle kalaeralle | Puhelin + selain + oikea sahkoposti + oikea tulostin | Kalastaja lisaa kalaeran, ostaja varaa eran, ostaja hylkaa eran ja tekee vastatarjouksen, jokaisesta vaiheesta lahtee oikea sahkoposti, era- ja ostotiedot seka QR-koodit pysyvat oikein, kalastaja tulostaa etiketit ja tekee laskun ilman virheita |  | Vaiheet 1-2 tehty: saalisera lisatty, tarjous tuli ostajille appiin ja sahkopostiin. Seuraavaksi vaihe 3: varaa era ostajana |
 
 ## Julkaisupaatos
 

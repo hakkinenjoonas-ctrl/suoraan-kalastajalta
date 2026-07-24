@@ -43,9 +43,24 @@ Deno.serve(async (req) => {
       return jsonResponse(404, { error: offerError?.message || "Offer not found" });
     }
 
-    const canAccessOffer = buyer ? canBuyerAccessOffer(offer, buyer, authContext.profile) : false;
+    let canAccessOffer = canBuyerAccessOffer(offer, buyer || {}, authContext.profile);
     const isSeller = safeString(offer.seller_user_id) === safeString(authContext.profile.id);
     const isOwner = safeString(authContext.profile.role) === "owner";
+
+    // Keep the action authorization aligned with buyer_offers SELECT RLS. This
+    // also covers historical offers whose buyer link or recipient email no
+    // longer matches the buyer record currently linked to the profile.
+    if (!canAccessOffer && safeString(authContext.profile.role) === "buyer") {
+      const { data: buyerVisibleOffer, error: buyerVisibleOfferError } = await authContext.authClient
+        .from("buyer_offers")
+        .select("id")
+        .eq("id", offerId)
+        .maybeSingle();
+
+      if (!buyerVisibleOfferError && buyerVisibleOffer?.id) {
+        canAccessOffer = true;
+      }
+    }
 
     if (action === "update_fulfillment") {
       if (!canManageFulfillment(offer, authContext.profile, buyer)) {
@@ -56,7 +71,11 @@ Deno.serve(async (req) => {
     }
 
     const updatePayload = buildBuyerOfferActionUpdate(action, offer, body);
-    const { data: updatedOffer, error: updateError } = await authContext.adminClient
+    // Run the mutation as the authenticated caller. The buyer_offers update
+    // guard relies on auth.uid() to distinguish the buyer from unrelated
+    // users; a service-role update would bypass RLS but leave auth.uid() empty
+    // inside the trigger and incorrectly reject legitimate buyer actions.
+    const { data: updatedOffer, error: updateError } = await authContext.authClient
       .from("buyer_offers")
       .update(updatePayload)
       .eq("id", offerId)

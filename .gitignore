@@ -11,3 +11,4 @@ android/app/build/
 local.properties
 
 android/app/google-services.json
+.vercel

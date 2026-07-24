@@ -78,6 +78,112 @@ async function deleteBuyerOffersForBuyer(
   }
 }
 
+async function deactivateOrphanedBuyers(
+  adminClient: AdminClient,
+  buyerIds: string[],
+  buyerEmails: string[],
+  removedProfileIds: string[],
+  removedAllowedUserIds: string[],
+) {
+  const normalizedBuyerIds = uniqueStrings(buyerIds);
+  const normalizedBuyerEmails = uniqueEmails(buyerEmails);
+
+  const buyerRowsById = normalizedBuyerIds.length > 0
+    ? await adminClient
+      .from("buyers")
+      .select("id, email, billing_email, is_active")
+      .in("id", normalizedBuyerIds)
+    : { data: [], error: null };
+  if (buyerRowsById.error && !isMissingRowError(buyerRowsById.error)) {
+    throw new Error(`buyers by id: ${buyerRowsById.error.message}`);
+  }
+
+  const buyerRowsByEmail = normalizedBuyerEmails.length > 0
+    ? await adminClient
+      .from("buyers")
+      .select("id, email, billing_email, is_active")
+      .or(normalizedBuyerEmails.map((email) => `email.eq.${email},billing_email.eq.${email}`).join(","))
+    : { data: [], error: null };
+  if (buyerRowsByEmail.error && !isMissingRowError(buyerRowsByEmail.error)) {
+    throw new Error(`buyers by email: ${buyerRowsByEmail.error.message}`);
+  }
+
+  const candidateBuyers = uniqueById([
+    ...((buyerRowsById.data as Array<Record<string, unknown>>) || []),
+    ...((buyerRowsByEmail.data as Array<Record<string, unknown>>) || []),
+  ]);
+
+  for (const buyer of candidateBuyers) {
+    const buyerId = safeString(buyer.id);
+    const candidateEmails = uniqueEmails([buyer.email, buyer.billing_email]);
+
+    const linkedProfilesResult = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("role", "buyer")
+      .eq("buyer_id", buyerId);
+    if (linkedProfilesResult.error && !isMissingRowError(linkedProfilesResult.error)) {
+      throw new Error(`profiles by buyer_id: ${linkedProfilesResult.error.message}`);
+    }
+
+    const linkedProfilesByEmailResult = candidateEmails.length > 0
+      ? await adminClient
+        .from("profiles")
+        .select("id")
+        .eq("role", "buyer")
+        .in("email", candidateEmails)
+      : { data: [], error: null };
+    if (linkedProfilesByEmailResult.error && !isMissingRowError(linkedProfilesByEmailResult.error)) {
+      throw new Error(`profiles by email: ${linkedProfilesByEmailResult.error.message}`);
+    }
+
+    const linkedAllowedUsersResult = await adminClient
+      .from("allowed_users")
+      .select("id, is_active")
+      .eq("role", "buyer")
+      .eq("buyer_id", buyerId);
+    if (linkedAllowedUsersResult.error && !isMissingRowError(linkedAllowedUsersResult.error)) {
+      throw new Error(`allowed_users by buyer_id: ${linkedAllowedUsersResult.error.message}`);
+    }
+
+    const linkedAllowedUsersByEmailResult = candidateEmails.length > 0
+      ? await adminClient
+        .from("allowed_users")
+        .select("id, is_active")
+        .eq("role", "buyer")
+        .in("email", candidateEmails)
+      : { data: [], error: null };
+    if (linkedAllowedUsersByEmailResult.error && !isMissingRowError(linkedAllowedUsersByEmailResult.error)) {
+      throw new Error(`allowed_users by email: ${linkedAllowedUsersByEmailResult.error.message}`);
+    }
+
+    const remainingProfiles = uniqueById([
+      ...((linkedProfilesResult.data as Array<Record<string, unknown>>) || []),
+      ...((linkedProfilesByEmailResult.data as Array<Record<string, unknown>>) || []),
+    ]).filter((row) => !removedProfileIds.includes(safeString(row.id)));
+
+    const remainingAllowedUsers = uniqueById([
+      ...((linkedAllowedUsersResult.data as Array<Record<string, unknown>>) || []),
+      ...((linkedAllowedUsersByEmailResult.data as Array<Record<string, unknown>>) || []),
+    ]).filter((row) => (
+      !removedAllowedUserIds.includes(safeString(row.id)) &&
+      row.is_active !== false
+    ));
+
+    if (remainingProfiles.length === 0 && remainingAllowedUsers.length === 0) {
+      const { error: deactivateBuyerError } = await adminClient
+        .from("buyers")
+        .update({ is_active: false })
+        .eq("id", buyerId);
+      if (deactivateBuyerError && !isMissingRowError(deactivateBuyerError)) {
+        throw new Error(`buyers deactivate: ${deactivateBuyerError.message}`);
+      }
+
+      await deleteAppPushTokens(adminClient, [], [buyerId]);
+    }
+  }
+}
+
 async function deleteSellerOwnedData(
   adminClient: AdminClient,
   profileIds: string[],
@@ -288,12 +394,18 @@ async function handleDeleteUser(adminClient: AdminClient, body: Record<string, u
     ...(((allowedUserRowsByEmail.data as Array<Record<string, unknown>>) || []).map((row) => row.id)),
   ]);
 
+  const candidateBuyerIds = uniqueStrings([
+    allowedRowResult.data?.buyer_id,
+    ...linkedProfiles.map((row) => row.buyer_id),
+  ]);
+
   try {
     await deleteAppPushTokens(adminClient, profileIds, []);
     await deleteSellerOwnedData(adminClient, profileIds);
     await deleteByIds(adminClient, "allowed_users", allowedUserIds);
     await deleteByIds(adminClient, "profiles", profileIds);
     await deleteAuthUsers(adminClient, authUserIds);
+    await deactivateOrphanedBuyers(adminClient, candidateBuyerIds, candidateEmails, profileIds, allowedUserIds);
   } catch (error) {
     return jsonResponse(500, {
       error: error instanceof Error ? error.message : String(error),

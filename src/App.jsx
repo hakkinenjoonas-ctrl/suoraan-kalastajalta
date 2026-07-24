@@ -64,6 +64,14 @@ import {
 } from "./lib/constants.js";
 import { applyGrossPriceInput, createSpeciesRow, safeId, today } from "./lib/helpers.js";
 import {
+  ALLOWED_AUCTION_IMAGE_TYPES,
+  prepareAuctionImage,
+} from "./lib/auctionImage.js";
+import {
+  FISH_PACKAGING_OPTIONS,
+  extractPackagingFromNotes,
+} from "./lib/packaging.js";
+import {
   FISH_VAT_RATE,
   calculateGrossPrice,
   calculateNetPrice,
@@ -84,7 +92,15 @@ import {
   invokeBuyerOfferAction,
   invokeBulkOfferDispatch,
   invokeEdgeFunctionAuthenticated,
+  verifyGooglePlaySubscription,
 } from "./services/edgeFunctions.js";
+import {
+  FISHER_PREMIUM_PRODUCT_ID,
+  getFisherPremiumProduct,
+  isGooglePlayBillingAvailable,
+  purchaseFisherPremium,
+  restoreFisherPremiumPurchases,
+} from "./services/googlePlayBilling.js";
 import {
   ANONYMOUS_SELLER_LABEL,
   buildRoleOptionLabel,
@@ -106,10 +122,14 @@ import {
   WholesaleOffersOverviewSection,
 } from "./components/wholesaleOffersSections.jsx";
 import AdminOperationsView from "./components/AdminOperationsView.jsx";
+import AuctionsView from "./components/AuctionsView.jsx";
+import { AUCTION_DURATION_OPTIONS, normalizeAuctionMoney } from "./lib/auctionLogic.js";
 import ProcessedLabel4x3, { PROCESSED_LABEL_4X3_SIZE_MM } from "./components/ProcessedLabel4x3.jsx";
 import ProcessedLabel4x6, { PROCESSED_LABEL_4X6_SIZE_MM } from "./components/ProcessedLabel4x6.jsx";
 import ThermalLabel4x3, { THERMAL_LABEL_4X3_SIZE_MM } from "./components/ThermalLabel4x3.jsx";
 import ThermalLabel4x6Portrait, { THERMAL_LABEL_4X6_SIZE_MM } from "./components/ThermalLabel4x6Portrait.jsx";
+
+const AUCTION_IMAGE_BUCKET = "auction-images";
 
 function getPublicAppBaseUrl() {
   const configuredUrl = typeof import.meta !== "undefined" ? import.meta.env?.VITE_PUBLIC_APP_URL : "";
@@ -125,7 +145,49 @@ function getPublicAppBaseUrl() {
   return DEFAULT_PUBLIC_APP_URL;
 }
 
+function formatVisibleAuthErrorMessage(message) {
+  const text = String(message || "").trim();
+  if (!text) return "";
+  if (isTransientFetchError(text)) {
+    return "";
+  }
+  if (text.toLowerCase().includes("invalid input syntax")) {
+    return "Tarjousten päivitys epäonnistui virheellisen ostajatunnuksen takia. Päivitä sivu ja yritä uudelleen.";
+  }
+  return text;
+}
+
+function isTransientFetchError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("network request failed") ||
+    message.includes("networkerror when attempting to fetch resource") ||
+    message.includes("upstream connect error") ||
+    message.includes("disconnect/reset before headers") ||
+    message.includes("connection termination")
+  );
+}
+
+function waitForRetry(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function isUuidLike(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || "").trim());
+}
+
+function shouldFallbackBuyerOfferMutation(error) {
+  const status = Number(error?.status || 0);
+  const message = String(error?.message || "").toLowerCase();
+  if (status === 0) return true;
+  if (status === 404) return true;
+  return isTransientFetchError(error);
+}
+
 const PUSH_TOKEN_STORAGE_KEY = "sk:last_push_token";
+const LEGAL_TERMS_URL = "https://www.suoraankalastajalta.fi/tietosuojaseloste-ja-k%C3%A4ytt%C3%B6ehdot";
+const LEGAL_TERMS_VERSION = "2026-07-22";
 
 async function runWithConcurrency(items, concurrency, worker) {
   const normalizedConcurrency = Math.max(1, Number(concurrency || 1));
@@ -167,7 +229,19 @@ function getSpeciesMetadata(label) {
 
 function isCrayfishSpecies(label) {
   const metadata = getSpeciesMetadata(label);
-  return metadata?.scientific === "Pacifastacus leniusculus" || metadata?.scientific === "Astacus astacus";
+  if (metadata?.scientific === "Pacifastacus leniusculus" || metadata?.scientific === "Astacus astacus") return true;
+  const normalized = String(label || "").toLowerCase();
+  return normalized.includes("täplärapu") ||
+    normalized.includes("jokirapu") ||
+    normalized.includes("pacifastacus leniusculus") ||
+    normalized.includes("astacus astacus");
+}
+
+function parseCrayfishCountFromSummaryLine(line) {
+  const text = String(line || "");
+  const parenthesizedCount = text.match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
+  const directCount = text.match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kpl/i);
+  return parseLocaleNumber(parenthesizedCount?.[1] || directCount?.[1]);
 }
 
 function getSpeciesPriceUnit(label) {
@@ -283,9 +357,8 @@ function parseTradeValueFromSpeciesSummary(summary) {
     const parsedPrice = parseLocaleNumber(priceMatch[1]);
     if (parsedPrice == null || !Number.isFinite(parsedPrice) || parsedPrice <= 0) return sum;
 
-    const countMatch = String(line).match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
-    if (countMatch) {
-      const parsedCount = parseLocaleNumber(countMatch[1]);
+    const parsedCount = parseCrayfishCountFromSummaryLine(line);
+    if (parsedCount != null) {
       if (parsedCount == null || !Number.isFinite(parsedCount) || parsedCount <= 0) return sum;
       return sum + (parsedCount * parsedPrice);
     }
@@ -445,6 +518,34 @@ function buyerBillingMatchesDelivery(fields) {
   );
 }
 
+function buildProfileAddressLine(profileLike) {
+  return [
+    String(profileLike?.address || "").trim(),
+    String(profileLike?.postcode || "").trim(),
+    String(profileLike?.city || "").trim(),
+  ].filter(Boolean).join(", ");
+}
+
+function getDefaultProfilePickupAddress(profileLike) {
+  const explicitPickupAddress = String(profileLike?.pickup_address || profileLike?.pickupAddress || "").trim();
+  return explicitPickupAddress || buildProfileAddressLine(profileLike);
+}
+
+function resolveOfferDeliveryArea(deliveryMethod, deliveryArea, deliveryDestinations, fallbackPickupAddress = "") {
+  const normalizedMethod = String(deliveryMethod || "").trim();
+  const currentDeliveryArea = String(deliveryArea || "").trim();
+  const destinationSummary = String(formatDeliveryDestinations(deliveryDestinations) || "").trim();
+  const pickupFallback = String(fallbackPickupAddress || "").trim();
+
+  if (normalizedMethod === "Nouto") {
+    if (!currentDeliveryArea) return pickupFallback;
+    if (destinationSummary && currentDeliveryArea === destinationSummary) return pickupFallback;
+    return currentDeliveryArea;
+  }
+
+  return destinationSummary || currentDeliveryArea;
+}
+
 function inferLogisticsRegion(originCity, area) {
   const city = String(originCity || "").trim();
   if (city && municipalityRegionMap[city]) return municipalityRegionMap[city];
@@ -581,7 +682,11 @@ function parsePricePerKgFromNotes(notes) {
   return Number.isNaN(parsed) ? "" : parsed;
 }
 
-function extractVisibleAdditionalNotes(notes) {
+function isAuctionTradeOffer(offer) {
+  return String(offer?.sale_method || "fixed_price") === "auction";
+}
+
+function extractVisibleAdditionalNotes(notes, { hideDeliveryDestinations = false } = {}) {
   const lines = String(notes || "")
     .split("\n")
     .map((line) => line.trim())
@@ -608,6 +713,8 @@ function extractVisibleAdditionalNotes(notes) {
       line === "Kilpailuta kuljetus: Ei" ||
       line.startsWith("Toimitustapa:") ||
       line.startsWith("Toimitusalue:") ||
+      (hideDeliveryDestinations && line.startsWith("Toimituskohteet:")) ||
+      line.startsWith("Pakkaustapa:") ||
       line.startsWith("Noutopaikka:") ||
       line.startsWith("Toimituskustannus:") ||
       line.startsWith("Aikaisin toimitus:") ||
@@ -649,7 +756,19 @@ function isRoleAutomaticallyActive(role) {
 function isFisherPremiumProfile(profileLike) {
   if (!profileLike) return false;
   if (profileLike.role !== "member") return true;
-  return Boolean(profileLike.fisher_premium_enabled || profileLike.fisherPremiumEnabled);
+  if (profileLike.fisher_premium_admin_enabled || profileLike.fisherPremiumAdminEnabled) return true;
+  const subscriptionState = String(profileLike.google_play_subscription_status || "").trim();
+  const expiryTime = Date.parse(profileLike.google_play_subscription_expires_at || "");
+  if (
+    ["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD", "SUBSCRIPTION_STATE_CANCELED"].includes(subscriptionState)
+    && Number.isFinite(expiryTime)
+    && expiryTime > Date.now()
+  ) return true;
+  // Compatibility while the entitlement migration is being rolled out.
+  if (!("fisher_premium_admin_enabled" in profileLike) && !subscriptionState) {
+    return Boolean(profileLike.fisher_premium_enabled || profileLike.fisherPremiumEnabled);
+  }
+  return false;
 }
 
 function buildFisherPremiumMessage(featureLabel) {
@@ -718,7 +837,7 @@ function getCatchLabelProductForm(speciesValue) {
 }
 
 function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options = {}) {
-  const species = formatSpeciesForLabelTitle(entry?.species || "");
+  const species = formatSpeciesForSale(entry?.species || "");
   const isCrayfish = isCrayfishSpecies(entry?.species);
   const pieceCount = isCrayfish && options?.pieceCount != null
     ? String(options.pieceCount).trim()
@@ -747,6 +866,11 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     String(profileLike?.contact_email || profileLike?.email || "").trim(),
     String(profileLike?.phone || "").trim(),
   ].filter(Boolean).join(" · ");
+  const eviraFacilityId = String(
+    profileLike?.evira_facility_id ||
+    profileLike?.eviraFacilityId ||
+    "",
+  ).trim();
   const packDate = String(entry?.packDate || entry?.createdAt || "").slice(0, 10).trim();
   const weightText = entry?.kilos != null && String(entry.kilos).trim() !== ""
     ? `${Number(entry.kilos)} kg`
@@ -774,6 +898,7 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     supplier,
     supplierAddress,
     supplierContact,
+    eviraFacilityId,
     boxLabel,
   };
 }
@@ -1601,6 +1726,13 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
               <div>Kalastajalta</div>
             </div>
           </div>
+          ${label.eviraFacilityId ? `
+            <div class="label-oval" aria-label="Laitostunnus ${label.eviraFacilityId}">
+              <div class="label-oval-top">FI</div>
+              <div class="label-oval-mid">${label.eviraFacilityId}</div>
+              <div class="label-oval-bottom">EC</div>
+            </div>
+          ` : ""}
           <div class="label-qr">
             <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
           </div>
@@ -1640,6 +1772,9 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           .label-brand { display: flex; flex-direction: column; align-items: center; width: 100%; padding-top: 0.6mm; }
           .label-brand img { width: 14.4mm; max-height: 12mm; object-fit: contain; margin-bottom: 0.6mm; }
           .label-brand-text { font-size: 5.2pt; line-height: 1.05; font-weight: 700; text-align: center; color: #0f172a; }
+          .label-oval { width: 18mm; min-height: 10.8mm; border: 0.28mm solid #111827; border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0.5mm 0.8mm; margin: 0.8mm 0 1.1mm; text-align: center; }
+          .label-oval-top, .label-oval-bottom { font-size: 4.5pt; line-height: 1; font-weight: 800; }
+          .label-oval-mid { font-size: 5.4pt; line-height: 1.02; font-weight: 800; word-break: break-word; }
           .label-qr { display: flex; align-items: flex-end; justify-content: flex-start; width: 100%; }
           .label-qr img { width: 18mm; height: 18mm; object-fit: contain; border: 0.22mm solid #cbd5e1; border-radius: 1.2mm; padding: 0.8mm; background: #fff; }
         </style>
@@ -1660,6 +1795,55 @@ function blobToDataUrl(blob) {
   });
 }
 
+function drawFacilityOvalMark(doc, establishmentNumber, x, y, width, height) {
+  const value = String(establishmentNumber || "").trim();
+  if (!value) return;
+
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(17, 24, 39);
+  doc.setLineWidth(0.3);
+  doc.ellipse(cx, cy, width / 2, height / 2, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(5);
+  doc.text("FI", cx, y + 2.8, { align: "center" });
+  doc.setFontSize(6);
+  doc.text(value, cx, y + (height / 2) + 0.2, { align: "center" });
+  doc.setFontSize(5);
+  doc.text("EC", cx, y + height - 1.6, { align: "center" });
+}
+
+function FacilityOvalPreview({ value, width = 72, minHeight = 42, fontSize = 10 }) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+
+  return (
+    <div
+      aria-label={`Laitostunnus ${text}`}
+      style={{
+        width,
+        minHeight,
+        border: "1.5px solid #111827",
+        borderRadius: 999,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "3px 6px",
+        textAlign: "center",
+        background: "#fff",
+        color: "#111827",
+      }}
+    >
+      <div style={{ fontSize: fontSize - 2, lineHeight: 1, fontWeight: 800 }}>FI</div>
+      <div style={{ fontSize, lineHeight: 1.05, fontWeight: 800, wordBreak: "break-word" }}>{text}</div>
+      <div style={{ fontSize: fontSize - 2, lineHeight: 1, fontWeight: 800 }}>EC</div>
+    </div>
+  );
+}
+
 function isNativeCapacitorApp() {
   if (typeof window === "undefined") return false;
   const maybeCapacitor = window.Capacitor;
@@ -1671,6 +1855,16 @@ function isNativeCapacitorApp() {
     return maybeCapacitor.getPlatform() !== "web";
   }
   return false;
+}
+
+function isIosSafariWeb() {
+  if (typeof window === "undefined" || typeof navigator === "undefined" || isNativeCapacitorApp()) return false;
+  const userAgent = String(navigator.userAgent || "");
+  const isIos = /iPhone|iPad|iPod/i.test(userAgent)
+    || (/Macintosh/i.test(userAgent) && "ontouchend" in document);
+  const isWebKit = /WebKit/i.test(userAgent);
+  const isOtherBrowser = /CriOS|FxiOS|EdgiOS|OPiOS/i.test(userAgent);
+  return isIos && isWebKit && !isOtherBrowser;
 }
 
 let lastPresentedPdfKey = "";
@@ -2146,6 +2340,9 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     doc.setFontSize(5.2);
     doc.text("Suoraan", qrX + (qrSize / 2), brandY + logoHeight + 2.2, { align: "center" });
     doc.text("Kalastajalta", qrX + (qrSize / 2), brandY + logoHeight + 4.5, { align: "center" });
+    if (label.eviraFacilityId) {
+      drawFacilityOvalMark(doc, label.eviraFacilityId, qrX, brandY + logoHeight + 6.3, qrSize, 10);
+    }
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13.5);
@@ -2267,7 +2464,7 @@ function getRequestedOfferId() {
 
 function leavePublicBatchView() {
   if (typeof window === "undefined") return;
-  window.location.replace("/");
+  window.history.replaceState({}, "", "/");
 }
 
 function applyIncomingAppUrl(urlString, handlers = {}) {
@@ -2296,7 +2493,7 @@ function applyIncomingAppUrl(urlString, handlers = {}) {
     handlers.setBuyerActiveOfferId?.(linkedOfferId);
     handlers.setActiveTab?.("offers");
   } else if (linkedBatchId) {
-    handlers.setActiveTab?.("offers");
+    handlers.setPublicBatchId?.(linkedBatchId);
   }
 }
 
@@ -2587,10 +2784,35 @@ function fulfillmentStatusLabel(status) {
   return "Yhteydenotto kesken";
 }
 
-function getNotificationRouteTarget(data) {
-  const route = String(data?.route || "");
-  if (route === "billing") return "billing";
+function parseNotificationPayloadPart(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizeNotificationNavigationPayload(payload = {}) {
+  const root = parseNotificationPayloadPart(payload);
+  const nestedData = parseNotificationPayloadPart(root.data);
+  const nestedExtra = parseNotificationPayloadPart(root.extra);
+  return { ...root, ...nestedData, ...nestedExtra };
+}
+
+function getNotificationRouteTarget(data, role = "") {
+  const normalizedData = normalizeNotificationNavigationPayload(data);
+  const route = String(normalizedData?.route || "");
+  const eventType = String(normalizedData?.eventType || normalizedData?.event_type || "").toLowerCase();
+  const notificationText = `${String(normalizedData?.title || "")} ${String(normalizedData?.body || "")}`.toLocaleLowerCase("fi-FI");
+  if (route === "billing") return role === "buyer" ? "buyer_billing" : "billing";
+  if (route === "auctions") return "auctions";
   if (route === "offers") return "offers";
+  if (eventType.startsWith("auction_")) return "auctions";
+  if (notificationText.includes("huutokauppa")) return "auctions";
   return "dashboard";
 }
 
@@ -2812,7 +3034,7 @@ function getFishingDurationFieldMeta(gearValue) {
       durationLabel: "Nuottausaika (t:mm)",
       speedLabel: "Vetonopeus (m/min)",
       durationPlaceholder: "Esim. 6:30",
-      speedPlaceholder: "Esim. 240",
+      speedPlaceholder: "Esim. 4",
       help: "Nuotalle ilmoitetaan yhteenlaskettu nuottausaika tunteina ja vetonopeus metreinä minuutissa.",
       splitFields: true,
     };
@@ -3020,7 +3242,10 @@ function appendCatchDetailsToNotes(notes, source) {
     String(source?.fishingDurationDays || "").trim() ? `Pyyntiaika: ${String(source.fishingDurationDays).trim()}` : "",
   ].filter(Boolean);
 
-  const baseNotes = String(notes || "").trim();
+  const packagingLine = String(source?.packaging || "").trim()
+    ? `Pakkaustapa: ${String(source.packaging).trim()}`
+    : "";
+  const baseNotes = [String(notes || "").trim(), packagingLine].filter(Boolean).join("\n");
   if (detailLines.length === 0) return baseNotes;
   return [baseNotes, "Pyydyksen ja saaliin lisätiedot:", ...detailLines].filter(Boolean).join("\n");
 }
@@ -3572,7 +3797,7 @@ function FirstUseGuideCard({ profile, guideState, onDismissNow, onHideForever, v
   );
 }
 
-function PublicBatchView({ batchId, data, loading, error }) {
+function PublicBatchView({ batchId, data, loading, error, onLeave }) {
   const formatPublicQuantity = (row) => {
     if (!row) return "";
     const crayfish = isCrayfishSpecies(row.species || row.species_summary);
@@ -3681,7 +3906,7 @@ function PublicBatchView({ batchId, data, loading, error }) {
               {headerSummary ? <div style={{ marginTop: 8, fontSize: 18, color: "#0f172a", fontWeight: 700 }}>{headerSummary}</div> : null}
             </div>
             <div className="no-print" style={styles.row}>
-              <button style={styles.button} onClick={leavePublicBatchView}>
+              <button style={styles.button} onClick={onLeave}>
                 Palaa sovellukseen
               </button>
               <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => window.print()}>
@@ -3978,6 +4203,11 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
                           <div>Kalastajalta</div>
                         </div>
                       </div>
+                      {previewLabel.eviraFacilityId ? (
+                        <div style={{ width: "100%", display: "flex", justifyContent: "center", margin: "6px 0 8px" }}>
+                          <FacilityOvalPreview value={previewLabel.eviraFacilityId} width={72} minHeight={40} fontSize={10} />
+                        </div>
+                      ) : null}
                       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-start", width: "100%" }}>
                         <img src={previewLabel.qrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 82, height: 82, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff" }} />
                       </div>
@@ -4075,6 +4305,18 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
                   <option value="buyer">Ostaja</option>
                 </select>
               </div>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 10, lineHeight: 1.4 }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(authForm.acceptedTerms)}
+                  onChange={(e) => setAuthForm((prev) => ({ ...prev, acceptedTerms: e.target.checked }))}
+                  style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0 }}
+                />
+                <span>
+                  Olen lukenut ja hyväksyn palvelun{" "}
+                  <a href={LEGAL_TERMS_URL} target="_blank" rel="noreferrer">käyttöehdot ja tietosuojaselosteen</a>.
+                </span>
+              </label>
             </>
           ) : null}
 
@@ -4223,12 +4465,14 @@ function WholesaleOffersView({
     const reservation = getEntryReservation(entry);
 
     const batchMatches = (buyerOffers || []).filter((offer) => {
+      if (isAuctionTradeOffer(offer)) return false;
       if (!entry.batchId) return false;
       if (offer.batch_id && offer.batch_id === entry.batchId) return true;
       return getOfferSummaryBatchItems(offer.species_summary).some((item) => item.batchId === entry.batchId);
     });
 
     const entryMatches = (buyerOffers || []).filter((offer) => {
+      if (isAuctionTradeOffer(offer)) return false;
       if (offer.batch_id && entry.batchId) return false;
 
       return (
@@ -4267,6 +4511,7 @@ function WholesaleOffersView({
   };
 
   const prioritizedBuyerResponses = (buyerOffers || [])
+    .filter((offer) => !isAuctionTradeOffer(offer))
     .filter((offer) => hasBuyerOfferStatus(offer.status, [
       ...BUYER_OFFER_ACTION_REQUIRED_STATUSES,
       "accepted",
@@ -5399,6 +5644,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
                   <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{session.date || "-"}</td>
                   <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0" }}>{session.vesselLabel || "-"}</td>
                   <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0" }}>{session.fishingAreaLabel || "-"}</td>
+                  <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0" }}>{session.spotLabel || "-"}</td>
                   <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0" }}>{session.landingPlace || "-"}</td>
                   <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0" }}>{session.gearLabel || "-"}</td>
                   <td style={{ padding: "12px 10px", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{session.gearCount || "0"}</td>
@@ -5447,6 +5693,11 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
       : "Anonyymi ostaja";
     const kilos = Number(offer.reserved_kilos || offer.total_kilos || 0);
     const pricePerKg = Number(offer.counter_price_per_kg || offer.price_per_kg || 0);
+    const billingUnit = getOfferDisplayUnit(offer);
+    const invoiceLines = parseSellerInvoiceLineItems(offer);
+    const billingQuantity = billingUnit === "kpl"
+      ? invoiceLines.filter((line) => line.unit === "kpl").reduce((sum, line) => sum + Number(line.quantity || 0), 0)
+      : kilos;
     const calculatedTradeValue = Number.isFinite(Number(offer.tradeValue))
       ? Number(offer.tradeValue)
       : kilos * pricePerKg;
@@ -5458,7 +5709,10 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
       ...offer,
       ownerCommissionMonthKey: monthKey,
       buyerLabel,
-      billingKilos: kilos,
+      billingKilos: billingUnit === "kg" ? billingQuantity : 0,
+      billingPieces: billingUnit === "kpl" ? billingQuantity : 0,
+      billingQuantity,
+      billingUnit,
       billingPricePerKg: pricePerKg,
       tradeValue: resolveOwnerCommissionNumber(offer.owner_trade_value, calculatedTradeValue),
       commissionValue: resolveOwnerCommissionNumber(offer.owner_commission_amount, calculatedCommissionValue),
@@ -5500,6 +5754,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
         sellerLabel,
         offers: [],
         totalKilos: 0,
+        totalPieces: 0,
         totalTradeValue: 0,
         totalCommissionValue: 0,
       };
@@ -5507,6 +5762,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
 
     acc[groupKey].offers.push(offer);
     acc[groupKey].totalKilos += offer.billingKilos;
+    acc[groupKey].totalPieces += offer.billingPieces;
     acc[groupKey].totalTradeValue += offer.tradeValue;
     acc[groupKey].totalCommissionValue += offer.commissionValue;
     return acc;
@@ -5527,12 +5783,14 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
 
   const monthSummary = monthScopedOffers.reduce((acc, offer) => {
     acc.totalKilos += offer.billingKilos;
+    acc.totalPieces += offer.billingPieces;
     acc.totalTradeValue += offer.tradeValue;
     acc.totalCommissionValue += offer.commissionValue;
     acc.totalTrades += 1;
     return acc;
   }, {
     totalKilos: 0,
+    totalPieces: 0,
     totalTradeValue: 0,
     totalCommissionValue: 0,
     totalTrades: 0,
@@ -5542,13 +5800,14 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
     void exportSpreadsheet(
       `laskutus-${group.monthKey}-${group.sellerLabel.replace(/[^a-z0-9åäö_-]+/gi, "-")}.xlsx`,
       [
-        ["Kuukausi", "Myyjä", "Ostaja", "Erä", "Kg", "Hinta €/kg", "Kaupan arvo €", "Komissio %", "Komissio €", "Päivä", "Tila"],
+        ["Kuukausi", "Myyjä", "Ostaja", "Erä", "Määrä", "Yksikkö", "Yksikköhinta €", "Kaupan arvo €", "Komissio %", "Komissio €", "Päivä", "Tila"],
         ...group.offers.map((offer) => [
           group.monthKey,
           group.sellerLabel,
           offer.buyerLabel,
           String(offer.species_summary || "").split("\n").join(" | "),
-          offer.billingKilos,
+          offer.billingQuantity,
+          offer.billingUnit,
           offer.billingPricePerKg,
           offer.tradeValue.toFixed(2),
           `${(COMMISSION_RATE * 100).toFixed(1)} %`,
@@ -5587,7 +5846,8 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
           <span style={styles.badge}>{activeMonthKey === "all" ? "Kaikki kuukaudet" : activeMonthKey === "Ei kuukautta" ? "Ei kuukautta" : `Kuukausi ${activeMonthKey}`}</span>
           <span style={styles.badge}>{groups.length} kalastajaa</span>
           <span style={styles.badge}>{monthSummary.totalTrades} kauppaa</span>
-          <span style={styles.badge}>{monthSummary.totalKilos.toFixed(1)} kg</span>
+          {monthSummary.totalKilos > 0 ? <span style={styles.badge}>{monthSummary.totalKilos.toFixed(1)} kg</span> : null}
+          {monthSummary.totalPieces > 0 ? <span style={styles.badge}>{monthSummary.totalPieces.toLocaleString("fi-FI")} kpl</span> : null}
           <span style={styles.badge}>{euro(monthSummary.totalTradeValue)} kaupan arvo</span>
           <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{euro(monthSummary.totalCommissionValue)} komissio</span>
         </div>
@@ -5634,7 +5894,8 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
             </div>
 
             <div style={styles.entryBadges}>
-              <span style={styles.badge}>{group.totalKilos.toFixed(1)} kg</span>
+              {group.totalKilos > 0 ? <span style={styles.badge}>{group.totalKilos.toFixed(1)} kg</span> : null}
+              {group.totalPieces > 0 ? <span style={styles.badge}>{group.totalPieces.toLocaleString("fi-FI")} kpl</span> : null}
               <span style={styles.badge}>{euro(group.totalTradeValue)} kaupan arvo</span>
               <span style={styles.badge}>{euro(group.totalCommissionValue)} komissio</span>
               <span style={styles.badge}>{group.offers.length} kauppaa</span>
@@ -5644,9 +5905,9 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
               <div key={offer.id} style={styles.entry}>
                 <div style={styles.entryBadges}>
                   <span style={styles.badge}>{offer.buyerLabel}</span>
-                  <span style={styles.badge}>{offer.billingKilos} kg</span>
-                <span style={styles.badge}>{euro(offer.billingPricePerKg)} / kg ALV 0 %</span>
-                <span style={styles.badge}>{euro(calculateGrossPrice(offer.billingPricePerKg) || 0)} / kg sis. ALV {formatVatPercent()} %</span>
+                  <span style={styles.badge}>{offer.billingQuantity.toLocaleString("fi-FI")} {offer.billingUnit}</span>
+                <span style={styles.badge}>{euro(offer.billingPricePerKg)} / {offer.billingUnit} ALV 0 %</span>
+                <span style={styles.badge}>{euro(calculateGrossPrice(offer.billingPricePerKg) || 0)} / {offer.billingUnit} sis. ALV {formatVatPercent()} %</span>
                   <span style={styles.badge}>{euro(offer.tradeValue)}</span>
                   <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{euro(offer.commissionValue)} komissio</span>
                 </div>
@@ -5787,10 +6048,9 @@ function parseSellerInvoiceLineItems(offer) {
     });
     const description = formatSpeciesForSale((visibleLine.split(":")[0] || visibleLine || "Kalaerä").trim());
     const priceMatch = String(line || "").match(/Hinta(?:\s+ALV\s+0\s*%)?\s+([0-9]+(?:[.,][0-9]+)?)/i);
-    const pieceMatch = String(visibleLine || "").match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
     const kiloMatch = String(visibleLine || "").match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kg/i);
     const isCrayfishLine = isCrayfishSpecies(description);
-    const parsedSummaryQuantity = Number(parseLocaleNumber(isCrayfishLine ? pieceMatch?.[1] : kiloMatch?.[1]) || 0);
+    const parsedSummaryQuantity = Number((isCrayfishLine ? parseCrayfishCountFromSummaryLine(visibleLine) : parseLocaleNumber(kiloMatch?.[1])) || 0);
     const quantity = !mixedOffer && !isCrayfishLine && reservedKilos > 0 ? reservedKilos : parsedSummaryQuantity;
     const unit = isCrayfishLine ? "kpl" : "kg";
     const summaryUnitPrice = Number(parseLocaleNumber(priceMatch?.[1]) || 0);
@@ -6272,6 +6532,27 @@ function getOwnerCommissionStatusLabel(offer) {
   if (status === "paid") return "Maksettu";
   if (status === "invoiced") return "Laskutettu";
   return "Laskuttamaton";
+}
+
+function getBuyerInvoiceStatusLabel(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "paid") return "Maksettu";
+  if (normalized === "invoiced") return "Avoin";
+  return "Laskuttamaton";
+}
+
+function getBuyerInvoiceGroupingBucket(offer) {
+  const source = String(offer?.paid_at || offer?.billed_at || offer?.updated_at || offer?.created_at || "").trim();
+  if (!source) return "";
+
+  try {
+    const value = new Date(source);
+    if (Number.isNaN(value.getTime())) return source.slice(0, 16);
+    value.setSeconds(0, 0);
+    return value.toISOString().slice(0, 16);
+  } catch {
+    return source.slice(0, 16);
+  }
 }
 
 function resolveOwnerCommissionNumber(value, fallbackValue) {
@@ -7021,7 +7302,7 @@ function SellerBillingView({
 }
 
 export default function App() {
-  const publicBatchId = getRequestedPublicBatchId();
+  const [publicBatchId, setPublicBatchId] = useState(() => getRequestedPublicBatchId());
   const requestedOfferId = getRequestedOfferId();
   const initialCatchDefaults = getStoredCatchFormDefaults();
   const initialGearDefaults = getStoredGearProfile(initialCatchDefaults, initialCatchDefaults.gear);
@@ -7070,14 +7351,21 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [entryScope, setEntryScope] = useState("own");
   const [authMode, setAuthMode] = useState("signin");
-  const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "", displayName: "", requestedRole: "member" });
+  const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "", displayName: "", requestedRole: "member", acceptedTerms: false });
   const [authError, setAuthError] = useState("");
   const [authInfo, setAuthInfo] = useState("");
   const [authWarning, setAuthWarning] = useState("");
+  const [premiumPurchaseBusy, setPremiumPurchaseBusy] = useState(false);
+  const premiumRestoreAttemptRef = useRef("");
+  const visibleAuthError = formatVisibleAuthErrorMessage(authError);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [auctionsAvailable, setAuctionsAvailable] = useState(false);
   const [pendingEntriesScrollTarget, setPendingEntriesScrollTarget] = useState("");
+  const [pendingAuctionTarget, setPendingAuctionTarget] = useState(null);
+  const [pendingOfferTarget, setPendingOfferTarget] = useState(null);
+  const [focusedFixedOfferId, setFocusedFixedOfferId] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -7144,7 +7432,12 @@ export default function App() {
       fykeHeight: initialGearDefaults.fykeHeight,
       price_per_kg: "",
       notes: "",
+      packaging: "",
+      saleMode: "none",
       listForSale: false,
+      auctionDurationMinutes: 180,
+      auctionMinimumIncrement: "0,20",
+      auctionReservePrice: "",
       offerToShops: false,
       offerToRestaurants: false,
       offerToWholesalers: false,
@@ -7163,6 +7456,30 @@ export default function App() {
       coldTransport: false,
     };
   });
+  const [auctionImageFile, setAuctionImageFile] = useState(null);
+  const [auctionImagePreviewUrl, setAuctionImagePreviewUrl] = useState("");
+
+  useEffect(() => () => {
+    if (auctionImagePreviewUrl) URL.revokeObjectURL(auctionImagePreviewUrl);
+  }, [auctionImagePreviewUrl]);
+
+  const handleAuctionImageSelection = async (event) => {
+    const selectedFile = event.target.files?.[0] || null;
+    event.target.value = "";
+    if (!selectedFile) return;
+    if (!ALLOWED_AUCTION_IMAGE_TYPES.includes(selectedFile.type)) {
+      setAuthError("Valitse huutokauppaan JPG-, PNG- tai WebP-kuva.");
+      return;
+    }
+    try {
+      setAuthError("");
+      const preparedFile = await prepareAuctionImage(selectedFile);
+      setAuctionImageFile(preparedFile);
+      setAuctionImagePreviewUrl(URL.createObjectURL(preparedFile));
+    } catch (imageError) {
+      setAuthError(String(imageError?.message || imageError || "Huutokauppakuvan käsittely epäonnistui."));
+    }
+  };
   const [savedCustomLakeAreas, setSavedCustomLakeAreas] = useState(() => initialCatchDefaults.customLakeAreas || []);
   const [savedCustomSeaAreas, setSavedCustomSeaAreas] = useState(() => initialCatchDefaults.customSeaAreas || []);
   const [catchAreaSelector, setCatchAreaSelector] = useState(() => resolveAreaSelectorValue(initialCatchDefaults.area, initialCatchDefaults.customLakeAreas, initialCatchDefaults.customSeaAreas));
@@ -7303,6 +7620,32 @@ export default function App() {
       if (timeoutId) window.clearTimeout(timeoutId);
     };
   }, [activeTab, pendingEntriesScrollTarget, entries, search, entryScope]);
+
+  useEffect(() => {
+    const offerId = String(pendingOfferTarget?.offerId || "").trim();
+    if (activeTab !== "offers" || !offerId || buyerOffers.length === 0 || typeof document === "undefined") return undefined;
+    const targetOffer = buyerOffers.find((offer) => String(offer.id || "") === offerId && !isAuctionTradeOffer(offer));
+    if (!targetOffer) return undefined;
+
+    if (profile?.role === "buyer") {
+      setBuyerOffersFilter(getBuyerOffersFilterForStatus(targetOffer.status));
+      setBuyerActiveOfferId(offerId);
+    }
+    setFocusedFixedOfferId(offerId);
+
+    const timer = window.setTimeout(() => {
+      const targetId = profile?.role === "buyer" ? `buyer-offer-card-${offerId}` : `linked-buyer-offer-${offerId}`;
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setPendingOfferTarget(null);
+    }, 140);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, buyerOffers, pendingOfferTarget, profile?.role]);
+
+  useEffect(() => {
+    if (!focusedFixedOfferId) return undefined;
+    const timer = window.setTimeout(() => setFocusedFixedOfferId(""), 5000);
+    return () => window.clearTimeout(timer);
+  }, [focusedFixedOfferId]);
   const [accountBillingSameAsDelivery, setAccountBillingSameAsDelivery] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ newPassword: "", confirmPassword: "" });
   const [publicBatchData, setPublicBatchData] = useState(null);
@@ -7356,6 +7699,11 @@ export default function App() {
     catchDefaultsStorageKeyRef.current = nextStorageKey;
     const defaults = getStoredCatchFormDefaults(profile);
     const gearDefaults = getStoredGearProfile(defaults, defaults.gear);
+    const profilePickupAddress = getDefaultProfilePickupAddress(profile);
+    const storedDeliveryArea = String(defaults.deliveryArea || "").trim();
+    const cleanDeliveryArea = storedDeliveryArea && storedDeliveryArea === profilePickupAddress
+      ? formatDeliveryDestinations(defaults.deliveryDestinations)
+      : storedDeliveryArea;
 
     setForm((prev) => ({
       ...prev,
@@ -7370,7 +7718,7 @@ export default function App() {
       netMeshSize: gearDefaults.netMeshSize,
       fykeHeight: gearDefaults.fykeHeight,
       deliveryDestinations: defaults.deliveryDestinations || [],
-      deliveryArea: defaults.deliveryArea || "",
+      deliveryArea: cleanDeliveryArea,
     }));
     setSavedCustomLakeAreas(defaults.customLakeAreas || []);
     setSavedCustomSeaAreas(defaults.customSeaAreas || []);
@@ -7385,7 +7733,7 @@ export default function App() {
     setProcessedForm((prev) => ({
       ...prev,
       deliveryDestinations: defaults.deliveryDestinations || [],
-      deliveryArea: defaults.deliveryArea || "",
+      deliveryArea: cleanDeliveryArea,
     }));
     setProcessedAreaSelector(resolveAreaSelectorValue("Saimaa", defaults.customLakeAreas, defaults.customSeaAreas));
   }, [profile]);
@@ -7495,7 +7843,7 @@ export default function App() {
       String(profile?.buyer_id || "").trim(),
       String(linkedBuyerRecord?.id || "").trim(),
       ...(buyerCandidateRecords || []).map((buyer) => String(buyer?.id || "").trim()).filter(Boolean),
-    ].filter(Boolean)));
+    ].filter((value) => isUuidLike(value))));
     buyerIds.forEach((buyerId) => {
       filters.push(`buyer_id.eq.${buyerId}`);
     });
@@ -7540,23 +7888,126 @@ export default function App() {
     setAccountPanelOpen(true);
   }, []);
 
+  const verifyAndApplyGooglePlayPurchase = useCallback(async (purchase) => {
+    const purchaseToken = String(purchase?.purchaseToken || "").trim();
+    if (!purchaseToken || !session?.access_token) {
+      throw new Error("Google Play -ostoksen tunniste puuttuu.");
+    }
+    const { data, error } = await verifyGooglePlaySubscription(session.access_token, {
+      productId: FISHER_PREMIUM_PRODUCT_ID,
+      purchaseToken,
+    });
+    if (error) throw new Error(error.message);
+    if (data?.profile) setProfile(data.profile);
+    setRefreshTick((previous) => previous + 1);
+    return Boolean(data?.entitled);
+  }, [session?.access_token]);
+
+  const handlePurchaseFisherPremium = useCallback(async () => {
+    setPremiumPurchaseBusy(true);
+    setAuthError("");
+    setAuthInfo("");
+    try {
+      const product = await getFisherPremiumProduct();
+      const offerToken = product?.offers?.[0]?.offerToken || "";
+      const result = await purchaseFisherPremium(offerToken);
+      const entitled = await verifyAndApplyGooglePlayPurchase(result?.purchase);
+      setAuthInfo(entitled
+        ? "Kalastajan Premium on aktivoitu."
+        : "Tilaus vastaanotettiin, mutta Premium ei ole vielä aktiivinen.");
+    } catch (error) {
+      if (String(error?.code || "") !== "USER_CANCELED") {
+        setAuthError(String(error?.message || error || "Premium-tilauksen ostaminen epäonnistui."));
+      }
+    } finally {
+      setPremiumPurchaseBusy(false);
+    }
+  }, [verifyAndApplyGooglePlayPurchase]);
+
+  const handleRestoreFisherPremium = useCallback(async () => {
+    setPremiumPurchaseBusy(true);
+    setAuthError("");
+    setAuthInfo("");
+    try {
+      const result = await restoreFisherPremiumPurchases();
+      const purchase = (result?.purchases || []).find((row) => (
+        (row?.products || []).includes(FISHER_PREMIUM_PRODUCT_ID)
+      ));
+      if (!purchase) {
+        setAuthInfo("Tällä Google Play -tilillä ei löytynyt aktiivista Premium-tilausta.");
+        return;
+      }
+      const entitled = await verifyAndApplyGooglePlayPurchase(purchase);
+      setAuthInfo(entitled
+        ? "Premium-tilaus palautettiin onnistuneesti."
+        : "Tilaus löytyi, mutta sen käyttöoikeus ei ole aktiivinen.");
+    } catch (error) {
+      setAuthError(String(error?.message || error || "Tilauksen palauttaminen epäonnistui."));
+    } finally {
+      setPremiumPurchaseBusy(false);
+    }
+  }, [verifyAndApplyGooglePlayPurchase]);
+
+  useEffect(() => {
+    if (
+      profile?.role !== "member"
+      || !profile?.id
+      || !session?.access_token
+      || !isGooglePlayBillingAvailable()
+      || premiumRestoreAttemptRef.current === profile.id
+    ) return;
+
+    premiumRestoreAttemptRef.current = profile.id;
+    let cancelled = false;
+    const refreshGoogleEntitlement = async () => {
+      try {
+        const result = await restoreFisherPremiumPurchases();
+        const purchase = (result?.purchases || []).find((row) => (
+          (row?.products || []).includes(FISHER_PREMIUM_PRODUCT_ID)
+        ));
+        if (!cancelled && purchase) await verifyAndApplyGooglePlayPurchase(purchase);
+      } catch (error) {
+        console.warn("Google Play subscription refresh failed", error);
+      }
+    };
+    refreshGoogleEntitlement();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id, profile?.role, session?.access_token, verifyAndApplyGooglePlayPurchase]);
+
   const handleNotificationNavigation = useCallback((payload = {}) => {
-    const nextTab = getNotificationRouteTarget(payload);
+    const normalizedPayload = normalizeNotificationNavigationPayload(payload);
+    const nextTab = getNotificationRouteTarget(normalizedPayload, profile?.role);
     if (nextTab) {
       setActiveTab(nextTab);
     }
     if (nextTab === "offers" && profile?.role === "buyer") {
       setBuyerOffersFilter("open");
-      if (String(payload.eventType || "").trim() === "offer_accepted") {
+      if (String(normalizedPayload.eventType || "").trim() === "offer_accepted") {
         setBuyerActiveOfferId(null);
         return;
       }
     }
-    if (String(payload.offerId || "").trim()) {
-      setBuyerActiveOfferId(String(payload.offerId).trim());
+    if (String(normalizedPayload.offerId || "").trim()) {
+      setBuyerActiveOfferId(String(normalizedPayload.offerId).trim());
       setBuyerActionMode("counter");
     }
+    if (nextTab === "auctions") {
+      const offerId = String(normalizedPayload.offerId || "").trim();
+      const batchId = String(normalizedPayload.batchId || "").trim();
+      if (offerId || batchId) {
+        setPendingAuctionTarget({ offerId, batchId, requestKey: Date.now() });
+      }
+    }
+    if (nextTab === "offers" && String(normalizedPayload.offerId || "").trim()) {
+      setPendingOfferTarget({ offerId: String(normalizedPayload.offerId).trim(), requestKey: Date.now() });
+    }
   }, [profile?.role]);
+
+  const handleAuctionTargetHandled = useCallback(() => {
+    setPendingAuctionTarget(null);
+  }, []);
 
   const sendPushEvent = useCallback(async ({
     targetUserId = "",
@@ -8054,15 +8505,17 @@ export default function App() {
 
         const actionHandle = await PushNotifications.addListener("pushNotificationActionPerformed", (result) => {
           if (cancelled) return;
-          console.log("[PUSH] pushNotificationActionPerformed", JSON.stringify(result?.notification?.data || {}));
-          handleNotificationNavigation(result?.notification?.data || {});
+          const actionPayload = result?.notification?.data || result?.notification?.extra || result?.notification || {};
+          console.log("[PUSH] pushNotificationActionPerformed", JSON.stringify(actionPayload));
+          handleNotificationNavigation(actionPayload);
         });
         removeHandles.push(actionHandle);
 
         const localActionHandle = await LocalNotifications.addListener("localNotificationActionPerformed", (result) => {
           if (cancelled) return;
-          console.log("[PUSH] localNotificationActionPerformed", JSON.stringify(result?.notification?.extra || {}));
-          handleNotificationNavigation(result?.notification?.extra || {});
+          const actionPayload = result?.notification?.extra || result?.notification?.data || result?.notification || {};
+          console.log("[PUSH] localNotificationActionPerformed", JSON.stringify(actionPayload));
+          handleNotificationNavigation(actionPayload);
         });
         removeHandles.push(localActionHandle);
 
@@ -8180,7 +8633,7 @@ export default function App() {
 
   const fishermanDeliveryMethods = deliveryMethods.filter((method) => method === "Nouto" || method === "Myyjä toimittaa");
   const normalizeFishermanDeliveryMethod = (value) => (
-    fishermanDeliveryMethods.includes(value) ? value : "Nouto"
+    fishermanDeliveryMethods.includes(value) ? value : "Myyjä toimittaa"
   );
 
   const buyerTypeLabel = (type) => {
@@ -8281,17 +8734,25 @@ export default function App() {
     if (matches.length === 0) return null;
     return matches.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
   };
-  const shouldSendOffer = hasFisherPremium && form.listForSale && (form.offerToShops || form.offerToRestaurants || form.offerToWholesalers);
+  const isCatchAuction = form.saleMode === "auction";
+  const auctionContainsOnlyCrayfish = speciesRows.length > 0 && speciesRows.every((row) => isCrayfishSpecies(getSpeciesRowLabel(row)));
+  const shouldSendOffer = hasFisherPremium && form.saleMode === "fixed" && form.listForSale && (form.offerToShops || form.offerToRestaurants || form.offerToWholesalers);
   const shouldSendProcessedOffer = processedForm.listForSale && (processedForm.offerToShops || processedForm.offerToRestaurants || processedForm.offerToWholesalers);
   const currentOriginCity = form.originCity || form.municipality || "";
   const currentProcessedOriginCity = processedForm.originCity || processedForm.municipality || "";
-  const derivedDeliveryArea = form.deliveryPossible && form.deliveryMethod === "Kuljetus järjestetään"
-    ? formatDeliveryDestinations(form.deliveryDestinations)
-    : form.deliveryArea;
-  const derivedProcessedDeliveryArea = processedForm.deliveryPossible && processedForm.deliveryMethod === "Kuljetus järjestetään"
-    ? formatDeliveryDestinations(processedForm.deliveryDestinations)
-    : processedForm.deliveryArea;
-  const savedPickupAddress = profile?.pickup_address || "";
+  const savedPickupAddress = getDefaultProfilePickupAddress(profile);
+  const derivedDeliveryArea = resolveOfferDeliveryArea(
+    normalizeFishermanDeliveryMethod(form.deliveryMethod),
+    form.deliveryArea,
+    form.deliveryDestinations,
+    savedPickupAddress,
+  );
+  const derivedProcessedDeliveryArea = resolveOfferDeliveryArea(
+    processedForm.deliveryMethod,
+    processedForm.deliveryArea,
+    processedForm.deliveryDestinations,
+    savedPickupAddress,
+  );
   const resolvedPickupAddress = (form.pickupAddress || savedPickupAddress || "").trim();
   const resolvedProcessedPickupAddress = (processedForm.pickupAddress || savedPickupAddress || "").trim();
   const availableOriginPoints = useMemo(
@@ -8606,6 +9067,7 @@ export default function App() {
     const urlHandlers = {
       setActiveTab,
       setBuyerActiveOfferId,
+      setPublicBatchId,
     };
 
     const handleInitialUrl = async () => {
@@ -8644,6 +9106,34 @@ export default function App() {
       }
     };
   }, [setActiveTab, setBuyerActiveOfferId]);
+
+  const closePublicBatchView = useCallback(() => {
+    leavePublicBatchView();
+    setPublicBatchId("");
+    setPublicBatchData(null);
+    setPublicBatchLoading(false);
+    setPublicBatchError("");
+  }, []);
+
+  useEffect(() => {
+    if (!publicBatchId || !isNativeCapacitorApp()) return undefined;
+
+    let listenerHandle = null;
+    const registerBackButtonListener = async () => {
+      try {
+        listenerHandle = await CapacitorApp.addListener("backButton", closePublicBatchView);
+      } catch {
+        listenerHandle = null;
+      }
+    };
+
+    void registerBackButtonListener();
+    return () => {
+      if (listenerHandle?.remove) {
+        void listenerHandle.remove();
+      }
+    };
+  }, [publicBatchId, closePublicBatchView]);
 
   useEffect(() => {
     if (!publicBatchId) {
@@ -8952,9 +9442,7 @@ export default function App() {
   useEffect(() => {
     if (!profile) return;
 
-    const loadData = async () => {
-      setAuthError("");
-
+    const loadData = async (attempt = 0) => {
       const entriesQuery = supabase.from("catch_entries").select("*").order("date", { ascending: false }).order("created_at", { ascending: false });
       const finalEntriesQuery = profile.role === "owner" && entryScope === "all" ? entriesQuery : entriesQuery.eq("owner_user_id", profile.id);
 
@@ -8967,6 +9455,7 @@ export default function App() {
           hasProcessedBatchSourcesTable,
           hasBuyerOffersTable,
           hasAppPushTokensTable,
+          hasAuctionsTable,
         ] = await Promise.all([
           tableExists(supabase, "wholesale_offers"),
           tableExists(supabase, "buyers"),
@@ -8975,7 +9464,9 @@ export default function App() {
           tableExists(supabase, "processed_batch_sources"),
           tableExists(supabase, "buyer_offers"),
           tableExists(supabase, "app_push_tokens"),
+          tableExists(supabase, "auctions"),
         ]);
+        setAuctionsAvailable(hasAuctionsTable);
 
         const buyerOffersPromise = hasBuyerOffersTable
           ? profile.role === "buyer"
@@ -9063,6 +9554,24 @@ export default function App() {
           buyerOffersPromise,
           processorAcceptedOffersPromise,
         ]);
+
+        const transientLoadError = [
+          entryError,
+          processedEntriesResult?.error,
+          processedProductsResult?.error,
+          allowedError,
+          ownerProfilesResult?.error,
+          appPushTokensResult?.error,
+          offerResult?.error,
+          buyersResult?.error,
+          buyerOffersResult?.error,
+          processorAcceptedOffersResult?.error,
+        ].find(isTransientFetchError);
+
+        if (transientLoadError && attempt < 2) {
+          await waitForRetry(700 * (attempt + 1));
+          return loadData(attempt + 1);
+        }
 
         if (entryError) {
           if (isMissingRefreshTokenError(entryError)) {
@@ -9491,10 +10000,15 @@ export default function App() {
             };
           }));
         }
+        setAuthError((current) => isTransientFetchError(current) ? "" : current);
       } catch (error) {
         if (isMissingRefreshTokenError(error)) {
           await invalidateSession();
           return;
+        }
+        if (isTransientFetchError(error) && attempt < 2) {
+          await waitForRetry(700 * (attempt + 1));
+          return loadData(attempt + 1);
         }
         setAuthError(String(error?.message || error));
       }
@@ -10048,7 +10562,7 @@ export default function App() {
           return;
         }
         const errorMessage = String(error.message || "");
-        if (errorMessage.toLowerCase().includes("failed to fetch")) {
+        if (isTransientFetchError(errorMessage)) {
           setAuthError("Yhteys palvelimeen epäonnistui. Tarkista Android-emulaattorin verkkoyhteys ja kokeile uudelleen.");
           return;
         }
@@ -10080,7 +10594,22 @@ export default function App() {
         setAuthError("Täytä sähköposti, salasana ja nimi.");
         return;
       }
-      const { error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName, requested_role: requestedRole } } });
+      if (!authForm.acceptedTerms) {
+        setAuthError("Hyväksy käyttöehdot ja tietosuojaseloste ennen tunnuksen luomista.");
+        return;
+      }
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            display_name: displayName,
+            requested_role: requestedRole,
+            legal_terms_version: LEGAL_TERMS_VERSION,
+            legal_terms_accepted_at: new Date().toISOString(),
+          },
+        },
+      });
       if (error) {
         if (isMissingRefreshTokenError(error)) {
           await invalidateSession();
@@ -10291,12 +10820,52 @@ export default function App() {
         accountantEmail: accountForm.accountantEmail.trim().toLowerCase(),
         phone: accountForm.phone.trim(),
         waterType: String(accountForm.waterType || "").trim(),
+        eviraFacilityId: accountForm.eviraFacilityId.trim(),
         contactName: accountForm.contactName.trim(),
         deliveryAddress: accountForm.deliveryAddress.trim(),
         deliveryPostcode: accountForm.deliveryPostcode.trim(),
         deliveryCity: accountForm.deliveryCity.trim(),
         notes: accountForm.notes.trim(),
       };
+      const buyerPayload = profile.role === "buyer" ? {
+        company_name: accountForm.companyName.trim(),
+        buyer_type: serializeBuyerTypes(accountForm.buyerType),
+        contact_name: accountForm.contactName.trim(),
+        phone: accountForm.phone.trim(),
+        min_kg: normalizedBuyerMinKg,
+        max_kg: normalizedBuyerMaxKg,
+        vat_liable: Boolean(accountForm.vatLiable),
+        vat_number: accountForm.vatLiable ? String(accountForm.vatNumber || "").trim().toUpperCase() : "",
+        city: accountForm.city.trim(),
+        delivery_address: accountForm.deliveryAddress.trim(),
+        delivery_postcode: accountForm.deliveryPostcode.trim(),
+        delivery_city: accountForm.deliveryCity.trim(),
+        billing_address: accountForm.billingAddress.trim(),
+        billing_postcode: accountForm.billingPostcode.trim(),
+        billing_city: accountForm.billingCity.trim(),
+        billing_email: accountForm.billingEmail.trim().toLowerCase(),
+        business_id: accountForm.businessId.trim(),
+        notes: accountForm.notes.trim(),
+      } : null;
+      if (profile.role === "buyer" && !buyerPayload.company_name) {
+        setAuthError("Täytä yrityksen nimi.");
+        return;
+      }
+
+      let resolvedBuyerRecord = linkedBuyerRecord;
+      if (profile.role === "buyer" && !resolvedBuyerRecord?.id) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData?.session?.access_token;
+        if (!accessToken) throw new Error("Istunto puuttuu. Kirjaudu uudelleen sisään.");
+        const { data: ensureData, error: ensureError } = await invokeEdgeFunctionAuthenticated(
+          "ensure-buyer-profile",
+          buyerPayload,
+          accessToken,
+        );
+        if (ensureError) throw new Error(ensureError.message);
+        resolvedBuyerRecord = ensureData?.buyer || null;
+        if (!resolvedBuyerRecord?.id) throw new Error("Ostajaprofiilia ei voitu luoda.");
+      }
       const profilePayload = {
         display_name: displayName,
         vat_liable: Boolean(accountForm.vatLiable),
@@ -10324,6 +10893,7 @@ export default function App() {
             }
           : profile.role !== "buyer"
             ? {
+              evira_facility_id: accountForm.eviraFacilityId.trim() || null,
               commercial_fishing_vessel_id: accountForm.commercialFishingVesselId.trim() || normalizedVesselIds[0] || null,
               commercial_fishing_vessel_ids: normalizedVesselIds,
               commercial_fishing_id: accountForm.commercialFishingId.trim() || null,
@@ -10345,8 +10915,8 @@ export default function App() {
               phone: accountForm.phone.trim() || null,
               water_type: accountForm.waterType || null,
             }
-          : linkedBuyerRecord?.id
-            ? { buyer_id: linkedBuyerRecord.id }
+          : resolvedBuyerRecord?.id
+            ? { buyer_id: resolvedBuyerRecord.id }
             : {}),
       };
 
@@ -10364,36 +10934,11 @@ export default function App() {
         throw profileUpdateError;
       }
 
-      if (profile.role === "buyer" && linkedBuyerRecord?.id) {
-        const buyerPayload = {
-          company_name: accountForm.companyName.trim(),
-          buyer_type: serializeBuyerTypes(accountForm.buyerType),
-          contact_name: accountForm.contactName.trim(),
-          phone: accountForm.phone.trim(),
-          min_kg: normalizedBuyerMinKg,
-          max_kg: normalizedBuyerMaxKg,
-          vat_liable: Boolean(accountForm.vatLiable),
-          vat_number: accountForm.vatLiable ? String(accountForm.vatNumber || "").trim().toUpperCase() : "",
-          city: accountForm.city.trim(),
-          delivery_address: accountForm.deliveryAddress.trim(),
-          delivery_postcode: accountForm.deliveryPostcode.trim(),
-          delivery_city: accountForm.deliveryCity.trim(),
-          billing_address: accountForm.billingAddress.trim(),
-          billing_postcode: accountForm.billingPostcode.trim(),
-          billing_city: accountForm.billingCity.trim(),
-          billing_email: accountForm.billingEmail.trim().toLowerCase(),
-          business_id: accountForm.businessId.trim(),
-          notes: accountForm.notes.trim(),
-        };
-        if (!buyerPayload.company_name) {
-          setAuthError("Täytä yrityksen nimi.");
-          setAccountSaving(false);
-          return;
-        }
+      if (profile.role === "buyer" && resolvedBuyerRecord?.id) {
         const { data: updatedBuyerRecord, error: buyerUpdateError } = await supabase
           .from("buyers")
           .update(buyerPayload)
-          .eq("id", linkedBuyerRecord.id)
+          .eq("id", resolvedBuyerRecord.id)
           .select("*")
           .maybeSingle();
         if (buyerUpdateError) {
@@ -10406,11 +10951,12 @@ export default function App() {
         if (!updatedBuyerRecord) {
           throw new Error("Ostajan laskutustietoja ei voitu tallentaa tietokantaan. Tarkista buyers-taulun päivitysoikeudet Supabasessa.");
         }
-        setBuyers((prev) => prev.map((buyer) => (
-          String(buyer.id) === String(updatedBuyerRecord.id)
-            ? { ...buyer, ...updatedBuyerRecord, email: normalizeEmail(updatedBuyerRecord.email || buyer.email || "") }
-            : buyer
-        )));
+        setBuyers((prev) => {
+          const normalizedBuyer = { ...updatedBuyerRecord, email: normalizeEmail(updatedBuyerRecord.email || profile.email || "") };
+          return prev.some((buyer) => String(buyer.id) === String(updatedBuyerRecord.id))
+            ? prev.map((buyer) => (String(buyer.id) === String(updatedBuyerRecord.id) ? { ...buyer, ...normalizedBuyer } : buyer))
+            : [...prev, normalizedBuyer];
+        });
       }
 
       const normalizedUpdatedProfile = {
@@ -11023,10 +11569,10 @@ export default function App() {
       return;
     }
 
-    const nextValue = !Boolean(linkedProfile?.fisher_premium_enabled);
+    const nextValue = !Boolean(linkedProfile?.fisher_premium_admin_enabled);
     const { error } = await supabase
       .from("profiles")
-      .update({ fisher_premium_enabled: nextValue })
+      .update({ fisher_premium_admin_enabled: nextValue })
       .eq("id", targetProfileId);
 
     if (error) {
@@ -11186,6 +11732,13 @@ export default function App() {
     const productTotal = getOfferProductTotal(rows);
     const selectedOriginPoint = getOriginPointById(formState.originPointId);
     const offerUrlBase = getPublicAppBaseUrl();
+    const resolvedDeliveryArea = resolveOfferDeliveryArea(
+      formState.deliveryMethod,
+      formState.deliveryArea,
+      formState.deliveryDestinations,
+      getDefaultProfilePickupAddress(profileState),
+    );
+
     const logisticsLines = [
       `Lähtöpaikka: ${formState.originCity || formState.municipality || "-"}`,
       `Kilpailuta kuljetus: ${formState.deliveryPossible ? "Kyllä" : "Ei"}`,
@@ -11196,7 +11749,7 @@ export default function App() {
       formState.estimatedPickupTime ? `Arvioitu noutoaika: ${formState.estimatedPickupTime}` : "",
       formState.pickupSurcharge !== "" ? `Noutolisä: ${formState.pickupSurcharge} €` : "",
       Array.isArray(formState.deliveryDestinations) && formState.deliveryDestinations.length > 0 ? `Toimituskohteet: ${formState.deliveryDestinations.join(", ")}` : "",
-      `Toimitusalue: ${formatDeliveryDestinations(formState.deliveryDestinations) || formState.deliveryArea || "-"}`,
+      `Toimitusalue: ${resolvedDeliveryArea || "-"}`,
       `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
       `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
       `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
@@ -11235,7 +11788,7 @@ export default function App() {
       pickupSurcharge: formState.pickupSurcharge === "" ? null : Number(formState.pickupSurcharge),
       estimatedPickupTime: formState.estimatedPickupTime || "",
       deliveryDestinations: Array.isArray(formState.deliveryDestinations) ? formState.deliveryDestinations : [],
-      deliveryArea: formatDeliveryDestinations(formState.deliveryDestinations) || formState.deliveryArea || "",
+      deliveryArea: resolvedDeliveryArea,
       deliveryCost: parseLocaleNumber(formState.deliveryCost),
       earliestDeliveryDate: formState.earliestDeliveryDate || "",
       coldTransport: Boolean(formState.coldTransport),
@@ -11270,7 +11823,7 @@ export default function App() {
           origin_point_id: entry.originPointId || null,
           transport_company_id: entry.transportCompanyId || null,
           delivery_destinations: entry.deliveryDestinations,
-          delivery_area: entry.deliveryArea || null,
+          delivery_area: resolvedDeliveryArea || null,
           delivery_cost: entry.deliveryCost == null || entry.deliveryCost === "" ? null : Number(entry.deliveryCost),
           earliest_delivery_date: entry.earliestDeliveryDate || null,
           cold_transport: Boolean(entry.coldTransport),
@@ -11485,10 +12038,17 @@ export default function App() {
 
     const totalKilos = rows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
     const offerUrlBase = getPublicAppBaseUrl();
+    const resolvedDeliveryArea = resolveOfferDeliveryArea(
+      formState.deliveryMethod,
+      formState.deliveryArea,
+      formState.deliveryDestinations,
+      getDefaultProfilePickupAddress(profileState),
+    );
+
     const logisticsLines = [
       `Hinta: ${formState.price_per_kg !== "" && formState.price_per_kg != null ? `${formState.price_per_kg} € / kg` : "-"}`,
       `Toimitustapa: ${formState.deliveryMethod || "-"}`,
-      `Toimitusalue: ${formatDeliveryDestinations(formState.deliveryDestinations) || formState.deliveryArea || "-"}`,
+      `Toimitusalue: ${resolvedDeliveryArea || "-"}`,
       `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
       `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
       `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
@@ -11509,7 +12069,7 @@ export default function App() {
       ownerName: profileState?.display_name || profileState?.email || "Tuntematon",
       commercialFishingId: profileState?.commercial_fishing_id || "",
       deliveryMethod: formState.deliveryMethod || "Nouto",
-      deliveryArea: formatDeliveryDestinations(formState.deliveryDestinations) || formState.deliveryArea || "",
+      deliveryArea: resolvedDeliveryArea,
       deliveryCost: parseLocaleNumber(formState.deliveryCost),
       earliestDeliveryDate: formState.earliestDeliveryDate || "",
       coldTransport: Boolean(formState.coldTransport),
@@ -11554,7 +12114,7 @@ export default function App() {
           origin_point_id: formState.originPointId || null,
           transport_company_id: formState.transportCompanyId || null,
           delivery_destinations: formState.deliveryDestinations || [],
-          delivery_area: formatDeliveryDestinations(formState.deliveryDestinations) || formState.deliveryArea || null,
+          delivery_area: resolvedDeliveryArea || null,
           delivery_cost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
           earliest_delivery_date: formState.earliestDeliveryDate || null,
           cold_transport: Boolean(formState.coldTransport),
@@ -11853,7 +12413,7 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
-  const handleUpdateSellerBillingStatus = async (offer, billingStatus) => {
+  const handleUpdateSellerBillingStatus = async (offer, billingStatus, { announce = true } = {}) => {
     const patch = buildSellerBillingStatusPatch(offer, billingStatus);
 
     const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offer.id);
@@ -11866,17 +12426,19 @@ export default function App() {
       return;
     }
 
-    setAuthInfo(
-      billingStatus === "paid"
-        ? "Lasku merkitty maksetuksi."
-        : billingStatus === "invoiced"
-        ? "Lasku merkitty laskutetuksi."
-        : "Lasku palautettu laskuttamattomaksi."
-    );
+    if (announce) {
+      setAuthInfo(
+        billingStatus === "paid"
+          ? "Lasku merkitty maksetuksi."
+          : billingStatus === "invoiced"
+          ? "Lasku merkitty laskutetuksi."
+          : "Lasku palautettu laskuttamattomaksi."
+      );
+    }
     setRefreshTick((prev) => prev + 1);
   };
 
-  const handleUpdateSellerGroupBillingStatus = async (offers, billingStatus) => {
+  const handleUpdateSellerGroupBillingStatus = async (offers, billingStatus, { announce = true } = {}) => {
     const targetOffers = Array.isArray(offers) ? offers.filter(Boolean) : [];
     if (targetOffers.length === 0) return;
 
@@ -11893,13 +12455,15 @@ export default function App() {
       }
     }
 
-    setAuthInfo(
-      billingStatus === "paid"
-        ? "Kaikki ryhmän laskut merkitty maksetuiksi."
-        : billingStatus === "invoiced"
-        ? "Kaikki ryhmän laskut merkitty laskutetuiksi."
-        : "Kaikki ryhmän laskut palautettu laskuttamattomiksi."
-    );
+    if (announce) {
+      setAuthInfo(
+        billingStatus === "paid"
+          ? "Kaikki ryhmän laskut merkitty maksetuiksi."
+          : billingStatus === "invoiced"
+          ? "Kaikki ryhmän laskut merkitty laskutetuiksi."
+          : "Kaikki ryhmän laskut palautettu laskuttamattomiksi."
+      );
+    }
     setRefreshTick((prev) => prev + 1);
   };
 
@@ -11929,8 +12493,7 @@ export default function App() {
     });
   };
 
-  const handleOpenBuyerInvoicePdf = async (offer) => {
-    const sellerProfileLike = {
+  const buildBuyerInvoiceSellerProfileLike = (offer) => ({
       company_name: offer?.seller_name || offer?.seller_company_name || offer?.sellerCompanyNameFallback || "",
       display_name: offer?.seller_name || offer?.sellerDisplayNameFallback || "",
       business_id: offer?.seller_business_id || offer?.sellerBusinessIdFallback || "",
@@ -11942,7 +12505,10 @@ export default function App() {
       phone: offer?.seller_phone || offer?.sellerPhone || "",
       bank_account_iban: offer?.seller_bank_account_iban || "",
       bank_bic: offer?.seller_bank_bic || "",
-    };
+    });
+
+  const handleOpenBuyerInvoicePdf = async (offer) => {
+    const sellerProfileLike = buildBuyerInvoiceSellerProfileLike(offer);
 
     if (!sellerProfileLike.bank_account_iban) {
       setAuthError("Laskun PDF ei ole vielä saatavilla tälle kaupalle, koska kalastajan tilinumero puuttuu laskutiedoista.");
@@ -11969,6 +12535,40 @@ export default function App() {
         }
       }
       setAuthError(`Lasku-PDF:n avaaminen epäonnistui: ${String(error?.message || error)}`);
+    }
+  };
+
+  const handleOpenBuyerGroupInvoicePdf = async (offers) => {
+    const targetOffers = Array.isArray(offers) ? offers.filter(Boolean) : [];
+    if (targetOffers.length === 0) return;
+
+    const sellerProfileLike = buildBuyerInvoiceSellerProfileLike(targetOffers[0]);
+    if (!sellerProfileLike.bank_account_iban) {
+      setAuthError("Koontilaskun PDF ei ole vielä saatavilla, koska kalastajan tilinumero puuttuu laskutiedoista.");
+      return;
+    }
+
+    setAuthError("");
+    const targetWindow = openPendingPdfWindow();
+    if (!targetWindow && typeof window !== "undefined" && !isNativeCapacitorApp()) {
+      setAuthError("Selain esti lasku-PDF:n avauksen. Salli ponnahdusikkunat tälle sivulle ja yritä uudelleen.");
+      return;
+    }
+
+    try {
+      await openSellerGroupInvoicePdf(targetOffers, sellerProfileLike, {
+        targetWindow,
+        dedupeKey: `buyer-group-invoice-view-${targetOffers.map((offer) => String(offer?.id || "")).join("-")}`,
+      });
+    } catch (error) {
+      if (targetWindow && !targetWindow.closed) {
+        try {
+          targetWindow.close();
+        } catch {
+          // ignore close failures
+        }
+      }
+      setAuthError(`Koontilasku-PDF:n avaaminen epäonnistui: ${String(error?.message || error)}`);
     }
   };
 
@@ -12098,7 +12698,7 @@ export default function App() {
     if (copyResult.authInvalidated) return;
 
     if (documentKind === "invoice") {
-      await handleUpdateSellerBillingStatus(offer, "invoiced");
+      await handleUpdateSellerBillingStatus(offer, "invoiced", { announce: false });
       await sendPushEvent({
         targetBuyerId: offer?.buyer_id || "",
         title: "Uusi lasku",
@@ -12191,11 +12791,29 @@ export default function App() {
     if (copyResult.authInvalidated) return;
 
     if (documentKind === "invoice") {
-      await handleUpdateSellerGroupBillingStatus(offers, "invoiced");
+      await handleUpdateSellerGroupBillingStatus(offers, "invoiced", { announce: false });
+      await sendPushEvent({
+        targetBuyerId: offers?.[0]?.buyer_id || "",
+        title: "Uusi koontilasku",
+        body: `${offers?.[0]?.seller_name || "Myyjä"} lähetti koontilaskun ${attachment.invoice.invoiceNumber}.`,
+        eventType: "invoice_sent",
+        route: "billing",
+        offerId: offers?.[0]?.id,
+        batchId: offers?.[0]?.batch_id,
+      });
       setAuthInfo(`Koontilasku ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.${copyResult.statusText}`);
       return;
     }
 
+    await sendPushEvent({
+      targetBuyerId: offers?.[0]?.buyer_id || "",
+      title: "Koontimaksumuistutus",
+      body: `${offers?.[0]?.seller_name || "Myyjä"} lähetti koontimaksumuistutuksen ${attachment.invoice.invoiceNumber}.`,
+      eventType: "payment_reminder_sent",
+      route: "billing",
+      offerId: offers?.[0]?.id,
+      batchId: offers?.[0]?.batch_id,
+    });
     setAuthInfo(`Koontimaksumuistutus ${attachment.invoice.invoiceNumber} lähetetty asiakkaalle PDF-liitteenä.${copyResult.statusText}`);
   };
 
@@ -12210,7 +12828,7 @@ export default function App() {
   };
 
   const buyerUpdateOfferFallback = async (offerId, patch) => {
-    const { error } = await supabase.from("buyer_offers").update(patch).eq("id", offerId);
+    const { error } = await updateBuyerOfferWithCompatFallback(offerId, patch);
     if (error) return { ok: false, error };
     return { ok: true };
   };
@@ -12244,6 +12862,10 @@ export default function App() {
         offerId: offer?.id,
         message: result.error.message,
       });
+      if (!shouldFallbackBuyerOfferMutation(result.error)) {
+        setAuthError(result.error.message || "Ostajan toiminnon päivitys epäonnistui.");
+        return false;
+      }
     }
 
     if (result && !result.error) {
@@ -12333,6 +12955,14 @@ export default function App() {
       offer,
       payload: {},
       fallbackPatch: { status: "viewed" },
+      skipRefresh: true,
+      applyLocalOfferUpdate: () => {
+        setBuyerOffers((current) => current.map((item) => (
+          item.id === offer.id
+            ? { ...item, status: "viewed" }
+            : item
+        )));
+      },
     });
   };
 
@@ -12570,6 +13200,14 @@ export default function App() {
         reservedKilos: reserved,
       },
       fallbackPatch: reservePatch,
+      skipRefresh: true,
+      applyLocalOfferUpdate: () => {
+        setBuyerOffers((current) => current.map((item) => (
+          item.id === offer.id
+            ? { ...item, ...reservePatch }
+            : item
+        )));
+      },
     });
     if (ok) {
       const updatedOffer = { ...offer, ...reservePatch };
@@ -12583,6 +13221,8 @@ export default function App() {
         offerId: offer?.id,
         batchId: offer?.batch_id,
       });
+      await refreshBuyerOffers();
+      setRefreshTick((prev) => prev + 1);
       setAuthInfo("Erä varattu. Myyjälle näkyy varaus.");
       setBuyerAction({
         counter_price_per_kg: "",
@@ -12603,9 +13243,20 @@ export default function App() {
       offer,
       payload: {},
       fallbackPatch: { status: "rejected" },
+      skipRefresh: true,
+      applyLocalOfferUpdate: () => {
+        setBuyerOffers((current) => current.map((item) => (
+          item.id === offer.id
+            ? { ...item, status: "rejected" }
+            : item
+        )));
+      },
     });
     if (ok) {
+      setBuyerActiveOfferId((current) => (current === offer.id ? null : current));
       await sendBuyerResponseEmail({ ...offer, status: "rejected" }, "Ostaja hylkäsi tarjouksen");
+      await refreshBuyerOffers();
+      setRefreshTick((prev) => prev + 1);
       setAuthInfo("Tarjous hylätty.");
     }
   };
@@ -13041,6 +13692,13 @@ export default function App() {
       `Parasta ennen: ${formState.bestBeforeDate || "-"}`,
     ].join(String.fromCharCode(10));
 
+    const resolvedDeliveryArea = resolveOfferDeliveryArea(
+      formState.deliveryMethod,
+      formState.deliveryArea,
+      formState.deliveryDestinations,
+      getDefaultProfilePickupAddress(profileState),
+    );
+
     const notes = [
       formState.notes || "",
       "",
@@ -13054,7 +13712,7 @@ export default function App() {
       formState.estimatedPickupTime ? `Arvioitu noutoaika: ${formState.estimatedPickupTime}` : "",
       formState.pickupSurcharge !== "" ? `Noutolisä: ${formState.pickupSurcharge} €` : "",
       Array.isArray(formState.deliveryDestinations) && formState.deliveryDestinations.length > 0 ? `Toimituskohteet: ${formState.deliveryDestinations.join(", ")}` : "",
-      `Toimitusalue: ${formatDeliveryDestinations(formState.deliveryDestinations) || formState.deliveryArea || "-"}`,
+      `Toimitusalue: ${resolvedDeliveryArea || "-"}`,
       `Toimituskustannus: ${formState.deliveryCost !== "" ? `${formState.deliveryCost} €` : "-"}`,
       `Aikaisin toimitus: ${formState.earliestDeliveryDate || "-"}`,
       `Kylmäkuljetus: ${formState.coldTransport ? "Kyllä" : "Ei"}`,
@@ -13089,7 +13747,7 @@ export default function App() {
           route_price_eur: recipient.route_price_eur == null || recipient.route_price_eur === "" ? null : Number(recipient.route_price_eur),
           total_price_eur: recipient.total_price_eur == null || recipient.total_price_eur === "" ? null : Number(recipient.total_price_eur),
           delivered_price_per_kg: recipient.delivered_price_per_kg == null || recipient.delivered_price_per_kg === "" ? null : Number(recipient.delivered_price_per_kg),
-          delivery_area: formatDeliveryDestinations(formState.deliveryDestinations) || formState.deliveryArea || null,
+          delivery_area: resolvedDeliveryArea || null,
           delivery_cost: formState.deliveryCost === "" ? null : Number(formState.deliveryCost),
           earliest_delivery_date: formState.earliestDeliveryDate || null,
           cold_transport: Boolean(formState.coldTransport),
@@ -13139,7 +13797,7 @@ export default function App() {
             pickupSurcharge: parseLocaleNumber(formState.pickupSurcharge),
             estimatedPickupTime: formState.estimatedPickupTime || "",
             deliveryDestinations: formState.deliveryDestinations || [],
-            deliveryArea: formatDeliveryDestinations(formState.deliveryDestinations) || formState.deliveryArea || "",
+            deliveryArea: resolvedDeliveryArea,
             deliveryCost: parseLocaleNumber(formState.deliveryCost),
             earliestDeliveryDate: formState.earliestDeliveryDate || "",
             coldTransport: Boolean(formState.coldTransport),
@@ -13242,8 +13900,33 @@ export default function App() {
       setAuthError("Täytä hinta jokaiselle kalalajille ennen saaliin tallennusta.");
       return;
     }
+    if (isCatchAuction) {
+      if (!auctionsAvailable) {
+        setAuthError("Huutokauppapalvelu ei ole juuri nyt käytettävissä. Saalista ei tallennettu.");
+        return;
+      }
+      const startingPrices = validRows.map((row) => parseLocaleNumber(row.price_per_kg));
+      const minimumIncrement = normalizeAuctionMoney(form.auctionMinimumIncrement);
+      const reservePrice = form.auctionReservePrice === "" ? null : normalizeAuctionMoney(form.auctionReservePrice);
+      if (startingPrices.some((price) => price == null || price <= 0)) {
+        setAuthError("Täytä huutokaupan lähtöhinta jokaiselle kalaerälle.");
+        return;
+      }
+      if (!validRows.every((row) => isCrayfishSpecies(getSpeciesRowLabel(row))) && (minimumIncrement == null || minimumIncrement <= 0)) {
+        setAuthError("Minimikorotuksen täytyy olla suurempi kuin nolla.");
+        return;
+      }
+      if (reservePrice != null && startingPrices.some((price) => reservePrice < price)) {
+        setAuthError("Pohjahinta ei voi olla huutokaupan lähtöhintaa pienempi.");
+        return;
+      }
+    }
     if (form.listForSale && fisherPremiumRequired) {
       showFisherPremiumRequired("Tarjoa myyntiin, jäljitettävyystunnus ja tarjouslähetys");
+      return;
+    }
+    if (form.listForSale && !String(form.packaging || "").trim()) {
+      setAuthError("Valitse, miten myytävä kalaerä on pakattu.");
       return;
     }
     if (validRows.some((row) => isCrayfishSpecies(getSpeciesRowLabel(row)) && Number(row.count || 0) <= 0)) {
@@ -13328,9 +14011,9 @@ export default function App() {
       }
     }
     const payload = rowsWithBatchIds.map((row) => ({
-      offer_to_shops: !fisherPremiumRequired && form.listForSale ? form.offerToShops : false,
-      offer_to_restaurants: !fisherPremiumRequired && form.listForSale ? form.offerToRestaurants : false,
-      offer_to_wholesalers: !fisherPremiumRequired && form.listForSale ? form.offerToWholesalers : false,
+      offer_to_shops: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale ? form.offerToShops : false,
+      offer_to_restaurants: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale ? form.offerToRestaurants : false,
+      offer_to_wholesalers: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale ? form.offerToWholesalers : false,
       date: form.date,
       area: form.area,
       municipality: form.municipality,
@@ -13362,13 +14045,16 @@ export default function App() {
     }));
 
     let insertError = null;
-    const { error: initialInsertError } = await supabase.from("catch_entries").insert(payload);
+    let insertedCatchEntries = [];
+    const { data: initialInsertedEntries, error: initialInsertError } = await supabase.from("catch_entries").insert(payload).select("id, batch_id");
     insertError = initialInsertError;
+    insertedCatchEntries = initialInsertedEntries || [];
 
     if (insertError && String(insertError.message || "").includes("water_type")) {
       const fallbackPayload = payload.map(({ water_type, ...rest }) => rest);
-      const { error: fallbackInsertError } = await supabase.from("catch_entries").insert(fallbackPayload);
+      const { data: fallbackInsertedEntries, error: fallbackInsertError } = await supabase.from("catch_entries").insert(fallbackPayload).select("id, batch_id");
       insertError = fallbackInsertError;
+      insertedCatchEntries = fallbackInsertedEntries || [];
     }
 
     const error = insertError;
@@ -13410,11 +14096,50 @@ export default function App() {
     const savedCatchScrollTarget = String(rowsWithBatchIds?.[0]?.batch_id || "");
 
     try {
-      const emailResult = await sendCatchOfferEmail({
-        formState: form,
-        rows: rowsWithBatchIds,
-        profileState: profile,
-      });
+      if (isCatchAuction) {
+        if (insertedCatchEntries.length !== rowsWithBatchIds.length) {
+          throw new Error("Tallennetun saaliin tunnisteita ei saatu huutokaupan avaamista varten.");
+        }
+        let uploadedAuctionImagePath = "";
+        if (auctionImageFile) {
+          const extension = auctionImageFile.type === "image/png" ? "png" : auctionImageFile.type === "image/webp" ? "webp" : "jpg";
+          uploadedAuctionImagePath = `${profile.id}/${crypto.randomUUID()}.${extension}`;
+          const { error: imageUploadError } = await supabase.storage
+            .from(AUCTION_IMAGE_BUCKET)
+            .upload(uploadedAuctionImagePath, auctionImageFile, {
+              cacheControl: "3600",
+              contentType: auctionImageFile.type,
+              upsert: false,
+            });
+          if (imageUploadError) throw new Error(`Huutokauppakuvan tallennus epäonnistui: ${imageUploadError.message}`);
+        }
+        for (let index = 0; index < insertedCatchEntries.length; index += 1) {
+          const { data: auctionId, error: auctionError } = await supabase.rpc("create_catch_auction", {
+            p_entry_id: insertedCatchEntries[index].id,
+            p_duration_minutes: Number(form.auctionDurationMinutes),
+            p_starting_price: parseLocaleNumber(rowsWithBatchIds[index].price_per_kg),
+            p_minimum_increment: isCrayfishSpecies(getSpeciesRowLabel(rowsWithBatchIds[index])) ? 0.05 : normalizeAuctionMoney(form.auctionMinimumIncrement),
+            p_reserve_price: form.auctionReservePrice === "" ? null : normalizeAuctionMoney(form.auctionReservePrice),
+          });
+          if (auctionError) throw auctionError;
+          if (uploadedAuctionImagePath) {
+            const { error: attachImageError } = await supabase.rpc("set_auction_image", {
+              p_auction_id: auctionId,
+              p_image_path: uploadedAuctionImagePath,
+            });
+            if (attachImageError) throw new Error(`Huutokauppa avattiin, mutta kuvaa ei voitu liittää: ${attachImageError.message}`);
+          }
+        }
+
+        setAuthInfo(insertedCatchEntries.length === 1
+          ? "Saalis tallennettu ja huutokauppa avattu. Palvelin lähettää ilmoitukset huutokauppaan oikeutetuille ostajille."
+          : `Saalis tallennettu ja ${insertedCatchEntries.length} huutokauppaa avattu. Palvelin lähettää ilmoitukset huutokauppoihin oikeutetuille ostajille.`);
+      } else {
+        const emailResult = await sendCatchOfferEmail({
+          formState: form,
+          rows: rowsWithBatchIds,
+          profileState: profile,
+        });
 
       if (shouldSendOffer) {
         if (emailResult.skipped) {
@@ -13445,9 +14170,12 @@ export default function App() {
       } else {
         setAuthInfo("Saalis tallennettu.");
       }
-    } catch (emailError) {
-      console.error("Sähköpostin lähetys epäonnistui:", emailError);
-      setAuthError(`Saalis tallennettu, mutta tarjoussähköpostin lähetys epäonnistui: ${String(emailError?.message || emailError)}`);
+      }
+    } catch (saveFollowupError) {
+      console.error(isCatchAuction ? "Huutokaupan avaaminen epäonnistui:" : "Sähköpostin lähetys epäonnistui:", saveFollowupError);
+      setAuthError(isCatchAuction
+        ? `Saalis tallennettiin, mutta huutokaupan avaaminen epäonnistui: ${String(saveFollowupError?.message || saveFollowupError)}`
+        : `Saalis tallennettu, mutta tarjoussähköpostin lähetys epäonnistui: ${String(saveFollowupError?.message || saveFollowupError)}`);
       setAuthInfo("");
     }
 
@@ -13476,14 +14204,19 @@ export default function App() {
       netMeshSize: prev.netMeshSize || "",
       fykeHeight: prev.fykeHeight || "",
       notes: "",
+      packaging: "",
       price_per_kg: "",
       date: today(),
+      saleMode: "none",
       listForSale: false,
+      auctionDurationMinutes: 180,
+      auctionMinimumIncrement: "0,20",
+      auctionReservePrice: "",
       offerToShops: false,
       offerToRestaurants: false,
       offerToWholesalers: false,
       deliveryPossible: false,
-      deliveryMethod: "Nouto",
+      deliveryMethod: "Myyjä toimittaa",
       transportMode: "",
       originPointId: "",
       transportCompanyId: "north-fresh-logistics",
@@ -13500,15 +14233,17 @@ export default function App() {
     deliveryWindow: "",
     transportNotes: "",
     deliveryDestinations: prev.deliveryDestinations || [],
-      deliveryArea: formatDeliveryDestinations(prev.deliveryDestinations) || prev.deliveryArea || "",
-      deliveryCost: "",
-      earliestDeliveryDate: today(),
-      coldTransport: false,
+    deliveryArea: savedPickupAddress,
+    deliveryCost: "",
+    earliestDeliveryDate: today(),
+    coldTransport: false,
     }));
     setSpeciesRows([createSpeciesRow()]);
+    setAuctionImageFile(null);
+    setAuctionImagePreviewUrl("");
     setPendingEntriesScrollTarget(savedCatchScrollTarget);
     setRefreshTick((prev) => prev + 1);
-    setActiveTab("entries");
+    setActiveTab(isCatchAuction ? "auctions" : "entries");
   };
 
   const handleSaveProcessed = async () => {
@@ -13739,12 +14474,28 @@ export default function App() {
       return;
     }
 
-    if (mode === "pdf" || (mode === "print" && isNativeCapacitorApp())) {
+    const iosSafariTargetWindow = mode === "print" && isIosSafariWeb() ? openPendingPdfWindow() : null;
+    if (mode === "print" && isIosSafariWeb() && !iosSafariTargetWindow) {
+      setAuthError("PDF-ikkunan avaaminen estettiin iPhonessa. Salli ponnahdusikkunat tälle sivulle ja yritä uudelleen.");
+      return;
+    }
+
+    if (mode === "pdf" || (mode === "print" && (isNativeCapacitorApp() || isIosSafariWeb()))) {
       void (async () => {
         try {
           const doc = await buildProcessedLabelPdf(entry, profile, printFormat);
-          await presentPdfDocument(doc, buildProcessedLabelPdfFileName(entry, printFormat));
+          await presentPdfDocument(doc, buildProcessedLabelPdfFileName(entry, printFormat), {
+            browserAction: mode === "print" && isIosSafariWeb() ? "open" : "download",
+            targetWindow: iosSafariTargetWindow,
+          });
         } catch (error) {
+          if (iosSafariTargetWindow && !iosSafariTargetWindow.closed) {
+            try {
+              iosSafariTargetWindow.close();
+            } catch {
+              // ignore close failures
+            }
+          }
           console.error("Jaloste-etiketti-PDF:n luonti epäonnistui:", error);
           setAuthError(`Jaloste-etiketti-PDF:n luonti epäonnistui: ${String(error?.message || error)}`);
         }
@@ -13852,15 +14603,30 @@ export default function App() {
 
     setLabelPrintEntry(null);
 
-    if (mode === "pdf" || (mode === "print" && isNativeCapacitorApp())) {
+    const iosSafariTargetWindow = mode === "print" && isIosSafariWeb() ? openPendingPdfWindow() : null;
+    if (mode === "print" && isIosSafariWeb() && !iosSafariTargetWindow) {
+      setAuthError("PDF-ikkunan avaaminen estettiin iPhonessa. Salli ponnahdusikkunat tälle sivulle ja yritä uudelleen.");
+      return;
+    }
+
+    if (mode === "pdf" || (mode === "print" && (isNativeCapacitorApp() || isIosSafariWeb()))) {
       void (async () => {
         try {
           const doc = await buildCatchLabelPdf(targetEntry, { ...profile, water_type: resolvedWaterType }, resolvedLabelCount, resolvedPrintFormat, labelOptions);
           await presentPdfDocument(doc, buildCatchLabelPdfFileName(targetEntry), {
             nativeFileName: buildUniqueCatchLabelNativeFileName(targetEntry),
             dedupeKey: `${String(targetEntry?.id || targetEntry?.batchId || "label")}::${resolvedPrintFormat}::${resolvedLabelCount}::${resolvedWaterType}::${Date.now()}`,
+            browserAction: mode === "print" && isIosSafariWeb() ? "open" : "download",
+            targetWindow: iosSafariTargetWindow,
           });
         } catch (error) {
+          if (iosSafariTargetWindow && !iosSafariTargetWindow.closed) {
+            try {
+              iosSafariTargetWindow.close();
+            } catch {
+              // ignore close failures
+            }
+          }
           console.error("Etiketti-PDF:n luonti epäonnistui:", error);
           setAuthError(`Etiketti-PDF:n luonti epäonnistui: ${String(error?.message || error)}`);
         }
@@ -13909,7 +14675,7 @@ export default function App() {
   };
 
   if (publicBatchId) {
-    return <PublicBatchView batchId={publicBatchId} data={publicBatchData} loading={publicBatchLoading} error={publicBatchError} />;
+    return <PublicBatchView batchId={publicBatchId} data={publicBatchData} loading={publicBatchLoading} error={publicBatchError} onLeave={closePublicBatchView} />;
   }
 
   if (loading) {
@@ -13926,7 +14692,7 @@ export default function App() {
   }
 
   if (authMode === "recovery" || !session || !profile) {
-    return <AuthView authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} onSignIn={handleSignIn} onSignUp={handleSignUp} onForgotPassword={handleForgotPassword} onResetRecoveredPassword={handleResetRecoveredPassword} authError={authError} authInfo={authInfo} authSubmitting={authSubmitting} viewportWidth={viewportWidth} />;
+    return <AuthView authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} onSignIn={handleSignIn} onSignUp={handleSignUp} onForgotPassword={handleForgotPassword} onResetRecoveredPassword={handleResetRecoveredPassword} authError={visibleAuthError} authInfo={authInfo} authSubmitting={authSubmitting} viewportWidth={viewportWidth} />;
   }
 
   if (!profile.is_active && availableRoleOptions.length === 0) {
@@ -13986,6 +14752,7 @@ export default function App() {
     };
 
     const filteredBuyerOffers = (buyerOffers || []).filter((offer) => {
+      if (isAuctionTradeOffer(offer)) return false;
       const q = buyerOffersSearch.trim().toLowerCase();
       const statusOk = buyerOffersFilter === "all"
         ? true
@@ -14015,7 +14782,7 @@ export default function App() {
     });
     const todayLabel = formatOfferDay(new Date().toISOString());
     const acceptedBuyerOffers = (buyerOffers || []).filter(
-      (offer) => isBuyerOfferAccepted(offer.status) && formatOfferDay(offer.updated_at || offer.created_at) === todayLabel
+      (offer) => !isAuctionTradeOffer(offer) && isBuyerOfferAccepted(offer.status) && formatOfferDay(offer.updated_at || offer.created_at) === todayLabel
     );
     const buyerInvoiceOffers = (buyerOffers || [])
       .filter((offer) => ["invoiced", "paid"].includes(String(offer.billing_status || "")))
@@ -14024,6 +14791,25 @@ export default function App() {
         const bTime = new Date(b.paid_at || b.billed_at || b.updated_at || b.created_at || 0).getTime();
         return bTime - aTime;
       });
+    const buyerInvoiceGroups = Array.from(
+      buyerInvoiceOffers.reduce((acc, offer) => {
+        const key = [
+          String(offer.billing_status || "invoiced").trim(),
+          String(offer.seller_user_id || offer.seller_name || "").trim(),
+          String(offer.billing_month || "").trim(),
+          getBuyerInvoiceGroupingBucket(offer),
+        ].join("|");
+        const existing = acc.get(key);
+        if (existing) {
+          existing.offers.push(offer);
+          return acc;
+        }
+        acc.set(key, { key, offers: [offer] });
+        return acc;
+      }, new Map()).values(),
+    );
+    const openBuyerInvoiceGroups = buyerInvoiceGroups.filter(({ offers }) => String(offers?.[0]?.billing_status || "").trim() === "invoiced");
+    const paidBuyerInvoiceGroups = buyerInvoiceGroups.filter(({ offers }) => String(offers?.[0]?.billing_status || "").trim() === "paid");
     const logoHeight = viewportWidth < 768
       ? 172
       : viewportWidth < 1024
@@ -14106,7 +14892,10 @@ export default function App() {
                   <label>Kirjautumissähköposti</label>
                   <input style={styles.input} value={profile.email || ""} disabled />
                 </div>
-                {linkedBuyerRecord ? (
+                {!linkedBuyerRecord ? (
+                  <div style={styles.noticeInfo}>Täytä ostajan tiedot. Ostajarekisterin yritys luodaan ja linkitetään käyttäjääsi ensimmäisellä tallennuksella.</div>
+                ) : null}
+                {profile.role === "buyer" ? (
                   <>
                     <div style={styles.field}>
                       <label>Yritys</label>
@@ -14210,7 +14999,7 @@ export default function App() {
             </div>
           ) : null}
 
-          {authError ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{authError}</div> : null}
+          {visibleAuthError ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{visibleAuthError}</div> : null}
           {authInfo ? <div style={{ ...styles.noticeSuccess, marginBottom: 16 }}>{authInfo}</div> : null}
           <FirstUseGuideCard
             profile={profile}
@@ -14221,27 +15010,57 @@ export default function App() {
           />
 
           <div style={styles.stickyTabsWrap}>
-            <div style={{ ...styles.tabs6, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+            <div style={{
+              ...styles.tabs6,
+              gridTemplateColumns: viewportWidth < 520
+                ? "repeat(2, minmax(0, 1fr))"
+                : `repeat(${auctionsAvailable ? 4 : 3}, minmax(0, 1fr))`,
+              gap: viewportWidth < 520 ? 8 : 10,
+            }}>
               <button
                 style={{
                   ...styles.tab,
                   minWidth: 0,
+                  minHeight: 50,
                   whiteSpace: "nowrap",
-                  padding: viewportWidth < 520 ? "14px 10px" : styles.tab.padding,
-                  fontSize: viewportWidth < 520 ? 16 : styles.tab.fontSize,
+                  padding: viewportWidth < 520 ? "12px 8px" : styles.tab.padding,
+                  fontSize: viewportWidth < 520 ? 15 : styles.tab.fontSize,
+                  border: "1px solid rgba(147, 197, 253, 0.72)",
+                  background: "rgba(239, 246, 255, 0.72)",
                   ...((activeTab === "offers" || activeTab === "dashboard") ? styles.activeTab : {}),
                 }}
                 onClick={() => setActiveTab("offers")}
               >
                 Tarjoukset
               </button>
+              {auctionsAvailable ? (
+                <button
+                  style={{
+                    ...styles.tab,
+                    minWidth: 0,
+                    minHeight: 50,
+                    whiteSpace: "nowrap",
+                    padding: viewportWidth < 520 ? "12px 8px" : styles.tab.padding,
+                    fontSize: viewportWidth < 520 ? 15 : styles.tab.fontSize,
+                    border: "1px solid rgba(147, 197, 253, 0.72)",
+                    background: "rgba(239, 246, 255, 0.72)",
+                    ...(activeTab === "auctions" ? styles.activeTab : {}),
+                  }}
+                  onClick={() => setActiveTab("auctions")}
+                >
+                  Huutokaupat
+                </button>
+              ) : null}
               <button
                 style={{
                   ...styles.tab,
                   minWidth: 0,
+                  minHeight: 50,
                   whiteSpace: "nowrap",
-                  padding: viewportWidth < 520 ? "14px 10px" : styles.tab.padding,
-                  fontSize: viewportWidth < 520 ? 16 : styles.tab.fontSize,
+                  padding: viewportWidth < 520 ? "12px 8px" : styles.tab.padding,
+                  fontSize: viewportWidth < 520 ? 15 : styles.tab.fontSize,
+                  border: "1px solid rgba(147, 197, 253, 0.72)",
+                  background: "rgba(239, 246, 255, 0.72)",
                   ...(activeTab === "reports" ? styles.activeTab : {}),
                 }}
                 onClick={() => setActiveTab("reports")}
@@ -14252,9 +15071,12 @@ export default function App() {
                 style={{
                   ...styles.tab,
                   minWidth: 0,
+                  minHeight: 50,
                   whiteSpace: "nowrap",
-                  padding: viewportWidth < 520 ? "14px 10px" : styles.tab.padding,
-                  fontSize: viewportWidth < 520 ? 16 : styles.tab.fontSize,
+                  padding: viewportWidth < 520 ? "12px 8px" : styles.tab.padding,
+                  fontSize: viewportWidth < 520 ? 15 : styles.tab.fontSize,
+                  border: "1px solid rgba(147, 197, 253, 0.72)",
+                  background: "rgba(239, 246, 255, 0.72)",
                   ...(activeTab === "buyer_billing" ? styles.activeTab : {}),
                 }}
                 onClick={() => setActiveTab("buyer_billing")}
@@ -14263,6 +15085,10 @@ export default function App() {
               </button>
             </div>
           </div>
+
+          {activeTab === "auctions" && auctionsAvailable ? (
+            <AuctionsView profile={profile} entries={[]} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} />
+          ) : null}
 
           {activeTab === "reports" ? (
             <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} profile={profile} />
@@ -14282,75 +15108,139 @@ export default function App() {
               </div>
               {buyerInvoiceOffers.length === 0 ? (
                 <div style={styles.muted}>Tälle ostajalle ei ole vielä lähetetty laskuja.</div>
-              ) : buyerInvoiceOffers.map((offer) => {
-                const sellerProfileLike = {
-                  company_name: offer.seller_name || offer.seller_company_name || offer.sellerCompanyNameFallback || "",
-                  display_name: offer.seller_name || offer.sellerDisplayNameFallback || "",
-                  business_id: resolveBuyerVisibleSellerBusinessId(offer, getBuyerVisibleSellerInfo(offer)) || "",
-                  address: offer.seller_address || offer.sellerAddressFallback || "",
-                  postcode: offer.seller_postcode || offer.sellerPostcodeFallback || "",
-                  city: offer.seller_city || offer.sellerCityFallback || "",
-                  contact_email: offer.seller_contact_email || offer.sellerContactEmailFallback || "",
-                  email: offer.seller_email || offer.sellerEmail || "",
-                  phone: offer.seller_phone || offer.sellerPhone || "",
-                  bank_account_iban: offer.seller_bank_account_iban || "",
-                  bank_bic: offer.seller_bank_bic || "",
-                };
-                const invoicePayload = getSellerInvoicePayload(offer, sellerProfileLike);
-                const sellerStatusLabel = String(offer.billing_status || "unbilled") === "paid"
-                  ? "Maksettu"
-                  : String(offer.billing_status || "unbilled") === "invoiced"
-                  ? "Lähetetty"
-                  : "Laskuttamaton";
-
-                return (
-                  <div key={`buyer-invoice-${offer.id}`} style={{ ...styles.entry, background: "#f8fafc" }}>
+              ) : (
+                <>
+                  <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
                     <div style={styles.rowBetween}>
                       <div>
-                        <strong>{invoicePayload.sellerName || "Kalastaja"}</strong>
-                        <div style={styles.muted}>Lasku: {invoicePayload.invoiceNumber}</div>
+                        <strong>Avoimet laskut</strong>
+                        <div style={styles.muted}>Tässä näkyvät kalastajan lähettämät avoimet laskut. Lasku siirtyy maksetuksi, kun kalastaja kuittaa maksun vastaanotetuksi.</div>
                       </div>
-                      <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{sellerStatusLabel}</span>
+                      <span style={styles.badge}>{openBuyerInvoiceGroups.length}</span>
                     </div>
+                    {openBuyerInvoiceGroups.length === 0 ? (
+                      <div style={styles.muted}>Ei avoimia laskuja.</div>
+                    ) : openBuyerInvoiceGroups.map((group) => {
+                      const offersInGroup = group.offers || [];
+                      const firstOffer = offersInGroup[0];
+                      const sellerProfileLike = {
+                        ...buildBuyerInvoiceSellerProfileLike(firstOffer),
+                        business_id: resolveBuyerVisibleSellerBusinessId(firstOffer, getBuyerVisibleSellerInfo(firstOffer)) || buildBuyerInvoiceSellerProfileLike(firstOffer).business_id || "",
+                      };
+                      const isGroupInvoice = offersInGroup.length > 1;
+                      const invoicePayload = isGroupInvoice
+                        ? getSellerGroupInvoicePayload(offersInGroup, sellerProfileLike)
+                        : getSellerInvoicePayload(firstOffer, sellerProfileLike);
 
-                    <div style={styles.entryBadges}>
-                      <span style={styles.badge}>{euro(invoicePayload.grandTotal)} lasku</span>
-                      <span style={styles.badge}>{euro(invoicePayload.netTotal)} veroton</span>
-                      <span style={styles.badge}>ALV {(invoicePayload.vatRate * 100).toLocaleString("fi-FI")} % {euro(invoicePayload.vatAmount)}</span>
-                    </div>
+                      return (
+                        <div key={`buyer-open-invoice-${group.key}`} style={{ ...styles.entry, background: "#fff" }}>
+                          <div style={styles.rowBetween}>
+                            <div>
+                              <strong>{invoicePayload.sellerName || "Kalastaja"}</strong>
+                              <div style={styles.muted}>Lasku: {invoicePayload.invoiceNumber}</div>
+                            </div>
+                            <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>{getBuyerInvoiceStatusLabel(firstOffer?.billing_status)}</span>
+                          </div>
 
-                    <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>
-                      <strong>Erä:</strong> {formatInvoiceLineItemsSummary(invoicePayload.lineItems, invoicePayload.vatRate)}
-                    </div>
-                    {invoicePayload.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{invoicePayload.batchId}</span></div> : null}
-                    {invoicePayload.catchDates.length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {invoicePayload.catchDates.join(", ")}</div> : null}
-                    <div style={styles.muted}><strong>Laskun päiväys:</strong> {invoicePayload.invoiceDate}</div>
-                    <div style={styles.muted}><strong>Eräpäivä:</strong> {invoicePayload.dueDate}</div>
-                    <div style={styles.muted}><strong>Viitenumero:</strong> {invoicePayload.referenceDisplay}</div>
-                    {invoicePayload.sellerBusinessId ? <div style={styles.muted}><strong>Kalastajan Y-tunnus:</strong> {invoicePayload.sellerBusinessId}</div> : null}
-                    {invoicePayload.sellerEmail ? <div style={styles.muted}><strong>Kalastajan sähköposti:</strong> {invoicePayload.sellerEmail}</div> : null}
-                    {invoicePayload.sellerPhone ? <div style={styles.muted}><strong>Kalastajan puhelin:</strong> {invoicePayload.sellerPhone}</div> : null}
+                          <div style={styles.entryBadges}>
+                            <span style={{ ...styles.badge, background: "#eff6ff" }}>{euro(invoicePayload.grandTotal)} lasku</span>
+                            <span style={styles.badge}>{euro(invoicePayload.netTotal || invoicePayload.productTotal)} veroton</span>
+                            <span style={styles.badge}>ALV {(invoicePayload.vatRate * 100).toLocaleString("fi-FI")} % {euro(invoicePayload.vatAmount)}</span>
+                            {isGroupInvoice ? <span style={styles.badge}>{offersInGroup.length} erää</span> : null}
+                          </div>
 
-                    <div style={styles.row}>
-                      <button
-                        type="button"
-                        style={styles.button}
-                        onClick={() => handleOpenBuyerInvoicePdf(offer)}
-                        disabled={!invoicePayload.sellerIban}
-                      >
-                        Avaa lasku (PDF)
-                      </button>
-                    </div>
-                    {!invoicePayload.sellerIban ? (
-                      <div style={styles.noticeInfo}>PDF tulee näkyviin heti kun laskun maksutiedot ovat mukana tällä laskulla.</div>
-                    ) : null}
+                          <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>
+                            <strong>{isGroupInvoice ? "Koontilaskun erät:" : "Erä:"}</strong> {formatInvoiceLineItemsSummary(invoicePayload.lineItems, invoicePayload.vatRate)}
+                          </div>
+                          {invoicePayload.batchIds?.length > 0 ? <div style={styles.muted}><strong>Erätunnukset:</strong> <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{invoicePayload.batchIds.join(", ")}</span></div> : null}
+                          {!invoicePayload.batchIds?.length && invoicePayload.batchId ? <div style={styles.muted}><strong>Erätunnus:</strong> <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{invoicePayload.batchId}</span></div> : null}
+                          {invoicePayload.catchDates.length > 0 ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {invoicePayload.catchDates.join(", ")}</div> : null}
+                          <div style={styles.muted}><strong>Laskun päiväys:</strong> {invoicePayload.invoiceDate}</div>
+                          <div style={styles.muted}><strong>Eräpäivä:</strong> {invoicePayload.dueDate}</div>
+                          <div style={styles.muted}><strong>Viitenumero:</strong> {invoicePayload.referenceDisplay}</div>
+                          {invoicePayload.sellerBusinessId ? <div style={styles.muted}><strong>Kalastajan Y-tunnus:</strong> {invoicePayload.sellerBusinessId}</div> : null}
+                          {invoicePayload.sellerEmail ? <div style={styles.muted}><strong>Kalastajan sähköposti:</strong> {invoicePayload.sellerEmail}</div> : null}
+                          {invoicePayload.sellerPhone ? <div style={styles.muted}><strong>Kalastajan puhelin:</strong> {invoicePayload.sellerPhone}</div> : null}
+
+                          <div style={styles.row}>
+                            <button
+                              type="button"
+                              style={styles.button}
+                              onClick={() => isGroupInvoice ? handleOpenBuyerGroupInvoicePdf(offersInGroup) : handleOpenBuyerInvoicePdf(firstOffer)}
+                              disabled={!invoicePayload.sellerIban}
+                            >
+                              Avaa lasku (PDF)
+                            </button>
+                          </div>
+                          {!invoicePayload.sellerIban ? (
+                            <div style={styles.noticeInfo}>PDF tulee näkyviin heti kun laskun maksutiedot ovat mukana tällä laskulla.</div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+
+                  <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#f8fafc" }}>
+                    <div style={styles.rowBetween}>
+                      <div>
+                        <strong>Maksetut laskut</strong>
+                        <div style={styles.muted}>Tässä näkyvät ostajan maksetuksi kuittaamat laskut.</div>
+                      </div>
+                      <span style={styles.badge}>{paidBuyerInvoiceGroups.length}</span>
+                    </div>
+                    {paidBuyerInvoiceGroups.length === 0 ? (
+                      <div style={styles.muted}>Ei vielä maksettuja laskuja.</div>
+                    ) : paidBuyerInvoiceGroups.map((group) => {
+                      const offersInGroup = group.offers || [];
+                      const firstOffer = offersInGroup[0];
+                      const sellerProfileLike = {
+                        ...buildBuyerInvoiceSellerProfileLike(firstOffer),
+                        business_id: resolveBuyerVisibleSellerBusinessId(firstOffer, getBuyerVisibleSellerInfo(firstOffer)) || buildBuyerInvoiceSellerProfileLike(firstOffer).business_id || "",
+                      };
+                      const isGroupInvoice = offersInGroup.length > 1;
+                      const invoicePayload = isGroupInvoice
+                        ? getSellerGroupInvoicePayload(offersInGroup, sellerProfileLike)
+                        : getSellerInvoicePayload(firstOffer, sellerProfileLike);
+
+                      return (
+                        <div key={`buyer-paid-invoice-${group.key}`} style={{ ...styles.entry, background: "#fff" }}>
+                          <div style={styles.rowBetween}>
+                            <div>
+                              <strong>{invoicePayload.sellerName || "Kalastaja"}</strong>
+                              <div style={styles.muted}>Lasku: {invoicePayload.invoiceNumber}</div>
+                            </div>
+                            <span style={{ ...styles.badge, background: "#ecfdf5", borderColor: "#86efac" }}>{getBuyerInvoiceStatusLabel(firstOffer?.billing_status)}</span>
+                          </div>
+
+                          <div style={styles.entryBadges}>
+                            <span style={{ ...styles.badge, background: "#eff6ff" }}>{euro(invoicePayload.grandTotal)} lasku</span>
+                            {isGroupInvoice ? <span style={styles.badge}>{offersInGroup.length} erää</span> : null}
+                            {firstOffer?.paid_at ? <span style={styles.badge}>Maksettu {formatOfferDate(firstOffer.paid_at)}</span> : null}
+                          </div>
+
+                          <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>
+                            <strong>{isGroupInvoice ? "Koontilaskun erät:" : "Erä:"}</strong> {formatInvoiceLineItemsSummary(invoicePayload.lineItems, invoicePayload.vatRate)}
+                          </div>
+                          <div style={styles.row}>
+                            <button
+                              type="button"
+                              style={styles.button}
+                              onClick={() => isGroupInvoice ? handleOpenBuyerGroupInvoicePdf(offersInGroup) : handleOpenBuyerInvoicePdf(firstOffer)}
+                              disabled={!invoicePayload.sellerIban}
+                            >
+                              Avaa lasku (PDF)
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           ) : null}
 
-          {activeTab !== "reports" && activeTab !== "buyer_billing" && acceptedBuyerOffers.length > 0 ? (
+          {(activeTab === "offers" || activeTab === "dashboard") && acceptedBuyerOffers.length > 0 ? (
             <div style={{ ...styles.successHighlightBox, ...styles.stack, marginBottom: 16 }}>
               <div style={styles.rowBetween}>
                 <div>
@@ -14374,7 +15264,7 @@ export default function App() {
             </div>
           ) : null}
 
-          {activeTab !== "reports" && activeTab !== "buyer_billing" ? (
+          {activeTab === "offers" || activeTab === "dashboard" ? (
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
             <div style={styles.rowBetween}>
               <strong>Minulle tarjotut erät</strong>
@@ -14412,7 +15302,10 @@ export default function App() {
                     const mixedOffer = isMixedOffer(o);
                     const offerCountDisplay = getOfferCountDisplay(o);
                     const showTraceability = isBuyerOfferAccepted(o.status);
-                    const visibleAdditionalNotes = extractVisibleAdditionalNotes(o.notes);
+                    const visibleAdditionalNotes = extractVisibleAdditionalNotes(o.notes, {
+                      hideDeliveryDestinations: o.status === "accepted",
+                    });
+                    const packaging = extractPackagingFromNotes(o.notes);
                     const ownDeliveryPrice = o.route_price_eur !== "" && o.route_price_eur != null ? Number(o.route_price_eur) : null;
                     const ownTotalPrice = o.total_price_eur !== "" && o.total_price_eur != null ? Number(o.total_price_eur) : null;
                     const ownDeliveredPricePerKg = o.delivered_price_per_kg !== "" && o.delivered_price_per_kg != null ? Number(o.delivered_price_per_kg) : null;
@@ -14421,7 +15314,7 @@ export default function App() {
                     const showCounterAction = isActive && buyerActionMode === "counter";
                     const offerInlineError = buyerOfferInlineError.offerId === String(o?.id || "") ? buyerOfferInlineError.message : "";
                     return (
-                      <div key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a" }}>
+                      <div id={`buyer-offer-card-${o.id}`} key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a", ...(focusedFixedOfferId === String(o.id) ? { border: "2px solid #2563eb", borderLeft: "5px solid #2563eb", boxShadow: "0 0 0 4px rgba(37, 99, 235, 0.16), 0 10px 28px rgba(15,23,42,0.10)" } : {}) }}>
                         <div style={{ marginBottom: 10 }}>
                           <div style={{ fontSize: 13, color: "#64748b", marginBottom: 6 }}>{formatOfferDate(o.updated_at || o.created_at)}</div>
                           <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, marginBottom: 8 }}>{buildOfferHeadline(o)}</div>
@@ -14529,6 +15422,7 @@ export default function App() {
                           </div>
                           <div>
                             <div style={styles.muted}><strong>Toimitus ja lisätiedot</strong></div>
+                            {packaging ? <div style={styles.muted}><strong>Pakkaustapa:</strong> {packaging}</div> : null}
                             <div style={styles.muted}>Toimitustapa: {sellerInfo.deliveryMethod || "-"}</div>
                             <div style={styles.muted}>Kulu: {ownDeliveryPrice != null ? formatDeliveryPrice(ownDeliveryPrice) : (sellerInfo.deliveryCost !== "" && sellerInfo.deliveryCost != null ? `${sellerInfo.deliveryCost} €` : "-")}</div>
                             <div style={styles.muted}>Aikaisin toimitus: {sellerInfo.earliestDeliveryDate || "-"}</div>
@@ -14895,7 +15789,7 @@ export default function App() {
                 <div style={styles.muted}>
                   {profile.role === "processor"
                     ? "Päivitä oma nimi, vesiviljelylaitoksen laitosnumero ja salasana."
-                    : "Päivitä oma nimi, yrityksen tiedot ja salasana."}
+                    : "Päivitä oma nimi, yrityksen tiedot ja tarvittaessa laitostunnus etikettiä varten."}
                 </div>
               </div>
               <span style={styles.badge}>{profile.email}</span>
@@ -14911,12 +15805,32 @@ export default function App() {
                 <input style={styles.input} value={profile.email || ""} disabled />
               </div>
               {profile.role === "member" ? (
-                <div style={{ ...styles.noticeInfo, ...(hasFisherPremium ? styles.noticeSuccess : styles.noticeWarning) }}>
-                  <strong>{hasFisherPremium ? "Kalastajalisenssi aktiivinen." : "Kalastajalisenssi ei ole aktiivinen."}</strong>{" "}
-                  {hasFisherPremium
-                    ? "Voit käyttää jäljitettävyystunnuksia, etikettien tulostusta, myyntiin tarjoamista ja virallista saalisilmoitusta."
-                    : "Ilmaisversiossa voit kirjata ja selata saaliita. Myyntiin tarjoaminen, jäljitettävyystunnus, etikettien tulostus ja virallinen saalisilmoitus vaativat ylläpitäjän aktivoiman kalastajalisenssin."}
-                </div>
+                <>
+                  <div style={{ ...styles.noticeInfo, ...(hasFisherPremium ? styles.noticeSuccess : styles.noticeWarning) }}>
+                    <strong>{hasFisherPremium ? "Kalastajan Premium aktiivinen." : "Kalastajan Premium ei ole aktiivinen."}</strong>{" "}
+                    {hasFisherPremium
+                      ? "Voit käyttää jäljitettävyystunnuksia, etikettien tulostusta, myyntiin tarjoamista ja virallista saalisilmoitusta."
+                      : "Ilmaisversiossa voit kirjata ja selata saaliita. Premium avaa myynnin, jäljitettävyyden, etiketit ja virallisen saalisilmoituksen."}
+                  </div>
+                  {!hasFisherPremium && isGooglePlayBillingAvailable() ? (
+                    <div style={{ ...styles.row, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        style={{ ...styles.button, ...styles.primaryButton }}
+                        disabled={premiumPurchaseBusy}
+                        onClick={handlePurchaseFisherPremium}
+                      >
+                        {premiumPurchaseBusy ? "Käsitellään…" : "Osta Premium 12,90 €/kk"}
+                      </button>
+                      <button type="button" style={styles.button} disabled={premiumPurchaseBusy} onClick={handleRestoreFisherPremium}>
+                        Palauta ostos
+                      </button>
+                    </div>
+                  ) : null}
+                  {!hasFisherPremium && !isGooglePlayBillingAvailable() ? (
+                    <div style={styles.muted}>Premium-tilauksen voi ostaa Suoraan Kalastajalta -Android-sovelluksessa.</div>
+                  ) : null}
+                </>
               ) : null}
               {profile.role === "buyer" ? (
                 <>
@@ -15040,6 +15954,10 @@ export default function App() {
                     <label>Kaupallisen kalastajan tunnus</label>
                     <input style={styles.input} value={accountForm.commercialFishingId} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingId: e.target.value }))} placeholder="Esim. 12303" />
                   </div>
+                  <div style={styles.field}>
+                    <label>Laitostunnus (valinnainen)</label>
+                    <input style={styles.input} value={accountForm.eviraFacilityId} onChange={(e) => setAccountForm((prev) => ({ ...prev, eviraFacilityId: e.target.value }))} placeholder="Esim. F12345" />
+                  </div>
                   <div style={{ ...styles.field, ...styles.fieldFull }}>
                     <label>Kaupallisen kalastusaluksen tunnukset</label>
                     <textarea style={styles.textarea} value={accountForm.commercialFishingVesselIdsText} onChange={(e) => setAccountForm((prev) => ({ ...prev, commercialFishingVesselIdsText: e.target.value }))} placeholder={"Yksi tunnus per rivi\nEsim. FIN12345"} />
@@ -15157,11 +16075,11 @@ export default function App() {
           </div>
         ) : null}
 
-        {(authError || authInfo || authWarning) ? (
+        {(visibleAuthError || authInfo || authWarning) ? (
           <div style={styles.toastStack}>
-            {authError ? (
+            {visibleAuthError ? (
               <div style={{ ...styles.noticeError, ...styles.toastCard }}>
-                {authError}
+                {visibleAuthError}
                 <button type="button" style={styles.toastClose} onClick={() => setAuthError("")} aria-label="Sulje virheilmoitus">×</button>
               </div>
             ) : null}
@@ -15194,6 +16112,7 @@ export default function App() {
               {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button> : null}
               {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button> : null}
               <button style={{ ...visibleSingleTabStyle, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
+              {auctionsAvailable && ["member", "owner"].includes(profile.role) ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "auctions" ? styles.activeTab : {}) }} onClick={() => setActiveTab("auctions")}>Huutokaupat</button> : null}
               <button style={{ ...visibleSingleTabStyle, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
               {profile.role === "member" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
               {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "operations" ? styles.activeTab : {}) }} onClick={() => setActiveTab("operations")}>Ylläpito</button> : null}
@@ -15799,11 +16718,23 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={processedForm.deliveryMethod} onChange={(e) => setProcessedForm({ ...processedForm, deliveryMethod: e.target.value })}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
+                    <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={processedForm.deliveryMethod} onChange={(e) => {
+                      const nextMethod = e.target.value;
+                      setProcessedForm((prev) => ({
+                        ...prev,
+                        deliveryMethod: nextMethod,
+                        deliveryArea: resolveOfferDeliveryArea(
+                          nextMethod,
+                          prev.deliveryArea,
+                          prev.deliveryDestinations,
+                          savedPickupAddress,
+                        ),
+                      }));
+                    }}>{deliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
                     <div style={styles.field}>
                       <label>{processedForm.deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}</label>
                       {processedForm.deliveryMethod === "Nouto" ? (
-                        <input style={styles.input} value={processedForm.deliveryArea} onChange={(e) => setProcessedForm({ ...processedForm, deliveryArea: e.target.value })} placeholder="Esim. Jalostamontie 4, Lappeenranta" />
+                        <input style={styles.input} value={resolveOfferDeliveryArea(processedForm.deliveryMethod, processedForm.deliveryArea, processedForm.deliveryDestinations, savedPickupAddress)} onChange={(e) => setProcessedForm({ ...processedForm, deliveryArea: e.target.value })} placeholder="Esim. Jalostamontie 4, Lappeenranta" />
                       ) : (
                         <MultiCityInput
                           value={processedForm.deliveryArea}
@@ -15970,7 +16901,7 @@ export default function App() {
                           <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
                         ) : null}
                         <div style={styles.field}>
-                          <label>{`Hinta ALV 0 % (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
+                          <label>{`${form.saleMode === "auction" ? "Huutokaupan lähtöhinta" : form.saleMode === "fixed" ? "Kiinteä myyntihinta" : "Hinta"} ALV 0 % (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
                           <input
                             style={styles.input}
                             type="text"
@@ -15981,7 +16912,7 @@ export default function App() {
                           />
                         </div>
                         <div style={styles.field}>
-                          <label>{`Hinta sis. ALV ${formatVatPercent()} % (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
+                          <label>{`${form.saleMode === "auction" ? "Huutokaupan lähtöhinta" : form.saleMode === "fixed" ? "Kiinteä myyntihinta" : "Hinta"} sis. ALV ${formatVatPercent()} % (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
                           <input
                             style={styles.input}
                             type="text"
@@ -16139,25 +17070,53 @@ export default function App() {
                     />
                   </div>
                 ) : null}
-                <div style={{ ...styles.field, ...styles.fieldFull }}>
-                  <label style={styles.checkboxCard}>
-                    <input
-                      type="checkbox"
-                      checked={form.listForSale}
-                      disabled={fisherPremiumRequired}
-                      onChange={(e) => setForm((prev) => ({
-                        ...prev,
-                        listForSale: e.target.checked,
-                        ...(e.target.checked ? {} : {
-                          offerToShops: false,
-                          offerToRestaurants: false,
-                          offerToWholesalers: false,
-                          deliveryPossible: false,
-                        }),
-                      }))}
-                    />
-                    Laita kalaerä myyntiin
-                  </label>
+                <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
+                  <label>Myyntitapa</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+                    {[
+                      { value: "none", title: "Ei myyntiin", detail: "Tallenna erä vain saaliskirjanpitoon." },
+                      { value: "fixed", title: "Myy kiinteällä hinnalla", detail: "Lähetä erä valituille ostajaryhmille annetulla hinnalla." },
+                      { value: "auction", title: "Huutokauppaa kalaerä", detail: "Ostajat kilpailevat erästä huutamalla hintaa ylöspäin." },
+                    ].map((option) => {
+                      const selected = form.saleMode === option.value;
+                      const disabled = (fisherPremiumRequired && option.value !== "none") || (option.value === "auction" && !auctionsAvailable);
+                      const optionColors = option.value === "none"
+                        ? { background: selected ? "#e2e8f0" : "#f8fafc", border: selected ? "#64748b" : "#cbd5e1", color: "#334155" }
+                        : option.value === "fixed"
+                          ? { background: selected ? "#dcfce7" : "#f0fdf4", border: selected ? "#16a34a" : "#86efac", color: "#166534" }
+                          : { background: selected ? "#dbeafe" : "#eff6ff", border: selected ? "#2563eb" : "#93c5fd", color: "#1e40af" };
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          disabled={disabled}
+                          style={{
+                            ...styles.button,
+                            width: "100%",
+                            minHeight: 92,
+                            padding: 14,
+                            textAlign: "left",
+                            justifyContent: "flex-start",
+                            alignItems: "stretch",
+                            opacity: disabled ? 0.55 : 1,
+                            background: optionColors.background,
+                            borderColor: optionColors.border,
+                            color: optionColors.color,
+                            boxShadow: selected ? `0 0 0 2px ${optionColors.border}22, 0 8px 18px ${optionColors.border}22` : "none",
+                          }}
+                          onClick={() => setForm((prev) => ({
+                            ...prev,
+                            saleMode: option.value,
+                            listForSale: option.value !== "none",
+                            ...(option.value === "fixed" ? {} : { offerToShops: false, offerToRestaurants: false, offerToWholesalers: false }),
+                            ...(option.value !== "none" ? {} : { deliveryPossible: false }),
+                          }))}
+                        >
+                          <span style={{ display: "flex", width: "100%", flexDirection: "column", alignItems: "flex-start", gap: 5 }}><strong>{option.title}</strong><span style={{ ...styles.small, color: optionColors.color, opacity: 0.82 }}>{option.detail}</span></span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 {fisherPremiumRequired ? (
                   <div style={{ ...styles.field, ...styles.fieldFull }}>
@@ -16168,9 +17127,67 @@ export default function App() {
                 ) : null}
                 {form.listForSale ? (
                   <>
+                <div style={{ ...styles.field, ...styles.fieldFull }}>
+                  <label>Pakkaustapa</label>
+                  <select
+                    style={styles.input}
+                    value={form.packaging}
+                    onChange={(e) => setForm((prev) => ({ ...prev, packaging: e.target.value }))}
+                  >
+                    <option value="">Valitse, miten kalaerä on pakattu</option>
+                    {FISH_PACKAGING_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                  <div style={styles.small}>Pakkaustapa näkyy ostajalle sekä kiinteähintaisessa tarjouksessa että huutokaupassa.</div>
+                </div>
+                {form.saleMode === "auction" ? (
+                  <div style={{ ...styles.field, ...styles.fieldFull, ...styles.offerBox, ...styles.stack }}>
+                    <strong>Huutokaupan asetukset</strong>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+                      {speciesRows.map((row, index) => {
+                        const speciesLabel = getSpeciesRowLabel(row) || `Kalaerä ${index + 1}`;
+                        const priceUnit = getSpeciesPriceUnit(speciesLabel);
+                        return (
+                          <div key={`auction-start-${row.id}`} style={styles.field}>
+                            <label>{`${speciesRows.length > 1 ? `Lähtöhinta – ${speciesLabel}` : "Lähtöhinta"} ALV 0 % (€/${priceUnit})`}</label>
+                            <input
+                              style={styles.input}
+                              type="text"
+                              inputMode="decimal"
+                              value={row.price_per_kg}
+                              onChange={(e) => updateSpeciesRow(row.id, "price_per_kg", e.target.value)}
+                              placeholder="Esim. 4,00"
+                            />
+                            <div style={styles.small}>Sama lähtöhinta kuin kalaerän hintakentässä. Voit vielä muuttaa sitä tässä ennen huutokaupan aloittamista.</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+                      <div style={styles.field}><label>Kesto</label><select style={styles.input} value={form.auctionDurationMinutes} onChange={(e) => setForm((prev) => ({ ...prev, auctionDurationMinutes: Number(e.target.value) }))}>{AUCTION_DURATION_OPTIONS.map((option) => <option key={option.minutes} value={option.minutes}>{option.label}</option>)}</select></div>
+                      <div style={styles.field}>
+                        <label>Minimikorotus €/{auctionContainsOnlyCrayfish ? "kpl" : "kg"}</label>
+                        <input
+                          style={styles.input}
+                          inputMode="decimal"
+                          value={auctionContainsOnlyCrayfish ? "0,05" : form.auctionMinimumIncrement}
+                          disabled={auctionContainsOnlyCrayfish}
+                          onChange={(e) => setForm((prev) => ({ ...prev, auctionMinimumIncrement: e.target.value }))}
+                          placeholder={auctionContainsOnlyCrayfish ? "0,05" : "Esim. 0,20"}
+                        />
+                        {auctionContainsOnlyCrayfish ? <div style={styles.small}>Rapuhuutokaupan minimikorotus on 0,05 €/kpl.</div> : speciesRows.some((row) => isCrayfishSpecies(getSpeciesRowLabel(row))) ? <div style={styles.small}>Rapuerille käytetään automaattisesti minimikorotusta 0,05 €/kpl.</div> : null}
+                      </div>
+                      <div style={styles.field}><label>Pohjahinta €/kg (valinnainen)</label><input style={styles.input} inputMode="decimal" value={form.auctionReservePrice} onChange={(e) => setForm((prev) => ({ ...prev, auctionReservePrice: e.target.value }))} placeholder="Esim. 6,00" /></div>
+                    </div>
+                    <div style={styles.noticeInfo}>
+                      <strong>Mitä pohjahinta tarkoittaa?</strong><br />
+                      Pohjahinta on alin hinta, jolla suostut myymään erän. Ostajat eivät näe sen euromäärää. Jos korkein huuto jää pohjahinnan alle, erää ei myydä. Jätä kenttä tyhjäksi, jos korkein hyväksytty huuto saa voittaa lähtöhinnasta alkaen.
+                    </div>
+                    <div style={styles.small}>Viimeisten 3 minuutin aikana tehty hyväksytty huuto siirtää päättymisen aina 3 minuutin päähän viimeisestä huudosta.</div>
+                  </div>
+                ) : null}
                 <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
-                <div style={{ ...styles.field, ...styles.fieldFull }}>
+                {form.saleMode === "fixed" ? <div style={{ ...styles.field, ...styles.fieldFull }}>
                   <div style={{ ...styles.offerBox, ...styles.stack, ...(!DELIVERY_COMPETITION_AVAILABLE ? styles.disabledSection : null) }}>
                     <label><input type="checkbox" checked={DELIVERY_COMPETITION_AVAILABLE && form.deliveryPossible} disabled /> Kilpailuta kuljetus</label>
                     <div style={styles.small}>Saatavilla myöhemmin. Tässä kohtaa voi jatkossa valita kuljetustavan, nouto-osoitteen tai lähimmän terminaalin ja toimituskohteet.</div>
@@ -16222,7 +17239,7 @@ export default function App() {
                       </>
                     ) : null}
                   </div>
-                </div>
+                </div> : null}
                 {DELIVERY_COMPETITION_AVAILABLE && form.deliveryPossible ? (
                   <>
                     {form.transportMode === "terminal" || form.transportMode === "collection_point" ? (
@@ -16350,20 +17367,33 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={normalizeFishermanDeliveryMethod(form.deliveryMethod)} onChange={(e) => setForm({ ...form, deliveryMethod: e.target.value })}>{fishermanDeliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
+                    <div style={styles.field}><label>Toimitustapa</label><select style={styles.input} value={normalizeFishermanDeliveryMethod(form.deliveryMethod)} onChange={(e) => {
+                      const nextMethod = e.target.value;
+                      setForm((prev) => ({
+                        ...prev,
+                        deliveryMethod: nextMethod,
+                        deliveryArea: nextMethod === "Nouto"
+                          ? savedPickupAddress
+                          : formatDeliveryDestinations(prev.deliveryDestinations),
+                      }));
+                    }}>{fishermanDeliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></div>
                     <div style={styles.field}>
                       <label>{normalizeFishermanDeliveryMethod(form.deliveryMethod) === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}</label>
                       {normalizeFishermanDeliveryMethod(form.deliveryMethod) === "Nouto" ? (
                         <input
                           style={styles.input}
                           placeholder="Esim. Satamakatu 1, Kuopio"
-                          value={form.deliveryArea}
+                          value={resolveOfferDeliveryArea(normalizeFishermanDeliveryMethod(form.deliveryMethod), form.deliveryArea, form.deliveryDestinations, savedPickupAddress)}
                           onChange={(e) => setForm({ ...form, deliveryArea: e.target.value })}
                         />
                       ) : (
                         <MultiCityInput
                           value={form.deliveryArea}
-                          onChange={(cities) => setForm({ ...form, deliveryArea: formatDeliveryDestinations(cities) })}
+                          onChange={(cities) => setForm((prev) => ({
+                            ...prev,
+                            deliveryDestinations: normalizeDestinationCities(cities),
+                            deliveryArea: formatDeliveryDestinations(cities),
+                          }))}
                           suggestions={[...suggestedDeliveryCities, ...availableDestinationCities]}
                           label="Valitut toimituskaupungit"
                         />
@@ -16382,6 +17412,7 @@ export default function App() {
                     </div>
                   </>
                 )}
+                {form.saleMode === "fixed" ? (
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
                   <div style={{ ...styles.offerBox, ...styles.stack }}>
                     <div>
@@ -16395,11 +17426,50 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+                ) : null}
                   </>
                 ) : null}
                 <div style={{ ...styles.field, ...styles.fieldFull }}><label>Lisätiedot</label><textarea style={styles.textarea} placeholder="Esim. laatu, jäähdytys, toimitus, huomioita" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+                {form.saleMode === "auction" ? (
+                  <div style={{ ...styles.field, ...styles.fieldFull }}>
+                    <div style={{ ...styles.offerBox, ...styles.stack, background: "#eff6ff", borderColor: "#93c5fd" }}>
+                      <div>
+                        <label>Huutokaupan kuva (valinnainen)</label>
+                        <div style={styles.small}>Kuva näkyy ostajille huutokaupan yhteydessä. JPG-, PNG- ja WebP-kuvat pienennetään tarvittaessa automaattisesti.</div>
+                      </div>
+                      <div style={{ ...styles.row, alignItems: "center", flexWrap: "wrap" }}>
+                        <label style={{ ...styles.button, display: "inline-flex", alignItems: "center", cursor: "pointer" }}>
+                          {auctionImageFile ? "Vaihda kuva" : "Valitse kuva"}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            style={{ display: "none" }}
+                            onChange={handleAuctionImageSelection}
+                          />
+                        </label>
+                        <label style={{ ...styles.button, display: "inline-flex", alignItems: "center", cursor: "pointer", background: "#ecfdf5", borderColor: "#86efac", color: "#166534" }}>
+                          Ota kuva
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            style={{ display: "none" }}
+                            onChange={handleAuctionImageSelection}
+                          />
+                        </label>
+                        {auctionImageFile ? <span style={{ ...styles.small, overflowWrap: "anywhere" }}>{auctionImageFile.name}</span> : null}
+                        {auctionImageFile ? (
+                          <button type="button" style={styles.button} onClick={() => { setAuctionImageFile(null); setAuctionImagePreviewUrl(""); }}>Poista kuva</button>
+                        ) : null}
+                      </div>
+                      {auctionImagePreviewUrl ? (
+                        <img src={auctionImagePreviewUrl} alt="Huutokauppakuvan esikatselu" style={{ display: "block", width: "100%", maxWidth: 520, maxHeight: 320, objectFit: "cover", borderRadius: 12, border: "1px solid #bfdbfe" }} />
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-              <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis"}</button></div>
+              <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : isCatchAuction ? "Tallenna saalis ja aloita huutokauppa" : shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis"}</button></div>
             </div>
           )
         ) : null}
@@ -16562,11 +17632,15 @@ export default function App() {
             onUpdateBuyerOfferStatus={onUpdateBuyerOfferStatus}
             onRemoveEntryFromSale={handleRemoveEntryFromSale}
             updateFulfillmentStatus={updateFulfillmentStatus}
-            requestedOfferId={requestedOfferId}
+            requestedOfferId={pendingOfferTarget?.offerId || focusedFixedOfferId || requestedOfferId}
             buyerTypeLabel={buyerTypeLabel}
             buyerStatusLabel={buyerStatusLabel}
             shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
           />
+        ) : null}
+
+        {activeTab === "auctions" && auctionsAvailable && ["member", "owner"].includes(profile.role) ? (
+          <AuctionsView profile={profile} entries={entries} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} />
         ) : null}
 
         {activeTab === "reports" ? <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} profile={profile} /> : null}
@@ -16849,8 +17923,8 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                                     <span style={styles.badge}>{roleLabel(user.role)}</span>
                                     <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
                                     {user.role === "member" ? (
-                                      <span style={{ ...styles.badge, background: linkedProfile?.fisher_premium_enabled ? "#ecfdf5" : "#fff7ed", borderColor: linkedProfile?.fisher_premium_enabled ? "#86efac" : "#fdba74", color: linkedProfile?.fisher_premium_enabled ? "#166534" : "#9a3412" }}>
-                                        {linkedProfile?.fisher_premium_enabled ? "Premium" : "Ilmainen"}
+                                      <span style={{ ...styles.badge, background: isFisherPremiumProfile(linkedProfile) ? "#ecfdf5" : "#fff7ed", borderColor: isFisherPremiumProfile(linkedProfile) ? "#86efac" : "#fdba74", color: isFisherPremiumProfile(linkedProfile) ? "#166534" : "#9a3412" }}>
+                                        {isFisherPremiumProfile(linkedProfile) ? "Premium" : "Ilmainen"}
                                       </span>
                                     ) : null}
                                     {linkedBuyer ? <span style={styles.badge}>Ostaja: {linkedBuyer.company_name}</span> : null}
@@ -16870,10 +17944,10 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                                 <div style={styles.row}>
                                   {user.role === "member" ? (
                                     <button
-                                      style={linkedProfile?.fisher_premium_enabled ? styles.button : { ...styles.button, ...styles.primaryButton }}
+                                      style={linkedProfile?.fisher_premium_admin_enabled ? styles.button : { ...styles.button, ...styles.primaryButton }}
                                       onClick={() => toggleFisherPremium(user, linkedProfile)}
                                     >
-                                      {linkedProfile?.fisher_premium_enabled ? "Poista premium" : "Aktivoi premium"}
+                                      {linkedProfile?.fisher_premium_admin_enabled ? "Poista admin-oikeus" : "Aktivoi admin-oikeus"}
                                     </button>
                                   ) : null}
                                   {user.is_active ? (
