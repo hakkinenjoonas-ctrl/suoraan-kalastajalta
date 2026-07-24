@@ -189,10 +189,10 @@ const styles = {
   },
 };
 
-function InfoLine({ label, value, emphasis = false }) {
+function InfoLine({ label, value, emphasis = false, stylesOverride = null }) {
   if (!value) return null;
   return (
-    <div style={emphasis ? styles.catchDate : styles.line}>
+    <div style={emphasis ? (stylesOverride?.catchDate || styles.catchDate) : (stylesOverride?.line || styles.line)}>
       {label ? <strong>{label}: </strong> : null}
       <span>{value}</span>
     </div>
@@ -201,6 +201,16 @@ function InfoLine({ label, value, emphasis = false }) {
 
 export default function ThermalLabel4x6Portrait({ label }) {
   if (!label) return null;
+  const compactCrayfishStyles = label.isCrayfish ? {
+    main: { ...styles.main, gap: "1.1mm" },
+    species: { ...styles.species, fontSize: "29pt", lineHeight: 0.88 },
+    scientific: { ...styles.scientific, fontSize: "10.5pt" },
+    batchBox: { ...styles.batchBox, marginTop: 0, padding: "1.6mm 2.2mm" },
+    batchValue: { ...styles.batchValue, marginTop: "0.6mm", fontSize: "13.5pt", lineHeight: 0.95 },
+    infoGrid: { ...styles.infoGrid, gap: "0.55mm" },
+    line: { ...styles.line, fontSize: "9.3pt", lineHeight: 1.03 },
+    catchDate: { ...styles.catchDate, fontSize: "10.3pt", lineHeight: 1.03 },
+  } : null;
 
   return (
     <div style={styles.root}>
@@ -214,26 +224,26 @@ export default function ThermalLabel4x6Portrait({ label }) {
         </div>
       </section>
 
-      <section style={styles.main}>
+      <section style={compactCrayfishStyles?.main || styles.main}>
         <div>
-          <div style={styles.species}>{label.species || "-"}</div>
-          {label.scientificName ? <div style={styles.scientific}>{label.scientificName}</div> : null}
+          <div style={compactCrayfishStyles?.species || styles.species}>{label.species || "-"}</div>
+          {label.scientificName ? <div style={compactCrayfishStyles?.scientific || styles.scientific}>{label.scientificName}</div> : null}
         </div>
 
-        <div style={styles.batchBox}>
+        <div style={compactCrayfishStyles?.batchBox || styles.batchBox}>
           <div style={styles.batchLabel}>Erätunnus</div>
-          <div style={styles.batchValue}>{label.batchId || "-"}</div>
+          <div style={compactCrayfishStyles?.batchValue || styles.batchValue}>{label.batchId || "-"}</div>
         </div>
 
-        <div style={styles.infoGrid}>
-          <InfoLine value={label.productionMethodText} />
-          <InfoLine label="Pyyntialue" value={label.catchArea} />
-          <InfoLine label="Pyyntimenetelmä" value={label.gearType} />
-          <InfoLine label="Pyyntipäivä" value={label.catchDate} emphasis />
-          <InfoLine label="Kaupallisen kalastajan tunnus" value={label.commercialFishingId} />
-          <InfoLine label="Tuote" value={label.productForm} />
-          <InfoLine value={label.productStateText} />
-          <InfoLine label="Säilytys" value="0-2 °C" />
+        <div style={compactCrayfishStyles?.infoGrid || styles.infoGrid}>
+          <InfoLine value={label.isCrayfish ? label.harvestSourceText : label.productionMethodText} stylesOverride={compactCrayfishStyles} />
+          <InfoLine label="Pyyntialue" value={label.catchArea} stylesOverride={compactCrayfishStyles} />
+          <InfoLine label="Pyyntimenetelmä" value={label.gearType} stylesOverride={compactCrayfishStyles} />
+          <InfoLine label="Pyyntipäivä" value={label.catchDate} emphasis stylesOverride={compactCrayfishStyles} />
+          <InfoLine label="Kaupallisen kalastajan tunnus" value={label.commercialFishingId} stylesOverride={compactCrayfishStyles} />
+          <InfoLine label="Tuote" value={label.productForm} stylesOverride={compactCrayfishStyles} />
+          <InfoLine value={label.productStateText} stylesOverride={compactCrayfishStyles} />
+          <InfoLine label="Säilytys" value="0-2 °C" stylesOverride={compactCrayfishStyles} />
         </div>
 
       </section>
