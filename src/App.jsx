@@ -625,7 +625,7 @@ function extractVisibleAdditionalNotes(notes) {
 
 function getBatchPublicUrl(batchId) {
   if (!batchId) return "";
-  return `${getPublicAppBaseUrl()}/batch/${encodeURIComponent(batchId)}`;
+  return `${getPublicAppBaseUrl()}/?batch=${encodeURIComponent(batchId)}`;
 }
 
 function getBatchTraceValue(batchId) {
@@ -635,7 +635,7 @@ function getBatchTraceValue(batchId) {
 
 function getBatchQrImageUrl(batchId) {
   const traceValue = getBatchTraceValue(batchId);
-  return traceValue ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(traceValue)}` : "";
+  return traceValue ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&format=png&qzone=1&data=${encodeURIComponent(traceValue)}&cache=${encodeURIComponent(batchId)}` : "";
 }
 
 function canPrintCatchLabels(entry) {
@@ -781,7 +781,7 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
 function getCatchLabelQrImageUrl(labelData) {
   const traceValue = getBatchTraceValue(labelData?.batchId);
   return traceValue
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(traceValue)}`
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=png&qzone=1&data=${encodeURIComponent(traceValue)}&cache=${encodeURIComponent(labelData?.batchId || "")}`
     : "";
 }
 

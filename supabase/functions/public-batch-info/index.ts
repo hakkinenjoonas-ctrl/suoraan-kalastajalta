@@ -41,13 +41,13 @@ function getCatchQuantity(entry: Record<string, unknown>) {
 
 function getBatchPublicUrl(batchId: string) {
   if (!batchId) return "";
-  return `https://suoraan-kalastajalta.vercel.app/batch/${encodeURIComponent(batchId)}`;
+  return `https://suoraan-kalastajalta.vercel.app/?batch=${encodeURIComponent(batchId)}`;
 }
 
 function getBatchQrImageUrl(batchId: string) {
   const publicUrl = getBatchPublicUrl(batchId);
   return publicUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(publicUrl)}`
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&format=png&qzone=1&data=${encodeURIComponent(publicUrl)}&cache=${encodeURIComponent(batchId)}`
     : "";
 }
 
