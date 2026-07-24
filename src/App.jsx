@@ -9760,19 +9760,34 @@ export default function App() {
           : formatter.format(new Date(`${monthKey}-01T00:00:00`)),
         entries: [],
         totalKilos: 0,
+        totalPieces: 0,
         forSaleKilos: 0,
+        forSalePieces: 0,
         speciesSummary: new Map(),
       };
 
       existingGroup.entries.push(entry);
-      existingGroup.totalKilos += Number(entry.kilos || 0);
       const speciesKey = formatSpeciesForSale(entry.species);
-      existingGroup.speciesSummary.set(
-        speciesKey,
-        Number(existingGroup.speciesSummary.get(speciesKey) || 0) + Number(entry.kilos || 0)
-      );
+      const crayfish = isCrayfishSpecies(entry.species);
+      const quantity = crayfish ? Number(entry.count || 0) : Number(entry.kilos || 0);
+      const unit = crayfish ? "kpl" : "kg";
+      if (crayfish) {
+        existingGroup.totalPieces += quantity;
+      } else {
+        existingGroup.totalKilos += quantity;
+      }
+      const previousSpecies = existingGroup.speciesSummary.get(speciesKey);
+      existingGroup.speciesSummary.set(speciesKey, {
+        species: speciesKey,
+        quantity: Number(previousSpecies?.quantity || 0) + quantity,
+        unit,
+      });
       if (entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers) {
-        existingGroup.forSaleKilos += Number(entry.kilos || 0);
+        if (crayfish) {
+          existingGroup.forSalePieces += quantity;
+        } else {
+          existingGroup.forSaleKilos += quantity;
+        }
       }
 
       acc.set(monthKey, existingGroup);
@@ -9782,9 +9797,8 @@ export default function App() {
     return Array.from(groups.values())
       .map((group) => ({
         ...group,
-        speciesSummary: Array.from(group.speciesSummary.entries())
-          .map(([species, kilos]) => ({ species, kilos }))
-          .sort((a, b) => b.kilos - a.kilos),
+        speciesSummary: Array.from(group.speciesSummary.values())
+          .sort((a, b) => b.quantity - a.quantity),
       }))
       .sort((a, b) => b.key.localeCompare(a.key));
   }, [filteredEntries]);
@@ -9953,18 +9967,29 @@ export default function App() {
 
   const totals = useMemo(() => {
     const totalKg = entries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
+    const totalPieces = entries.filter((e) => isCrayfishSpecies(e.species)).reduce((sum, e) => sum + Number(e.count || 0), 0);
     const forSaleKg = saleEntries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
+    const forSalePieces = saleEntries.filter((e) => isCrayfishSpecies(e.species)).reduce((sum, e) => sum + Number(e.count || 0), 0);
     const totalProcessedKg = processedEntries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
     const processedForSaleKg = processedSaleEntries.reduce((sum, e) => sum + Number(e.kilos || 0), 0);
     const speciesSummary = Array.from(new Set([...fishSpecies.filter((species) => species !== "Muu"), ...entries.map((entry) => entry.species).filter(Boolean)]))
-      .map((species) => ({ species, kilos: entries.filter((e) => e.species === species).reduce((sum, e) => sum + Number(e.kilos || 0), 0) }))
-      .filter((item) => item.kilos > 0)
-      .sort((a, b) => b.kilos - a.kilos);
+      .map((species) => {
+        const crayfish = isCrayfishSpecies(species);
+        return {
+          species,
+          quantity: entries
+            .filter((e) => e.species === species)
+            .reduce((sum, e) => sum + Number(crayfish ? e.count || 0 : e.kilos || 0), 0),
+          unit: crayfish ? "kpl" : "kg",
+        };
+      })
+      .filter((item) => item.quantity > 0)
+      .sort((a, b) => b.quantity - a.quantity);
     const processedSummary = processedProductTypes
       .map((productType) => ({ productType, kilos: processedEntries.filter((e) => e.productType === productType).reduce((sum, e) => sum + Number(e.kilos || 0), 0) }))
       .filter((item) => item.kilos > 0)
       .sort((a, b) => b.kilos - a.kilos);
-    return { totalKg, forSaleKg, totalProcessedKg, processedForSaleKg, speciesSummary, processedSummary };
+    return { totalKg, totalPieces, forSaleKg, forSalePieces, totalProcessedKg, processedForSaleKg, speciesSummary, processedSummary };
   }, [entries, saleEntries, processedEntries, processedSaleEntries]);
 
   const addSpeciesRow = () => setSpeciesRows((prev) => [...prev, createSpeciesRow()]);
@@ -15226,8 +15251,16 @@ export default function App() {
         {activeTab === "dashboard" ? (
           <div style={styles.stack}>
             <div style={grid3}>
-              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? totals.totalProcessedKg.toFixed(1) : totals.totalKg.toFixed(1)} kg</div><div style={styles.muted}>{profile.role === "processor" ? "Jalosteita yhteensä" : "Kokonaissaalis"}</div></div>
-              <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? totals.processedForSaleKg.toFixed(1) : totals.forSaleKg.toFixed(1)} kg</div><div style={styles.muted}>Tarjolla ostajille</div></div>
+              <div style={{ ...styles.card, ...styles.sectionCard }}>
+                <div style={styles.metric}>{profile.role === "processor" ? `${totals.totalProcessedKg.toFixed(1)} kg` : `${totals.totalKg.toFixed(1)} kg`}</div>
+                {profile.role !== "processor" && totals.totalPieces > 0 ? <div style={{ ...styles.metric, fontSize: 24 }}>{totals.totalPieces.toLocaleString("fi-FI")} kpl rapuja</div> : null}
+                <div style={styles.muted}>{profile.role === "processor" ? "Jalosteita yhteensä" : "Kokonaissaalis"}</div>
+              </div>
+              <div style={{ ...styles.card, ...styles.sectionCard }}>
+                <div style={styles.metric}>{profile.role === "processor" ? `${totals.processedForSaleKg.toFixed(1)} kg` : `${totals.forSaleKg.toFixed(1)} kg`}</div>
+                {profile.role !== "processor" && totals.forSalePieces > 0 ? <div style={{ ...styles.metric, fontSize: 24 }}>{totals.forSalePieces.toLocaleString("fi-FI")} kpl rapuja</div> : null}
+                <div style={styles.muted}>Tarjolla ostajille</div>
+              </div>
               <div style={{ ...styles.card, ...styles.sectionCard }}><div style={styles.metric}>{profile.role === "processor" ? processedEntries.length : entries.length}</div><div style={styles.muted}>{profile.role === "processor" ? "Tallennettuja jaloste-eriä" : "Tallennettuja eriä"}</div></div>
             </div>
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
@@ -15245,8 +15278,8 @@ export default function App() {
                   ? <div style={styles.muted}>Ei vielä saalistietoja.</div>
                   : totals.speciesSummary.map((item) => (
                     <div key={item.species} style={{ ...styles.stack, gap: 6 }}>
-                      <div style={styles.rowBetween}><span>{item.species}</span><span>{item.kilos.toFixed(1)} kg</span></div>
-                      <div style={styles.progress}><span style={{ ...styles.progressFill, width: `${Math.max((item.kilos / Math.max(totals.totalKg, 1)) * 100, 4)}%` }} /></div>
+                      <div style={styles.rowBetween}><span>{item.species}</span><span>{item.unit === "kpl" ? item.quantity.toLocaleString("fi-FI") : item.quantity.toFixed(1)} {item.unit}</span></div>
+                      <div style={styles.progress}><span style={{ ...styles.progressFill, width: `${Math.max((item.quantity / Math.max(item.unit === "kpl" ? totals.totalPieces : totals.totalKg, 1)) * 100, 4)}%` }} /></div>
                     </div>
                   )))}
             </div>
@@ -16445,8 +16478,10 @@ export default function App() {
                       <strong style={{ textTransform: "capitalize" }}>{group.label}</strong>
                       <div style={styles.entryBadges}>
                         <span style={styles.badge}>{group.entries.length} erää</span>
-                        <span style={styles.badge}>{group.totalKilos.toFixed(1)} kg yhteensä</span>
-                        <span style={styles.badge}>{group.forSaleKilos.toFixed(1)} kg myynnissä</span>
+                        {group.totalKilos > 0 ? <span style={styles.badge}>{group.totalKilos.toFixed(1)} kg yhteensä</span> : null}
+                        {group.totalPieces > 0 ? <span style={styles.badge}>{group.totalPieces.toLocaleString("fi-FI")} kpl rapuja yhteensä</span> : null}
+                        {group.forSaleKilos > 0 ? <span style={styles.badge}>{group.forSaleKilos.toFixed(1)} kg myynnissä</span> : null}
+                        {group.forSalePieces > 0 ? <span style={styles.badge}>{group.forSalePieces.toLocaleString("fi-FI")} kpl rapuja myynnissä</span> : null}
                       </div>
                     </div>
                     {group.speciesSummary.length > 0 ? (
@@ -16455,7 +16490,7 @@ export default function App() {
                         {group.speciesSummary.map((item) => (
                           <div key={item.species} style={styles.rowBetween}>
                             <span>{item.species}</span>
-                            <span>{item.kilos.toFixed(1)} kg</span>
+                            <span>{item.unit === "kpl" ? item.quantity.toLocaleString("fi-FI") : item.quantity.toFixed(1)} {item.unit}</span>
                           </div>
                         ))}
                       </div>
