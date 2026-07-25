@@ -1513,7 +1513,7 @@ function buildProcessedLabelData(entry, profileLike) {
       : "";
 
   const dateValue = String(entry?.useByDate || entry?.use_by_date || entry?.bestBeforeDate || entry?.best_before_date || "").trim();
-  const dateLabel = String(entry?.useByDate || entry?.use_by_date || "").trim() ? "Viimeinen kayttopaiva" : "Parasta ennen";
+  const dateLabel = String(entry?.useByDate || entry?.use_by_date || "").trim() ? "Viimeinen käyttöpäivä" : "Parasta ennen";
   const catchAreaText = [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / ");
 
   return {

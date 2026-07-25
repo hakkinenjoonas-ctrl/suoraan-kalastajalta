@@ -255,7 +255,7 @@ function NutritionBlock({ rows }) {
 
   return (
     <div style={styles.nutritionBlock}>
-      <div style={styles.nutritionTitle}>Ravintosisalto / 100 g</div>
+      <div style={styles.nutritionTitle}>Ravintosisältö / 100 g</div>
       {(energyKj || energyKcal) ? (
         <div style={styles.nutritionRow}>
           <span>Energia</span>
@@ -291,7 +291,7 @@ export default function ProcessedLabel4x6({ label }) {
           <div style={styles.productName}>{label.productName || "Jalostettu kalatuote"}</div>
           {label.batchId ? (
             <div style={styles.batchBox}>
-              <div style={styles.batchText}>Eratunnus: {label.batchId}</div>
+              <div style={styles.batchText}>Erätunnus: {label.batchId}</div>
             </div>
           ) : null}
 
@@ -303,11 +303,11 @@ export default function ProcessedLabel4x6({ label }) {
             <LabelLine label="Pyydystyyppi" value={label.gearType} />
             <LabelLine label="Nettopaino" value={label.netWeightText} strong />
             <LabelLine label={label.dateLabel} value={label.dateValue} strong />
-            <LabelLine label="Sailytys" value={label.storageTemperatureText} strong />
-            <LabelLine label="Sailytysohje" value={label.storageText} />
+            <LabelLine label="Säilytys" value={label.storageTemperatureText} strong />
+            <LabelLine label="Säilytysohje" value={label.storageText} />
             <LabelLine label="Pyyntialue" value={label.catchAreaText} />
             <LabelLine label="Tuotteen tila" value={label.productStateText} />
-            <LabelLine label="Merkinta" value={label.strongSaltWarningText} strong />
+            <LabelLine label="Merkintä" value={label.strongSaltWarningText} strong />
             <LabelLine label="Ainesosat" content={renderHighlightedIngredients(label.ingredientsText, label.allergensText)} />
             <LabelLine label="Allergeenit" value={label.allergensText} strong />
           </div>
