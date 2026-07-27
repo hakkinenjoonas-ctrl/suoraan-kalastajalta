@@ -151,6 +151,36 @@ const styles = {
     background: "#fff",
     boxSizing: "border-box",
   },
+  qrBottomBlock: {
+    width: "100%",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "0.7mm",
+  },
+  crayfishQuantity: {
+    width: "100%",
+    minHeight: "9mm",
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "baseline",
+    gap: "1mm",
+    paddingRight: "0.8mm",
+    boxSizing: "border-box",
+    fontWeight: 900,
+    lineHeight: 0.82,
+    whiteSpace: "nowrap",
+  },
+  crayfishQuantityUnit: {
+    fontSize: "9pt",
+    lineHeight: 1,
+    fontWeight: 900,
+  },
+  crayfishQuantityLabel: {
+    fontSize: "7pt",
+    lineHeight: 1,
+    fontWeight: 700,
+  },
   qrImage: {
     width: "100%",
     height: "100%",
@@ -190,6 +220,13 @@ function InfoLine({ label, value, emphasis = false }) {
 
 export default function ThermalLabel4x3({ label }) {
   if (!label) return null;
+  const printedQuantity = label.isCrayfish ? label.pieceCount : label.weightKg;
+  const hasPrintedQuantity = Boolean(printedQuantity);
+  const quantityFontSize = String(printedQuantity || "").length <= 3
+    ? "30pt"
+    : String(printedQuantity || "").length <= 5
+      ? "24pt"
+      : "18pt";
 
   return (
     <div style={styles.root}>
@@ -213,11 +250,13 @@ export default function ThermalLabel4x3({ label }) {
           <InfoLine label="Säilytys" value={label.storageText} />
         </div>
 
-        <div style={styles.weightLine}>
-          <span>{label.isCrayfish ? "Kpl:" : "Paino:"}</span>
-          {label.isCrayfish && label.pieceCount ? <strong>{label.pieceCount}</strong> : <span style={styles.weightWriteLine} />}
-          <span>{label.isCrayfish ? "kpl" : "kg"}</span>
-        </div>
+        {!hasPrintedQuantity ? (
+          <div style={styles.weightLine}>
+            <span>{label.isCrayfish ? "Kpl:" : "Paino:"}</span>
+            {label.weightKg ? <strong>{label.weightKg}</strong> : <span style={styles.weightWriteLine} />}
+            <span>{label.isCrayfish ? "kpl" : "kg"}</span>
+          </div>
+        ) : null}
 
         <div style={styles.supplierBlock}>
           <div style={styles.supplierLine}>Toimittaja: {label.supplier || "-"}</div>
@@ -236,8 +275,17 @@ export default function ThermalLabel4x3({ label }) {
         </div>
         {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
 
-        <div style={styles.qrFrame}>
-          {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
+        <div style={styles.qrBottomBlock}>
+          {hasPrintedQuantity ? (
+            <div style={styles.crayfishQuantity}>
+              <span style={styles.crayfishQuantityLabel}>{label.isCrayfish ? "Määrä:" : "Paino:"}</span>
+              <strong style={{ fontSize: quantityFontSize }}>{printedQuantity}</strong>
+              <span style={styles.crayfishQuantityUnit}>{label.isCrayfish ? "kpl" : "kg"}</span>
+            </div>
+          ) : null}
+          <div style={styles.qrFrame}>
+            {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
+          </div>
         </div>
       </div>
     </div>

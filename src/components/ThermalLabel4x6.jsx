@@ -147,6 +147,8 @@ const styles = {
   },
   weightValue: {
     fontWeight: 900,
+    fontSize: "16pt",
+    lineHeight: 0.95,
   },
   qrWrap: {
     display: "grid",
@@ -254,7 +256,7 @@ export default function ThermalLabel4x6({ label }) {
           <div style={styles.middleInfo}>
             <div style={styles.middleInfoLine}><strong>Pyyntipäivä:</strong> {label.catchDate || "-"}</div>
             <div style={styles.middleInfoLine}><strong>Pakkauspäivä:</strong> {label.packDate || "-"}</div>
-            <div style={styles.middleInfoLine}><strong>Paino:</strong> <span style={styles.weightValue}>{label.weightText || "-"}</span></div>
+            <div style={styles.middleInfoLine}><strong>Paino:</strong> <span style={styles.weightValue}>{label.weightText || "________________ kg"}</span></div>
           </div>
         </div>
 

@@ -54,7 +54,10 @@ import {
   fishSpeciesCatalog,
   gearTypes,
   logisticsRegionCities,
+  marineGearTypes,
+  marineStatisticalRectanglesBySubdivision,
   municipalityRegionMap,
+  officialMarineAreas,
   pickupPoints,
   processedProductTypes,
   processingMethods,
@@ -63,6 +66,7 @@ import {
   transportModeLabels,
 } from "./lib/constants.js";
 import { applyGrossPriceInput, createSpeciesRow, safeId, today } from "./lib/helpers.js";
+import { finlandMunicipalitiesByRegion, finlandRegions } from "./lib/municipalityRegions.js";
 import {
   ALLOWED_AUCTION_IMAGE_TYPES,
   prepareAuctionImage,
@@ -128,6 +132,7 @@ import ProcessedLabel4x3, { PROCESSED_LABEL_4X3_SIZE_MM } from "./components/Pro
 import ProcessedLabel4x6, { PROCESSED_LABEL_4X6_SIZE_MM } from "./components/ProcessedLabel4x6.jsx";
 import ThermalLabel4x3, { THERMAL_LABEL_4X3_SIZE_MM } from "./components/ThermalLabel4x3.jsx";
 import ThermalLabel4x6Portrait, { THERMAL_LABEL_4X6_SIZE_MM } from "./components/ThermalLabel4x6Portrait.jsx";
+import helpGuideMarkdown from "../KAYTTOOHJE.md?raw";
 
 const AUCTION_IMAGE_BUCKET = "auction-images";
 
@@ -165,7 +170,11 @@ function isTransientFetchError(error) {
     message.includes("networkerror when attempting to fetch resource") ||
     message.includes("upstream connect error") ||
     message.includes("disconnect/reset before headers") ||
-    message.includes("connection termination")
+    message.includes("connection termination") ||
+    message.includes("unable to resolve host") ||
+    message.includes("no address associated with hostname") ||
+    message.includes("name not resolved") ||
+    message.includes("dns")
   );
 }
 
@@ -291,7 +300,7 @@ function formatSpeciesSummaryLine(label, kilos, count) {
   if (isCrayfishSpecies(label)) {
     return `${formatSpeciesForSale(label)}: ${count > 0 ? `${count} kpl` : "-"}${kilos > 0 ? ` (${kilos} kg)` : ""}`;
   }
-  return `${formatSpeciesForSale(label)}: ${kilos} kg${count > 0 ? ` (${count} kpl)` : ""}`;
+  return `${formatSpeciesForSale(label)}: ${kilos} kg${count > 0 ? ` (${count} kpl/kg)` : ""}`;
 }
 
 function isCrayfishOfferSummary(summary) {
@@ -319,8 +328,13 @@ function getOfferQuantityDisplay(offer) {
 
 function getOfferCountDisplay(offer) {
   const summary = String(offer?.species_summary || "");
+  const countPerKiloMatch = summary.match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\/kg\)/i);
+  if (countPerKiloMatch) return `${String(countPerKiloMatch[1]).replace(".", ",")} kpl/kg`;
+
   const countInParenthesesMatch = summary.match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
-  if (countInParenthesesMatch) return `${String(countInParenthesesMatch[1]).replace(".", ",")} kpl`;
+  if (countInParenthesesMatch && !isCrayfishOfferSummary(summary)) {
+    return `${String(countInParenthesesMatch[1]).replace(".", ",")} kpl/kg`;
+  }
 
   if (isCrayfishOfferSummary(summary)) {
     const countMatch = summary.match(/(\d+(?:[.,]\d+)?)\s*kpl/i);
@@ -842,6 +856,9 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
   const pieceCount = isCrayfish && options?.pieceCount != null
     ? String(options.pieceCount).trim()
     : "";
+  const weightKg = !isCrayfish && options?.weightKg != null
+    ? String(options.weightKg).trim()
+    : "";
   const scientificName = getCatchLabelScientificName(entry?.species);
   const productForm = getCatchLabelProductForm(entry?.species);
   const catchArea = [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / ");
@@ -872,9 +889,7 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     "",
   ).trim();
   const packDate = String(entry?.packDate || entry?.createdAt || "").slice(0, 10).trim();
-  const weightText = entry?.kilos != null && String(entry.kilos).trim() !== ""
-    ? `${Number(entry.kilos)} kg`
-    : "";
+  const weightText = weightKg ? `${weightKg} kg` : "";
   const boxLabel = `${boxNumber}/${totalBoxes}`;
 
   return {
@@ -896,6 +911,7 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     weightText,
     isCrayfish,
     pieceCount,
+    weightKg,
     supplier,
     supplierAddress,
     supplierContact,
@@ -1712,7 +1728,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           ${label.productForm ? `<div class="line">Tuote: ${label.productForm}</div>` : ""}
           <div class="line">Säilytys: ${label.storageText}</div>
         </div>
-          <div class="weight-line"><span class="weight-label">${label.isCrayfish ? "Kpl:" : "Paino:"}</span>${label.isCrayfish && label.pieceCount ? `<span class="weight-value">${label.pieceCount}</span>` : `<span class="weight-write"></span>`}<span class="weight-unit">${label.isCrayfish ? "kpl" : "kg"}</span></div>
+          <div class="weight-line"><span class="weight-label">${label.isCrayfish ? "Kpl:" : "Paino:"}</span>${(label.isCrayfish ? label.pieceCount : label.weightKg) ? `<span class="weight-value">${label.isCrayfish ? label.pieceCount : label.weightKg}</span>` : `<span class="weight-write"></span>`}<span class="weight-unit">${label.isCrayfish ? "kpl" : "kg"}</span></div>
           <div class="supplier-block">
             <div class="line">Toimittaja: ${label.supplier || "-"}</div>
             ${label.supplierAddress ? `<div class="line">${label.supplierAddress}</div>` : ""}
@@ -2413,8 +2429,9 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     const quantityLabel = label.isCrayfish ? "Kpl:" : "Paino:";
     const quantityUnit = label.isCrayfish ? "kpl" : "kg";
     doc.text(quantityLabel, left, weightY);
-    if (label.isCrayfish && label.pieceCount) {
-      doc.text(label.pieceCount, left + 12.2, weightY);
+    const printedQuantity = label.isCrayfish ? label.pieceCount : label.weightKg;
+    if (printedQuantity) {
+      doc.text(printedQuantity, left + 12.2, weightY);
     } else {
       doc.setLineWidth(0.45);
       doc.line(left + 12.2, weightY + 0.15, qrX - 4.2, weightY + 0.15);
@@ -2666,6 +2683,174 @@ function getStoredOnboardingGuideState(profileLike) {
   }
 }
 
+function renderHelpInline(text, keyPrefix) {
+  return String(text || "").split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
+    const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (linkMatch) {
+      return <a key={`${keyPrefix}-link-${index}`} href={linkMatch[2]} target="_blank" rel="noreferrer">{linkMatch[1]}</a>;
+    }
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={`${keyPrefix}-strong-${index}`}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+}
+
+function HelpMarkdown({ source }) {
+  const lines = String(source || "").replace(/\r/g, "").split("\n");
+  const blocks = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line) {
+      index += 1;
+      continue;
+    }
+
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const Heading = level === 1 ? "h2" : level === 2 ? "h3" : "h4";
+      blocks.push(
+        <Heading
+          key={`heading-${index}`}
+          style={{
+            margin: level === 1 ? "0 0 8px" : level === 2 ? "24px 0 8px" : "18px 0 6px",
+            color: "#0f172a",
+            lineHeight: 1.3,
+          }}
+        >
+          {renderHelpInline(headingMatch[2], `heading-${index}`)}
+        </Heading>,
+      );
+      index += 1;
+      continue;
+    }
+
+    const unordered = line.startsWith("- ");
+    const ordered = /^\d+\.\s+/.test(line);
+    if (unordered || ordered) {
+      const items = [];
+      const listStart = index;
+      while (index < lines.length) {
+        const itemLine = lines[index].trim();
+        const matchesList = unordered ? itemLine.startsWith("- ") : /^\d+\.\s+/.test(itemLine);
+        if (!matchesList) break;
+        const itemText = unordered ? itemLine.slice(2) : itemLine.replace(/^\d+\.\s+/, "");
+        items.push(<li key={`item-${index}`}>{renderHelpInline(itemText, `item-${index}`)}</li>);
+        index += 1;
+      }
+      const listStyle = { margin: "8px 0 14px", paddingLeft: 24, color: "#334155", lineHeight: 1.65 };
+      blocks.push(unordered
+        ? <ul key={`list-${listStart}`} style={listStyle}>{items}</ul>
+        : <ol key={`list-${listStart}`} style={listStyle}>{items}</ol>);
+      continue;
+    }
+
+    const paragraphLines = [line];
+    const paragraphStart = index;
+    index += 1;
+    while (index < lines.length) {
+      const nextLine = lines[index].trim();
+      if (!nextLine || /^(#{1,3})\s+/.test(nextLine) || nextLine.startsWith("- ") || /^\d+\.\s+/.test(nextLine)) break;
+      paragraphLines.push(nextLine);
+      index += 1;
+    }
+    blocks.push(
+      <p key={`paragraph-${paragraphStart}`} style={{ margin: "0 0 14px", color: "#334155", lineHeight: 1.65 }}>
+        {renderHelpInline(paragraphLines.join(" "), `paragraph-${paragraphStart}`)}
+      </p>,
+    );
+  }
+
+  return <div>{blocks}</div>;
+}
+
+function HelpDialog({ onClose }) {
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 10000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        background: "rgba(15, 23, 42, 0.68)",
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-dialog-title"
+        style={{
+          width: "min(760px, 100%)",
+          maxHeight: "min(88vh, 900px)",
+          overflowY: "auto",
+          borderRadius: 18,
+          background: "#f8fafc",
+          boxShadow: "0 24px 70px rgba(15, 23, 42, 0.32)",
+        }}
+      >
+        <div style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          padding: "18px 20px",
+          borderBottom: "1px solid #dbeafe",
+          background: "rgba(248, 250, 252, 0.97)",
+        }}>
+          <div>
+            <h2 id="help-dialog-title" style={{ margin: 0, color: "#0f172a" }}>Sovelluksen käyttöohje</h2>
+            <div style={{ marginTop: 4, color: "#64748b", fontSize: 14 }}>Suoraan Kalastajalta</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Sulje käyttöohje"
+            style={{
+              width: 42,
+              height: 42,
+              flex: "0 0 42px",
+              border: "1px solid #bfdbfe",
+              borderRadius: 999,
+              background: "#fff",
+              color: "#1e3a8a",
+              fontSize: 25,
+              lineHeight: 1,
+              cursor: "pointer",
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ padding: 20 }}>
+          <HelpMarkdown source={helpGuideMarkdown} />
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function saveStoredOnboardingGuideState(profileLike, state) {
   if (typeof window === "undefined") return;
   try {
@@ -2735,10 +2920,53 @@ function getRoleOnboardingGuideContent(role) {
 function resolveAreaSelectorValue(area, customLakeAreas = [], customSeaAreas = []) {
   const normalized = String(area || "").trim();
   if (!normalized) return "Saimaa";
+  const marineArea = getOfficialMarineArea(normalized);
+  if (marineArea) return marineArea.name;
   if (defaultAreas.includes(normalized)) return normalized;
   if (customSeaAreas.includes(normalized)) return CUSTOM_SEA_AREA_OPTION;
   if (customLakeAreas.includes(normalized)) return CUSTOM_LAKE_AREA_OPTION;
   return CUSTOM_LAKE_AREA_OPTION;
+}
+
+const legacyMarineAreaNames = new Set([
+  "Suomenlahti",
+  "Saaristomeri",
+  "Selkämeri",
+  "Perämeri",
+  "Ahvenanmeri",
+  "Merenkurkku",
+  "Saaristomeri / Ahvenanmeri",
+  "Selkämeri / Merenkurkku",
+  "Merialue (muu)",
+]);
+
+function getOfficialMarineArea(area) {
+  const normalized = String(area || "").trim();
+  if (normalized === "Saaristomeri" || normalized === "Ahvenanmeri" || normalized === "Saaristomeri / Ahvenanmeri") {
+    return officialMarineAreas.find((item) => item.icesSubdivision === "29") || null;
+  }
+  if (normalized === "Selkämeri" || normalized === "Merenkurkku" || normalized === "Selkämeri / Merenkurkku") {
+    return officialMarineAreas.find((item) => item.icesSubdivision === "30") || null;
+  }
+  if (normalized === "Perämeri") return officialMarineAreas.find((item) => item.icesSubdivision === "31") || null;
+  if (normalized === "Suomenlahti") return officialMarineAreas.find((item) => item.icesSubdivision === "32") || null;
+  return null;
+}
+
+function isMarineCatchForm(form, areaSelector = "") {
+  if (areaSelector === CUSTOM_SEA_AREA_OPTION) return true;
+  if (areaSelector === CUSTOM_LAKE_AREA_OPTION) return false;
+  if (getOfficialMarineArea(areaSelector) || legacyMarineAreaNames.has(String(form?.area || "").trim())) return true;
+  return !areaSelector && String(form?.waterType || "").trim() === WATER_TYPE_SEA;
+}
+
+function getMarineGearByCode(code) {
+  return marineGearTypes.find((item) => item.code === String(code || "").trim()) || null;
+}
+
+function createFishingDayId({ date, sourceIdentifier }) {
+  const source = formatBatchSourceIdentifier(sourceIdentifier) || "ILMANALUSTA";
+  return `FD-${formatBatchDate(date)}-${source}`;
 }
 
 function buildAreaHistory(currentValue, previousValues = []) {
@@ -2998,7 +3226,7 @@ function parseLocaleNumber(value) {
 function normalizeCatchGearValue(value) {
   const gear = String(value || "").trim();
   if (!gear) return "";
-  if (gear === "Trooli") return "Trooli";
+  if (gear === "Trooli" || gear === "Hoitokalastus troolilla") return "Trooli";
   if (gear.startsWith("Nuotta")) return "Nuotta";
   if (gear === "Muikkuverkko" || gear.startsWith("Verkko") || gear === "Verkko") return "Verkko";
   if (gear.startsWith("Rysä / paunetti") || gear === "Rysä" || gear === "Paunetti/avorysä") return "Rysä";
@@ -3009,11 +3237,15 @@ function normalizeCatchGearValue(value) {
   return gear;
 }
 
+function catchGearUsesCount(gearValue) {
+  return normalizeCatchGearValue(gearValue) !== "Trooli";
+}
+
 function getFishingDurationFieldMeta(gearValue) {
   const normalizedGear = normalizeCatchGearValue(gearValue);
   const gear = String(gearValue || "").trim();
 
-  if (gear === "Trooli" || gear === "Hoitokalastus troolilla") {
+  if (normalizedGear === "Trooli") {
     return {
       label: "Pyyntiaika ja vetonopeus",
       durationLabel: "Troolausaika (t:mm)",
@@ -3099,7 +3331,7 @@ function validateCatchFormForOfficialReporting(form) {
   if (!gear) {
     issues.push("Pyydys puuttuu.");
   }
-  if (!String(form?.gearCount || "").trim()) {
+  if (catchGearUsesCount(gear) && !String(form?.gearCount || "").trim()) {
     issues.push("Pyydysten määrä puuttuu.");
   }
 
@@ -3147,7 +3379,7 @@ function validateOfficialCatchEntries(entries = []) {
     if (!String(entry?.municipality || "").trim()) missing.push("paikkakunta");
     if (!String(entry?.landingPlace || "").trim()) missing.push("purkamispaikka");
     if (!gear) missing.push("pyydys");
-    if (!String(entry?.gearCount || "").trim()) missing.push("pyydysten määrä");
+    if (catchGearUsesCount(gear) && !String(entry?.gearCount || "").trim()) missing.push("pyydysten määrä");
 
     if (fishingMeta.splitFields) {
       if (!fishingParts.duration) missing.push(fishingMeta.durationLabel.toLowerCase());
@@ -3179,6 +3411,203 @@ function validateOfficialCatchEntries(entries = []) {
   });
 
   return issues;
+}
+
+function validateMarineCatchForm(form) {
+  const issues = [];
+  if (!String(form?.area || "").trim()) issues.push("Merialue puuttuu.");
+  if (!String(form?.icesSubdivision || "").trim()) issues.push("ICES-osa-alue puuttuu.");
+  if (!String(form?.statisticalRectangle || "").trim()) issues.push("Tilastoruutu puuttuu.");
+  if (!String(form?.marineGearCode || "").trim()) issues.push("Merialueen pyydys puuttuu.");
+  if (!String(form?.landingPlace || "").trim()) issues.push("Purkamispaikka puuttuu.");
+  if (!String(form?.vesselLengthClass || "").trim()) issues.push("Aluksen pituusluokka puuttuu.");
+  if (form?.vesselLengthClass === "without_vessel" && !form?.fishingWithoutVessel) {
+    issues.push("Valitse myös Kalastus ilman alusta.");
+  }
+  return issues;
+}
+
+function validateCoastalCatchEntries(entries = []) {
+  const issues = [];
+  entries.forEach((entry) => {
+    const identifier = String(entry?.batchId || entry?.id || "tuntematon erä");
+    const missing = [];
+    if (!entry?.date) missing.push("pyyntipäivä");
+    if (!entry?.icesSubdivision) missing.push("ICES-osa-alue");
+    if (!entry?.statisticalRectangle) missing.push("tilastoruutu");
+    if (!entry?.marineGearCode) missing.push("meripyydyskoodi");
+    if (!entry?.landingPlace) missing.push("purkamispaikka");
+    if (!entry?.vesselLengthClass) missing.push("aluksen pituusluokka");
+    if (entry?.vesselLengthClass === "under_10m" && !entry?.commercialFishingVesselId) missing.push("aluksen rekisteritunnus");
+    if (!getSpeciesMetadata(entry?.species)?.fao) missing.push("vahvistettu FAO-lajikoodi");
+    if (missing.length > 0) issues.push(`${identifier}: ${missing.join(", ")}`);
+  });
+  return issues;
+}
+
+function isValidFinnishPersonalIdentityCode(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  const match = normalized.match(/^(\d{6})([+\-A-FYXWVU])(\d{3})([0-9A-Z])$/);
+  if (!match) return false;
+
+  const checksumCharacters = "0123456789ABCDEFHJKLMNPRSTUVWXY";
+  const checksumIndex = Number(`${match[1]}${match[3]}`) % 31;
+  if (checksumCharacters[checksumIndex] !== match[4]) return false;
+
+  const day = Number(match[1].slice(0, 2));
+  const month = Number(match[1].slice(2, 4));
+  const yearSuffix = Number(match[1].slice(4, 6));
+  const centuryByMarker = {
+    "+": 1800,
+    "-": 1900,
+    Y: 1900,
+    X: 1900,
+    W: 1900,
+    V: 1900,
+    U: 1900,
+    A: 2000,
+    B: 2000,
+    C: 2000,
+    D: 2000,
+    E: 2000,
+    F: 2000,
+  };
+  const date = new Date(Date.UTC((centuryByMarker[match[2]] || 0) + yearSuffix, month - 1, day));
+  return date.getUTCFullYear() === (centuryByMarker[match[2]] || 0) + yearSuffix
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
+function buildCoastalCatchWorkbook(entries = [], reportDateLabel = "kaikki", fisherProfile = null, reportingDetails = {}) {
+  const coastalEntries = entries.filter((entry) => String(entry?.waterType || "") === WATER_TYPE_SEA);
+  const reporterIdentities = reportingDetails?.reporterIdentities || {};
+  const buyers = Array.isArray(reportingDetails?.buyers) ? reportingDetails.buyers : [];
+  const grouped = new Map();
+
+  coastalEntries.forEach((entry) => {
+    const speciesMeta = getSpeciesMetadata(entry?.species);
+    const month = String(entry?.date || "").slice(0, 7);
+    const key = [
+      month,
+      entry?.commercialFishingVesselId || "ilman alusta",
+      entry?.icesSubdivision || "",
+      entry?.statisticalRectangle || "",
+      entry?.marineGearCode || "",
+      entry?.landingPlace || "",
+      speciesMeta?.fao || "",
+    ].join("|");
+    const current = grouped.get(key) || {
+      month,
+      vessel: entry?.commercialFishingVesselId || "Kalastus ilman alusta",
+      vesselLengthClass: entry?.vesselLengthClass || "",
+      icesSubdivision: entry?.icesSubdivision || "",
+      statisticalRectangle: entry?.statisticalRectangle || "",
+      marineGearCode: entry?.marineGearCode || "",
+      marineGearName: entry?.marineGearName || getMarineGearByCode(entry?.marineGearCode)?.name || "",
+      traceabilityCategory: getMarineGearByCode(entry?.marineGearCode)?.traceabilityCategory || "",
+      landingPlace: entry?.landingPlace || "",
+      species: formatSpeciesForLabelTitle(entry?.species || ""),
+      scientificName: speciesMeta?.scientific || "",
+      faoCode: speciesMeta?.fao || "",
+      kilos: 0,
+      dates: new Set(),
+      batchIds: new Set(),
+      fishingDayIds: new Set(),
+      releasedCatchDetails: new Set(),
+      incidentalBycatchDetails: new Set(),
+      lostGearDetails: new Set(),
+    };
+    current.kilos += Number(entry?.kilos || 0);
+    if (entry?.date) current.dates.add(entry.date);
+    if (entry?.batchId) current.batchIds.add(entry.batchId);
+    if (entry?.fishingDayId) current.fishingDayIds.add(entry.fishingDayId);
+    if (entry?.releasedCatchDetails) current.releasedCatchDetails.add(entry.releasedCatchDetails);
+    if (entry?.incidentalBycatchDetails) current.incidentalBycatchDetails.add(entry.incidentalBycatchDetails);
+    if (entry?.lostGearDetails) current.lostGearDetails.add(entry.lostGearDetails);
+    grouped.set(key, current);
+  });
+
+  const instructions = [
+    ["Rannikkokalastusilmoituksen valmisteluraportti"],
+    ["Valittu aikaväli", reportDateLabel],
+    ["Huomio", "Raportti ei lähetä tietoja viranomaiselle. Tarkista ja ilmoita tiedot virallisessa saalisilmoituspalvelussa."],
+    ["Rajaus", "Alle 10 metrin alusten ja ilman alusta kalastettujen merisaaliiden kuukausikooste."],
+    [],
+    ["Kalastaja", fisherProfile?.display_name || ""],
+    ["Yritys", fisherProfile?.company_name || ""],
+    ["Y-tunnus", fisherProfile?.business_id || ""],
+    ["Kaupallisen kalastajan tunnus", fisherProfile?.commercial_fishing_id || ""],
+    [],
+    ["Alus / kalastustapa", "Aluksen päällikön / kalastaneen henkilön henkilötunnus"],
+    ...Object.entries(reporterIdentities).map(([vessel, personalIdentityCode]) => [vessel, personalIdentityCode]),
+  ];
+
+  const rows = [[
+    "Kuukausi",
+    "Alus / ilman alusta",
+    "Aluksen pituusluokka",
+    "ICES-osa-alue",
+    "Tilastoruutu",
+    "Pyydyskoodi",
+    "Pyydys",
+    "Jäljitettävyysryhmä",
+    "Pyyntipäiviä",
+    "Pääasiallinen purkamispaikka",
+    "Laji",
+    "Tieteellinen nimi",
+    "FAO-koodi",
+    "Purettu saalis kg",
+    "Vapautettu / poisheitetty saalis",
+    "Tahattomat sivusaaliit",
+    "Kadonneet / tuhoutuneet pyydykset",
+    "Kalastuspäivätunnukset",
+    "Jäljitettävyystunnukset",
+  ]];
+
+  Array.from(grouped.values())
+    .sort((left, right) => `${left.month}|${left.vessel}|${left.faoCode}`.localeCompare(`${right.month}|${right.vessel}|${right.faoCode}`))
+    .forEach((item) => rows.push([
+      item.month,
+      item.vessel,
+      item.vesselLengthClass === "under_10m" ? "Alle 10 m" : item.vesselLengthClass === "without_vessel" ? "Ilman alusta" : "Vähintään 10 m",
+      item.icesSubdivision,
+      item.statisticalRectangle,
+      item.marineGearCode,
+      item.marineGearName,
+      item.traceabilityCategory,
+      item.dates.size,
+      item.landingPlace,
+      item.species,
+      item.scientificName,
+      item.faoCode,
+      item.kilos,
+      Array.from(item.releasedCatchDetails).join("; "),
+      Array.from(item.incidentalBycatchDetails).join("; "),
+      Array.from(item.lostGearDetails).join("; "),
+      Array.from(item.fishingDayIds).join(", "),
+      Array.from(item.batchIds).join(", "),
+    ]));
+
+  const buyerRows = [[
+    "Ostajan yritys / nimi",
+    "Yhteyshenkilö",
+    "Sähköposti",
+    "Puhelin",
+    "Lähde",
+  ]];
+  buyers.forEach((buyer) => buyerRows.push([
+    buyer.companyName || "",
+    buyer.contactName || "",
+    buyer.email || "",
+    buyer.phone || "",
+    buyer.source === "manual" ? "Lisätty ilmoitusta muodostettaessa" : "Sovelluksessa toteutunut kauppa",
+  ]));
+
+  return [
+    { name: "Ohjeet", rows: instructions },
+    { name: "Rannikkoilmoitus", rows },
+    { name: "Ostajat", rows: buyerRows },
+  ];
 }
 
 function getCatchGearDetailLines(source) {
@@ -3605,7 +4034,7 @@ function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fi
         otherSpeciesDetail,
         toWholeKilo(kilos),
         kilos,
-        count > 0 ? count : "",
+        isCrayfishSpecies(entry?.species) && count > 0 ? count : "",
         gearInfo.note || "",
       ];
     }),
@@ -3659,6 +4088,7 @@ function MunicipalitySelect({ value, onChange, placeholder = "Valitse paikkakunt
 
 function MultiCityInput({ value, onChange, suggestions = [], label = "Valitut kaupungit" }) {
   const [selectedCity, setSelectedCity] = useState("");
+  const [selectedArea, setSelectedArea] = useState("");
   const selectedCities = normalizeDestinationCities(value);
   const quickSuggestions = normalizeDestinationCities(suggestions).filter((city) => !selectedCities.includes(city)).slice(0, 8);
 
@@ -3673,6 +4103,15 @@ function MultiCityInput({ value, onChange, suggestions = [], label = "Valitut ka
     onChange(selectedCities.filter((item) => item !== city));
   };
 
+  const addArea = (area) => {
+    if (!area) return;
+    const areaCities = area === "__all__"
+      ? finlandMunicipalities
+      : finlandMunicipalitiesByRegion[area] || [];
+    onChange(normalizeDestinationCities([...selectedCities, ...areaCities]));
+    setSelectedArea("");
+  };
+
   return (
     <div style={{ ...styles.stack, gap: 10 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -3681,6 +4120,22 @@ function MultiCityInput({ value, onChange, suggestions = [], label = "Valitut ka
         </div>
         <button type="button" style={styles.button} onClick={() => addCity(selectedCity)} disabled={!selectedCity}>
           Lisää kaupunki
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ minWidth: 220, flex: "1 1 260px" }}>
+          <select style={styles.input} value={selectedArea} onChange={(e) => setSelectedArea(e.target.value)}>
+            <option value="">Valitse kaikki kaupungit tai maakunta</option>
+            <option value="__all__">Kaikki kaupungit</option>
+            <optgroup label="Maakunnat">
+              {finlandRegions.map((region) => (
+                <option key={region} value={region}>{region}</option>
+              ))}
+            </optgroup>
+          </select>
+        </div>
+        <button type="button" style={styles.button} onClick={() => addArea(selectedArea)} disabled={!selectedArea}>
+          Lisää alue
         </button>
       </div>
       {quickSuggestions.length > 0 ? (
@@ -3830,8 +4285,12 @@ function PublicBatchView({ batchId, data, loading, error, onLeave }) {
     ["Tuotantopäivä", data?.production_date],
     ["Parasta ennen", data?.best_before_date],
     ["Alue", data?.area],
+    ["ICES-osa-alue", data?.ices_subdivision],
+    ["Tilastoruutu", data?.statistical_rectangle],
     ["Paikka", [data?.municipality, data?.spot].filter(Boolean).join(" / ")],
-    ["Pyydys", data?.gear],
+    ["Pyydys", data?.marine_gear_name || data?.gear],
+    ["Merialueen pyydyskoodi", data?.marine_gear_code],
+    ["Kalastuspäivätunnus", data?.fishing_day_id],
     ["Määrä", formatPublicQuantity(data)],
     ["Myyjä / jalostaja", data?.seller_name],
     ["Lisätiedot", data?.notes],
@@ -3989,12 +4448,12 @@ function PublicBatchView({ batchId, data, loading, error, onLeave }) {
   );
 }
 
-function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, pieceCount, setPieceCount, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint, viewportWidth }) {
+function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, pieceCount, setPieceCount, weightKg, setWeightKg, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint, viewportWidth }) {
   if (!entry) return null;
 
   const previewLabel = {
-    ...buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount }),
-    qrImageUrl: getCatchLabelQrImageUrl(buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount })),
+    ...buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount, weightKg }),
+    qrImageUrl: getCatchLabelQrImageUrl(buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount, weightKg })),
     logoUrl: getAppLogoUrl(),
   };
   const isMobile = viewportWidth < 768;
@@ -4014,7 +4473,8 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
     printFormat,
     waterType,
     pieceCount: isCrayfishSpecies(entry.species) ? String(pieceCount || "").trim() : "",
-  }), [entry, labelCount, pieceCount, printFormat, waterType]);
+    weightKg: !isCrayfishSpecies(entry.species) ? String(weightKg || "").trim() : "",
+  }), [entry, labelCount, pieceCount, printFormat, waterType, weightKg]);
 
   return (
     <div style={{
@@ -4100,7 +4560,24 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
                 />
                 <div style={styles.small}>Jos jätät kentän tyhjäksi, etikettiin tulostuu kpl-kohta ja viiva käsin kirjoittamista varten.</div>
               </div>
-            ) : null}
+            ) : (
+              <div style={styles.field}>
+                <label>Etikettiin tuleva paino kg (valinnainen)</label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Esim. 10"
+                  value={weightKg}
+                  onChange={(e) => {
+                    const nextValue = e.target.value.replace(".", ",").replace(/[^0-9,]/g, "");
+                    const [whole = "", ...decimalParts] = nextValue.split(",");
+                    setWeightKg(decimalParts.length ? `${whole},${decimalParts.join("")}` : whole);
+                  }}
+                />
+                <div style={styles.small}>Jos jätät kentän tyhjäksi, etikettiin tulostuu painokohta ja viiva käsin kirjoittamista varten.</div>
+              </div>
+            )}
             <div style={styles.field}>
               <label>Tulostuspohja</label>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
@@ -4184,8 +4661,8 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
                       </div>
                       <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginTop: 12, minHeight: 24 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{previewLabel.isCrayfish ? "Kpl:" : "Paino:"}</span>
-                        {previewLabel.isCrayfish && previewLabel.pieceCount ? (
-                          <span style={{ flex: 1, fontSize: 12, fontWeight: 700 }}>{previewLabel.pieceCount}</span>
+                        {(previewLabel.isCrayfish ? previewLabel.pieceCount : previewLabel.weightKg) ? (
+                          <span style={{ flex: 1, fontSize: 12, fontWeight: 700 }}>{previewLabel.isCrayfish ? previewLabel.pieceCount : previewLabel.weightKg}</span>
                         ) : (
                           <span style={{ flex: 1, borderBottom: "2px solid #0f172a", height: 18 }} />
                         )}
@@ -4225,30 +4702,50 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
   );
 }
 
+function getHeaderBrandStyles(viewportWidth) {
+  const compact = viewportWidth < 480;
+  return {
+    row: {
+      display: "flex",
+      alignItems: "center",
+      gap: compact ? 8 : 2,
+      flexWrap: "nowrap",
+      width: "100%",
+      marginTop: 12,
+      marginBottom: 12,
+    },
+    title: {
+      ...styles.title,
+      marginRight: compact ? 0 : -2,
+      minWidth: 0,
+      flex: "1 1 auto",
+      fontSize: compact ? 34 : styles.title.fontSize,
+      lineHeight: compact ? 1.08 : styles.title.lineHeight,
+    },
+    logo: {
+      height: compact ? 88 : viewportWidth < 768 ? 116 : viewportWidth < 1024 ? 170 : 196,
+      width: "auto",
+      maxWidth: compact ? "29%" : viewportWidth < 768 ? "36vw" : "none",
+      objectFit: "contain",
+      display: "block",
+      flex: "0 0 auto",
+    },
+  };
+}
+
 function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, onForgotPassword, onResetRecoveredPassword, authError, authInfo, authSubmitting, viewportWidth }) {
-  const logoHeight = viewportWidth < 768
-    ? 172
-    : viewportWidth < 1024
-    ? 206
-    : 228;
+  const headerBrandStyles = getHeaderBrandStyles(viewportWidth);
 
   return (
     <div style={styles.app}>
       <div style={{ ...styles.container, maxWidth: 520 }}>
         <div style={{ ...styles.card, ...styles.headerCard, marginBottom: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "nowrap", marginTop: 12, marginBottom: 12 }}>
-            <h1 style={{ ...styles.title, marginRight: -2 }}>Suoraan Kalastajalta</h1>
+          <div style={headerBrandStyles.row}>
+            <h1 style={headerBrandStyles.title}>Suoraan Kalastajalta</h1>
             <img
               src="/logo.png"
               alt=""
-              style={{
-                height: logoHeight,
-                width: "auto",
-                maxWidth: viewportWidth < 768 ? "46vw" : "none",
-                objectFit: "contain",
-                display: "block",
-                flexShrink: 0,
-              }}
+              style={headerBrandStyles.logo}
             />
           </div>
           <p style={styles.subtitle}>
@@ -4684,6 +5181,10 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   const [buyerReportLoading, setBuyerReportLoading] = useState(false);
   const [buyerReportError, setBuyerReportError] = useState("");
   const [buyerReportData, setBuyerReportData] = useState(null);
+  const [coastalReviewOpen, setCoastalReviewOpen] = useState(false);
+  const [coastalReporterIdentities, setCoastalReporterIdentities] = useState({});
+  const [coastalBuyerDrafts, setCoastalBuyerDrafts] = useState([]);
+  const [coastalReviewError, setCoastalReviewError] = useState("");
 
   const isBuyerRole = profile?.role === "buyer";
   const hasFisherPremium = isFisherPremiumProfile(profile);
@@ -5169,7 +5670,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
     const count = Number(entry.count || 0);
     const quantityLabel = isCrayfishSpecies(speciesLabel)
       ? `${count.toLocaleString("fi-FI")} kpl${kilos > 0 ? ` (${kilos.toLocaleString("fi-FI")} kg)` : ""}`
-      : `${kilos.toLocaleString("fi-FI")} kg${count > 0 ? ` (${count.toLocaleString("fi-FI")} kpl)` : ""}`;
+      : `${kilos.toLocaleString("fi-FI")} kg${count > 0 ? ` (${count.toLocaleString("fi-FI")} kpl/kg)` : ""}`;
 
     return [
       entry.date || "",
@@ -5418,10 +5919,115 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   ]);
 
   const catchReportRows = [catchReportHeader, ...reportRows];
-  const officialCatchWorkbook = buildOfficialCatchWorkbook(filteredEntries, reportDateLabel, profile, reportSpotLabel);
-  const officialCatchIssues = validateOfficialCatchEntries(filteredEntries);
+  const inlandOfficialEntries = filteredEntries.filter((entry) => String(entry?.waterType || "") !== WATER_TYPE_SEA);
+  const coastalReportEntries = filteredEntries.filter((entry) => (
+    String(entry?.waterType || "") === WATER_TYPE_SEA
+    && (entry?.vesselLengthClass === "under_10m" || entry?.vesselLengthClass === "without_vessel")
+  ));
+  const coastalBatchIds = new Set(coastalReportEntries.map((entry) => String(entry?.batchId || "").trim()).filter(Boolean));
+  const coastalReporterKeys = Array.from(new Set(coastalReportEntries.map((entry) => (
+    entry?.vesselLengthClass === "without_vessel"
+      ? "Kalastus ilman alusta"
+      : String(entry?.commercialFishingVesselId || "").trim() || "Alus ilman rekisteritunnusta"
+  )))).sort((left, right) => left.localeCompare(right, "fi"));
+  const automaticCoastalBuyers = Array.from((offers || []).reduce((buyersByKey, offer) => {
+    const offerBatchId = String(offer?.batch_id || offer?.batchId || "").trim();
+    if (String(offer?.status || "") !== "accepted" || !coastalBatchIds.has(offerBatchId)) return buyersByKey;
+    const companyName = String(offer?.buyer_company_name || offer?.company_name || offer?.buyer_contact_name || offer?.contact_name || "").trim();
+    const contactName = String(offer?.buyer_contact_name || offer?.contact_name || "").trim();
+    const email = normalizeEmail(offer?.buyer_email || offer?.contact_email || offer?.buyer_billing_email || "");
+    const phone = String(offer?.buyer_phone || offer?.contact_phone || "").trim();
+    const key = [companyName.toLowerCase(), email, phone].join("|");
+    if (!key.replaceAll("|", "")) return buyersByKey;
+    if (!buyersByKey.has(key)) {
+      buyersByKey.set(key, { companyName, contactName, email, phone, source: "automatic" });
+    }
+    return buyersByKey;
+  }, new Map()).values());
+  const officialCatchWorkbook = buildOfficialCatchWorkbook(inlandOfficialEntries, reportDateLabel, profile, reportSpotLabel);
+  const officialCatchIssues = validateOfficialCatchEntries(inlandOfficialEntries);
+  const coastalCatchIssues = validateCoastalCatchEntries(coastalReportEntries);
   const offerReportRows = [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows];
   const processedReportRows = [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows];
+
+  const closeCoastalReview = () => {
+    setCoastalReviewOpen(false);
+    setCoastalReporterIdentities({});
+    setCoastalBuyerDrafts([]);
+    setCoastalReviewError("");
+  };
+
+  const openCoastalReview = () => {
+    if (coastalCatchIssues.length > 0) {
+      setAuthError("Rannikkokalastusilmoitusta ei voi muodostaa ennen kuin puuttuvat saalistiedot on täydennetty.");
+      return;
+    }
+    setCoastalReporterIdentities(Object.fromEntries(coastalReporterKeys.map((key) => [key, ""])));
+    setCoastalBuyerDrafts(automaticCoastalBuyers.map((buyer) => ({
+      ...buyer,
+      id: crypto.randomUUID(),
+    })));
+    setCoastalReviewError("");
+    setCoastalReviewOpen(true);
+  };
+
+  const updateCoastalBuyerDraft = (buyerId, field, value) => {
+    setCoastalBuyerDrafts((current) => current.map((buyer) => (
+      buyer.id === buyerId ? { ...buyer, [field]: value } : buyer
+    )));
+  };
+
+  const addCoastalBuyerDraft = () => {
+    setCoastalBuyerDrafts((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        companyName: "",
+        contactName: "",
+        email: "",
+        phone: "",
+        source: "manual",
+      },
+    ]);
+  };
+
+  const downloadReviewedCoastalReport = () => {
+    const invalidReporter = coastalReporterKeys.find((key) => !isValidFinnishPersonalIdentityCode(coastalReporterIdentities[key]));
+    if (invalidReporter) {
+      setCoastalReviewError(`Tarkista henkilötunnus kohdassa “${invalidReporter}”. Tunnusta ei tallenneta sovellukseen.`);
+      return;
+    }
+    const incompleteBuyer = coastalBuyerDrafts.find((buyer) => (
+      !String(buyer.companyName || "").trim()
+      || (!normalizeEmail(buyer.email) && !String(buyer.phone || "").trim())
+    ));
+    if (incompleteBuyer) {
+      setCoastalReviewError("Jokaisella ostajalla pitää olla nimi sekä vähintään sähköposti tai puhelinnumero.");
+      return;
+    }
+
+    const workbook = buildCoastalCatchWorkbook(
+      coastalReportEntries,
+      reportDateLabel,
+      profile,
+      {
+        reporterIdentities: Object.fromEntries(Object.entries(coastalReporterIdentities).map(([key, value]) => [key, String(value || "").trim().toUpperCase()])),
+        buyers: coastalBuyerDrafts.map((buyer) => ({
+          ...buyer,
+          companyName: String(buyer.companyName || "").trim(),
+          contactName: String(buyer.contactName || "").trim(),
+          email: normalizeEmail(buyer.email),
+          phone: String(buyer.phone || "").trim(),
+        })),
+      },
+    );
+    void exportSpreadsheet(
+      `rannikkokalastusilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`,
+      workbook,
+      "Rannikkoilmoitus",
+    );
+    closeCoastalReview();
+  };
 
   return (
     <div style={styles.stack}>
@@ -5498,56 +6104,240 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             {reportSendingKey === "catch" ? "Lähetetään..." : "Lähetä saalisraportti sähköpostiin"}
           </button>
         </div>
-        <div style={{ ...styles.noticeInfo, whiteSpace: "pre-line" }}>
-          Virallinen saalisilmoitus käyttää erillistä raporttia, jossa tiedot esitetään kalastamisalueen numerolla, pyydyskoodilla ja purkamispaikan numerolla täyttöohjeen mukaisesti.
-          {"\n"}Kilot pyöristetään siinä täysiin kiloihin virallisen ilmoituksen vuoksi, mutta appin oma kaupallinen data säilyy ennallaan.
+        <div style={{ ...styles.card, ...styles.reportTypeCard, background: "#f8fafc", borderColor: "#94a3b8" }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", overflowWrap: "anywhere" }}>
+            Sisävesikalastuksen saalisilmoitus
+          </div>
+          <div style={{ ...styles.muted, marginTop: 8 }}>
+            Sisältää valitun aikavälin sisävesiltä kirjatut saaliit.
+          </div>
+          <div style={{ ...styles.noticeInfo, whiteSpace: "pre-line", marginTop: 12 }}>
+            Sisävesien virallinen saalisilmoitus käyttää erillistä raporttia, jossa tiedot esitetään kalastamisalueen numerolla, pyydyskoodilla ja purkamispaikan numerolla täyttöohjeen mukaisesti.
+            {"\n"}Kilot pyöristetään siinä täysiin kiloihin virallisen ilmoituksen vuoksi, mutta appin oma kaupallinen data säilyy ennallaan.
+          </div>
+          {officialCatchIssues.length > 0 ? (
+            <div style={{ ...styles.noticeError, whiteSpace: "pre-line", marginTop: 12 }}>
+              Sisävesikalastuksen saalisilmoitusta ei voi muodostaa ennen kuin puuttuvat tiedot on täydennetty.
+              {"\n"}Puuttuvia tietoja löytyi {officialCatchIssues.length} saaliserältä.
+              {"\n"}{officialCatchIssues.slice(0, 5).map((issue) => `- ${issue}`).join("\n")}
+              {officialCatchIssues.length > 5 ? `\n- ...ja ${officialCatchIssues.length - 5} muuta puutetta` : ""}
+            </div>
+          ) : null}
+          <div style={{ ...styles.row, marginTop: 12 }}>
+            <button
+              style={{ ...styles.button, ...styles.primaryButton, ...styles.reportActionButton }}
+              onClick={() => {
+                if (officialCatchIssues.length > 0) {
+                  setAuthError("Sisävesikalastuksen saalisilmoitusta ei voi ladata ennen kuin puuttuvat tiedot on täydennetty.");
+                  return;
+                }
+                void exportSpreadsheet(`virallinen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, officialCatchWorkbook, "Virallinen saalisilmoitus");
+              }}
+              disabled={officialCatchIssues.length > 0}
+            >
+              Lataa sisävesikalastuksen saalisilmoitus Exceliin
+            </button>
+            <button
+              style={{ ...styles.button, ...styles.reportActionButton }}
+              onClick={() => {
+                if (officialCatchIssues.length > 0) {
+                  setAuthError("Sisävesikalastuksen saalisilmoitusta ei voi lähettää ennen kuin puuttuvat tiedot on täydennetty.");
+                  return;
+                }
+                const filename = `virallinen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
+                setReportSendingKey("official_catch");
+                void sendReportEmail({
+                  filename,
+                  rows: officialCatchWorkbook,
+                  sheetName: "Virallinen saalisilmoitus",
+                  reportLabel: "Sisävesikalastuksen saalisilmoitus",
+                })
+                  .then(() => setAuthInfo(`Sisävesikalastuksen saalisilmoitus lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
+                  .catch((error) => setAuthError(String(error?.message || error)))
+                  .finally(() => setReportSendingKey(""));
+              }}
+              disabled={reportSendingKey === "official_catch" || officialCatchIssues.length > 0}
+            >
+              {reportSendingKey === "official_catch" ? "Lähetetään..." : "Lähetä sisävesikalastuksen saalisilmoitus sähköpostiin"}
+            </button>
+          </div>
         </div>
-        {officialCatchIssues.length > 0 ? (
-          <div style={{ ...styles.noticeError, whiteSpace: "pre-line" }}>
-            Virallista saalisilmoitusta ei voi muodostaa ennen kuin puuttuvat tiedot on täydennetty.
-            {"\n"}Puuttuvia tietoja löytyi {officialCatchIssues.length} saaliserältä.
-            {"\n"}{officialCatchIssues.slice(0, 5).map((issue) => `- ${issue}`).join("\n")}
-            {officialCatchIssues.length > 5 ? `\n- ...ja ${officialCatchIssues.length - 5} muuta puutetta` : ""}
+        <div style={{ ...styles.card, ...styles.reportTypeCard, background: "#f0f9ff", borderColor: "#7dd3fc" }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#075985", overflowWrap: "anywhere" }}>
+            Rannikkokalastuksen saalisilmoitus
+          </div>
+          <div style={{ ...styles.muted, marginTop: 8 }}>
+            Kooste sisältää vain alle 10 metrin aluksilla tai ilman alusta kirjatut merisaaliit. Vähintään 10 metrin alusten tiedot kuuluvat aluskohtaiseen kalastuspäiväkirjaan.
+          </div>
+          {coastalCatchIssues.length > 0 ? (
+            <div style={{ ...styles.noticeError, whiteSpace: "pre-line", marginTop: 12 }}>
+              Rannikkokalastusilmoituksessa on {coastalCatchIssues.length} puutteellista saaliserää.
+              {"\n"}{coastalCatchIssues.slice(0, 5).map((issue) => `- ${issue}`).join("\n")}
+              {coastalCatchIssues.length > 5 ? `\n- ...ja ${coastalCatchIssues.length - 5} muuta puutetta` : ""}
+            </div>
+          ) : null}
+          <div style={{ ...styles.row, marginTop: 12 }}>
+            <button
+              style={{ ...styles.button, ...styles.primaryButton, ...styles.reportActionButton }}
+              onClick={openCoastalReview}
+              disabled={coastalReportEntries.length === 0 || coastalCatchIssues.length > 0}
+            >
+              Tarkista ja muodosta rannikkokalastusilmoitus
+            </button>
+            <a
+              href="https://saalisilmoitus.mmm.fi/"
+              target="_blank"
+              rel="noreferrer"
+              style={{ ...styles.button, ...styles.reportActionButton, textDecoration: "none" }}
+            >
+              Avaa virallinen ilmoituspalvelu
+            </a>
+          </div>
+          <div style={{ ...styles.small, marginTop: 8 }}>
+            Raportti valmistelee tiedot, mutta ei lähetä niitä automaattisesti viranomaiselle.
+          </div>
+        </div>
+        {coastalReviewOpen ? (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 2500,
+              padding: 16,
+              background: "rgba(15, 23, 42, 0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onClick={closeCoastalReview}
+          >
+            <div
+              style={{
+                ...styles.card,
+                ...styles.sectionCard,
+                width: "min(900px, calc(100vw - 32px))",
+                maxHeight: "calc(100dvh - 32px)",
+                overflowY: "auto",
+                boxSizing: "border-box",
+                background: "#ffffff",
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div style={styles.rowBetween}>
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 800 }}>Tarkista rannikkokalastusilmoitus</div>
+                  <div style={styles.muted}>Valittu rajaus: {reportScopeLabel}</div>
+                </div>
+                <button style={styles.button} type="button" onClick={closeCoastalReview}>Sulje</button>
+              </div>
+
+              <div style={{ ...styles.noticeInfo, marginTop: 16 }}>
+                Henkilötunnukset ovat käytössä vain tämän tiedoston muodostamisen ajan. Niitä ei tallenneta tietokantaan tai käyttäjäprofiiliin.
+              </div>
+
+              <div style={{ ...styles.stack, marginTop: 16 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>Päällikön tai kalastaneen henkilön tiedot</div>
+                {coastalReporterKeys.map((reporterKey) => (
+                  <div key={reporterKey} style={styles.field}>
+                    <label>{reporterKey} – henkilötunnus</label>
+                    <input
+                      style={styles.input}
+                      type="text"
+                      value={coastalReporterIdentities[reporterKey] || ""}
+                      onChange={(event) => setCoastalReporterIdentities((current) => ({
+                        ...current,
+                        [reporterKey]: event.target.value.toUpperCase(),
+                      }))}
+                      placeholder="PPKKVV-XXXX"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ ...styles.stack, marginTop: 22 }}>
+                <div style={styles.rowBetween}>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>Saaliin ostajat</div>
+                    <div style={styles.muted}>
+                      Sovelluksessa hyväksytyt, tämän raportin saaliseriin liittyvät kaupat on lisätty automaattisesti. Lisää myös sovelluksen ulkopuoliset ostajat.
+                    </div>
+                  </div>
+                  <button style={styles.button} type="button" onClick={addCoastalBuyerDraft}>Lisää ostaja</button>
+                </div>
+
+                {coastalBuyerDrafts.length === 0 ? (
+                  <div style={styles.noticeWarning}>
+                    Raporttiin ei löytynyt ostajia. Jos saalista ei ole myyty ilmoitusjaksolla, ostajia ei tarvitse lisätä.
+                  </div>
+                ) : coastalBuyerDrafts.map((buyer) => (
+                  <div key={buyer.id} style={{ ...styles.entry, padding: 14 }}>
+                    <div style={styles.rowBetween}>
+                      <strong>{buyer.source === "automatic" ? "Sovelluksessa toteutunut kauppa" : "Muu ostaja"}</strong>
+                      <button
+                        style={{ ...styles.button, color: "#b91c1c", borderColor: "#fecaca" }}
+                        type="button"
+                        onClick={() => setCoastalBuyerDrafts((current) => current.filter((item) => item.id !== buyer.id))}
+                      >
+                        Poista
+                      </button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))", gap: 12, marginTop: 12 }}>
+                      <div style={styles.field}>
+                        <label>Yritys tai ostajan nimi</label>
+                        <input
+                          style={styles.input}
+                          value={buyer.companyName}
+                          onChange={(event) => updateCoastalBuyerDraft(buyer.id, "companyName", event.target.value)}
+                        />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Yhteyshenkilö</label>
+                        <input
+                          style={styles.input}
+                          value={buyer.contactName}
+                          onChange={(event) => updateCoastalBuyerDraft(buyer.id, "contactName", event.target.value)}
+                        />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Sähköposti</label>
+                        <input
+                          style={styles.input}
+                          type="email"
+                          value={buyer.email}
+                          onChange={(event) => updateCoastalBuyerDraft(buyer.id, "email", event.target.value)}
+                        />
+                      </div>
+                      <div style={styles.field}>
+                        <label>Puhelin</label>
+                        <input
+                          style={styles.input}
+                          type="tel"
+                          value={buyer.phone}
+                          onChange={(event) => updateCoastalBuyerDraft(buyer.id, "phone", event.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {coastalReviewError ? <div style={{ ...styles.noticeError, marginTop: 16 }}>{coastalReviewError}</div> : null}
+
+              <div style={{ ...styles.row, marginTop: 20 }}>
+                <button
+                  style={{ ...styles.button, ...styles.primaryButton }}
+                  type="button"
+                  onClick={downloadReviewedCoastalReport}
+                >
+                  Muodosta ja lataa Excel
+                </button>
+                <button style={styles.button} type="button" onClick={closeCoastalReview}>Peruuta</button>
+              </div>
+            </div>
           </div>
         ) : null}
-        <div style={styles.row}>
-          <button
-            style={{ ...styles.button, ...styles.primaryButton }}
-            onClick={() => {
-              if (officialCatchIssues.length > 0) {
-                setAuthError("Virallista saalisilmoitusta ei voi ladata ennen kuin puuttuvat tiedot on täydennetty.");
-                return;
-              }
-              void exportSpreadsheet(`virallinen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`, officialCatchWorkbook, "Virallinen saalisilmoitus");
-            }}
-            disabled={officialCatchIssues.length > 0}
-          >
-            Lataa virallinen saalisilmoitus Exceliin
-          </button>
-          <button
-            style={styles.button}
-            onClick={() => {
-              if (officialCatchIssues.length > 0) {
-                setAuthError("Virallista saalisilmoitusta ei voi lähettää ennen kuin puuttuvat tiedot on täydennetty.");
-                return;
-              }
-              const filename = `virallinen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
-              setReportSendingKey("official_catch");
-              void sendReportEmail({
-                filename,
-                rows: officialCatchWorkbook,
-                sheetName: "Virallinen saalisilmoitus",
-                reportLabel: "Virallinen saalisilmoitus",
-              })
-                .then(() => setAuthInfo(`Virallinen saalisilmoitus lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
-                .catch((error) => setAuthError(String(error?.message || error)))
-                .finally(() => setReportSendingKey(""));
-            }}
-            disabled={reportSendingKey === "official_catch" || officialCatchIssues.length > 0}
-          >
-            {reportSendingKey === "official_catch" ? "Lähetetään..." : "Lähetä virallinen saalisilmoitus sähköpostiin"}
-          </button>
-        </div>
         <div style={styles.row}>
           <button
             style={styles.button}
@@ -7342,6 +8132,7 @@ export default function App() {
   const [buyerOffersSearch, setBuyerOffersSearch] = useState("");
   const [buyerActiveOfferId, setBuyerActiveOfferId] = useState(null);
   const [buyerActionMode, setBuyerActionMode] = useState("counter");
+  const [helpOpen, setHelpOpen] = useState(false);
   const [allowedUsers, setAllowedUsers] = useState([]);
   const [pendingProfiles, setPendingProfiles] = useState([]);
   const [ownerUserProfiles, setOwnerUserProfiles] = useState([]);
@@ -7418,7 +8209,7 @@ export default function App() {
     const defaults = initialCatchDefaults;
     return {
       date: today(),
-      area: defaults.area,
+      area: getOfficialMarineArea(defaults.area)?.name || defaults.area,
       waterType: defaults.waterType || "",
       municipality: defaults.municipality,
       landingPlace: defaults.landingPlace,
@@ -7427,6 +8218,13 @@ export default function App() {
       originCity: "",
       selectedVesselId: "",
       fishingWithoutVessel: false,
+      vesselLengthClass: "",
+      icesSubdivision: getOfficialMarineArea(defaults.area)?.icesSubdivision || "",
+      statisticalRectangle: "",
+      marineGearCode: "",
+      releasedCatchDetails: "",
+      incidentalBycatchDetails: "",
+      lostGearDetails: "",
       spot: "",
       gear: defaults.gear,
       netHeight: initialGearDefaults.netHeight,
@@ -7657,6 +8455,7 @@ export default function App() {
   const [labelPrintEntry, setLabelPrintEntry] = useState(null);
   const [labelPrintCount, setLabelPrintCount] = useState(10);
   const [labelPrintPieceCount, setLabelPrintPieceCount] = useState("");
+  const [labelPrintWeightKg, setLabelPrintWeightKg] = useState("");
   const [labelPrintFormat, setLabelPrintFormat] = useState(CATCH_LABEL_FORMAT_MUNBYN_4X6);
   const [labelPrintWaterType, setLabelPrintWaterType] = useState("");
   const [onboardingGuideState, setOnboardingGuideState] = useState({ views: 0, hiddenForever: false, visible: false });
@@ -9562,6 +10361,15 @@ export default function App() {
             spot: entry.spot || "",
             species: entry.species,
             waterType: entry.water_type || "",
+            icesSubdivision: entry.ices_subdivision || "",
+            statisticalRectangle: entry.statistical_rectangle || "",
+            marineGearCode: entry.marine_gear_code || "",
+            marineGearName: entry.marine_gear_name || "",
+            vesselLengthClass: entry.vessel_length_class || "",
+            fishingDayId: entry.fishing_day_id || "",
+            releasedCatchDetails: entry.released_catch_details || "",
+            incidentalBycatchDetails: entry.incidental_bycatch_details || "",
+            lostGearDetails: entry.lost_gear_details || "",
             kilos: Number(entry.kilos || 0),
             count: Number(entry.count || 0),
             gear: entry.gear,
@@ -9637,6 +10445,15 @@ export default function App() {
                 spot: entry.spot || "",
                 species: entry.species,
                 waterType: entry.water_type || "",
+                icesSubdivision: entry.ices_subdivision || "",
+                statisticalRectangle: entry.statistical_rectangle || "",
+                marineGearCode: entry.marine_gear_code || "",
+                marineGearName: entry.marine_gear_name || "",
+                vesselLengthClass: entry.vessel_length_class || "",
+                fishingDayId: entry.fishing_day_id || "",
+                releasedCatchDetails: entry.released_catch_details || "",
+                incidentalBycatchDetails: entry.incidental_bycatch_details || "",
+                lostGearDetails: entry.lost_gear_details || "",
                 kilos: Number(entry.kilos || 0),
                 count: Number(entry.count || 0),
                 gear: entry.gear,
@@ -13851,6 +14668,7 @@ export default function App() {
     const batchSourceIdentifier = form.fishingWithoutVessel
       ? String(profile.commercial_fishing_id || "").trim()
       : getPreferredBatchSourceIdentifier(profile, selectedVesselId);
+    const marineCatch = isMarineCatchForm(form, catchAreaSelector);
     const validRows = speciesRows.filter((row) => {
       const kilos = Number(row.kilos || 0);
       const count = Number(row.count || 0);
@@ -13862,6 +14680,10 @@ export default function App() {
     }
     if (validRows.some((row) => row.species === "Muu" && !String(row.customSpecies || "").trim())) {
       setAuthError("Kirjoita kalalajin nimi kaikille riveille, joilla lajiksi on valittu Muu.");
+      return;
+    }
+    if (marineCatch && validRows.some((row) => !getSpeciesMetadata(getSpeciesRowLabel(row))?.fao)) {
+      setAuthError("Rannikkokalastusilmoitus tarvitsee jokaiselle lajille vahvistetun FAO-koodin. Valitse laji valmiista lajilistasta.");
       return;
     }
     if (!String(form.landingPlace || "").trim()) {
@@ -13941,9 +14763,11 @@ export default function App() {
         setAuthError("Valitse käytetty kaupallinen kalastusalus ennen saaliin tallennusta.");
         return;
       }
-      const officialFormIssues = validateCatchFormForOfficialReporting(form);
+      const officialFormIssues = marineCatch
+        ? validateMarineCatchForm(form)
+        : validateCatchFormForOfficialReporting(form);
       if (officialFormIssues.length > 0) {
-        setAuthError(`Täytä virallisen saalisilmoituksen tiedot ennen tallennusta: ${officialFormIssues.join(" ")}`);
+        setAuthError(`Täytä virallisen ${marineCatch ? "rannikkokalastusilmoituksen" : "saalisilmoituksen"} tiedot ennen tallennusta: ${officialFormIssues.join(" ")}`);
         return;
       }
     }
@@ -13982,6 +14806,11 @@ export default function App() {
         return;
       }
     }
+    const fishingDayId = marineCatch ? createFishingDayId({
+      date: form.date,
+      sourceIdentifier: batchSourceIdentifier,
+    }) : null;
+    const selectedMarineGear = getMarineGearByCode(form.marineGearCode);
     const payload = rowsWithBatchIds.map((row) => ({
       offer_to_shops: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale ? form.offerToShops : false,
       offer_to_restaurants: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale ? form.offerToRestaurants : false,
@@ -13993,6 +14822,15 @@ export default function App() {
       spot: form.spot,
       species: getSpeciesRowLabel(row),
       water_type: form.waterType || null,
+      ices_subdivision: marineCatch ? (form.icesSubdivision || null) : null,
+      statistical_rectangle: marineCatch ? (form.statisticalRectangle || null) : null,
+      marine_gear_code: marineCatch ? (form.marineGearCode || null) : null,
+      marine_gear_name: marineCatch ? (selectedMarineGear?.name || form.gear || null) : null,
+      vessel_length_class: marineCatch ? (form.vesselLengthClass || null) : null,
+      fishing_day_id: fishingDayId,
+      released_catch_details: marineCatch ? (String(form.releasedCatchDetails || "").trim() || null) : null,
+      incidental_bycatch_details: marineCatch ? (String(form.incidentalBycatchDetails || "").trim() || null) : null,
+      lost_gear_details: marineCatch ? (String(form.lostGearDetails || "").trim() || null) : null,
       kilos: Number(row.kilos || 0),
       count: Number(row.count || 0),
       gear: form.gear,
@@ -14022,8 +14860,30 @@ export default function App() {
     insertError = initialInsertError;
     insertedCatchEntries = initialInsertedEntries || [];
 
-    if (insertError && String(insertError.message || "").includes("water_type")) {
-      const fallbackPayload = payload.map(({ water_type, ...rest }) => rest);
+    const marineSchemaColumns = [
+      "ices_subdivision",
+      "statistical_rectangle",
+      "marine_gear_code",
+      "marine_gear_name",
+      "vessel_length_class",
+      "fishing_day_id",
+      "released_catch_details",
+      "incidental_bycatch_details",
+      "lost_gear_details",
+    ];
+    const missingMarineSchema = insertError && marineSchemaColumns.some((column) => String(insertError.message || "").includes(column));
+    if (missingMarineSchema && marineCatch) {
+      setSaving(false);
+      setAuthError("Tietokannasta puuttuvat rannikkokalastusilmoituksen kentät. Suorita migraatio 2026072701 ennen merisaaliin tallentamista.");
+      return;
+    }
+    if (insertError && (String(insertError.message || "").includes("water_type") || missingMarineSchema)) {
+      const fallbackPayload = payload.map((item) => {
+        const next = { ...item };
+        delete next.water_type;
+        marineSchemaColumns.forEach((column) => delete next[column]);
+        return next;
+      });
       const { data: fallbackInsertedEntries, error: fallbackInsertError } = await supabase.from("catch_entries").insert(fallbackPayload).select("id, batch_id");
       insertError = fallbackInsertError;
       insertedCatchEntries = fallbackInsertedEntries || [];
@@ -14172,6 +15032,13 @@ export default function App() {
       fishingDurationDays: prev.fishingDurationDays || "",
       selectedVesselId: commercialFishingVesselOptions[0] || "",
       fishingWithoutVessel: false,
+      vesselLengthClass: prev.vesselLengthClass || "",
+      icesSubdivision: prev.icesSubdivision || "",
+      statisticalRectangle: prev.statisticalRectangle || "",
+      marineGearCode: prev.marineGearCode || "",
+      releasedCatchDetails: "",
+      incidentalBycatchDetails: "",
+      lostGearDetails: "",
       netHeight: prev.netHeight || "",
       netMeshSize: prev.netMeshSize || "",
       fykeHeight: prev.fykeHeight || "",
@@ -14560,7 +15427,10 @@ export default function App() {
     const resolvedPieceCount = isCrayfishSpecies(targetEntry?.species)
       ? String(overrides?.pieceCount ?? labelPrintPieceCount ?? "").trim()
       : "";
-    const labelOptions = { waterType: resolvedWaterType, pieceCount: resolvedPieceCount };
+    const resolvedWeightKg = !isCrayfishSpecies(targetEntry?.species)
+      ? String(overrides?.weightKg ?? labelPrintWeightKg ?? "").trim()
+      : "";
+    const labelOptions = { waterType: resolvedWaterType, pieceCount: resolvedPieceCount, weightKg: resolvedWeightKg };
     const labelData = buildCatchLabelData(targetEntry, profile, 1, resolvedLabelCount, labelOptions);
 
     if (!labelData.species || !labelData.batchId || !labelData.supplier) {
@@ -14782,31 +15652,49 @@ export default function App() {
     );
     const openBuyerInvoiceGroups = buyerInvoiceGroups.filter(({ offers }) => String(offers?.[0]?.billing_status || "").trim() === "invoiced");
     const paidBuyerInvoiceGroups = buyerInvoiceGroups.filter(({ offers }) => String(offers?.[0]?.billing_status || "").trim() === "paid");
-    const logoHeight = viewportWidth < 768
-      ? 172
-      : viewportWidth < 1024
-      ? 206
-      : 228;
+    const headerBrandStyles = getHeaderBrandStyles(viewportWidth);
 
     return (
       <div style={styles.app}>
         <div style={styles.container}>
-          <div style={{ ...styles.card, ...styles.headerCard }}>
+          <div style={{ ...styles.card, ...styles.headerCard, position: "relative", paddingRight: viewportWidth < 560 ? 60 : 76 }}>
+            <button
+              type="button"
+              aria-label="Avaa sovelluksen käyttöohje"
+              title="Käyttöohje"
+              onClick={() => setHelpOpen(true)}
+              style={{
+                position: "absolute",
+                top: viewportWidth < 560 ? 12 : 18,
+                right: viewportWidth < 560 ? 12 : 18,
+                width: viewportWidth < 560 ? 38 : 44,
+                height: viewportWidth < 560 ? 38 : 44,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "1px solid #93c5fd",
+                borderRadius: 999,
+                background: "#eff6ff",
+                color: "#1d4ed8",
+                fontSize: viewportWidth < 560 ? 22 : 25,
+                fontFamily: "Georgia, serif",
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 6px 16px rgba(37, 99, 235, 0.12)",
+              }}
+            >
+              i
+            </button>
             <div style={styles.rowBetween}>
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "nowrap", marginTop: 12, marginBottom: 12 }}>
-                  <h1 style={{ ...styles.title, marginRight: -2 }}>Suoraan Kalastajalta</h1>
+                <div style={headerBrandStyles.row}>
+                  <h1 style={headerBrandStyles.title}>Suoraan Kalastajalta</h1>
                   <img
                     src="/logo.png"
                     alt=""
                     style={{
-                      height: logoHeight,
-                      width: "auto",
-                      maxWidth: viewportWidth < 768 ? "46vw" : "none",
-                      objectFit: "contain",
-                      display: "block",
-                      flexShrink: 0,
-                      marginLeft: viewportWidth < 768 ? -10 : -6,
+                      ...headerBrandStyles.logo,
+                      marginLeft: viewportWidth < 480 ? 0 : viewportWidth < 768 ? -10 : -6,
                     }}
                   />
               </div>
@@ -14844,6 +15732,7 @@ export default function App() {
             </div>
             </div>
           </div>
+          {helpOpen ? <HelpDialog role={profile.role} onClose={() => setHelpOpen(false)} /> : null}
 
           {accountPanelOpen ? (
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginBottom: 16 }}>
@@ -15382,7 +16271,11 @@ export default function App() {
                                   }) || "-")}
                             </div>
                             {!mixedOffer ? <div style={styles.muted}>Määrä: {getOfferQuantityDisplay(o)}</div> : null}
-                            {!mixedOffer && offerCountDisplay ? <div style={styles.muted}>Kappalemäärä: {offerCountDisplay}</div> : null}
+                            {!mixedOffer && offerCountDisplay ? (
+                              <div style={styles.muted}>
+                                {isCrayfishOfferSummary(o.species_summary) ? "Kappalemäärä" : "Kaloja keskimäärin"}: {offerCountDisplay}
+                              </div>
+                            ) : null}
                             {!mixedOffer && visiblePrice !== "" && visiblePrice != null ? formatNetAndGrossPriceLines(o, visiblePrice).map((line) => <div key={line} style={styles.muted}>{line}</div>) : null}
                             {ownDeliveryPrice != null ? <div style={styles.muted}>Toimitushinta omaan kaupunkiin ({o.delivery_destination_city || linkedBuyerRecord?.delivery_city || linkedBuyerRecord?.city || "-" }): {formatDeliveryPrice(ownDeliveryPrice)}</div> : null}
                             {ownTotalPrice != null ? <div style={styles.muted}>Kokonaishinta: {formatDeliveryPrice(ownTotalPrice)}</div> : null}
@@ -15685,31 +16578,47 @@ export default function App() {
   const formGrid = responsiveGridStyle(styles.formGrid, viewportWidth);
   const speciesRow = responsiveGridStyle(styles.speciesRow, viewportWidth);
   const fisherPremiumRequired = profile.role === "member" && !hasFisherPremium;
-  const logoHeight = viewportWidth < 768
-    ? 172
-    : viewportWidth < 1024
-    ? 206
-    : 228;
+  const headerBrandStyles = getHeaderBrandStyles(viewportWidth);
 
   return (
     <div style={styles.app}>
       <div style={styles.container}>
-        <div style={{ ...styles.card, ...styles.headerCard }}>
+        <div style={{ ...styles.card, ...styles.headerCard, position: "relative", paddingRight: viewportWidth < 560 ? 60 : 76 }}>
+          <button
+            type="button"
+            aria-label="Avaa sovelluksen käyttöohje"
+            title="Käyttöohje"
+            onClick={() => setHelpOpen(true)}
+            style={{
+              position: "absolute",
+              top: viewportWidth < 560 ? 12 : 18,
+              right: viewportWidth < 560 ? 12 : 18,
+              width: viewportWidth < 560 ? 38 : 44,
+              height: viewportWidth < 560 ? 38 : 44,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "1px solid #93c5fd",
+              borderRadius: 999,
+              background: "#eff6ff",
+              color: "#1d4ed8",
+              fontSize: viewportWidth < 560 ? 22 : 25,
+              fontFamily: "Georgia, serif",
+              fontWeight: 800,
+              cursor: "pointer",
+              boxShadow: "0 6px 16px rgba(37, 99, 235, 0.12)",
+            }}
+          >
+            i
+          </button>
           <div style={styles.rowBetween}>
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "nowrap", marginTop: 12, marginBottom: 12 }}>
-                <h1 style={{ ...styles.title, marginRight: -2 }}>Suoraan Kalastajalta</h1>
+              <div style={headerBrandStyles.row}>
+                <h1 style={headerBrandStyles.title}>Suoraan Kalastajalta</h1>
                 <img
                   src="/logo.png"
                   alt=""
-                  style={{
-                    height: logoHeight,
-                    width: "auto",
-                    maxWidth: viewportWidth < 768 ? "46vw" : "none",
-                    objectFit: "contain",
-                    display: "block",
-                    flexShrink: 0,
-                  }}
+                  style={headerBrandStyles.logo}
                 />
               </div>
               <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · Rooli: <strong>{roleLabel(profile?.role)}</strong></p>
@@ -15752,6 +16661,7 @@ export default function App() {
             </div>
           </div>
         </div>
+        {helpOpen ? <HelpDialog role={profile.role} onClose={() => setHelpOpen(false)} /> : null}
 
         {accountPanelOpen ? (
           <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginBottom: 16 }}>
@@ -15792,7 +16702,7 @@ export default function App() {
                         disabled={premiumPurchaseBusy}
                         onClick={handlePurchaseFisherPremium}
                       >
-                        {premiumPurchaseBusy ? "Käsitellään…" : "Osta Premium 12,90 €/kk"}
+                        {premiumPurchaseBusy ? "Käsitellään…" : "Osta Premium 12,99 €/kk (sis. ALV)"}
                       </button>
                       <button type="button" style={styles.button} disabled={premiumPurchaseBusy} onClick={handleRestoreFisherPremium}>
                         Palauta ostos
@@ -16709,8 +17619,12 @@ export default function App() {
                         <input style={styles.input} value={resolveOfferDeliveryArea(processedForm.deliveryMethod, processedForm.deliveryArea, processedForm.deliveryDestinations, savedPickupAddress)} onChange={(e) => setProcessedForm({ ...processedForm, deliveryArea: e.target.value })} placeholder="Esim. Jalostamontie 4, Lappeenranta" />
                       ) : (
                         <MultiCityInput
-                          value={processedForm.deliveryArea}
-                          onChange={(cities) => setProcessedForm({ ...processedForm, deliveryArea: formatDeliveryDestinations(cities) })}
+                          value={processedForm.deliveryDestinations}
+                          onChange={(cities) => setProcessedForm((prev) => ({
+                            ...prev,
+                            deliveryDestinations: normalizeDestinationCities(cities),
+                            deliveryArea: formatDeliveryDestinations(cities),
+                          }))}
                           suggestions={[...suggestedProcessedDeliveryCities, ...availableProcessedDestinationCities]}
                           label="Valitut toimituskaupungit"
                         />
@@ -16766,13 +17680,52 @@ export default function App() {
                       const nextValue = e.target.value;
                       setCatchAreaSelector(nextValue);
                       if (nextValue !== CUSTOM_LAKE_AREA_OPTION && nextValue !== CUSTOM_SEA_AREA_OPTION) {
-                        setForm({ ...form, area: nextValue });
+                        const marineArea = getOfficialMarineArea(nextValue);
+                        setForm((prev) => ({
+                          ...prev,
+                          area: nextValue,
+                          waterType: marineArea ? WATER_TYPE_SEA : WATER_TYPE_FRESH,
+                          icesSubdivision: marineArea?.icesSubdivision || "",
+                          statisticalRectangle: marineArea?.icesSubdivision === prev.icesSubdivision ? prev.statisticalRectangle : "",
+                          marineGearCode: marineArea ? (prev.marineGearCode || marineGearTypes[0]?.code || "") : "",
+                          vesselLengthClass: marineArea ? (prev.vesselLengthClass || "under_10m") : "",
+                          gear: marineArea ? (getMarineGearByCode(prev.marineGearCode)?.name || marineGearTypes[0]?.name || "") : prev.gear,
+                        }));
+                      } else if (nextValue === CUSTOM_SEA_AREA_OPTION) {
+                        setForm((prev) => ({
+                          ...prev,
+                          area: "",
+                          waterType: WATER_TYPE_SEA,
+                          icesSubdivision: "",
+                          marineGearCode: prev.marineGearCode || marineGearTypes[0]?.code || "",
+                          vesselLengthClass: prev.vesselLengthClass || "under_10m",
+                          gear: getMarineGearByCode(prev.marineGearCode)?.name || marineGearTypes[0]?.name || "",
+                        }));
+                      } else {
+                        setForm((prev) => ({
+                          ...prev,
+                          area: "",
+                          waterType: WATER_TYPE_FRESH,
+                          icesSubdivision: "",
+                          statisticalRectangle: "",
+                          marineGearCode: "",
+                          vesselLengthClass: "",
+                        }));
                       }
                     }}
                   >
-                    {defaultAreas.map((area) => <option key={area} value={area}>{area}</option>)}
+                    <optgroup label="Sisävedet">
+                      {defaultAreas.filter((area) => !legacyMarineAreaNames.has(area)).map((area) => <option key={area} value={area}>{area}</option>)}
+                    </optgroup>
                     {savedCustomLakeAreas.length > 0 ? <option disabled value="__custom_lake_separator__">-- Omat järvialueet --</option> : null}
                     {savedCustomLakeAreas.map((area) => <option key={`catch-lake-${area}`} value={area}>{area}</option>)}
+                    <optgroup label="Viralliset merialueet">
+                      {officialMarineAreas.map((area) => (
+                        <option key={`marine-${area.icesSubdivision}`} value={area.name}>
+                          {area.name} – ICES {area.icesSubdivision}
+                        </option>
+                      ))}
+                    </optgroup>
                     {savedCustomSeaAreas.length > 0 ? <option disabled value="__custom_sea_separator__">-- Omat merialueet --</option> : null}
                     {savedCustomSeaAreas.map((area) => <option key={`catch-sea-${area}`} value={area}>{area}</option>)}
                     <option value={CUSTOM_LAKE_AREA_OPTION}>Muu järvi</option>
@@ -16785,9 +17738,51 @@ export default function App() {
                     <input
                       style={styles.input}
                       value={form.area}
-                      onChange={(e) => setForm({ ...form, area: e.target.value })}
+                      onChange={(e) => setForm((prev) => ({ ...prev, area: e.target.value }))}
                       placeholder={catchAreaSelector === CUSTOM_SEA_AREA_OPTION ? "Esim. Merenkurkku" : "Esim. Puumalan Lietvesi"}
                     />
+                  </div>
+                ) : null}
+                {isMarineCatchForm(form, catchAreaSelector) ? (
+                  <>
+                    <div style={styles.field}>
+                      <label>ICES-osa-alue</label>
+                      <select
+                        style={styles.input}
+                        value={form.icesSubdivision}
+                        onChange={(e) => setForm((prev) => ({
+                          ...prev,
+                          icesSubdivision: e.target.value,
+                          statisticalRectangle: e.target.value === prev.icesSubdivision ? prev.statisticalRectangle : "",
+                        }))}
+                      >
+                        <option value="">Valitse</option>
+                        {officialMarineAreas.map((area) => (
+                          <option key={area.icesSubdivision} value={area.icesSubdivision}>
+                            {area.icesSubdivision} – {area.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={styles.field}>
+                      <label>Tilastoruutu</label>
+                      <select
+                        style={styles.input}
+                        value={form.statisticalRectangle}
+                        onChange={(e) => setForm((prev) => ({ ...prev, statisticalRectangle: e.target.value }))}
+                        disabled={!form.icesSubdivision}
+                      >
+                        <option value="">{form.icesSubdivision ? "Valitse tilastoruutu" : "Valitse ensin ICES-osa-alue"}</option>
+                        {(marineStatisticalRectanglesBySubdivision[form.icesSubdivision] || []).map((rectangle) => (
+                          <option key={rectangle} value={rectangle}>{rectangle}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                ) : null}
+                {isMarineCatchForm(form, catchAreaSelector) ? (
+                  <div style={{ ...styles.field, ...styles.fieldFull, ...styles.noticeInfo }}>
+                    Merialueen valinta avaa rannikkokalastusilmoituksen lisätiedot. Sisävesien lomake ja raportti säilyvät ennallaan.
                   </div>
                 ) : null}
                 <div style={styles.field}>
@@ -16899,22 +17894,24 @@ export default function App() {
                           />
                         </div>
                         <div style={styles.field}>
-                          <label>{isCrayfishRow ? "Kpl (pakollinen)" : "Kpl"}</label>
-                          <input style={styles.input} type="number" placeholder="0" value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} />
-                          {!isCrayfishRow ? <div style={styles.small}>Lisää tähän halutessasi kappalemäärä, niin ostaja saa tietää kalojen koon.</div> : null}
+                          <label>{isCrayfishRow ? "Kpl (pakollinen)" : "Kpl/kg (valinnainen)"}</label>
+                          <input style={styles.input} type="number" placeholder={isCrayfishRow ? "0" : "Esim. 20"} value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} />
+                          {!isCrayfishRow ? <div style={styles.small}>Valinnainen tieto, tärkeä erityisesti pienten kalojen osalta.</div> : null}
                         </div>
                         <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
                       </div>
                     );
                   })}
                 </div>
-                <div style={styles.field}><label>Pyydys</label><select style={styles.input} value={form.gear} onChange={(e) => {
+                <div style={styles.field}><label>{isMarineCatchForm(form, catchAreaSelector) ? "Merialueen pyydys" : "Pyydys"}</label><select style={styles.input} value={form.gear} onChange={(e) => {
                   const nextGear = e.target.value;
+                  const nextMarineGear = marineGearTypes.find((item) => item.name === nextGear) || null;
                   const normalizedNextGear = normalizeCatchGearValue(nextGear);
                   const nextGearDefaults = getStoredGearProfile({ gearProfiles: savedGearProfiles }, nextGear);
                   setForm((prev) => ({
                     ...prev,
                     gear: nextGear,
+                    marineGearCode: isMarineCatchForm(prev, catchAreaSelector) ? (nextMarineGear?.code || "") : "",
                     gearCount: nextGearDefaults.gearCount || "",
                     fishingDurationDays: nextGearDefaults.fishingDurationDays || "",
                     netHeight: normalizedNextGear === "Verkko" ? nextGearDefaults.netHeight || "" : "",
@@ -16926,25 +17923,113 @@ export default function App() {
                   setSavedNetHeightOptions(normalizedNextGear === "Verkko" ? nextGearDefaults.netHeightOptions || [] : []);
                   setSavedNetMeshSizeOptions(normalizedNextGear === "Verkko" ? nextGearDefaults.netMeshSizeOptions || [] : []);
                   setSavedFykeHeightOptions(normalizedNextGear === "Rysä" ? nextGearDefaults.fykeHeightOptions || [] : []);
-                }}>{gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select></div>
+                }}>{(isMarineCatchForm(form, catchAreaSelector) ? marineGearTypes.map((item) => item.name) : gearTypes).map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select>
+                  {isMarineCatchForm(form, catchAreaSelector) && form.marineGearCode ? (
+                    <div style={styles.small}>Virallinen pyydyskoodi: {form.marineGearCode}</div>
+                  ) : null}
+                </div>
                 <div style={styles.field}>
                   <label>Vesityyppi</label>
-                  <select style={styles.input} value={form.waterType} onChange={(e) => setForm((prev) => ({ ...prev, waterType: e.target.value }))}>
+                  <select style={styles.input} value={form.waterType} disabled={isMarineCatchForm(form, catchAreaSelector)} onChange={(e) => setForm((prev) => ({ ...prev, waterType: e.target.value }))}>
                     <option value="">Valitse</option>
                     <option value={WATER_TYPE_FRESH}>Makea vesi</option>
                     <option value={WATER_TYPE_SEA}>Meri</option>
                   </select>
                 </div>
-                <div style={styles.field}>
-                  <label>Pyydysten määrä</label>
-                  <RememberedTextInput
-                    value={form.gearCount}
-                    onChange={(e) => setForm({ ...form, gearCount: e.target.value })}
-                    options={savedGearCountOptions}
-                    placeholder="Esim. 30"
-                    listId="gear-count-options"
-                  />
-                </div>
+                {isMarineCatchForm(form, catchAreaSelector) ? (
+                  <>
+                    <div style={styles.field}>
+                      <label>Kalastustapa / aluksen pituus</label>
+                      <select
+                        style={styles.input}
+                        value={form.vesselLengthClass}
+                        onChange={(e) => {
+                          const vesselLengthClass = e.target.value;
+                          setForm((prev) => ({
+                            ...prev,
+                            vesselLengthClass,
+                            fishingWithoutVessel: vesselLengthClass === "without_vessel",
+                            selectedVesselId: vesselLengthClass === "without_vessel" ? "" : (prev.selectedVesselId || commercialFishingVesselOptions[0] || ""),
+                          }));
+                        }}
+                      >
+                        <option value="">Valitse</option>
+                        <option value="under_10m">Alle 10 m alus</option>
+                        <option value="at_least_10m">Vähintään 10 m alus</option>
+                        <option value="without_vessel">Kalastus ilman alusta</option>
+                      </select>
+                      {form.vesselLengthClass === "at_least_10m" ? (
+                        <div style={styles.small}>Vähintään 10 metrin aluksella käytetään aluskohtaista kalastuspäiväkirjaa, ei rannikkokalastusilmoitusta.</div>
+                      ) : null}
+                    </div>
+                    <div style={{ ...styles.field, ...styles.fieldFull }}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={String(form.releasedCatchDetails || "").length > 0}
+                          onChange={(e) => setForm((prev) => ({ ...prev, releasedCatchDetails: e.target.checked ? " " : "" }))}
+                        />{" "}
+                        Vapautettu tai poisheitetty saalis
+                      </label>
+                      {String(form.releasedCatchDetails || "").length > 0 ? (
+                        <textarea
+                          style={styles.textarea}
+                          value={form.releasedCatchDetails.trimStart()}
+                          onChange={(e) => setForm((prev) => ({ ...prev, releasedCatchDetails: e.target.value || " " }))}
+                          placeholder="Ilmoita laji, määrä kg ja vapautettiinko vai poisheitettiinkö saalis."
+                        />
+                      ) : null}
+                    </div>
+                    <div style={{ ...styles.field, ...styles.fieldFull }}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={String(form.incidentalBycatchDetails || "").length > 0}
+                          onChange={(e) => setForm((prev) => ({ ...prev, incidentalBycatchDetails: e.target.checked ? " " : "" }))}
+                        />{" "}
+                        Tahattomat sivusaaliit
+                      </label>
+                      {String(form.incidentalBycatchDetails || "").length > 0 ? (
+                        <textarea
+                          style={styles.textarea}
+                          value={form.incidentalBycatchDetails.trimStart()}
+                          onChange={(e) => setForm((prev) => ({ ...prev, incidentalBycatchDetails: e.target.value || " " }))}
+                          placeholder="Ilmoita laji tai eläinryhmä, lukumäärä ja vapautettiinko eläin elävänä."
+                        />
+                      ) : null}
+                    </div>
+                    <div style={{ ...styles.field, ...styles.fieldFull }}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={String(form.lostGearDetails || "").length > 0}
+                          onChange={(e) => setForm((prev) => ({ ...prev, lostGearDetails: e.target.checked ? " " : "" }))}
+                        />{" "}
+                        Kadonneet tai tuhoutuneet pyydykset
+                      </label>
+                      {String(form.lostGearDetails || "").length > 0 ? (
+                        <textarea
+                          style={styles.textarea}
+                          value={form.lostGearDetails.trimStart()}
+                          onChange={(e) => setForm((prev) => ({ ...prev, lostGearDetails: e.target.value || " " }))}
+                          placeholder="Ilmoita pyydystyyppi, määrä ja mitä pyydyksille tapahtui."
+                        />
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
+                {catchGearUsesCount(form.gear) ? (
+                  <div style={styles.field}>
+                    <label>Pyydysten määrä</label>
+                    <RememberedTextInput
+                      value={form.gearCount}
+                      onChange={(e) => setForm({ ...form, gearCount: e.target.value })}
+                      options={savedGearCountOptions}
+                      placeholder="Esim. 30"
+                      listId="gear-count-options"
+                    />
+                  </div>
+                ) : null}
                 {getFishingDurationFieldMeta(form.gear).splitFields ? (
                   <>
                     <div style={styles.field}>
@@ -17360,7 +18445,7 @@ export default function App() {
                         />
                       ) : (
                         <MultiCityInput
-                          value={form.deliveryArea}
+                          value={form.deliveryDestinations}
                           onChange={(cities) => setForm((prev) => ({
                             ...prev,
                             deliveryDestinations: normalizeDestinationCities(cities),
@@ -17568,7 +18653,7 @@ export default function App() {
                         </div>
                         <div style={styles.row}>
                           {canPrintCatchLabels(entry) ? (
-                            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); setLabelPrintPieceCount(""); }}>
+                            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); setLabelPrintPieceCount(""); setLabelPrintWeightKg(""); }}>
                               Tulosta etiketit
                             </button>
                           ) : profile.role === "member" && !hasFisherPremium ? (
@@ -17955,6 +19040,8 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             setLabelCount={setLabelPrintCount}
             pieceCount={labelPrintPieceCount}
             setPieceCount={setLabelPrintPieceCount}
+            weightKg={labelPrintWeightKg}
+            setWeightKg={setLabelPrintWeightKg}
             printFormat={labelPrintFormat}
             setPrintFormat={setLabelPrintFormat}
             waterType={labelPrintWaterType}

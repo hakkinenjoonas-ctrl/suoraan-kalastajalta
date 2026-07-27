@@ -1,3 +1,5 @@
+import { finlandMunicipalitiesByRegion } from "./municipalityRegions.js";
+
 export const fishSpeciesCatalog = [
   { name_fi: "Kuha", name_en: "Zander", scientific: "Sander lucioperca", fao: "FPP" },
   { name_fi: "Ahven", name_en: "European perch", scientific: "Perca fluviatilis", fao: "FPE" },
@@ -12,6 +14,7 @@ export const fishSpeciesCatalog = [
   { name_fi: "Kuore", name_en: "Smelt", scientific: "Osmerus eperlanus", fao: "SME" },
   { name_fi: "Silakka", name_en: "Baltic herring", scientific: "Clupea harengus", fao: "HER" },
   { name_fi: "Kilohaili", name_en: "Sprat", scientific: "Sprattus sprattus", fao: "SPR" },
+  { name_fi: "Turska", name_en: "Atlantic cod", scientific: "Gadus morhua", fao: "COD" },
   { name_fi: "Lohi", name_en: "Atlantic salmon", scientific: "Salmo salar", fao: "SAL" },
   { name_fi: "Kirjolohi", name_en: "Rainbow trout", scientific: "Oncorhynchus mykiss", fao: "TRR" },
   { name_fi: "Taimen", name_en: "Brown trout", scientific: "Salmo trutta", fao: "TRU" },
@@ -19,6 +22,8 @@ export const fishSpeciesCatalog = [
   { name_fi: "Toutain", name_en: "Asp", scientific: "Aspius aspius", fao: "ASU" },
   { name_fi: "Suutari", name_en: "Tench", scientific: "Tinca tinca", fao: "FTE" },
   { name_fi: "Kampela", name_en: "Flounder", scientific: "Platichthys flesus", fao: "FLE" },
+  { name_fi: "Piikkikampela", name_en: "Turbot", scientific: "Scophthalmus maximus", fao: "TUR" },
+  { name_fi: "Punakampela", name_en: "European plaice", scientific: "Pleuronectes platessa", fao: "PLE" },
   { name_fi: "Täplärapu", name_en: "Signal crayfish", scientific: "Pacifastacus leniusculus", fao: "PCL" },
   { name_fi: "Jokirapu", name_en: "Noble crayfish", scientific: "Astacus astacus", fao: "AAS" },
 ];
@@ -76,6 +81,41 @@ export const gearTypes = [
   "Hoitokalastus muulla pyydyksellä",
   "Vapapyydys tai vetouistin",
 ];
+
+export const officialMarineAreas = [
+  { name: "Saaristomeri / Ahvenanmeri", icesSubdivision: "29" },
+  { name: "Selkämeri / Merenkurkku", icesSubdivision: "30" },
+  { name: "Perämeri", icesSubdivision: "31" },
+  { name: "Suomenlahti", icesSubdivision: "32" },
+];
+
+// ICES Spatial Facility: statistical rectangles whose centre point is inside
+// the corresponding Baltic Sea subdivision (27.3.d.29–32).
+export const marineStatisticalRectanglesBySubdivision = {
+  29: ["46G9", "46H0", "46H1", "46H3", "47G9", "47H0", "47H1", "47H2", "48G9", "48H0", "48H1", "48H2", "49H0", "49H1", "49H2"],
+  30: ["50G7", "50G8", "50G9", "50H0", "51G7", "51G8", "51G9", "51H0", "51H1", "52G7", "52G8", "52G9", "52H0", "52H1", "53G8", "53G9", "53H0", "54G8", "54G9", "54H0", "55G9", "55H0", "55H1"],
+  31: ["56H0", "56H1", "56H2", "57H1", "57H2", "57H3", "58H1", "58H2", "58H3", "58H4", "59H1", "59H2", "59H3", "59H4", "60H2", "60H3"],
+  32: ["47H3", "48H3", "48H4", "48H5", "48H6", "48H7", "49H5", "49H6", "49H7", "49H8"],
+};
+
+export const marineGearTypes = [
+  { name: "Ankkuroitu verkko", code: "GNS", traceabilityCategory: "Verkot" },
+  { name: "Ajoverkko", code: "GND", traceabilityCategory: "Verkot" },
+  { name: "Verkko, tarkentamaton", code: "GN", traceabilityCategory: "Verkot" },
+  { name: "Rysä", code: "FYK", traceabilityCategory: "Merrat ja sulkupyydykset" },
+  { name: "Paunetti / isorysä", code: "FPN", traceabilityCategory: "Merrat ja sulkupyydykset" },
+  { name: "Katiska tai muu suljettu pyydys", code: "FPO", traceabilityCategory: "Merrat ja sulkupyydykset" },
+  { name: "Pohjatrooli", code: "OTB", traceabilityCategory: "Troolit" },
+  { name: "Välivesitrooli", code: "OTM", traceabilityCategory: "Troolit" },
+  { name: "Pohjaparitrooli", code: "PTB", traceabilityCategory: "Troolit" },
+  { name: "Välivesiparitrooli", code: "PTM", traceabilityCategory: "Troolit" },
+  { name: "Kurenuotta", code: "PS", traceabilityCategory: "Kurenuotat" },
+  { name: "Tanskalainen nuotta", code: "SDN", traceabilityCategory: "Nuotat" },
+  { name: "Pitkäsiima", code: "LLS", traceabilityCategory: "Koukut ja siimat" },
+  { name: "Vetosiima", code: "LTL", traceabilityCategory: "Koukut ja siimat" },
+  { name: "Käsisiima tai vapaväline", code: "LHP", traceabilityCategory: "Koukut ja siimat" },
+  { name: "Muu pyydys", code: "MIS", traceabilityCategory: "Muut pyydykset" },
+];
 export const CATCH_FORM_DEFAULTS_KEY = "catch_form_defaults_v1";
 export const ONBOARDING_GUIDE_MAX_VIEWS = 3;
 export const ONBOARDING_GUIDE_STORAGE_PREFIX = "onboarding_guide_v1";
@@ -93,7 +133,7 @@ export const processingMethods = ["Fileointi", "Graavaus", "Kylmäsavustus", "L�
 export const COMMISSION_RATE = 0.03;
 export const PUSH_CHANNEL_ID = "trade_events_waterdrop_converted_v6";
 export const PUSH_SOUND_NAME = "waterdrop_converted";
-export const finlandMunicipalities = [
+const legacyFinlandMunicipalities = [
   "Akaa", "Alajärvi", "Alavieska", "Alavus", "Asikkala", "Askola", "Aura", "Brändö", "Eckerö", "Enonkoski",
   "Enontekiö", "Espoo", "Eura", "Eurajoki", "Evijärvi", "Finström", "Forssa", "Föglö", "Geta", "Haapajärvi",
   "Haapavesi", "Hailuoto", "Halsua", "Hamina", "Hammarland", "Hankasalmi", "Hanko", "Harjavalta", "Hartola", "Hattula",
@@ -126,6 +166,11 @@ export const finlandMunicipalities = [
   "Veteli", "Vieremä", "Vihti", "Viitasaari", "Vimpeli", "Virolahti", "Virrat", "Vårdö", "Vöyri", "Ylitornio",
   "Ylivieska", "Ylöjärvi", "Ypäjä", "Ähtäri", "Äänekoski",
 ];
+
+export const finlandMunicipalities = Array.from(new Set([
+  ...Object.values(finlandMunicipalitiesByRegion).flat(),
+  ...legacyFinlandMunicipalities.filter((municipality) => municipality !== "Pertunmaa" && municipality !== "Kimitoön"),
+])).sort((a, b) => a.localeCompare(b, "fi"));
 
 export const defaultAreas = [
   "Saimaa",

@@ -1,3 +1,5 @@
+import { finlandMunicipalities } from "./constants";
+
 export const styles = {
   app: {
     minHeight: "100vh",
@@ -24,6 +26,20 @@ export const styles = {
     border: "1px solid rgba(125, 176, 255, 0.38)",
   },
   sectionCard: { padding: 20 },
+  reportTypeCard: {
+    padding: 20,
+    boxSizing: "border-box",
+    minWidth: 0,
+    overflow: "hidden",
+  },
+  reportActionButton: {
+    maxWidth: "100%",
+    minWidth: 0,
+    whiteSpace: "normal",
+    textAlign: "center",
+    lineHeight: 1.3,
+    overflowWrap: "anywhere",
+  },
   row: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" },
   rowBetween: {
     display: "flex",
@@ -412,7 +428,19 @@ export function normalizeDestinationCities(value) {
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
-  return Array.from(new Set(list.map((item) => String(item || "").trim()).filter(Boolean)));
+  const municipalityByNormalizedName = new Map(
+    finlandMunicipalities.map((municipality) => [
+      String(municipality || "").trim().toLocaleLowerCase("fi-FI"),
+      municipality,
+    ]),
+  );
+  municipalityByNormalizedName.set("kimitoön", "Kemiönsaari");
+  return Array.from(new Set(
+    list
+      .map((item) => String(item || "").trim())
+      .map((item) => municipalityByNormalizedName.get(item.toLocaleLowerCase("fi-FI")) || "")
+      .filter(Boolean),
+  ));
 }
 
 export function formatDeliveryDestinations(value) {

@@ -38,7 +38,11 @@ function isTransientNetworkError(error) {
     message.includes("networkerror when attempting to fetch resource") ||
     message.includes("upstream connect error") ||
     message.includes("disconnect/reset before headers") ||
-    message.includes("connection termination")
+    message.includes("connection termination") ||
+    message.includes("unable to resolve host") ||
+    message.includes("no address associated with hostname") ||
+    message.includes("name not resolved") ||
+    message.includes("dns")
   );
 }
 
@@ -350,9 +354,10 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
     }
     const { data, error: loadError } = result;
     if (loadError) {
-      setError(isTransientNetworkError(loadError)
-        ? "Huutokauppoja ei voitu ladata. Tarkista verkkoyhteys ja yritä hetken kuluttua uudelleen."
-        : loadError.message);
+      // Android voi käynnistyessään olla hetken ilman toimivaa DNS-yhteyttä.
+      // Säilytetään edellinen näkymä ja annetaan 15 sekunnin päivityksen yrittää
+      // uudelleen sen sijaan, että käyttäjälle näytetään tekninen Supabase-virhe.
+      setError(isTransientNetworkError(loadError) ? "" : loadError.message);
     } else {
       const visibleAuctions = Array.isArray(data) ? data : [];
       let tradeOfferLoadError = "";
@@ -581,7 +586,7 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
       {canCreate ? (
         <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
           <strong style={{ fontSize: 18 }}>Avaa uusi huutokauppa</strong>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, alignItems: "end" }}>
             <label style={field}><span>Kalaerä</span><select style={input} value={draft.entryId} onChange={(event) => setDraft({ ...draft, entryId: event.target.value })}><option value="">Valitse erä</option>{availableEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.species} · {isCrayfishLabel(entry.species) ? `${entry.count || 0} kpl` : `${entry.kilos || 0} kg`} · {entry.date}</option>)}</select></label>
             <label style={field}><span>Kesto</span><select style={input} value={draft.durationMinutes} onChange={(event) => setDraft({ ...draft, durationMinutes: Number(event.target.value) })}>{AUCTION_DURATION_OPTIONS.map((option) => <option key={option.minutes} value={option.minutes}>{option.label}</option>)}</select></label>
             <label style={field}><span>Lähtöhinta ALV 0 % €/{selectedUnit}</span><input style={input} inputMode="decimal" value={draft.startingPrice} onChange={(event) => setDraft({ ...draft, startingPrice: event.target.value })} /></label>

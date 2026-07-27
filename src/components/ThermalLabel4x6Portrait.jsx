@@ -277,7 +277,7 @@ export default function ThermalLabel4x6Portrait({ label }) {
       <section style={styles.footer}>
         <div style={styles.weightLine}>
           <span>{label.isCrayfish ? "Kpl:" : "Paino:"}</span>
-          {label.isCrayfish && label.pieceCount ? <strong>{label.pieceCount}</strong> : <span style={styles.weightWriteLine} />}
+          {(label.isCrayfish ? label.pieceCount : label.weightKg) ? <strong style={{ fontSize: "20pt", lineHeight: 0.9 }}>{label.isCrayfish ? label.pieceCount : label.weightKg}</strong> : <span style={styles.weightWriteLine} />}
           <span>{label.isCrayfish ? "kpl" : "kg"}</span>
         </div>
         <div style={styles.footerContent}>
