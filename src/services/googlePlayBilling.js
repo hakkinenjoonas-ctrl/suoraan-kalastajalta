@@ -28,3 +28,8 @@ export async function restoreFisherPremiumPurchases() {
   return GooglePlayBilling.getActiveSubscriptions();
 }
 
+export function findFisherPremiumPurchase(purchases = []) {
+  return (purchases || []).find((purchase) => (
+    (purchase?.products || []).includes(FISHER_PREMIUM_PRODUCT_ID)
+  )) || null;
+}

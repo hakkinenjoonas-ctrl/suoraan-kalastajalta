@@ -100,6 +100,7 @@ import {
 } from "./services/edgeFunctions.js";
 import {
   FISHER_PREMIUM_PRODUCT_ID,
+  findFisherPremiumPurchase,
   getFisherPremiumProduct,
   isGooglePlayBillingAvailable,
   purchaseFisherPremium,
@@ -8149,7 +8150,6 @@ export default function App() {
   const [authInfo, setAuthInfo] = useState("");
   const [authWarning, setAuthWarning] = useState("");
   const [premiumPurchaseBusy, setPremiumPurchaseBusy] = useState(false);
-  const premiumRestoreAttemptRef = useRef("");
   const visibleAuthError = formatVisibleAuthErrorMessage(authError);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -8704,6 +8704,23 @@ export default function App() {
     return Boolean(data?.entitled);
   }, [session?.access_token]);
 
+  const refreshFisherPremiumEntitlement = useCallback(async () => {
+    if (profile?.role !== "member") return true;
+    if (profile?.fisher_premium_admin_enabled || profile?.fisherPremiumAdminEnabled) return true;
+    if (!isGooglePlayBillingAvailable()) return hasFisherPremium;
+
+    const result = await restoreFisherPremiumPurchases();
+    const purchase = findFisherPremiumPurchase(result?.purchases);
+    if (!purchase) return false;
+    return verifyAndApplyGooglePlayPurchase(purchase);
+  }, [
+    hasFisherPremium,
+    profile?.fisher_premium_admin_enabled,
+    profile?.fisherPremiumAdminEnabled,
+    profile?.role,
+    verifyAndApplyGooglePlayPurchase,
+  ]);
+
   const handlePurchaseFisherPremium = useCallback(async () => {
     setPremiumPurchaseBusy(true);
     setAuthError("");
@@ -8731,9 +8748,7 @@ export default function App() {
     setAuthInfo("");
     try {
       const result = await restoreFisherPremiumPurchases();
-      const purchase = (result?.purchases || []).find((row) => (
-        (row?.products || []).includes(FISHER_PREMIUM_PRODUCT_ID)
-      ));
+      const purchase = findFisherPremiumPurchase(result?.purchases);
       if (!purchase) {
         setAuthInfo("Tällä Google Play -tilillä ei löytynyt aktiivista Premium-tilausta.");
         return;
@@ -8755,27 +8770,30 @@ export default function App() {
       || !profile?.id
       || !session?.access_token
       || !isGooglePlayBillingAvailable()
-      || premiumRestoreAttemptRef.current === profile.id
     ) return;
 
-    premiumRestoreAttemptRef.current = profile.id;
     let cancelled = false;
     const refreshGoogleEntitlement = async () => {
       try {
-        const result = await restoreFisherPremiumPurchases();
-        const purchase = (result?.purchases || []).find((row) => (
-          (row?.products || []).includes(FISHER_PREMIUM_PRODUCT_ID)
-        ));
-        if (!cancelled && purchase) await verifyAndApplyGooglePlayPurchase(purchase);
+        if (!cancelled) await refreshFisherPremiumEntitlement();
       } catch (error) {
         console.warn("Google Play subscription refresh failed", error);
       }
     };
     refreshGoogleEntitlement();
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshGoogleEntitlement();
+    }, 2 * 60 * 1000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshGoogleEntitlement();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [profile?.id, profile?.role, session?.access_token, verifyAndApplyGooglePlayPurchase]);
+  }, [profile?.id, profile?.role, refreshFisherPremiumEntitlement, session?.access_token]);
 
   const handleNotificationNavigation = useCallback((payload = {}) => {
     const normalizedPayload = normalizeNotificationNavigationPayload(payload);
@@ -14662,7 +14680,7 @@ export default function App() {
 
   const handleSave = async () => {
     if (!profile) return;
-    const fisherPremiumRequired = profile.role === "member" && !hasFisherPremium;
+    let fisherPremiumRequired = profile.role === "member" && !hasFisherPremium;
     const totalKilosForOffer = speciesRows.reduce((sum, row) => sum + Number(row.kilos || 0), 0);
     const selectedVesselId = form.fishingWithoutVessel ? "" : String(form.selectedVesselId || commercialFishingVesselOptions[0] || "").trim();
     const batchSourceIdentifier = form.fishingWithoutVessel
@@ -14714,6 +14732,23 @@ export default function App() {
         setAuthError("Pohjahinta ei voi olla huutokaupan lähtöhintaa pienempi.");
         return;
       }
+    }
+    if (
+      form.listForSale
+      && profile.role === "member"
+      && !profile.fisher_premium_admin_enabled
+      && !profile.fisherPremiumAdminEnabled
+      && isGooglePlayBillingAvailable()
+    ) {
+      setSaving(true);
+      try {
+        fisherPremiumRequired = !(await refreshFisherPremiumEntitlement());
+      } catch (error) {
+        setSaving(false);
+        setAuthError(String(error?.message || error || "Premium-tilauksen tarkistaminen epäonnistui."));
+        return;
+      }
+      setSaving(false);
     }
     if (form.listForSale && fisherPremiumRequired) {
       showFisherPremiumRequired("Tarjoa myyntiin, jäljitettävyystunnus ja tarjouslähetys");
