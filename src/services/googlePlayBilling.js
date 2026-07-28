@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
 export const FISHER_PREMIUM_PRODUCT_ID = "fisher_premium_monthly";
+export const GOOGLE_PLAY_PACKAGE_ID = "fi.suoraankalastajalta.app";
 
 const GooglePlayBilling = registerPlugin("GooglePlayBilling");
 
@@ -32,4 +33,12 @@ export function findFisherPremiumPurchase(purchases = []) {
   return (purchases || []).find((purchase) => (
     (purchase?.products || []).includes(FISHER_PREMIUM_PRODUCT_ID)
   )) || null;
+}
+
+export function getFisherPremiumManagementUrl() {
+  const parameters = new URLSearchParams({
+    sku: FISHER_PREMIUM_PRODUCT_ID,
+    package: GOOGLE_PLAY_PACKAGE_ID,
+  });
+  return `https://play.google.com/store/account/subscriptions?${parameters.toString()}`;
 }

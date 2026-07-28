@@ -102,6 +102,7 @@ import {
   FISHER_PREMIUM_PRODUCT_ID,
   findFisherPremiumPurchase,
   getFisherPremiumProduct,
+  getFisherPremiumManagementUrl,
   isGooglePlayBillingAvailable,
   purchaseFisherPremium,
   restoreFisherPremiumPurchases,
@@ -8673,6 +8674,18 @@ export default function App() {
     () => isFisherPremiumProfile(profile),
     [profile],
   );
+  const hasActiveGooglePlayFisherPremium = useMemo(() => {
+    const subscriptionState = String(profile?.google_play_subscription_status || "").trim();
+    const subscriptionExpiryTime = Date.parse(profile?.google_play_subscription_expires_at || "");
+    return profile?.google_play_subscription_product_id === FISHER_PREMIUM_PRODUCT_ID
+      && [
+        "SUBSCRIPTION_STATE_ACTIVE",
+        "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
+        "SUBSCRIPTION_STATE_CANCELED",
+      ].includes(subscriptionState)
+      && Number.isFinite(subscriptionExpiryTime)
+      && subscriptionExpiryTime > Date.now();
+  }, [profile]);
   const hasBuyerRoleOption = useMemo(
     () => (availableRoleOptions || []).some((option) => option.role === "buyer"),
     [availableRoleOptions],
@@ -16747,6 +16760,16 @@ export default function App() {
                         Palauta ostos
                       </button>
                     </div>
+                  ) : null}
+                  {hasActiveGooglePlayFisherPremium && isGooglePlayBillingAvailable() ? (
+                    <a
+                      href={getFisherPremiumManagementUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ ...styles.button, display: "inline-flex", alignItems: "center", textDecoration: "none" }}
+                    >
+                      Hallinnoi Google Play -tilausta
+                    </a>
                   ) : null}
                   {!hasFisherPremium && !isGooglePlayBillingAvailable() ? (
                     <div style={styles.muted}>Premium-tilauksen voi ostaa Suoraan Kalastajalta -Android-sovelluksessa.</div>
