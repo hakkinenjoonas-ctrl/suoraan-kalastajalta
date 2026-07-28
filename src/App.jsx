@@ -4716,7 +4716,7 @@ function getHeaderBrandStyles(viewportWidth) {
       gap: compact ? 8 : 2,
       flexWrap: "nowrap",
       width: "100%",
-      marginTop: 12,
+      marginTop: compact ? 44 : 12,
       marginBottom: 12,
     },
     title: {
@@ -4730,7 +4730,7 @@ function getHeaderBrandStyles(viewportWidth) {
     logo: {
       height: compact ? 88 : viewportWidth < 768 ? 116 : viewportWidth < 1024 ? 170 : 196,
       width: "auto",
-      maxWidth: compact ? "29%" : viewportWidth < 768 ? "36vw" : "none",
+      maxWidth: compact ? "none" : viewportWidth < 768 ? "36vw" : "none",
       objectFit: "contain",
       display: "block",
       flex: "0 0 auto",
@@ -15696,7 +15696,7 @@ export default function App() {
     return (
       <div style={styles.app}>
         <div style={styles.container}>
-          <div style={{ ...styles.card, ...styles.headerCard, position: "relative", paddingRight: viewportWidth < 560 ? 60 : 76 }}>
+          <div style={{ ...styles.card, ...styles.headerCard, position: "relative", paddingRight: viewportWidth < 560 ? styles.headerCard.padding : 76 }}>
             <button
               type="button"
               aria-label="Avaa sovelluksen käyttöohje"
@@ -16622,7 +16622,7 @@ export default function App() {
   return (
     <div style={styles.app}>
       <div style={styles.container}>
-        <div style={{ ...styles.card, ...styles.headerCard, position: "relative", paddingRight: viewportWidth < 560 ? 60 : 76 }}>
+        <div style={{ ...styles.card, ...styles.headerCard, position: "relative", paddingRight: viewportWidth < 560 ? styles.headerCard.padding : 76 }}>
           <button
             type="button"
             aria-label="Avaa sovelluksen käyttöohje"

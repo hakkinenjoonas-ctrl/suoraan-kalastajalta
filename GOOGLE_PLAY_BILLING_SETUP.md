@@ -43,7 +43,7 @@ Kun Billing-tuettu AAB on käsitelty:
 1. Avaa **Kaupallista Playn avulla > Tuotteet > Tilaukset**.
 2. Luo tilaus tunnuksella `fisher_premium_monthly`.
 3. Luo automaattisesti uusiutuva yhden kuukauden peruspaketti.
-4. Aseta Suomen hinnaksi 12,90 euroa kuukaudessa ja aktivoi tuote.
+4. Aseta Suomen hinnaksi 12,99 euroa kuukaudessa ja aktivoi tuote.
 5. Lisää testikäyttäjä lisenssitestaajaksi ja sisäisen testauksen käyttäjäksi.
 
 Oston jälkeen Android lähettää ostotunnisteen Supabase-funktiolle. Funktio tarkistaa
