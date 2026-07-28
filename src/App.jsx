@@ -4735,6 +4735,8 @@ function getHeaderBrandStyles(viewportWidth) {
       objectFit: "contain",
       display: "block",
       flex: "0 0 auto",
+      transform: compact ? "scale(1.55)" : "none",
+      transformOrigin: "center",
     },
   };
 }
