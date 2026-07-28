@@ -772,6 +772,10 @@ function isFisherPremiumProfile(profileLike) {
   if (!profileLike) return false;
   if (profileLike.role !== "member") return true;
   if (profileLike.fisher_premium_admin_enabled || profileLike.fisherPremiumAdminEnabled) return true;
+  const pilotExpiryTime = Date.parse(
+    profileLike.fisher_premium_pilot_expires_at || profileLike.fisherPremiumPilotExpiresAt || "",
+  );
+  if (Number.isFinite(pilotExpiryTime) && pilotExpiryTime > Date.now()) return true;
   const subscriptionState = String(profileLike.google_play_subscription_status || "").trim();
   const expiryTime = Date.parse(profileLike.google_play_subscription_expires_at || "");
   if (
@@ -8706,7 +8710,7 @@ export default function App() {
 
   const refreshFisherPremiumEntitlement = useCallback(async () => {
     if (profile?.role !== "member") return true;
-    if (profile?.fisher_premium_admin_enabled || profile?.fisherPremiumAdminEnabled) return true;
+    if (isFisherPremiumProfile(profile)) return true;
     if (!isGooglePlayBillingAvailable()) return hasFisherPremium;
 
     const result = await restoreFisherPremiumPurchases();
@@ -8715,8 +8719,7 @@ export default function App() {
     return verifyAndApplyGooglePlayPurchase(purchase);
   }, [
     hasFisherPremium,
-    profile?.fisher_premium_admin_enabled,
-    profile?.fisherPremiumAdminEnabled,
+    profile,
     profile?.role,
     verifyAndApplyGooglePlayPurchase,
   ]);
@@ -14738,6 +14741,7 @@ export default function App() {
       && profile.role === "member"
       && !profile.fisher_premium_admin_enabled
       && !profile.fisherPremiumAdminEnabled
+      && !isFisherPremiumProfile(profile)
       && isGooglePlayBillingAvailable()
     ) {
       setSaving(true);
@@ -19016,7 +19020,9 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                                     <span style={styles.badge}>{user.is_active ? "Aktiivinen" : "Pois käytöstä"}</span>
                                     {user.role === "member" ? (
                                       <span style={{ ...styles.badge, background: isFisherPremiumProfile(linkedProfile) ? "#ecfdf5" : "#fff7ed", borderColor: isFisherPremiumProfile(linkedProfile) ? "#86efac" : "#fdba74", color: isFisherPremiumProfile(linkedProfile) ? "#166534" : "#9a3412" }}>
-                                        {isFisherPremiumProfile(linkedProfile) ? "Premium" : "Ilmainen"}
+                                        {Date.parse(linkedProfile?.fisher_premium_pilot_expires_at || "") > Date.now()
+                                          ? "Premium · pilotti 31.12.2026 asti"
+                                          : isFisherPremiumProfile(linkedProfile) ? "Premium" : "Ilmainen"}
                                       </span>
                                     ) : null}
                                     {linkedBuyer ? <span style={styles.badge}>Ostaja: {linkedBuyer.company_name}</span> : null}
