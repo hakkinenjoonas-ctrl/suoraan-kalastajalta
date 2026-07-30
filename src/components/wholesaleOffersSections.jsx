@@ -418,6 +418,7 @@ export function OfferedEntriesDetailsSection({
   onUpdateBuyerOfferStatus,
   onUpdateOfferStatus,
   updateFulfillmentStatus,
+  onCreateDeliveryNote,
   canManageBuyerOffer,
   styles,
   formatOfferDate,
@@ -676,9 +677,22 @@ export function OfferedEntriesDetailsSection({
                             </div>
                           ) : null}
                           {revealIdentity && canManageBuyerOffer(offer) ? (
-                            <div style={styles.row}>
-                              {offer.fulfillment_status !== "delivery_agreed" ? <button style={styles.button} onClick={() => updateFulfillmentStatus(offer, "delivery_agreed")}>Merkitse toimitus sovituksi</button> : null}
-                              {offer.fulfillment_status !== "delivered" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => updateFulfillmentStatus(offer, "delivered")}>Merkitse toimitetuksi</button> : null}
+                            <div style={{ ...styles.stack, marginTop: 10 }}>
+                              {isAccepted ? (
+                                <div style={{ ...styles.entry, background: "#eff6ff", padding: 12 }}>
+                                  <strong>Luo lähetyslista</strong>
+                                  <div style={styles.small}>Valitse tulostuskoko. A4 sisältää täydet jäljitettävyystiedot, MUNBYN-koot sopivat lämpötulostimelle.</div>
+                                  <div style={styles.row}>
+                                    <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onCreateDeliveryNote(offer, entry, "a4")}>A4</button>
+                                    <button type="button" style={styles.button} onClick={() => onCreateDeliveryNote(offer, entry, "munbyn_4x3")}>MUNBYN 4×3</button>
+                                    <button type="button" style={styles.button} onClick={() => onCreateDeliveryNote(offer, entry, "munbyn_4x6")}>MUNBYN 4×6</button>
+                                  </div>
+                                </div>
+                              ) : null}
+                              <div style={styles.row}>
+                                {offer.fulfillment_status !== "delivery_agreed" ? <button style={styles.button} onClick={() => updateFulfillmentStatus(offer, "delivery_agreed")}>Merkitse toimitus sovituksi</button> : null}
+                                {offer.fulfillment_status !== "delivered" ? <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => updateFulfillmentStatus(offer, "delivered")}>Merkitse toimitetuksi</button> : null}
+                              </div>
                             </div>
                           ) : null}
                         </div>

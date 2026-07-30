@@ -119,7 +119,7 @@ function auctionImageUrl(imagePath) {
   return supabase.storage.from(AUCTION_IMAGE_BUCKET).getPublicUrl(imagePath).data.publicUrl;
 }
 
-function AuctionCard({ auction, tradeOffer, isBuyer, onBid, onReceive, busy, isFocused }) {
+function AuctionCard({ auction, tradeOffer, isBuyer, onBid, onReceive, onCreateDeliveryNote, busy, isFocused }) {
   const [bid, setBid] = useState("");
   const remaining = getAuctionRemainingMs(auction);
   const nextBid = minimumNextBid(auction);
@@ -207,6 +207,17 @@ function AuctionCard({ auction, tradeOffer, isBuyer, onBid, onReceive, busy, isF
           <div>Toimitustapa: {auctionDeliveryLabel(auction)}</div>
         </div>
       ) : null}
+      {auction.status === "sold" && !isBuyer && auction.winner_details ? (
+        <div style={{ padding: 14, borderRadius: 12, background: "#eff6ff", border: "1px solid #93c5fd", display: "flex", flexDirection: "column", gap: 10 }}>
+          <strong style={{ color: "#0f172a", fontSize: 18 }}>Luo lähetyslista</strong>
+          <div style={{ color: "#475569", fontSize: 14 }}>Tulosta täydet jäljitettävyystiedot A4:lle tai osoitetarra MUNBYN-lämpötulostimelle.</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" style={primaryButton} onClick={() => onCreateDeliveryNote(auction, "a4")}>A4</button>
+            <button type="button" style={button} onClick={() => onCreateDeliveryNote(auction, "munbyn_4x3")}>MUNBYN 4×3</button>
+            <button type="button" style={button} onClick={() => onCreateDeliveryNote(auction, "munbyn_4x6")}>MUNBYN 4×6</button>
+          </div>
+        </div>
+      ) : null}
       {auction.status === "sold" && auction.my_is_winner && auction.seller_details ? (
         <div style={{ padding: 14, borderRadius: 12, background: "#f8fafc", border: "1px solid #cbd5e1", display: "flex", flexDirection: "column", gap: 5, color: "#334155" }}>
           <strong style={{ color: "#0f172a" }}>Kalastajan tiedot</strong>
@@ -262,7 +273,7 @@ function AuctionCard({ auction, tradeOffer, isBuyer, onBid, onReceive, busy, isF
   );
 }
 
-export default function AuctionsView({ profile, entries = [], onTradeCreated, notificationTarget = null, onNotificationTargetHandled }) {
+export default function AuctionsView({ profile, entries = [], onTradeCreated, notificationTarget = null, onNotificationTargetHandled, onCreateDeliveryNote }) {
   const isBuyer = profile?.role === "buyer";
   const canCreate = profile?.role === "member" || profile?.role === "owner";
   const [auctions, setAuctions] = useState([]);
@@ -629,7 +640,7 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
           <div><button type="button" style={primaryButton} disabled={busy || availableEntries.length === 0} onClick={createAuction}>{busy ? "Avataan…" : "Avaa huutokauppa"}</button></div>
         </div>
       ) : null}
-      {loading ? <div style={panel}>Ladataan huutokauppoja…</div> : auctions.length === 0 ? <div style={panel}>Ei vielä huutokauppoja.</div> : filteredAuctions.length === 0 ? <div style={panel}>Valitulla suodattimella ei löytynyt huutokauppoja.</div> : filteredAuctions.map((auction) => <AuctionCard key={auction.id} auction={auction} tradeOffer={tradeOffersById[auction.resulting_buyer_offer_id] || null} isBuyer={isBuyer} onBid={placeBid} onReceive={receiveAuctionTrade} busy={busy} isFocused={String(auction.id) === focusedAuctionId} />)}
+      {loading ? <div style={panel}>Ladataan huutokauppoja…</div> : auctions.length === 0 ? <div style={panel}>Ei vielä huutokauppoja.</div> : filteredAuctions.length === 0 ? <div style={panel}>Valitulla suodattimella ei löytynyt huutokauppoja.</div> : filteredAuctions.map((auction) => <AuctionCard key={auction.id} auction={auction} tradeOffer={tradeOffersById[auction.resulting_buyer_offer_id] || null} isBuyer={isBuyer} onBid={placeBid} onReceive={receiveAuctionTrade} onCreateDeliveryNote={onCreateDeliveryNote} busy={busy} isFocused={String(auction.id) === focusedAuctionId} />)}
     </div>
   );
 }

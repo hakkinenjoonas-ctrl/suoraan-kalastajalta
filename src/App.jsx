@@ -10,6 +10,10 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
 import {
+  createDeliveryNotePdf,
+  DELIVERY_NOTE_FORMATS,
+} from "./lib/deliveryNote.js";
+import {
   clearBrokenSession,
   findAllowedUserByEmail,
   findAllowedUsersByEmail,
@@ -4921,6 +4925,7 @@ function WholesaleOffersView({
   onUpdateBuyerOfferStatus,
   onRemoveEntryFromSale,
   updateFulfillmentStatus,
+  onCreateDeliveryNote,
   requestedOfferId,
   buyerTypeLabel,
   buyerStatusLabel,
@@ -5168,6 +5173,7 @@ function WholesaleOffersView({
         onUpdateBuyerOfferStatus={onUpdateBuyerOfferStatus}
         onUpdateOfferStatus={onUpdateOfferStatus}
         updateFulfillmentStatus={updateFulfillmentStatus}
+        onCreateDeliveryNote={onCreateDeliveryNote}
         canManageBuyerOffer={canManageBuyerOffer}
         styles={styles}
         formatOfferDate={formatOfferDate}
@@ -6889,6 +6895,117 @@ function parseSellerInvoiceLineItems(offer) {
   }];
 }
 
+function buildDeliveryNoteNumber(source) {
+  const datePart = String(source?.updated_at || source?.created_at || today()).slice(0, 10).replace(/\D/g, "") || today().replace(/\D/g, "");
+  const idPart = String(source?.id || source?.batch_id || "").replace(/[^a-zA-Z0-9]+/g, "").slice(0, 8).toUpperCase() || "00000001";
+  return `LAH-${datePart}-${idPart}`;
+}
+
+function buildDeliveryNotePayload(offer, entry, sellerProfile) {
+  const summaryBatches = getOfferSummaryBatchItems(offer?.species_summary);
+  const lineItems = parseSellerInvoiceLineItems(offer);
+  const areaText = [
+    offer?.area || entry?.area,
+    entry?.municipality,
+    offer?.spot || entry?.spot,
+  ].map((value) => String(value || "").trim()).filter(Boolean).join(" / ");
+  const products = lineItems.map((item, index) => {
+    const batchItem = summaryBatches[index] || summaryBatches.find((row) => row.label === item.description) || {};
+    const metadata = getSpeciesMetadata(item.description || batchItem.label);
+    return {
+      description: item.description || batchItem.label || "Kalaerä",
+      scientificName: metadata?.scientific || "",
+      faoCode: metadata?.fao || "",
+      quantity: item.quantityDisplay || "-",
+      batchId: batchItem.batchId || offer?.batch_id || entry?.batchId || "",
+      catchDate: batchItem.catchDate || getOfferSummaryCatchDates(offer?.species_summary)[index] || entry?.date || "",
+      catchArea: areaText,
+      vesselId: entry?.commercialFishingVesselId || sellerProfile?.commercial_fishing_vessel_id || "",
+      productionMethod: `Tuotantomenetelmä: pyydetty (${entry?.waterType === "sea" ? "meri" : entry?.waterType === "lake" ? "sisävesi" : "kalastusvesi"})`,
+      frozenStatus: "Tuotteen tila: tuore, ei ilmoitettu aiemmin jäädytetyksi",
+    };
+  });
+  return {
+    number: buildDeliveryNoteNumber(offer),
+    shipmentDate: today(),
+    sender: {
+      name: offer?.seller_company_name || offer?.seller_name || sellerProfile?.company_name || sellerProfile?.display_name || sellerProfile?.email || "",
+      address: formatInvoicePartyAddress(
+        offer?.seller_address || sellerProfile?.address,
+        offer?.seller_postcode || sellerProfile?.postcode,
+        offer?.seller_city || sellerProfile?.city,
+      ),
+      businessId: offer?.seller_business_id || sellerProfile?.business_id || "",
+      contactName: offer?.seller_contact_name || sellerProfile?.contact_name || "",
+      email: offer?.seller_contact_email || offer?.seller_email || sellerProfile?.contact_email || sellerProfile?.email || "",
+      phone: offer?.seller_phone || sellerProfile?.phone || "",
+    },
+    recipient: {
+      name: offer?.buyer_company_name || offer?.buyer_contact_name || offer?.buyer_email || "",
+      address: formatInvoicePartyAddress(
+        offer?.buyer_delivery_address,
+        offer?.buyer_delivery_postcode,
+        offer?.buyer_delivery_city,
+      ),
+      businessId: offer?.buyer_business_id || "",
+      contactName: offer?.buyer_contact_name || "",
+      email: offer?.buyer_email || "",
+      phone: offer?.buyer_phone || "",
+    },
+    products,
+    delivery: {
+      method: offer?.delivery_method || entry?.deliveryMethod || "",
+      coldTransport: Boolean(offer?.cold_transport ?? entry?.coldTransport),
+      earliestDate: offer?.earliest_delivery_date || entry?.earliestDeliveryDate || "",
+      storage: "Tuore kala säilytetään ja kuljetetaan lähellä sulavan jään lämpötilaa.",
+    },
+  };
+}
+
+function buildAuctionDeliveryNotePayload(auction, sellerProfile) {
+  const winner = auction?.winner_details || {};
+  const seller = auction?.seller_details || sellerProfile || {};
+  const metadata = getSpeciesMetadata(auction?.species);
+  return {
+    number: buildDeliveryNoteNumber(auction),
+    shipmentDate: today(),
+    sender: {
+      name: seller.company_name || seller.display_name || seller.email || "",
+      address: formatInvoicePartyAddress(seller.address, seller.postcode, seller.city),
+      businessId: seller.business_id || "",
+      contactName: seller.contact_name || "",
+      email: seller.contact_email || seller.email || "",
+      phone: seller.phone || "",
+    },
+    recipient: {
+      name: winner.company_name || winner.contact_name || winner.email || "",
+      address: formatInvoicePartyAddress(winner.delivery_address, winner.delivery_postcode, winner.delivery_city),
+      businessId: winner.business_id || "",
+      contactName: winner.contact_name || "",
+      email: winner.email || "",
+      phone: winner.phone || "",
+    },
+    products: [{
+      description: auction?.species || "Kalaerä",
+      scientificName: metadata?.scientific || "",
+      faoCode: metadata?.fao || "",
+      quantity: `${Number(auction?.total_quantity ?? auction?.total_kilos ?? 0).toLocaleString("fi-FI")} ${auction?.quantity_unit === "kpl" ? "kpl" : "kg"}`,
+      batchId: auction?.batch_id || "",
+      catchDate: auction?.catch_date || "",
+      catchArea: [auction?.area, auction?.municipality, auction?.spot].filter(Boolean).join(" / "),
+      vesselId: auction?.commercial_fishing_vessel_id || seller.commercial_fishing_vessel_id || "",
+      productionMethod: "Tuotantomenetelmä: pyydetty",
+      frozenStatus: "Tuotteen tila: tuore, ei ilmoitettu aiemmin jäädytetyksi",
+    }],
+    delivery: {
+      method: auction?.delivery_method || "Nouto",
+      coldTransport: Boolean(auction?.cold_transport),
+      earliestDate: auction?.earliest_delivery_date || "",
+      storage: "Tuore kala säilytetään ja kuljetetaan lähellä sulavan jään lämpötilaa.",
+    },
+  };
+}
+
 function normalizeFinnishIban(iban) {
   const cleaned = String(iban || "").replace(/\s+/g, "").toUpperCase();
   if (!/^FI\d{16}$/.test(cleaned)) return "";
@@ -8334,6 +8451,7 @@ export default function App() {
     min_kg: "",
     max_kg: "",
     is_active: true,
+    auction_email_enabled: true,
     notes: "",
     delivery_address: "",
     delivery_postcode: "",
@@ -12171,6 +12289,7 @@ export default function App() {
       min_kg: "",
       max_kg: "",
       is_active: true,
+      auction_email_enabled: true,
       notes: "",
       delivery_address: "",
       delivery_postcode: "",
@@ -12197,6 +12316,7 @@ export default function App() {
       min_kg: getOptionalKgLimit(buyer.min_kg) == null ? "" : String(getOptionalKgLimit(buyer.min_kg)),
       max_kg: getOptionalKgLimit(buyer.max_kg) == null ? "" : String(getOptionalKgLimit(buyer.max_kg)),
       is_active: Boolean(buyer.is_active),
+      auction_email_enabled: buyer.auction_email_enabled !== false,
       notes: buyer.notes || "",
       delivery_address: buyer.delivery_address || "",
       delivery_postcode: buyer.delivery_postcode || "",
@@ -12282,6 +12402,7 @@ export default function App() {
       min_kg: normalizedBuyerMinKg,
       max_kg: normalizedBuyerMaxKg,
       is_active: buyerForm.is_active,
+      auction_email_enabled: buyerForm.auction_email_enabled !== false,
       notes: buyerForm.notes.trim(),
       delivery_address: (buyerForm.delivery_address || "").trim(),
       delivery_postcode: (buyerForm.delivery_postcode || "").trim(),
@@ -13299,6 +13420,44 @@ export default function App() {
     }
     setAuthError("");
     await buildSellerInvoicePdf(offer, profile, offer?.billing_status === "invoiced" ? "reminder" : "invoice");
+  };
+
+  const handleCreateDeliveryNote = async (offer, entry, format = DELIVERY_NOTE_FORMATS.A4) => {
+    try {
+      setAuthError("");
+      const payload = buildDeliveryNotePayload(offer, entry, profile);
+      if (!payload.recipient.address || payload.recipient.address === "-") {
+        setAuthError("Lähetyslistaa ei voi luoda, koska ostajan toimitusosoite puuttuu.");
+        return;
+      }
+      const { doc, fileName } = createDeliveryNotePdf(payload, format);
+      await presentPdfDocument(doc, fileName, {
+        browserAction: "open",
+        dedupeKey: `delivery-note-${String(offer?.id || offer?.batch_id || "sale")}-${format}`,
+      });
+    } catch (error) {
+      console.error("Lähetyslistan luonti epäonnistui:", error);
+      setAuthError(error?.message || "Lähetyslistan luonti epäonnistui.");
+    }
+  };
+
+  const handleCreateAuctionDeliveryNote = async (auction, format = DELIVERY_NOTE_FORMATS.A4) => {
+    try {
+      setAuthError("");
+      const payload = buildAuctionDeliveryNotePayload(auction, profile);
+      if (!payload.recipient.address || payload.recipient.address === "-") {
+        setAuthError("Lähetyslistaa ei voi luoda, koska huutokaupan voittajan toimitusosoite puuttuu.");
+        return;
+      }
+      const { doc, fileName } = createDeliveryNotePdf(payload, format);
+      await presentPdfDocument(doc, fileName, {
+        browserAction: "open",
+        dedupeKey: `auction-delivery-note-${String(auction?.id || auction?.batch_id || "sale")}-${format}`,
+      });
+    } catch (error) {
+      console.error("Huutokaupan lähetyslistan luonti epäonnistui:", error);
+      setAuthError(error?.message || "Lähetyslistan luonti epäonnistui.");
+    }
   };
 
   const handleViewSellerInvoicePdf = async (offer) => {
@@ -16002,7 +16161,7 @@ export default function App() {
           </div>
 
           {activeTab === "auctions" && auctionsAvailable ? (
-            <AuctionsView profile={profile} entries={[]} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} />
+            <AuctionsView profile={profile} entries={[]} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} onCreateDeliveryNote={handleCreateAuctionDeliveryNote} />
           ) : null}
 
           {activeTab === "reports" ? (
@@ -18757,11 +18916,12 @@ export default function App() {
             buyerTypeLabel={buyerTypeLabel}
             buyerStatusLabel={buyerStatusLabel}
             shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
+            onCreateDeliveryNote={handleCreateDeliveryNote}
           />
         ) : null}
 
         {activeTab === "auctions" && auctionsAvailable && ["member", "owner"].includes(profile.role) ? (
-          <AuctionsView profile={profile} entries={entries} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} />
+          <AuctionsView profile={profile} entries={entries} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} onCreateDeliveryNote={handleCreateAuctionDeliveryNote} />
         ) : null}
 
         {activeTab === "reports" ? <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} profile={profile} /> : null}
@@ -18854,6 +19014,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               <div style={styles.field}><label>Max kg</label><input style={styles.input} type="number" value={buyerForm.max_kg} onChange={(e) => setBuyerForm((prev) => ({ ...prev, max_kg: e.target.value }))} placeholder="Esim. ravintoloille" /></div>
               <div style={{ ...styles.noticeInfo, marginTop: -4 }}>Jätä tyhjäksi tai aseta 0, jos ostajalla ei ole määrärajaa.</div>
               <div style={styles.field}><label><input type="checkbox" checked={buyerForm.is_active} onChange={(e) => setBuyerForm((prev) => ({ ...prev, is_active: e.target.checked }))} /> Aktiivinen</label></div>
+              <div style={styles.field}><label><input type="checkbox" checked={buyerForm.auction_email_enabled !== false} onChange={(e) => setBuyerForm((prev) => ({ ...prev, auction_email_enabled: e.target.checked }))} /> Huutokauppailmoitukset sähköpostiin</label></div>
               <div style={styles.field}><label>Toimitusosoite</label><input style={styles.input} value={buyerForm.delivery_address} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_address: e.target.value, ...(buyerBillingSameAsDelivery ? { billing_address: e.target.value } : {}) }))} placeholder="Katuosoite" /></div>
               <div style={styles.field}><label>Toimitus postinumero</label><input style={styles.input} value={buyerForm.delivery_postcode} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_postcode: e.target.value, ...(buyerBillingSameAsDelivery ? { billing_postcode: e.target.value } : {}) }))} placeholder="00100" /></div>
               <div style={styles.field}><label>Toimitus kaupunki</label><MunicipalitySelect value={buyerForm.delivery_city} onChange={(e) => setBuyerForm((prev) => ({ ...prev, delivery_city: e.target.value, ...(buyerBillingSameAsDelivery ? { billing_city: e.target.value } : {}) }))} /></div>
