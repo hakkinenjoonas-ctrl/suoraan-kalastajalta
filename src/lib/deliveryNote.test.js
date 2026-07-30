@@ -39,7 +39,7 @@ const payload = {
     method: "Kylmäkuljetus",
     coldTransport: true,
     earliestDate: "2026-07-31",
-    storage: "Tuore kala säilytetään ja kuljetetaan lähellä sulavan jään lämpötilaa.",
+    storage: "Tuore kala säilytetään ja kuljetetaan lähellä sulavan jään lämpötilaa (0–+2 °C).",
   },
 };
 

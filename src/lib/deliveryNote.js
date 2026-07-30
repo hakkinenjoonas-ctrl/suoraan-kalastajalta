@@ -275,7 +275,7 @@ function drawMunbyn4x6(doc, payload) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.2);
   doc.text(`Toimitus: ${clean(payload.delivery?.method)} / Kylmäkuljetus: ${payload.delivery?.coldTransport ? "kyllä" : "ei"}`, margin, 139);
-  doc.text(clean(payload.delivery?.storage, "Tuore kala lähellä sulavan jään lämpötilaa."), margin, 143);
+  doc.text(clean(payload.delivery?.storage, "Tuore kala lähellä sulavan jään lämpötilaa (0–+2 °C)."), margin, 143);
   doc.setFontSize(5.5);
   doc.setTextColor(100, 116, 139);
   doc.text("Säilytä lähetyksen jäljitettävyysasiakirjana.", margin, 148);

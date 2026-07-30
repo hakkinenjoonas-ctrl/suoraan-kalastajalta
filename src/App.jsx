@@ -6958,7 +6958,7 @@ function buildDeliveryNotePayload(offer, entry, sellerProfile) {
       method: offer?.delivery_method || entry?.deliveryMethod || "",
       coldTransport: Boolean(offer?.cold_transport ?? entry?.coldTransport),
       earliestDate: offer?.earliest_delivery_date || entry?.earliestDeliveryDate || "",
-      storage: "Tuore kala säilytetään ja kuljetetaan lähellä sulavan jään lämpötilaa.",
+      storage: "Tuore kala säilytetään ja kuljetetaan lähellä sulavan jään lämpötilaa (0–+2 °C).",
     },
   };
 }
@@ -7002,7 +7002,7 @@ function buildAuctionDeliveryNotePayload(auction, sellerProfile) {
       method: auction?.delivery_method || "Nouto",
       coldTransport: Boolean(auction?.cold_transport),
       earliestDate: auction?.earliest_delivery_date || "",
-      storage: "Tuore kala säilytetään ja kuljetetaan lähellä sulavan jään lämpötilaa.",
+      storage: "Tuore kala säilytetään ja kuljetetaan lähellä sulavan jään lämpötilaa (0–+2 °C).",
     },
   };
 }
