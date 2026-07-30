@@ -1969,7 +1969,16 @@ async function presentFileBlob(blob, fileName, options = {}) {
   const presentationKey = options.skipDuplicateGuard
     ? ""
     : String(options.dedupeKey || fileName || "");
-  if (presentationKey && shouldSkipDuplicateFilePresentation(presentationKey)) return;
+  if (presentationKey && shouldSkipDuplicateFilePresentation(presentationKey)) {
+    if (options.targetWindow && !options.targetWindow.closed) {
+      try {
+        options.targetWindow.close();
+      } catch {
+        // ignore duplicate window cleanup failures
+      }
+    }
+    return;
+  }
 
   const mimeType = String(options.mimeType || blob?.type || "application/octet-stream");
   const browserAction = options.browserAction === "open" ? "open" : "download";
@@ -2011,11 +2020,53 @@ async function presentFileBlob(blob, fileName, options = {}) {
       ? options.targetWindow
       : null;
     if (targetWindow) {
-      targetWindow.location.replace(blobUrl);
       try {
+        const escapedFileName = String(fileName || "PDF-tiedosto")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+        targetWindow.document.open();
+        targetWindow.document.write(`<!doctype html>
+          <html lang="fi">
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>${escapedFileName}</title>
+              <style>
+                html, body { height: 100%; margin: 0; background: #e2e8f0; color: #0f172a; font-family: Arial, sans-serif; }
+                body { display: flex; flex-direction: column; }
+                .toolbar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #cbd5e1; }
+                .title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+                .action { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border: 1px solid #2563eb; border-radius: 10px; color: #1d4ed8; background: #fff; font-weight: 700; text-decoration: none; }
+                .primary { color: #fff; background: #2563eb; }
+                .viewer { width: 100%; flex: 1; border: 0; background: #fff; }
+                .fallback { padding: 24px; text-align: center; background: #fff; }
+                @media (max-width: 620px) {
+                  .toolbar { flex-wrap: wrap; }
+                  .title { flex-basis: 100%; }
+                  .action { flex: 1; justify-content: center; }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="toolbar">
+                <div class="title">${escapedFileName}</div>
+                <a class="action primary" href="${blobUrl}" target="_self">Avaa PDF</a>
+                <a class="action" href="${blobUrl}" download="${escapedFileName}">Lataa PDF</a>
+              </div>
+              <object class="viewer" data="${blobUrl}" type="application/pdf">
+                <div class="fallback">
+                  PDF-esikatselua ei voitu näyttää.
+                  <a href="${blobUrl}" target="_self">Avaa PDF tästä.</a>
+                </div>
+              </object>
+            </body>
+          </html>`);
+        targetWindow.document.close();
         targetWindow.focus();
       } catch {
-        // ignore focus failures
+        targetWindow.location.href = blobUrl;
       }
     } else {
       const link = document.createElement("a");
@@ -13501,8 +13552,10 @@ export default function App() {
     }
 
     setAuthError("");
+    setAuthInfo("Muodostetaan lasku-PDF...");
     const targetWindow = openPendingPdfWindow();
     if (!targetWindow && typeof window !== "undefined" && !isNativeCapacitorApp()) {
+      setAuthInfo("");
       setAuthError("Selain esti lasku-PDF:n avauksen. Salli ponnahdusikkunat tälle sivulle ja yritä uudelleen.");
       return;
     }
@@ -13511,6 +13564,9 @@ export default function App() {
         targetWindow,
         dedupeKey: `buyer-invoice-view-${String(offer?.id || offer?.batch_id || "invoice")}`,
       });
+      setAuthInfo(isNativeCapacitorApp()
+        ? "Lasku-PDF on valmis. Avaa tai jaa se avautuneesta valikosta."
+        : "Lasku-PDF avattiin uuteen välilehteen.");
     } catch (error) {
       if (targetWindow && !targetWindow.closed) {
         try {
@@ -13519,6 +13575,7 @@ export default function App() {
           // ignore close failures
         }
       }
+      setAuthInfo("");
       setAuthError(`Lasku-PDF:n avaaminen epäonnistui: ${String(error?.message || error)}`);
     }
   };
@@ -13534,8 +13591,10 @@ export default function App() {
     }
 
     setAuthError("");
+    setAuthInfo("Muodostetaan koontilaskun PDF...");
     const targetWindow = openPendingPdfWindow();
     if (!targetWindow && typeof window !== "undefined" && !isNativeCapacitorApp()) {
+      setAuthInfo("");
       setAuthError("Selain esti lasku-PDF:n avauksen. Salli ponnahdusikkunat tälle sivulle ja yritä uudelleen.");
       return;
     }
@@ -13545,6 +13604,9 @@ export default function App() {
         targetWindow,
         dedupeKey: `buyer-group-invoice-view-${targetOffers.map((offer) => String(offer?.id || "")).join("-")}`,
       });
+      setAuthInfo(isNativeCapacitorApp()
+        ? "Koontilaskun PDF on valmis. Avaa tai jaa se avautuneesta valikosta."
+        : "Koontilaskun PDF avattiin uuteen välilehteen.");
     } catch (error) {
       if (targetWindow && !targetWindow.closed) {
         try {
@@ -13553,6 +13615,7 @@ export default function App() {
           // ignore close failures
         }
       }
+      setAuthInfo("");
       setAuthError(`Koontilasku-PDF:n avaaminen epäonnistui: ${String(error?.message || error)}`);
     }
   };
