@@ -2578,6 +2578,53 @@ function applyIncomingAppUrl(urlString, handlers = {}) {
   }
 }
 
+async function consumeIncomingPasswordRecoveryUrl(urlString, handlers = {}) {
+  if (!urlString) return false;
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(urlString);
+  } catch {
+    return false;
+  }
+
+  const queryParams = new URLSearchParams(parsedUrl.search || "");
+  const hashParams = new URLSearchParams(String(parsedUrl.hash || "").replace(/^#/, ""));
+  const isRecoveryLink = queryParams.get("recovery") === "1"
+    || queryParams.get("type") === "recovery"
+    || hashParams.get("type") === "recovery";
+
+  if (!isRecoveryLink) return false;
+
+  try {
+    let recoverySession = null;
+    const authorizationCode = String(queryParams.get("code") || "").trim();
+    const accessToken = String(hashParams.get("access_token") || "").trim();
+    const refreshToken = String(hashParams.get("refresh_token") || "").trim();
+
+    if (authorizationCode) {
+      const { data, error } = await supabase.auth.exchangeCodeForSession(authorizationCode);
+      if (error) throw error;
+      recoverySession = data?.session ?? null;
+    } else if (accessToken && refreshToken) {
+      const { data, error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (error) throw error;
+      recoverySession = data?.session ?? null;
+    } else {
+      throw new Error("Palautuslinkistä puuttuvat kirjautumistiedot.");
+    }
+
+    handlers.onRecoveryReady?.(recoverySession);
+    return true;
+  } catch (error) {
+    handlers.onRecoveryError?.(String(error?.message || error));
+    return true;
+  }
+}
+
 function getCatchFormDefaultsStorageKey(profileLike) {
   const profileKey = String(profileLike?.id || profileLike?.email || "").trim().toLowerCase();
   return profileKey ? `${CATCH_FORM_DEFAULTS_KEY}:${profileKey}` : CATCH_FORM_DEFAULTS_KEY;
@@ -10083,10 +10130,37 @@ export default function App() {
   useEffect(() => {
     if (!isNativeCapacitorApp()) return undefined;
 
+    const openPasswordRecovery = (recoverySession) => {
+      setSession(recoverySession ?? null);
+      setAuthMode("recovery");
+      setAuthError("");
+      setAuthInfo("Aseta uusi salasana jatkaaksesi.");
+      setAuthForm((prev) => ({
+        ...prev,
+        email: (recoverySession?.user?.email || prev.email || "").trim().toLowerCase(),
+        password: "",
+        confirmPassword: "",
+      }));
+    };
+
+    const showPasswordRecoveryError = (message) => {
+      setAuthMode("signin");
+      setAuthInfo("");
+      setAuthError(`Salasanan palautuslinkkiä ei voitu avata. Pyydä uusi linkki. (${message})`);
+    };
+
     const urlHandlers = {
       setActiveTab,
       setBuyerActiveOfferId,
       setPublicBatchId,
+    };
+
+    const handleIncomingUrl = async (url) => {
+      await consumeIncomingPasswordRecoveryUrl(url, {
+        onRecoveryReady: openPasswordRecovery,
+        onRecoveryError: showPasswordRecoveryError,
+      });
+      applyIncomingAppUrl(url, urlHandlers);
     };
 
     const handleInitialUrl = async () => {
@@ -10094,7 +10168,7 @@ export default function App() {
         const launchUrl = await CapacitorApp.getLaunchUrl();
         const initialUrl = String(launchUrl?.url || "").trim();
         if (initialUrl) {
-          applyIncomingAppUrl(initialUrl, urlHandlers);
+          await handleIncomingUrl(initialUrl);
         }
       } catch {
         // ignore launch URL lookup failure
@@ -10109,7 +10183,7 @@ export default function App() {
         listenerHandle = await CapacitorApp.addListener("appUrlOpen", ({ url }) => {
           const nextUrl = String(url || "").trim();
           if (nextUrl) {
-            applyIncomingAppUrl(nextUrl, urlHandlers);
+            void handleIncomingUrl(nextUrl);
           }
         });
       } catch {
@@ -11653,7 +11727,7 @@ export default function App() {
         setAuthError("Syötä sähköpostiosoite ennen salasanan palautusta.");
         return;
       }
-      const redirectTo = typeof window !== "undefined" ? window.location.origin : getPublicAppBaseUrl();
+      const redirectTo = `${getPublicAppBaseUrl()}/?recovery=1`;
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) {
         if (isMissingRefreshTokenError(error)) {
