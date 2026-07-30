@@ -284,6 +284,7 @@ export function BuyerResponsesSection({
   euro,
   canManageBuyerOffer,
   onUpdateBuyerOfferStatus,
+  onCreateDeliveryNote,
   styles,
   formatOfferDate,
   title = "Ostajien vastaukset ja varaukset",
@@ -307,6 +308,12 @@ export function BuyerResponsesSection({
           const buyerProfile = buyers.find(
             (buyer) => buyer.id === offer.buyer_id || buyer.email === (offer.buyer_email || "").toLowerCase(),
           );
+          const deliveryNoteOffer = {
+            ...offer,
+            buyer_delivery_address: offer.buyer_delivery_address || buyerProfile?.delivery_address || "",
+            buyer_delivery_postcode: offer.buyer_delivery_postcode || buyerProfile?.delivery_postcode || "",
+            buyer_delivery_city: offer.buyer_delivery_city || buyerProfile?.delivery_city || "",
+          };
           const buyerDeliveryAddressText = [
             offer.buyer_delivery_address || buyerProfile?.delivery_address || "",
             offer.buyer_delivery_postcode || buyerProfile?.delivery_postcode || "",
@@ -376,6 +383,23 @@ export function BuyerResponsesSection({
                 {isBuyerOfferAccepted(offer.status) ? (
                   <div style={styles.muted}>
                     <strong>Laskutus:</strong> Tiedot tästä kaupasta siirtyvät Laskutus-välilehdelle heti kun ostaja on vahvistanut erän vastaanotetuksi. Siellä voit muodostaa laskun ostajalle. Suoraan Kalastajalta perii 3 % komission hyväksytyistä kaupoista ja laskuttaa komissiot kuukausittain.
+                  </div>
+                ) : null}
+                {isAccepted && canManageBuyerOffer(offer) && onCreateDeliveryNote ? (
+                  <div style={{ ...styles.entry, background: "#eff6ff", padding: 12, marginTop: 12 }}>
+                    <strong>Luo lähetyslista</strong>
+                    <div style={styles.small}>A4 sisältää täydet jäljitettävyystiedot. MUNBYN-koot sopivat lämpötulostimelle.</div>
+                    <div style={{ ...styles.row, marginTop: 8 }}>
+                      <button
+                        type="button"
+                        style={{ ...styles.button, ...styles.primaryButton }}
+                        onClick={() => onCreateDeliveryNote(deliveryNoteOffer, null, "a4")}
+                      >
+                        A4
+                      </button>
+                      <button type="button" style={styles.button} onClick={() => onCreateDeliveryNote(deliveryNoteOffer, null, "munbyn_4x3")}>MUNBYN 4×3</button>
+                      <button type="button" style={styles.button} onClick={() => onCreateDeliveryNote(deliveryNoteOffer, null, "munbyn_4x6")}>MUNBYN 4×6</button>
+                    </div>
                   </div>
                 ) : null}
                 {canManageBuyerOffer(offer) && !isBuyerOfferAccepted(offer.status) && !isBuyerOfferRejected(offer.status) ? (

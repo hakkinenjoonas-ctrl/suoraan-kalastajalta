@@ -5120,6 +5120,7 @@ function WholesaleOffersView({
         euro={euro}
         canManageBuyerOffer={canManageBuyerOffer}
         onUpdateBuyerOfferStatus={onUpdateBuyerOfferStatus}
+        onCreateDeliveryNote={onCreateDeliveryNote}
         styles={styles}
         formatOfferDate={formatOfferDate}
         title="Hyväksytyt kaupat"
