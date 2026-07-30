@@ -1896,6 +1896,7 @@ function isIosSafariWeb() {
 
 let lastPresentedPdfKey = "";
 let lastPresentedPdfAt = 0;
+const ALL_OFFERS_TEST_BUYER_EMAIL = "testiostaja@suoraankalastajalta.fi";
 
 function shouldSkipDuplicateFilePresentation(fileName) {
   const presentationKey = String(fileName || "document");
@@ -9874,22 +9875,31 @@ export default function App() {
       .filter((buyer) => buyer.is_active)
       .forEach((buyer) => {
         const buyerTypes = parseBuyerTypes(buyer.buyer_type);
-        const matchedBuyerType = buyerTypes.find((buyerType) => selectedTypes.includes(buyerType));
+        const isAllOffersTestBuyer = normalizeEmail(buyer.email) === ALL_OFFERS_TEST_BUYER_EMAIL;
+        const matchedBuyerType = buyerTypes.find((buyerType) => selectedTypes.includes(buyerType))
+          || (isAllOffersTestBuyer ? selectedTypes[0] : "");
         if (!matchedBuyerType) return;
         const minKg = getOptionalKgLimit(buyer.min_kg);
         const maxKg = getOptionalKgLimit(buyer.max_kg);
         const minOk = minKg == null || totalKilos >= minKg;
         const maxOk = maxKg == null || totalKilos <= maxKg;
+        const allowedDestinations = Array.isArray(offerFormState.deliveryDestinations)
+          ? offerFormState.deliveryDestinations
+          : [];
+        const buyerCity = resolveBuyerDestinationCity(buyer);
+        const recipientDestinationCity = isAllOffersTestBuyer
+          ? (allowedDestinations[0] || buyerCity)
+          : buyerCity;
         const recipient = {
           buyer_id: buyer.id,
           email: buyer.email,
           channel: matchedBuyerType,
           company_name: buyer.company_name,
           contact_name: buyer.contact_name,
-          destination_city: resolveBuyerDestinationCity(buyer),
+          destination_city: recipientDestinationCity,
         };
 
-        if (!minOk || !maxOk) {
+        if (!isAllOffersTestBuyer && (!minOk || !maxOk)) {
           excluded.push({
             ...recipient,
             minKg,
@@ -9902,8 +9912,7 @@ export default function App() {
         }
 
         if (offerFormState.deliveryPossible && offerFormState.deliveryMethod === "Kuljetus järjestetään") {
-          const buyerCity = resolveBuyerDestinationCity(buyer);
-          if (!buyerCity) {
+          if (!recipientDestinationCity) {
             excluded.push({
               ...recipient,
               reason: "ostajan toimituskaupunki puuttuu",
@@ -9911,20 +9920,23 @@ export default function App() {
             return;
           }
 
-          const allowedDestinations = Array.isArray(offerFormState.deliveryDestinations) ? offerFormState.deliveryDestinations : [];
-          if (!allowedDestinations.includes(buyerCity)) {
+          if (!isAllOffersTestBuyer && !allowedDestinations.includes(recipientDestinationCity)) {
             excluded.push({
               ...recipient,
-              reason: `kohde ${buyerCity} ei kuulu valittuihin toimituskohteisiin`,
+              reason: `kohde ${recipientDestinationCity} ei kuulu valittuihin toimituskohteisiin`,
             });
             return;
           }
 
-          const routePrice = getRoutePrice(offerFormState.originPointId, buyerCity, totalKilos);
+          const routePrice = getRoutePrice(offerFormState.originPointId, recipientDestinationCity, totalKilos);
           if (!routePrice) {
+            if (isAllOffersTestBuyer) {
+              matching.push(recipient);
+              return;
+            }
             excluded.push({
               ...recipient,
-              reason: `reittihintaa ei löydy kohteeseen ${buyerCity}`,
+              reason: `reittihintaa ei löydy kohteeseen ${recipientDestinationCity}`,
             });
             return;
           }
