@@ -229,27 +229,27 @@ function drawMunbyn4x6(doc, payload) {
     x: margin,
     y,
     width: 93,
-    height: 37,
+    height: 40,
     titleSize: 7,
     nameSize: 15,
     addressSize: 11,
     padding: 3.2,
   });
-  y = 53;
+  y = 55;
   drawPartyBox(doc, {
     title: "Lähettäjä",
     party: payload.sender,
     x: margin,
     y,
     width: 93,
-    height: 28,
+    height: 30,
     titleSize: 6.5,
     nameSize: 10,
     addressSize: 8,
     padding: 3,
   });
 
-  y = 87;
+  y = 91;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
   doc.text("ERÄ JA JÄLJITETTÄVYYS", margin, y);
