@@ -54,6 +54,7 @@ function drawPartyBox(doc, {
   addressSize,
   padding,
   showDetails = true,
+  detailsMode = "full",
 }) {
   doc.setDrawColor(148, 163, 184);
   doc.setFillColor(248, 250, 252);
@@ -73,15 +74,17 @@ function drawPartyBox(doc, {
   doc.setFont("helvetica", "bold");
   cursorY = drawWrapped(doc, clean(party?.address), x + padding, cursorY + addressSize * 0.2, width - (padding * 2), addressSize * 0.38, 2);
 
-  const details = [
-    party?.businessId ? `Y-tunnus: ${party.businessId}` : "",
-    party?.contactName ? `Yhteyshenkilö: ${party.contactName}` : "",
-    [party?.email, party?.phone].filter(Boolean).join(" / "),
-  ].filter(Boolean).join("\n");
+  const details = detailsMode === "phone"
+    ? (party?.phone ? `Puh: ${party.phone}` : "")
+    : [
+      party?.businessId ? `Y-tunnus: ${party.businessId}` : "",
+      party?.contactName ? `Yhteyshenkilö: ${party.contactName}` : "",
+      party?.phone ? `Puhelin: ${party.phone}` : "",
+    ].filter(Boolean).join("\n");
   if (showDetails && details && cursorY < y + height - padding) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(Math.max(5.5, addressSize - 2));
-    drawWrapped(doc, details, x + padding, cursorY + 1, width - (padding * 2), Math.max(2.5, (addressSize - 2) * 0.38), 2);
+    drawWrapped(doc, details, x + padding, cursorY + 1, width - (padding * 2), Math.max(2.5, (addressSize - 2) * 0.38), detailsMode === "phone" ? 1 : 4);
   }
 }
 
@@ -129,7 +132,7 @@ function drawA4(doc, payload) {
     x: margin,
     y,
     width: 86,
-    height: 51,
+    height: 55,
     titleSize: 9,
     nameSize: 15,
     addressSize: 11,
@@ -141,14 +144,14 @@ function drawA4(doc, payload) {
     x: 106,
     y,
     width: 89,
-    height: 51,
+    height: 55,
     titleSize: 9,
     nameSize: 17,
     addressSize: 13,
     padding: 5,
   });
 
-  y = 111;
+  y = 115;
   doc.setFillColor(15, 23, 42);
   doc.rect(margin, y - 6, 180, 9, "F");
   doc.setTextColor(255, 255, 255);
@@ -301,7 +304,7 @@ function drawMunbyn4x3(doc, payload) {
     nameSize: 10.5,
     addressSize: 8.2,
     padding: 2.2,
-    showDetails: false,
+    detailsMode: "phone",
   });
   drawPartyBox(doc, {
     title: "Lähettäjä",
@@ -314,7 +317,7 @@ function drawMunbyn4x3(doc, payload) {
     nameSize: 7.4,
     addressSize: 6.2,
     padding: 2.2,
-    showDetails: false,
+    detailsMode: "phone",
   });
 
   y = 41;

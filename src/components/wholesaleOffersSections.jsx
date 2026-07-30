@@ -313,6 +313,10 @@ export function BuyerResponsesSection({
             buyer_delivery_address: offer.buyer_delivery_address || buyerProfile?.delivery_address || "",
             buyer_delivery_postcode: offer.buyer_delivery_postcode || buyerProfile?.delivery_postcode || "",
             buyer_delivery_city: offer.buyer_delivery_city || buyerProfile?.delivery_city || "",
+            buyer_phone: offer.buyer_phone || buyerProfile?.phone || "",
+            buyer_contact_name: offer.buyer_contact_name || buyerProfile?.contact_name || "",
+            buyer_email: offer.buyer_email || buyerProfile?.email || "",
+            buyer_business_id: offer.buyer_business_id || buyerProfile?.business_id || "",
           };
           const buyerDeliveryAddressText = [
             offer.buyer_delivery_address || buyerProfile?.delivery_address || "",
