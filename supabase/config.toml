@@ -1,6 +1,9 @@
 [functions.send-push-notification]
 verify_jwt = false
 
+[functions.send-auction-email]
+verify_jwt = false
+
 [functions.finalize-auctions]
 verify_jwt = false
 
