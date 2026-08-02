@@ -12,3 +12,7 @@ local.properties
 
 android/app/google-services.json
 .vercel
+
+# Local recipient lists and one-off diagnostics may contain personal data.
+resend-kalastajat.csv
+supabase/diagnostics/

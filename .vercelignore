@@ -1,0 +1,10 @@
+.git
+.agents
+.codex
+.openai
+.vercel
+android
+dist
+node_modules
+coverage
+*.csv

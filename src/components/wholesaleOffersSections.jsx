@@ -480,6 +480,7 @@ export function OfferedEntriesDetailsSection({
                     {entry.offerToShops ? <span style={styles.badge}>Kauppoihin</span> : null}
                     {entry.offerToRestaurants ? <span style={styles.badge}>Ravintoloihin</span> : null}
                     {entry.offerToWholesalers ? <span style={styles.badge}>Tukkuihin</span> : null}
+                    {entry.offerRestricted ? <span style={{ ...styles.badge, background: "#fef3c7", borderColor: "#f59e0b", color: "#92400e" }}>Vain valituille ostajille</span> : null}
                   </div>
                   <div style={styles.muted}>{entry.date} · {entry.area}{entry.municipality ? ` · ${entry.municipality}` : ""}{entry.spot ? ` / ${entry.spot}` : ""}</div>
                   {entry.landingPlace ? <div style={styles.muted}>Purkamispaikka: {entry.landingPlace}</div> : null}

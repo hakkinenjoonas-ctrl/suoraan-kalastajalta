@@ -8465,6 +8465,8 @@ export default function App() {
       offerToShops: false,
       offerToRestaurants: false,
       offerToWholesalers: false,
+      offerAudience: "groups",
+      selectedBuyerIds: [],
       deliveryPossible: false,
   deliveryMethod: "Myyjä toimittaa",
       transportMode: "",
@@ -9791,7 +9793,11 @@ export default function App() {
   };
   const isCatchAuction = form.saleMode === "auction";
   const auctionContainsOnlyCrayfish = speciesRows.length > 0 && speciesRows.every((row) => isCrayfishSpecies(getSpeciesRowLabel(row)));
-  const shouldSendOffer = hasFisherPremium && form.saleMode === "fixed" && form.listForSale && (form.offerToShops || form.offerToRestaurants || form.offerToWholesalers);
+  const shouldSendOffer = hasFisherPremium && form.saleMode === "fixed" && form.listForSale && (
+    form.offerAudience === "selected"
+      ? form.selectedBuyerIds.length > 0
+      : (form.offerToShops || form.offerToRestaurants || form.offerToWholesalers)
+  );
   const shouldSendProcessedOffer = processedForm.listForSale && (processedForm.offerToShops || processedForm.offerToRestaurants || processedForm.offerToWholesalers);
   const currentOriginCity = form.originCity || form.municipality || "";
   const currentProcessedOriginCity = processedForm.originCity || processedForm.municipality || "";
@@ -9917,14 +9923,23 @@ export default function App() {
 
     const matching = [];
     const excluded = [];
+    const selectedBuyerIds = new Set(
+      offerFormState.offerAudience === "selected"
+        ? (offerFormState.selectedBuyerIds || []).map(String)
+        : [],
+    );
 
     (buyers || [])
       .filter((buyer) => buyer.is_active)
       .forEach((buyer) => {
         const buyerTypes = parseBuyerTypes(buyer.buyer_type);
         const isAllOffersTestBuyer = normalizeEmail(buyer.email) === ALL_OFFERS_TEST_BUYER_EMAIL;
-        const matchedBuyerType = buyerTypes.find((buyerType) => selectedTypes.includes(buyerType))
+        const isDirectRecipient = selectedBuyerIds.has(String(buyer.id));
+        const matchedBuyerType = isDirectRecipient
+          ? (buyerTypes[0] || normalizeBuyerType("tukku"))
+          : buyerTypes.find((buyerType) => selectedTypes.includes(buyerType))
           || (isAllOffersTestBuyer ? selectedTypes[0] : "");
+        if (offerFormState.offerAudience === "selected" && !isDirectRecipient) return;
         if (!matchedBuyerType) return;
         const minKg = getOptionalKgLimit(buyer.min_kg);
         const maxKg = getOptionalKgLimit(buyer.max_kg);
@@ -9946,7 +9961,7 @@ export default function App() {
           destination_city: recipientDestinationCity,
         };
 
-        if (!isAllOffersTestBuyer && (!minOk || !maxOk)) {
+        if (!isDirectRecipient && !isAllOffersTestBuyer && (!minOk || !maxOk)) {
           excluded.push({
             ...recipient,
             minKg,
@@ -10685,6 +10700,7 @@ export default function App() {
             offerToShops: Boolean(entry.offer_to_shops),
             offerToRestaurants: Boolean(entry.offer_to_restaurants),
             offerToWholesalers: Boolean(entry.offer_to_wholesalers),
+            offerRestricted: Boolean(entry.offer_restricted),
           })));
         }
 
@@ -10763,6 +10779,7 @@ export default function App() {
                 offerToShops: Boolean(entry.offer_to_shops),
                 offerToRestaurants: Boolean(entry.offer_to_restaurants),
                 offerToWholesalers: Boolean(entry.offer_to_wholesalers),
+                offerRestricted: Boolean(entry.offer_restricted),
               })));
             }
           }
@@ -11376,7 +11393,7 @@ export default function App() {
         quantity: Number(previousSpecies?.quantity || 0) + quantity,
         unit,
       });
-      if (entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers) {
+      if (entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers || entry.offerRestricted) {
         if (crayfish) {
           existingGroup.forSalePieces += quantity;
         } else {
@@ -11397,7 +11414,7 @@ export default function App() {
       .sort((a, b) => b.key.localeCompare(a.key));
   }, [filteredEntries]);
 
-  const saleEntries = useMemo(() => entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [entries]);
+  const saleEntries = useMemo(() => entries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers || entry.offerRestricted), [entries]);
   const processedSaleEntries = useMemo(() => processedEntries.filter((entry) => entry.offerToShops || entry.offerToRestaurants || entry.offerToWholesalers), [processedEntries]);
   const availableSourceEntries = useMemo(
     () => (profile?.role === "processor" ? processorSourceEntries : entries)
@@ -15086,6 +15103,14 @@ export default function App() {
       setAuthError("Valitse, miten myytävä kalaerä on pakattu.");
       return;
     }
+    if (form.saleMode === "fixed" && form.listForSale && form.offerAudience === "selected" && form.selectedBuyerIds.length === 0) {
+      setAuthError("Valitse vähintään yksi ostaja, jolle rajattu tarjous lähetetään.");
+      return;
+    }
+    if (form.saleMode === "fixed" && form.listForSale && form.offerAudience !== "selected" && !form.offerToShops && !form.offerToRestaurants && !form.offerToWholesalers) {
+      setAuthError("Valitse vähintään yksi ostajaryhmä tai käytä vaihtoehtoa “Vain tietyille ostajille”.");
+      return;
+    }
     if (validRows.some((row) => isCrayfishSpecies(getSpeciesRowLabel(row)) && Number(row.count || 0) <= 0)) {
       setAuthError("Täytä kappalemäärä kaikille täplärapu- ja jokirapuerille ennen saaliin tallennusta.");
       return;
@@ -15175,9 +15200,10 @@ export default function App() {
     }) : null;
     const selectedMarineGear = getMarineGearByCode(form.marineGearCode);
     const payload = rowsWithBatchIds.map((row) => ({
-      offer_to_shops: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale ? form.offerToShops : false,
-      offer_to_restaurants: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale ? form.offerToRestaurants : false,
-      offer_to_wholesalers: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale ? form.offerToWholesalers : false,
+      offer_to_shops: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale && form.offerAudience !== "selected" ? form.offerToShops : false,
+      offer_to_restaurants: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale && form.offerAudience !== "selected" ? form.offerToRestaurants : false,
+      offer_to_wholesalers: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale && form.offerAudience !== "selected" ? form.offerToWholesalers : false,
+      offer_restricted: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale && form.offerAudience === "selected",
       date: form.date,
       area: form.area,
       municipality: form.municipality,
@@ -15417,6 +15443,8 @@ export default function App() {
       offerToShops: false,
       offerToRestaurants: false,
       offerToWholesalers: false,
+      offerAudience: "groups",
+      selectedBuyerIds: [],
       deliveryPossible: false,
       deliveryMethod: "Myyjä toimittaa",
       transportMode: "",
@@ -18847,13 +18875,83 @@ export default function App() {
                   <div style={{ ...styles.offerBox, ...styles.stack }}>
                     <div>
                       <label>Tarjoa erää myyntiin</label>
-                      <div style={styles.small}>Valitse ostajaryhmät, joille tämä kalaerä lähetetään heti tallennuksen yhteydessä.</div>
+                      <div style={styles.small}>Valitse, lähetetäänkö kalaerä ostajaryhmille vai vain nimetyille sopimusostajille.</div>
                     </div>
                     <div style={styles.checkboxRow}>
-                      <label style={styles.checkboxCard}><input type="checkbox" checked={form.offerToShops} onChange={(e) => setForm({ ...form, offerToShops: e.target.checked })} /> Kauppoihin</label>
-                      <label style={styles.checkboxCard}><input type="checkbox" checked={form.offerToRestaurants} onChange={(e) => setForm({ ...form, offerToRestaurants: e.target.checked })} /> Ravintoloihin</label>
-                      <label style={styles.checkboxCard}><input type="checkbox" checked={form.offerToWholesalers} onChange={(e) => setForm({ ...form, offerToWholesalers: e.target.checked })} /> Tukkuihin</label>
+                      <label style={styles.checkboxCard}>
+                        <input type="radio" name="offerAudience" checked={form.offerAudience !== "selected"} onChange={() => setForm((prev) => ({ ...prev, offerAudience: "groups", selectedBuyerIds: [] }))} />
+                        Ostajaryhmille
+                      </label>
+                      <label style={styles.checkboxCard}>
+                        <input type="radio" name="offerAudience" checked={form.offerAudience === "selected"} onChange={() => setForm((prev) => ({ ...prev, offerAudience: "selected", offerToShops: false, offerToRestaurants: false, offerToWholesalers: false }))} />
+                        Vain tietyille ostajille
+                      </label>
                     </div>
+                    {form.offerAudience === "selected" ? (
+                      <div style={{ ...styles.stack, gap: 8 }}>
+                        <strong>Valitse tarjouksen vastaanottajat</strong>
+                        <div style={styles.small}>Erä ja tarjous näkyvät vain valituille ostajille. Voit valita yhden tai useamman sopimusostajan.</div>
+                        {(buyers || []).filter((buyer) => buyer.is_active).length === 0 ? (
+                          <div style={styles.noticeInfo}>Aktiivisia ostajia ei löytynyt. Pyydä ylläpitäjää lisäämään sopimusostaja ensin.</div>
+                        ) : (
+                          <div style={{ ...styles.stack, gap: 10 }}>
+                            <select
+                              style={styles.input}
+                              value=""
+                              onChange={(event) => {
+                                const buyerId = event.target.value;
+                                if (!buyerId) return;
+                                setForm((prev) => ({
+                                  ...prev,
+                                  selectedBuyerIds: Array.from(new Set([...prev.selectedBuyerIds, buyerId])),
+                                }));
+                              }}
+                            >
+                              <option value="">Valitse ostaja pudotusvalikosta</option>
+                              {(buyers || [])
+                                .filter((buyer) => buyer.is_active && !form.selectedBuyerIds.includes(String(buyer.id)))
+                                .map((buyer) => (
+                                  <option key={buyer.id} value={String(buyer.id)}>
+                                    {buyer.company_name || "Nimetön ostajayritys"}
+                                  </option>
+                                ))}
+                            </select>
+                            {form.selectedBuyerIds.length > 0 ? (
+                              <div style={{ ...styles.stack, gap: 8 }}>
+                                {form.selectedBuyerIds.map((buyerId) => {
+                                  const buyer = (buyers || []).find((item) => String(item.id) === buyerId);
+                                  if (!buyer) return null;
+                                  return (
+                                    <div key={buyerId} style={{ ...styles.checkboxCard, justifyContent: "space-between" }}>
+                                      <span>
+                                        <strong>{buyer.company_name || "Nimetön ostajayritys"}</strong>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        style={styles.button}
+                                        onClick={() => setForm((prev) => ({
+                                          ...prev,
+                                          selectedBuyerIds: prev.selectedBuyerIds.filter((id) => id !== buyerId),
+                                        }))}
+                                      >
+                                        Poista
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
+                        {form.selectedBuyerIds.length > 0 ? <div style={styles.noticeSuccess}>{form.selectedBuyerIds.length} ostajaa valittu.</div> : null}
+                      </div>
+                    ) : (
+                      <div style={styles.checkboxRow}>
+                        <label style={styles.checkboxCard}><input type="checkbox" checked={form.offerToShops} onChange={(e) => setForm({ ...form, offerToShops: e.target.checked })} /> Kauppoihin</label>
+                        <label style={styles.checkboxCard}><input type="checkbox" checked={form.offerToRestaurants} onChange={(e) => setForm({ ...form, offerToRestaurants: e.target.checked })} /> Ravintoloihin</label>
+                        <label style={styles.checkboxCard}><input type="checkbox" checked={form.offerToWholesalers} onChange={(e) => setForm({ ...form, offerToWholesalers: e.target.checked })} /> Tukkuihin</label>
+                      </div>
+                    )}
                   </div>
                 </div>
                 ) : null}
