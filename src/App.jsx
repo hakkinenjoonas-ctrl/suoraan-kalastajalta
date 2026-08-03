@@ -70,6 +70,10 @@ import {
   transportModeLabels,
 } from "./lib/constants.js";
 import { applyGrossPriceInput, createSpeciesRow, safeId, today } from "./lib/helpers.js";
+import {
+  getMissingBuyerPurchaseFields,
+  getMissingSellerSaleFields,
+} from "./lib/tradeProfile.js";
 import { finlandMunicipalitiesByRegion, finlandRegions } from "./lib/municipalityRegions.js";
 import {
   ALLOWED_AUCTION_IMAGE_TYPES,
@@ -1668,14 +1672,14 @@ function renderThermalLabelByFormat(printFormat, label) {
 
 const CATCH_LABEL_FORMATS = [
   {
-    value: CATCH_LABEL_FORMAT_MUNBYN_4X6,
-    label: "MUNBYN 4x6",
-    description: "102 × 152 mm · 1 etiketti / sivu",
-  },
-  {
     value: CATCH_LABEL_FORMAT_MUNBYN_4X3,
     label: "MUNBYN 4x3",
     description: "101.6 × 76.2 mm · 1 etiketti / sivu",
+  },
+  {
+    value: CATCH_LABEL_FORMAT_MUNBYN_4X6,
+    label: "MUNBYN 4x6",
+    description: "102 × 152 mm · 1 etiketti / sivu",
   },
   {
     value: CATCH_LABEL_FORMAT_APLI_1278,
@@ -2198,7 +2202,7 @@ function fitCanvasFont(ctx, text, maxWidth, startSize, minSize = 18, fontWeight 
   return size;
 }
 
-async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl, printFormat = CATCH_LABEL_FORMAT_MUNBYN_4X6) {
+async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl, printFormat = CATCH_LABEL_FORMAT_MUNBYN_4X3) {
   if (typeof document === "undefined") {
     throw new Error("Etiketin kuvarenderöinti ei ole käytettävissä.");
   }
@@ -8683,7 +8687,7 @@ export default function App() {
   const [labelPrintCount, setLabelPrintCount] = useState(10);
   const [labelPrintPieceCount, setLabelPrintPieceCount] = useState("");
   const [labelPrintWeightKg, setLabelPrintWeightKg] = useState("");
-  const [labelPrintFormat, setLabelPrintFormat] = useState(CATCH_LABEL_FORMAT_MUNBYN_4X6);
+  const [labelPrintFormat, setLabelPrintFormat] = useState(CATCH_LABEL_FORMAT_MUNBYN_4X3);
   const [labelPrintWaterType, setLabelPrintWaterType] = useState("");
   const [onboardingGuideState, setOnboardingGuideState] = useState({ views: 0, hiddenForever: false, visible: false });
   const accountFormSyncingRef = useRef(false);
@@ -9602,42 +9606,8 @@ export default function App() {
     };
   }, [handleNotificationNavigation, linkedBuyerRecord?.id, profile?.buyer_id, profile?.id, profile?.role, registerPushTokenOwnership, session?.user?.id]);
 
-  const getMissingSellerBillingFields = (profileLike) => {
-    const checks = [
-      { label: "yrityksen nimi", value: profileLike?.company_name || profileLike?.companyName },
-      { label: "Y-tunnus", value: profileLike?.business_id || profileLike?.businessId },
-      { label: "osoite", value: profileLike?.address },
-      { label: "postinumero", value: profileLike?.postcode },
-      { label: "kaupunki", value: profileLike?.city },
-      { label: "laskutusosoite", value: profileLike?.billing_address || profileLike?.billingAddress },
-      { label: "laskutuksen postinumero", value: profileLike?.billing_postcode || profileLike?.billingPostcode },
-      { label: "laskutuskaupunki", value: profileLike?.billing_city || profileLike?.billingCity },
-      { label: "laskutussähköposti", value: profileLike?.billing_email || profileLike?.billingEmail },
-    ];
-
-    return checks
-      .filter((item) => !String(item.value || "").trim())
-      .map((item) => item.label);
-  };
-
   const getMissingBuyerTradeFields = (buyerLike, profileLike) => {
-    const checks = [
-      { label: "yrityksen nimi", value: buyerLike?.company_name || profileLike?.company_name || profileLike?.companyName || profileLike?.display_name },
-      { label: "Y-tunnus", value: buyerLike?.business_id || profileLike?.business_id || profileLike?.businessId },
-      { label: "yhteyssähköposti", value: buyerLike?.contact_email || profileLike?.contact_email || profileLike?.contactEmail || profileLike?.email },
-      { label: "puhelin", value: buyerLike?.phone || profileLike?.phone },
-      { label: "toimitusosoite", value: buyerLike?.delivery_address || profileLike?.delivery_address || profileLike?.deliveryAddress || profileLike?.address },
-      { label: "toimituksen postinumero", value: buyerLike?.delivery_postcode || profileLike?.delivery_postcode || profileLike?.deliveryPostcode || profileLike?.postcode },
-      { label: "toimituskaupunki", value: buyerLike?.delivery_city || profileLike?.delivery_city || profileLike?.deliveryCity || profileLike?.city },
-      { label: "laskutusosoite", value: buyerLike?.billing_address || profileLike?.billing_address || profileLike?.billingAddress },
-      { label: "laskutuksen postinumero", value: buyerLike?.billing_postcode || profileLike?.billing_postcode || profileLike?.billingPostcode },
-      { label: "laskutuskaupunki", value: buyerLike?.billing_city || profileLike?.billing_city || profileLike?.billingCity },
-      { label: "laskutussähköposti", value: buyerLike?.billing_email || profileLike?.billing_email || profileLike?.billingEmail },
-    ];
-
-    return checks
-      .filter((item) => !String(item.value || "").trim())
-      .map((item) => item.label);
+    return getMissingBuyerPurchaseFields(buyerLike, profileLike);
   };
 
   const normalizeBuyerType = (type) => {
@@ -11168,6 +11138,13 @@ export default function App() {
     window.setTimeout(() => {
       setAuthInfo((current) => (current === "Päivitetään tietoja..." ? "Tiedot päivitetty." : current));
     }, 700);
+  };
+
+  const openAccountDetails = () => {
+    setAccountPanelOpen(true);
+    window.setTimeout(() => {
+      document.getElementById("account-details-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
   };
 
   useEffect(() => {
@@ -14614,9 +14591,9 @@ export default function App() {
         sellerProfileForTrade = fetchedSellerProfile || null;
       }
 
-      const missingSellerBillingFields = getMissingSellerBillingFields(sellerProfileForTrade);
-      if (missingSellerBillingFields.length > 0) {
-        setAuthError(`Kauppaa ei voi hyväksyä ennen kuin kalastajan laskutustiedot on tallennettu. Puuttuu: ${missingSellerBillingFields.join(", ")}.`);
+      const missingSellerSaleFields = getMissingSellerSaleFields(sellerProfileForTrade);
+      if (missingSellerSaleFields.length > 0) {
+        setAuthError(`Kauppaa ei voi hyväksyä ennen kuin kalastajan myyntitiedot on tallennettu. Puuttuu: ${missingSellerSaleFields.join(", ")}.`);
         return;
       }
 
@@ -15098,6 +15075,14 @@ export default function App() {
     if (form.listForSale && fisherPremiumRequired) {
       showFisherPremiumRequired("Tarjoa myyntiin, jäljitettävyystunnus ja tarjouslähetys");
       return;
+    }
+    if (form.listForSale) {
+      const missingSellerSaleFields = getMissingSellerSaleFields(profile);
+      if (missingSellerSaleFields.length > 0) {
+        setAccountPanelOpen(true);
+        setAuthError(`Täytä omat tiedot ennen kuin voit asettaa kalaerän myyntiin. Puuttuu: ${missingSellerSaleFields.join(", ")}.`);
+        return;
+      }
     }
     if (form.listForSale && !String(form.packaging || "").trim()) {
       setAuthError("Valitse, miten myytävä kalaerä on pakattu.");
@@ -15810,7 +15795,7 @@ export default function App() {
       return;
     }
     const resolvedLabelCount = Math.max(1, Number(overrides?.labelCount ?? labelPrintCount ?? 1));
-    const resolvedPrintFormat = String(overrides?.printFormat || labelPrintFormat || CATCH_LABEL_FORMAT_MUNBYN_4X6);
+    const resolvedPrintFormat = String(overrides?.printFormat || labelPrintFormat || CATCH_LABEL_FORMAT_MUNBYN_4X3);
     const storedCatchDefaults = getStoredCatchFormDefaults(profile);
     const resolvedWaterType = isThermalCatchLabelFormat(resolvedPrintFormat)
       ? String(overrides?.waterType || labelPrintWaterType || targetEntry?.waterType || profile?.water_type || storedCatchDefaults.waterType || "").trim()
@@ -16126,7 +16111,7 @@ export default function App() {
           {helpOpen ? <HelpDialog role={profile.role} onClose={() => setHelpOpen(false)} /> : null}
 
           {accountPanelOpen ? (
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginBottom: 16 }}>
+            <div id="account-details-panel" style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginBottom: 16 }}>
               <div style={styles.rowBetween}>
                 <div>
                   <strong>Omat tiedot</strong>
@@ -16339,7 +16324,7 @@ export default function App() {
           </div>
 
           {activeTab === "auctions" && auctionsAvailable ? (
-            <AuctionsView profile={profile} entries={[]} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} onCreateDeliveryNote={handleCreateAuctionDeliveryNote} />
+            <AuctionsView profile={profile} buyerRecord={linkedBuyerRecord} entries={[]} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} onCreateDeliveryNote={handleCreateAuctionDeliveryNote} onOpenAccountDetails={openAccountDetails} />
           ) : null}
 
           {activeTab === "reports" ? (
@@ -17055,7 +17040,7 @@ export default function App() {
         {helpOpen ? <HelpDialog role={profile.role} onClose={() => setHelpOpen(false)} /> : null}
 
         {accountPanelOpen ? (
-          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginBottom: 16 }}>
+          <div id="account-details-panel" style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginBottom: 16 }}>
             <div style={styles.rowBetween}>
               <div>
                 <strong>Omat tiedot</strong>
@@ -19169,7 +19154,7 @@ export default function App() {
         ) : null}
 
         {activeTab === "auctions" && auctionsAvailable && ["member", "owner"].includes(profile.role) ? (
-          <AuctionsView profile={profile} entries={entries} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} onCreateDeliveryNote={handleCreateAuctionDeliveryNote} />
+          <AuctionsView profile={profile} buyerRecord={linkedBuyerRecord} entries={entries} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} onCreateDeliveryNote={handleCreateAuctionDeliveryNote} onOpenAccountDetails={openAccountDetails} />
         ) : null}
 
         {activeTab === "reports" ? <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} profile={profile} /> : null}

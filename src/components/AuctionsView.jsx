@@ -21,6 +21,10 @@ import {
   normalizeAuctionMoney,
   validateAuctionDraft,
 } from "../lib/auctionLogic.js";
+import {
+  getMissingBuyerPurchaseFields,
+  getMissingSellerSaleFields,
+} from "../lib/tradeProfile.js";
 
 const panel = { background: "#fff", border: "1px solid #dbe4ee", borderRadius: 18, padding: 18, boxShadow: "0 8px 24px rgba(15,23,42,0.05)" };
 const field = { display: "flex", flexDirection: "column", gap: 6 };
@@ -204,6 +208,12 @@ function AuctionCard({ auction, tradeOffer, isBuyer, onBid, onReceive, onCreateD
           <div>Puhelin: {auction.winner_details.phone || "-"}</div>
           {auction.winner_details.business_id ? <div>Y-tunnus: {auction.winner_details.business_id}</div> : null}
           <div><strong>Toimitusosoite:</strong> {addressLine(auction.winner_details.delivery_address, auction.winner_details.delivery_postcode, auction.winner_details.delivery_city) || "-"}</div>
+          {!isBuyer ? (
+            <>
+              <div><strong>Laskutusosoite:</strong> {addressLine(tradeOffer?.buyer_billing_address, tradeOffer?.buyer_billing_postcode, tradeOffer?.buyer_billing_city) || "-"}</div>
+              <div><strong>Laskutussähköposti:</strong> {tradeOffer?.buyer_billing_email || "-"}</div>
+            </>
+          ) : null}
           <div>Toimitustapa: {auctionDeliveryLabel(auction)}</div>
         </div>
       ) : null}
@@ -273,7 +283,7 @@ function AuctionCard({ auction, tradeOffer, isBuyer, onBid, onReceive, onCreateD
   );
 }
 
-export default function AuctionsView({ profile, entries = [], onTradeCreated, notificationTarget = null, onNotificationTargetHandled, onCreateDeliveryNote }) {
+export default function AuctionsView({ profile, buyerRecord = null, entries = [], onTradeCreated, notificationTarget = null, onNotificationTargetHandled, onCreateDeliveryNote, onOpenAccountDetails }) {
   const isBuyer = profile?.role === "buyer";
   const canCreate = profile?.role === "member" || profile?.role === "owner";
   const [auctions, setAuctions] = useState([]);
@@ -282,6 +292,7 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [profileCompletionRequired, setProfileCompletionRequired] = useState(false);
   const [auctionFilter, setAuctionFilter] = useState("all");
   const [focusedAuctionId, setFocusedAuctionId] = useState("");
   const [clock, setClock] = useState(Date.now());
@@ -461,6 +472,13 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
   }, [loadAuctions, onTradeCreated]);
 
   const createAuction = async () => {
+    setProfileCompletionRequired(false);
+    const missingSellerFields = getMissingSellerSaleFields(profile);
+    if (missingSellerFields.length > 0) {
+      setProfileCompletionRequired(true);
+      setError(`Täytä omat tiedot ennen kuin voit avata huutokaupan. Puuttuu: ${missingSellerFields.join(", ")}.`);
+      return;
+    }
     const validationError = validateAuctionDraft(draft);
     if (validationError) { setError(validationError); return; }
     if (!draft.earliestDeliveryDate) {
@@ -562,6 +580,13 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
   };
 
   const placeBid = async (auction, value) => {
+    setProfileCompletionRequired(false);
+    const missingBuyerFields = getMissingBuyerPurchaseFields(buyerRecord, profile);
+    if (missingBuyerFields.length > 0) {
+      setProfileCompletionRequired(true);
+      setError(`Täytä omat tiedot ennen kuin voit tehdä sitovan huudon. Puuttuu: ${missingBuyerFields.join(", ")}.`);
+      return;
+    }
     const amount = normalizeAuctionMoney(value);
     if (amount == null || amount < minimumNextBid(auction)) { setError(`Huudon on oltava vähintään ${euro(minimumNextBid(auction))} / kg.`); return; }
     const confirmed = window.confirm(`Vahvistatko sitovan huudon ${euro(amount)} / kg?`);
@@ -592,7 +617,16 @@ export default function AuctionsView({ profile, entries = [], onTradeCreated, no
         </div>
         <p style={{ margin: 0, color: "#475569" }}>Viimeisten {AUCTION_EXTENSION_MINUTES} minuutin aikana hyväksytty huuto siirtää päättymisen aina {AUCTION_EXTENSION_MINUTES} minuutin päähän viimeisestä huudosta.</p>
       </div>
-      {error ? <div style={{ padding: 12, borderRadius: 10, background: "#fef2f2", color: "#b91c1c" }}>{error}</div> : null}
+      {error ? (
+        <div style={{ padding: 12, borderRadius: 10, background: "#fef2f2", color: "#b91c1c", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10 }}>
+          <div>{error}</div>
+          {profileCompletionRequired && onOpenAccountDetails ? (
+            <button type="button" style={{ ...primaryButton, background: "#b91c1c", borderColor: "#b91c1c" }} onClick={onOpenAccountDetails}>
+              Täydennä omat tiedot
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {message ? <div style={{ padding: 12, borderRadius: 10, background: "#ecfdf5", color: "#166534" }}>{message}</div> : null}
       {canCreate ? (
         <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
