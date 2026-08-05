@@ -864,8 +864,24 @@ function getCatchLabelProductForm(speciesValue) {
   return suffix.startsWith(",") ? suffix.slice(1).trim() : suffix;
 }
 
+const CATCH_LABEL_PRODUCT_FORMS = [
+  "",
+  "Perattu",
+  "Perattu, päätön",
+  "Filee",
+  "Nahallinen filee",
+  "Nahaton filee",
+  "Nyljetty",
+  "Mäti",
+  "Jauhettu",
+];
+
 function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options = {}) {
-  const species = formatSpeciesForSale(entry?.species || "");
+  const originalSpecies = formatSpeciesForSale(entry?.species || "");
+  const selectedProductForm = String(options?.productForm ?? getCatchLabelProductForm(entry?.species)).trim();
+  const speciesMetadata = getSpeciesMetadata(entry?.species);
+  const baseSpecies = String(speciesMetadata?.name_fi || originalSpecies.split(",")[0] || originalSpecies).trim();
+  const species = selectedProductForm ? `${baseSpecies}, ${selectedProductForm.toLocaleLowerCase("fi-FI")}` : baseSpecies;
   const isCrayfish = isCrayfishSpecies(entry?.species);
   const pieceCount = isCrayfish && options?.pieceCount != null
     ? String(options.pieceCount).trim()
@@ -874,7 +890,6 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     ? String(options.weightKg).trim()
     : "";
   const scientificName = getCatchLabelScientificName(entry?.species);
-  const productForm = getCatchLabelProductForm(entry?.species);
   const catchArea = [entry?.area, entry?.municipality, entry?.spot].filter(Boolean).join(" / ");
   const waterType = String(
     options?.waterType ||
@@ -915,7 +930,7 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     packDate,
     catchArea,
     gearType: String(entry?.gear || "").trim(),
-    productForm,
+    productForm: selectedProductForm,
     waterType,
     waterTypeLabel: getCatchWaterTypeLabel(waterType),
     productionMethodText: buildCatchProductionMethodText(waterType, catchArea),
@@ -931,6 +946,7 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     supplierContact,
     eviraFacilityId,
     boxLabel,
+    useByDate: String(options?.useByDate || "").trim(),
   };
 }
 
@@ -1738,8 +1754,8 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           ${label.gearType ? `<div class="line">Pyyntimenetelmä: ${label.gearType}</div>` : ""}
           ${label.productStateText ? `<div class="line">${label.productStateText}</div>` : ""}
           ${label.catchDate ? `<div class="line catch-date">Pyyntipäivä: ${label.catchDate}</div>` : ""}
+          ${label.useByDate ? `<div class="line catch-date">Viimeinen käyttöpäivä: ${label.useByDate}</div>` : ""}
           ${label.commercialFishingId ? `<div class="line">Kaupallisen kalastajan tunnus: ${label.commercialFishingId}</div>` : ""}
-          ${label.productForm ? `<div class="line">Tuote: ${label.productForm}</div>` : ""}
           <div class="line">Säilytys: ${label.storageText}</div>
         </div>
           <div class="weight-line"><span class="weight-label">${label.isCrayfish ? "Kpl:" : "Paino:"}</span>${(label.isCrayfish ? label.pieceCount : label.weightKg) ? `<span class="weight-value">${label.isCrayfish ? label.pieceCount : label.weightKg}</span>` : `<span class="weight-write"></span>`}<span class="weight-unit">${label.isCrayfish ? "kpl" : "kg"}</span></div>
@@ -2460,12 +2476,12 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
       label.productStateText || "",
       label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+      label.useByDate ? `Viimeinen käyttöpäivä: ${label.useByDate}` : "",
       label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
-      label.productForm ? `Tuote: ${label.productForm}` : "",
     ].filter(Boolean);
 
     lines.forEach((line) => {
-      const isCatchDateLine = line.startsWith("Pyyntipäivä:");
+      const isCatchDateLine = line.startsWith("Pyyntipäivä:") || line.startsWith("Viimeinen käyttöpäivä:");
       doc.setFont("helvetica", isCatchDateLine ? "bold" : "normal");
       doc.setFontSize(isCatchDateLine ? 7.6 : 6.4);
       const wrapped = doc.splitTextToSize(line, textWidth);
@@ -3231,6 +3247,12 @@ function normalizeFishSpeciesLabel(value) {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+const OFFICIAL_CATCH_PROCESSED_SPECIES_PATTERN = /\b(filee|filet|avattu|perattu|päätön|nyljetty)\b/i;
+
+function isEligibleForOfficialCatchReport(entry) {
+  return !OFFICIAL_CATCH_PROCESSED_SPECIES_PATTERN.test(String(entry?.species || ""));
 }
 
 function getSpeciesFaoCode(speciesLabels) {
@@ -4081,6 +4103,7 @@ function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fi
     ["Huomiot"],
     ["- Saalis ilmoitetaan pyyntipäivittäin, kalastamisalueittain ja pyydyksittäin."],
     ["- Tässä raportissa saaliskilot pyöristetään täysiin kiloihin virallisen ohjeen mukaisesti."],
+    ["- Viralliseen raporttiin otetaan vain kokonaisina kirjatut kalat. Peratut, avatut, fileoidut, päättömät ja nyljetyt tuote-erät jätetään pois, jotta sama saalis ei tule ilmoitetuksi kahdesti."],
     ["- Nykyinen appi tallentaa kaupankäyntiä varten myös desimaalikilojen tiedon, joka säilytetään erillisessä sarakkeessa vertailua varten."],
     ["- Jos pyydyskoodia ei voitu päätellä varmasti, Huomio viralliseen ilmoitukseen -sarakkeessa kerrotaan miksi."],
     [],
@@ -4561,12 +4584,12 @@ function PublicBatchView({ batchId, data, loading, error, onLeave }) {
   );
 }
 
-function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, pieceCount, setPieceCount, weightKg, setWeightKg, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint, viewportWidth }) {
+function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, pieceCount, setPieceCount, weightKg, setWeightKg, productForm, setProductForm, useByDate, setUseByDate, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint, viewportWidth }) {
   if (!entry) return null;
 
   const previewLabel = {
-    ...buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount, weightKg }),
-    qrImageUrl: getCatchLabelQrImageUrl(buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount, weightKg })),
+    ...buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount, weightKg, productForm, useByDate }),
+    qrImageUrl: getCatchLabelQrImageUrl(buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount, weightKg, productForm, useByDate })),
     logoUrl: getAppLogoUrl(),
   };
   const isMobile = viewportWidth < 768;
@@ -4587,7 +4610,9 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
     waterType,
     pieceCount: isCrayfishSpecies(entry.species) ? String(pieceCount || "").trim() : "",
     weightKg: !isCrayfishSpecies(entry.species) ? String(weightKg || "").trim() : "",
-  }), [entry, labelCount, pieceCount, printFormat, waterType, weightKg]);
+    productForm: isCrayfishSpecies(entry.species) ? "" : String(productForm || "").trim(),
+    useByDate: String(useByDate || "").trim(),
+  }), [entry, labelCount, pieceCount, printFormat, productForm, useByDate, waterType, weightKg]);
 
   return (
     <div style={{
@@ -4622,6 +4647,16 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
               <label>Kalalaji</label>
               <input style={styles.input} value={formatSpeciesForSale(entry.species)} disabled />
             </div>
+            {!isCrayfishSpecies(entry.species) ? (
+              <div style={styles.field}>
+                <label>Tuotemuoto</label>
+                <select style={styles.input} value={productForm} onChange={(e) => setProductForm(e.target.value)}>
+                  {CATCH_LABEL_PRODUCT_FORMS.map((value) => (
+                    <option key={value || "whole"} value={value}>{value || "Kokonainen"}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <div style={styles.field}>
               <label>Pyyntipäivämäärä</label>
               <input style={styles.input} value={entry.date || "-"} disabled />
@@ -4691,6 +4726,11 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
                 <div style={styles.small}>Jos jätät kentän tyhjäksi, etikettiin tulostuu painokohta ja viiva käsin kirjoittamista varten.</div>
               </div>
             )}
+            <div style={styles.field}>
+              <label>Viimeinen käyttöpäivä (valinnainen)</label>
+              <input style={styles.input} type="date" value={useByDate} onChange={(e) => setUseByDate(e.target.value)} />
+              <div style={styles.small}>Jos jätät kentän tyhjäksi, viimeistä käyttöpäivää ei tulosteta etikettiin.</div>
+            </div>
             <div style={styles.field}>
               <label>Tulostuspohja</label>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
@@ -4768,8 +4808,8 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
                         {previewLabel.gearType ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntimenetelmä: {previewLabel.gearType}</div> : null}
                         {previewLabel.productStateText ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>{previewLabel.productStateText}</div> : null}
                         {previewLabel.catchDate ? <div style={{ fontSize: 14, lineHeight: 1.16, fontWeight: 700 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
+                        {previewLabel.useByDate ? <div style={{ fontSize: 14, lineHeight: 1.16, fontWeight: 700 }}>Viimeinen käyttöpäivä: {previewLabel.useByDate}</div> : null}
                         {previewLabel.commercialFishingId ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Kaupallisen kalastajan tunnus: {previewLabel.commercialFishingId}</div> : null}
-                        {previewLabel.productForm ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Tuote: {previewLabel.productForm}</div> : null}
                         <div style={{ fontSize: 12, lineHeight: 1.12 }}>Säilytys: {previewLabel.storageText}</div>
                       </div>
                       <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginTop: 12, minHeight: 24 }}>
@@ -6037,8 +6077,11 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   ]);
 
   const catchReportRows = [catchReportHeader, ...reportRows];
-  const inlandOfficialEntries = filteredEntries.filter((entry) => String(entry?.waterType || "") !== WATER_TYPE_SEA);
+  const officialCatchEntries = filteredEntries.filter(isEligibleForOfficialCatchReport);
+  const inlandOfficialEntries = officialCatchEntries.filter((entry) => String(entry?.waterType || "") !== WATER_TYPE_SEA);
   const coastalReportEntries = filteredEntries.filter((entry) => (
+    isEligibleForOfficialCatchReport(entry)
+    &&
     String(entry?.waterType || "") === WATER_TYPE_SEA
     && (entry?.vesselLengthClass === "under_10m" || entry?.vesselLengthClass === "without_vessel")
   ));
@@ -8687,6 +8730,8 @@ export default function App() {
   const [labelPrintCount, setLabelPrintCount] = useState(10);
   const [labelPrintPieceCount, setLabelPrintPieceCount] = useState("");
   const [labelPrintWeightKg, setLabelPrintWeightKg] = useState("");
+  const [labelPrintProductForm, setLabelPrintProductForm] = useState("");
+  const [labelPrintUseByDate, setLabelPrintUseByDate] = useState("");
   const [labelPrintFormat, setLabelPrintFormat] = useState(CATCH_LABEL_FORMAT_MUNBYN_4X3);
   const [labelPrintWaterType, setLabelPrintWaterType] = useState("");
   const [onboardingGuideState, setOnboardingGuideState] = useState({ views: 0, hiddenForever: false, visible: false });
@@ -15806,7 +15851,17 @@ export default function App() {
     const resolvedWeightKg = !isCrayfishSpecies(targetEntry?.species)
       ? String(overrides?.weightKg ?? labelPrintWeightKg ?? "").trim()
       : "";
-    const labelOptions = { waterType: resolvedWaterType, pieceCount: resolvedPieceCount, weightKg: resolvedWeightKg };
+    const resolvedProductForm = !isCrayfishSpecies(targetEntry?.species)
+      ? String(overrides?.productForm ?? labelPrintProductForm ?? "").trim()
+      : "";
+    const resolvedUseByDate = String(overrides?.useByDate ?? labelPrintUseByDate ?? "").trim();
+    const labelOptions = {
+      waterType: resolvedWaterType,
+      pieceCount: resolvedPieceCount,
+      weightKg: resolvedWeightKg,
+      productForm: resolvedProductForm,
+      useByDate: resolvedUseByDate,
+    };
     const labelData = buildCatchLabelData(targetEntry, profile, 1, resolvedLabelCount, labelOptions);
 
     if (!labelData.species || !labelData.batchId || !labelData.supplier) {
@@ -19109,7 +19164,7 @@ export default function App() {
                         </div>
                         <div style={styles.row}>
                           {canPrintCatchLabels(entry) ? (
-                            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); setLabelPrintPieceCount(""); setLabelPrintWeightKg(""); }}>
+                            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); setLabelPrintPieceCount(""); setLabelPrintWeightKg(""); setLabelPrintProductForm(getCatchLabelProductForm(entry.species)); setLabelPrintUseByDate(""); }}>
                               Tulosta etiketit
                             </button>
                           ) : profile.role === "member" && !hasFisherPremium ? (
@@ -19502,6 +19557,10 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             setPieceCount={setLabelPrintPieceCount}
             weightKg={labelPrintWeightKg}
             setWeightKg={setLabelPrintWeightKg}
+            productForm={labelPrintProductForm}
+            setProductForm={setLabelPrintProductForm}
+            useByDate={labelPrintUseByDate}
+            setUseByDate={setLabelPrintUseByDate}
             printFormat={labelPrintFormat}
             setPrintFormat={setLabelPrintFormat}
             waterType={labelPrintWaterType}

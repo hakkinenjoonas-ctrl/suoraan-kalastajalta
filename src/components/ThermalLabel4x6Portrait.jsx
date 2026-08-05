@@ -266,8 +266,8 @@ export default function ThermalLabel4x6Portrait({ label }) {
           <InfoLine label="Pyyntialue" value={label.catchArea} stylesOverride={compactCrayfishStyles} />
           <InfoLine label="Pyyntimenetelmä" value={label.gearType} stylesOverride={compactCrayfishStyles} />
           <InfoLine label="Pyyntipäivä" value={label.catchDate} emphasis stylesOverride={compactCrayfishStyles} />
+          <InfoLine label="Viimeinen käyttöpäivä" value={label.useByDate} emphasis stylesOverride={compactCrayfishStyles} />
           <InfoLine label="Kaupallisen kalastajan tunnus" value={label.commercialFishingId} stylesOverride={compactCrayfishStyles} />
-          <InfoLine label="Tuote" value={label.productForm} stylesOverride={compactCrayfishStyles} />
           <InfoLine value={label.productStateText} stylesOverride={compactCrayfishStyles} />
           <InfoLine label="Säilytys" value={label.storageText} stylesOverride={compactCrayfishStyles} />
         </div>

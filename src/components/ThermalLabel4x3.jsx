@@ -245,8 +245,8 @@ export default function ThermalLabel4x3({ label }) {
           <InfoLine label="Pyyntimenetelmä" value={label.gearType} />
           <InfoLine value={label.productStateText} />
           <InfoLine label="Pyyntipäivä" value={label.catchDate} emphasis />
+          <InfoLine label="Viimeinen käyttöpäivä" value={label.useByDate} emphasis />
           <InfoLine label="Kaupallisen kalastajan tunnus" value={label.commercialFishingId} />
-          <InfoLine label="Tuote" value={label.productForm} />
           <InfoLine label="Säilytys" value={label.storageText} />
         </div>
 
