@@ -79,20 +79,6 @@ const styles = {
     fontWeight: 900,
     wordBreak: "break-word",
   },
-  weightLine: {
-    display: "grid",
-    gridTemplateColumns: "auto 1fr auto",
-    alignItems: "end",
-    gap: "1.2mm",
-    marginTop: "1.2mm",
-    fontSize: "7.8pt",
-    lineHeight: 1,
-    fontWeight: 900,
-  },
-  weightWriteLine: {
-    height: "4.2mm",
-    borderBottom: `0.5mm solid ${palette.text}`,
-  },
   supplierBlock: {
     marginTop: "auto",
     paddingTop: "1.1mm",
@@ -181,6 +167,12 @@ const styles = {
     lineHeight: 1,
     fontWeight: 700,
   },
+  quantityWriteLine: {
+    flex: 1,
+    minWidth: "8mm",
+    height: "4.2mm",
+    borderBottom: `0.5mm solid ${palette.text}`,
+  },
   qrImage: {
     width: "100%",
     height: "100%",
@@ -250,14 +242,6 @@ export default function ThermalLabel4x3({ label }) {
           <InfoLine label="Säilytys" value={label.storageText} />
         </div>
 
-        {!hasPrintedQuantity ? (
-          <div style={styles.weightLine}>
-            <span>{label.isCrayfish ? "Kpl:" : "Paino:"}</span>
-            {label.weightKg ? <strong>{label.weightKg}</strong> : <span style={styles.weightWriteLine} />}
-            <span>{label.isCrayfish ? "kpl" : "kg"}</span>
-          </div>
-        ) : null}
-
         <div style={styles.supplierBlock}>
           <div style={styles.supplierLine}>Toimittaja: {label.supplier || "-"}</div>
           {label.supplierAddress ? <div style={styles.supplierLine}>{label.supplierAddress}</div> : null}
@@ -276,13 +260,15 @@ export default function ThermalLabel4x3({ label }) {
         {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
 
         <div style={styles.qrBottomBlock}>
-          {hasPrintedQuantity ? (
-            <div style={styles.crayfishQuantity}>
-              <span style={styles.crayfishQuantityLabel}>{label.isCrayfish ? "Määrä:" : "Paino:"}</span>
+          <div style={styles.crayfishQuantity}>
+            <span style={styles.crayfishQuantityLabel}>{label.isCrayfish ? "Määrä:" : "Paino:"}</span>
+            {hasPrintedQuantity ? (
               <strong style={{ fontSize: quantityFontSize }}>{printedQuantity}</strong>
-              <span style={styles.crayfishQuantityUnit}>{label.isCrayfish ? "kpl" : "kg"}</span>
-            </div>
-          ) : null}
+            ) : (
+              <span style={styles.quantityWriteLine} />
+            )}
+            <span style={styles.crayfishQuantityUnit}>{label.isCrayfish ? "kpl" : "kg"}</span>
+          </div>
           <div style={styles.qrFrame}>
             {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}
           </div>
