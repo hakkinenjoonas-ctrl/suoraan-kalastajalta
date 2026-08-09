@@ -45,6 +45,8 @@ Deno.serve(async (req) => {
       fileBase64,
       reportLabel,
       dateRangeLabel,
+      reportOwnerName,
+      reportOwnerCompany,
     } = await req.json();
 
     if (!toEmail || !fileName || !fileBase64 || !reportLabel) {
@@ -55,11 +57,21 @@ Deno.serve(async (req) => {
 
     const safeReportLabel = escapeHtml(reportLabel);
     const safeDateRangeLabel = escapeHtml(dateRangeLabel || "kaikki");
+    const normalizedReportOwnerName = String(reportOwnerName || "").trim();
+    const normalizedReportOwnerCompany = String(reportOwnerCompany || "").trim();
+    const safeReportOwnerName = escapeHtml(normalizedReportOwnerName);
+    const safeReportOwnerCompany = escapeHtml(normalizedReportOwnerCompany);
+    const subjectOwner = (normalizedReportOwnerName || normalizedReportOwnerCompany)
+      .replace(/[\r\n]+/g, " ");
 
     const text = [
       `Hei,`,
       "",
       `${reportLabel} on liitetty tähän viestiin Excel-tiedostona.`,
+      ...(normalizedReportOwnerName ? [`Kalastaja: ${normalizedReportOwnerName}`] : []),
+      ...(normalizedReportOwnerCompany && normalizedReportOwnerCompany !== normalizedReportOwnerName
+        ? [`Yritys: ${normalizedReportOwnerCompany}`]
+        : []),
       `Aikaväli: ${dateRangeLabel || "kaikki"}`,
       "",
       "Ystävällisin terveisin",
@@ -70,6 +82,8 @@ Deno.serve(async (req) => {
       <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
         <h2 style="color: #1d4ed8; margin-bottom: 12px;">${safeReportLabel}</h2>
         <p>Raportti on liitetty tähän viestiin Excel-tiedostona.</p>
+        ${safeReportOwnerName ? `<p><strong>Kalastaja:</strong> ${safeReportOwnerName}</p>` : ""}
+        ${safeReportOwnerCompany && safeReportOwnerCompany !== safeReportOwnerName ? `<p><strong>Yritys:</strong> ${safeReportOwnerCompany}</p>` : ""}
         <p><strong>Aikaväli:</strong> ${safeDateRangeLabel}</p>
         <p style="margin-top: 16px;">Ystävällisin terveisin<br />Suoraan Kalastajalta</p>
       </div>
@@ -84,7 +98,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: fromEmail,
         to: [String(toEmail)],
-        subject: `${reportLabel} (${dateRangeLabel || "kaikki"})`,
+        subject: `${reportLabel}${subjectOwner ? ` – ${subjectOwner}` : ""} (${dateRangeLabel || "kaikki"})`,
         text,
         html,
         attachments: [

@@ -5408,6 +5408,8 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       fileBase64: base64Content,
       reportLabel,
       dateRangeLabel: reportScopeLabel,
+      reportOwnerName: String(profile?.display_name || profile?.company_name || "").trim(),
+      reportOwnerCompany: String(profile?.company_name || "").trim(),
     }, accessToken);
 
     if (result?.error) {
