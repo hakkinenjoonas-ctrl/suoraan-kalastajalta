@@ -94,7 +94,7 @@ function getLineItems(entry: Record<string, unknown>) {
       const row = (item || {}) as Record<string, unknown>;
       const rawSpecies = safeString(row.species);
       const species = formatSpeciesNameOnly(rawSpecies);
-      const scientificNames = Array.from(rawSpecies.matchAll(/\(([^()]+)\)/g)).map((match) => safeString(match[1])).filter(Boolean).join(", ");
+      const scientificNames = safeString(row.scientific_name) || extractScientificNames(rawSpecies);
       const quantity = formatLineItemQuantity(row);
       const price = formatPrice(row.price_per_kg, safeString(row.price_unit || "kg"));
       const batchId = safeString(row.batch_id);
@@ -226,7 +226,7 @@ function extractScientificNames(...values: unknown[]) {
         .split("\n")
         .flatMap((line) => Array.from(line.matchAll(/\(([^()]+)\)/g)).map((match) => safeString(match[1])))
     )
-    .filter(Boolean);
+    .filter((name) => /^[A-ZÅÄÖ][a-zåäö-]+\s+[a-zåäö-]+(?:\s+[a-zåäö-]+)?$/u.test(name));
 
   return Array.from(new Set(names)).join(", ");
 }
@@ -285,7 +285,9 @@ Deno.serve(async (req) => {
     const batchId = safeString(entry.batch_id);
     const extraNotes = formatAdditionalNotes(entry.notes);
     const additionalNoteRows = getAdditionalNoteRows(entry.notes);
-    const scientificNames = extractScientificNames(entry.species, entry.notes);
+    const scientificNames = lineItems.length > 0
+      ? Array.from(new Set(lineItems.map((item) => item.scientificNames).filter(Boolean))).join(", ")
+      : extractScientificNames(entry.species, entry.notes);
     const deliveryMethod = safeString(entry.deliveryMethod || "Nouto");
     const lineItemRows = lineItems
       .map((item) => `

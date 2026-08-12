@@ -17,6 +17,7 @@ import {
   clearBrokenSession,
   findAllowedUserByEmail,
   findAllowedUsersByEmail,
+  deduplicateAllowedUsers,
   isMissingRefreshTokenError,
 } from "./lib/auth.js";
 import {
@@ -4863,30 +4864,32 @@ function getHeaderBrandStyles(viewportWidth) {
   return {
     row: {
       display: "flex",
-      alignItems: "center",
-      gap: compact ? 8 : 2,
+      flexDirection: compact ? "column" : "row",
+      alignItems: compact ? "stretch" : "center",
+      gap: compact ? 10 : 2,
       flexWrap: "nowrap",
       width: "100%",
       marginTop: compact ? 44 : 12,
       marginBottom: 12,
+      minWidth: 0,
     },
     title: {
       ...styles.title,
       marginRight: compact ? 0 : -2,
       minWidth: 0,
       flex: "1 1 auto",
-      fontSize: compact ? 34 : styles.title.fontSize,
+      width: compact ? "100%" : "auto",
+      fontSize: compact ? "clamp(28px, 9vw, 34px)" : styles.title.fontSize,
       lineHeight: compact ? 1.08 : styles.title.lineHeight,
     },
     logo: {
-      height: compact ? 88 : viewportWidth < 768 ? 116 : viewportWidth < 1024 ? 170 : 196,
-      width: "auto",
-      maxWidth: compact ? "none" : viewportWidth < 768 ? "36vw" : "none",
+      height: compact ? "auto" : viewportWidth < 768 ? 116 : viewportWidth < 1024 ? 170 : 196,
+      width: compact ? "min(132px, 45vw)" : "auto",
+      maxWidth: compact ? "100%" : viewportWidth < 768 ? "36vw" : "none",
       objectFit: "contain",
       display: "block",
       flex: "0 0 auto",
-      transform: compact ? "scale(1.55)" : "none",
-      transformOrigin: "center",
+      alignSelf: compact ? "flex-end" : "auto",
     },
   };
 }
@@ -10935,7 +10938,7 @@ export default function App() {
           setAuthError(allowedError.message);
         } else {
           const ownerProfilesData = ownerProfilesResult?.data || [];
-          let resolvedAllowedUsers = allowedData || [];
+          let resolvedAllowedUsers = deduplicateAllowedUsers(allowedData || []);
 
           if (profile.role === "owner") {
             const missingAllowedPayloads = ownerProfilesData
@@ -10956,7 +10959,10 @@ export default function App() {
             if (missingAllowedPayloads.length > 0) {
               const { data: insertedAllowedRows, error: insertAllowedError } = await supabase
                 .from("allowed_users")
-                .insert(missingAllowedPayloads)
+                .upsert(missingAllowedPayloads, {
+                  onConflict: "email,role,buyer_id",
+                  ignoreDuplicates: true,
+                })
                 .select("*");
 
               if (insertAllowedError) {
@@ -10966,7 +10972,7 @@ export default function App() {
                 }
                 setAuthError(insertAllowedError.message);
               } else if (Array.isArray(insertedAllowedRows) && insertedAllowedRows.length > 0) {
-                resolvedAllowedUsers = [...resolvedAllowedUsers, ...insertedAllowedRows];
+                resolvedAllowedUsers = deduplicateAllowedUsers([...resolvedAllowedUsers, ...insertedAllowedRows]);
               }
             }
           }
@@ -12890,6 +12896,7 @@ export default function App() {
       kilos: totalKilos,
       line_items: rows.map((row) => ({
         species: formatSpeciesForSale(getSpeciesRowLabel(row)),
+        scientific_name: getSpeciesMetadata(getSpeciesRowLabel(row))?.scientific || "",
         kilos: Number(row.kilos || 0),
         count: Number(row.count || 0),
         price_per_kg: parseLocaleNumber(row.price_per_kg),

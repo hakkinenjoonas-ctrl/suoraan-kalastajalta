@@ -42,3 +42,23 @@ export async function findAllowedUserByEmail(supabaseClient, email) {
   const { data, error } = await findAllowedUsersByEmail(supabaseClient, email);
   return { data: (data || [])[0] || null, error };
 }
+
+export function deduplicateAllowedUsers(rows = []) {
+  const deduplicated = new Map();
+
+  for (const row of rows || []) {
+    const key = [
+      normalizeEmail(row?.email),
+      String(row?.role || ""),
+      String(row?.buyer_id || ""),
+    ].join("::");
+    const existing = deduplicated.get(key);
+
+    // Prefer the active row if old duplicate data contains mixed states.
+    if (!existing || (!existing.is_active && row?.is_active)) {
+      deduplicated.set(key, row);
+    }
+  }
+
+  return [...deduplicated.values()];
+}

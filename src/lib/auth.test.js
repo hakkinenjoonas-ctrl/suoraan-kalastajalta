@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-
-import { isMissingRefreshTokenError } from "./auth.js";
+import { deduplicateAllowedUsers, isMissingRefreshTokenError } from "./auth.js";
 
 describe("auth", () => {
   describe("isMissingRefreshTokenError", () => {
@@ -15,5 +14,27 @@ describe("auth", () => {
     it("ignores unrelated auth errors", () => {
       expect(isMissingRefreshTokenError(new Error("Email rate limit exceeded"))).toBe(false);
     });
+  });
+});
+
+describe("deduplicateAllowedUsers", () => {
+  it("removes duplicate rows for the same normalized email, role and buyer", () => {
+    const rows = [
+      { id: "old", email: " Fisher@example.com ", role: "member", buyer_id: null, is_active: false },
+      { id: "active", email: "fisher@example.com", role: "member", buyer_id: null, is_active: true },
+    ];
+
+    expect(deduplicateAllowedUsers(rows)).toEqual([rows[1]]);
+  });
+
+  it("preserves separate roles and separate buyer links", () => {
+    const rows = [
+      { id: "member", email: "user@example.com", role: "member", buyer_id: null, is_active: true },
+      { id: "processor", email: "user@example.com", role: "processor", buyer_id: null, is_active: true },
+      { id: "buyer-a", email: "user@example.com", role: "buyer", buyer_id: "a", is_active: true },
+      { id: "buyer-b", email: "user@example.com", role: "buyer", buyer_id: "b", is_active: true },
+    ];
+
+    expect(deduplicateAllowedUsers(rows)).toEqual(rows);
   });
 });
