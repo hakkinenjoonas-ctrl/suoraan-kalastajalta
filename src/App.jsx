@@ -17016,6 +17016,28 @@ export default function App() {
         whiteSpace: "nowrap",
       }
     : styles.tab;
+  const visibleTabIds = [
+    "dashboard",
+    ...(profile.role !== "buyer" ? ["add", "entries"] : []),
+    "offers",
+    ...(auctionsAvailable && ["member", "owner"].includes(profile.role) ? ["auctions"] : []),
+    "reports",
+    ...(profile.role === "member" ? ["billing"] : []),
+    ...(profile.role === "owner" ? ["operations", "buyers", "users", "billing"] : []),
+  ];
+  const handleNextVisibleTab = () => {
+    const currentIndex = visibleTabIds.indexOf(activeTab);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % visibleTabIds.length : 0;
+    const nextTab = visibleTabIds[nextIndex];
+
+    setActiveTab(nextTab);
+    if (nextTab === "billing") setRefreshTick((prev) => prev + 1);
+
+    window.requestAnimationFrame(() => {
+      const nextTabButton = tabsScrollRef.current?.querySelector(`[data-tab-id="${nextTab}"]`);
+      nextTabButton?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    });
+  };
   const grid3 = responsiveGridStyle(styles.grid3, viewportWidth);
   const grid2 = responsiveGridStyle(styles.grid2, viewportWidth);
   const formGrid = responsiveGridStyle(styles.formGrid, viewportWidth);
@@ -17443,17 +17465,17 @@ export default function App() {
         <div style={{ ...styles.stickyTabsWrap, position: "sticky" }}>
           <div style={{ position: "relative" }}>
             <div ref={tabsScrollRef} style={visibleTabStyle}>
-              <button style={{ ...visibleSingleTabStyle, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
-              {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button> : null}
-              {profile.role !== "buyer" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button> : null}
-              <button style={{ ...visibleSingleTabStyle, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
-              {auctionsAvailable && ["member", "owner"].includes(profile.role) ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "auctions" ? styles.activeTab : {}) }} onClick={() => setActiveTab("auctions")}>Huutokaupat</button> : null}
-              <button style={{ ...visibleSingleTabStyle, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
-              {profile.role === "member" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
-              {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "operations" ? styles.activeTab : {}) }} onClick={() => setActiveTab("operations")}>Ylläpito</button> : null}
-              {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
-              {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
-              {profile.role === "owner" ? <button style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
+              <button data-tab-id="dashboard" style={{ ...visibleSingleTabStyle, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
+              {profile.role !== "buyer" ? <button data-tab-id="add" style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button> : null}
+              {profile.role !== "buyer" ? <button data-tab-id="entries" style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button> : null}
+              <button data-tab-id="offers" style={{ ...visibleSingleTabStyle, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
+              {auctionsAvailable && ["member", "owner"].includes(profile.role) ? <button data-tab-id="auctions" style={{ ...visibleSingleTabStyle, ...(activeTab === "auctions" ? styles.activeTab : {}) }} onClick={() => setActiveTab("auctions")}>Huutokaupat</button> : null}
+              <button data-tab-id="reports" style={{ ...visibleSingleTabStyle, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
+              {profile.role === "member" ? <button data-tab-id="billing" style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
+              {profile.role === "owner" ? <button data-tab-id="operations" style={{ ...visibleSingleTabStyle, ...(activeTab === "operations" ? styles.activeTab : {}) }} onClick={() => setActiveTab("operations")}>Ylläpito</button> : null}
+              {profile.role === "owner" ? <button data-tab-id="buyers" style={{ ...visibleSingleTabStyle, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
+              {profile.role === "owner" ? <button data-tab-id="users" style={{ ...visibleSingleTabStyle, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
+              {profile.role === "owner" ? <button data-tab-id="billing" style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
             </div>
             {tabsOverflowing ? (
               <div
@@ -17477,7 +17499,10 @@ export default function App() {
                 }}
               >
                 {showTabsScrollHint ? (
-                  <div
+                  <button
+                    type="button"
+                    onClick={handleNextVisibleTab}
+                    aria-label="Siirry seuraavalle sivulle"
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
@@ -17491,11 +17516,13 @@ export default function App() {
                       fontWeight: 800,
                       boxShadow: "0 8px 20px rgba(37, 99, 235, 0.08)",
                       whiteSpace: "nowrap",
+                      cursor: "pointer",
+                      pointerEvents: "auto",
                     }}
                   >
                     <span>Lisää</span>
                     <span>→</span>
-                  </div>
+                  </button>
                 ) : null}
               </div>
             ) : null}
