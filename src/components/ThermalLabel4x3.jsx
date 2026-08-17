@@ -61,7 +61,8 @@ const styles = {
     fontSize: "10.8pt",
     lineHeight: 1,
     fontWeight: 900,
-    wordBreak: "break-word",
+    whiteSpace: "nowrap",
+    letterSpacing: "-0.025em",
   },
   infoBlock: {
     marginTop: "1.6mm",
@@ -99,30 +100,36 @@ const styles = {
     minHeight: 0,
   },
   brandBlock: {
-    width: "100%",
+    flex: "1 1 auto",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     paddingTop: "0.2mm",
+    minWidth: 0,
   },
-  ovalWrap: {
+  brandRow: {
     width: "100%",
     display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "0.8mm",
+  },
+  ovalWrap: {
+    flex: "0 0 auto",
+    display: "flex",
     justifyContent: "center",
-    marginTop: "0.8mm",
-    marginBottom: "0.8mm",
   },
   logo: {
-    width: "19mm",
+    width: "13mm",
     height: "auto",
-    maxWidth: "19mm",
-    maxHeight: "16mm",
+    maxWidth: "13mm",
+    maxHeight: "11mm",
     objectFit: "contain",
     display: "block",
   },
   brandText: {
-    marginTop: "0.6mm",
-    fontSize: "8.3pt",
+    marginTop: "0.3mm",
+    fontSize: "6.5pt",
     lineHeight: 1.02,
     fontWeight: 800,
     textAlign: "center",
@@ -185,8 +192,8 @@ function renderOvalMark(establishmentNumber) {
   if (!establishmentNumber) return null;
   return (
     <svg
-      width="22mm"
-      height="12mm"
+      width="14mm"
+      height="9mm"
       viewBox="0 0 160 90"
       xmlns="http://www.w3.org/2000/svg"
       aria-label={`Laitostunnus ${establishmentNumber}`}
@@ -219,6 +226,8 @@ export default function ThermalLabel4x3({ label }) {
     : String(printedQuantity || "").length <= 5
       ? "24pt"
       : "18pt";
+  const batchLength = `Erätunnus: ${label.batchId || "-"}`.length;
+  const batchFontSize = `${Math.min(10.8, (10.8 * 27) / Math.max(batchLength, 1)).toFixed(2)}pt`;
 
   return (
     <div style={styles.root}>
@@ -227,7 +236,7 @@ export default function ThermalLabel4x3({ label }) {
           <div style={styles.species}>{label.species || "-"}</div>
           {label.scientificName ? <div style={styles.scientific}>{label.scientificName}</div> : null}
           <div style={styles.batchBox}>
-            <div style={styles.batchText}>Erätunnus: {label.batchId || "-"}</div>
+            <div style={{ ...styles.batchText, fontSize: batchFontSize }}>Erätunnus: {label.batchId || "-"}</div>
           </div>
         </div>
 
@@ -250,14 +259,16 @@ export default function ThermalLabel4x3({ label }) {
       </div>
 
       <div style={styles.right}>
-        <div style={styles.brandBlock}>
-          {label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={styles.logo} /> : null}
-          <div style={styles.brandText}>
-            <div>Suoraan</div>
-            <div>Kalastajalta</div>
+        <div style={styles.brandRow}>
+          {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
+          <div style={styles.brandBlock}>
+            {label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={styles.logo} /> : null}
+            <div style={styles.brandText}>
+              <div>Suoraan</div>
+              <div>Kalastajalta</div>
+            </div>
           </div>
         </div>
-        {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
 
         <div style={styles.qrBottomBlock}>
           <div style={styles.crayfishQuantity}>

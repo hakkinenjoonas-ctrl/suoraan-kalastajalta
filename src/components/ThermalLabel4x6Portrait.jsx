@@ -31,7 +31,7 @@ const styles = {
   },
   brand: {
     display: "grid",
-    gridTemplateColumns: "22mm 1fr auto",
+    gridTemplateColumns: "auto 22mm 1fr",
     gap: "3mm",
     alignItems: "center",
     paddingBottom: "2mm",
@@ -118,7 +118,8 @@ const styles = {
     fontSize: "15pt",
     lineHeight: 1,
     fontWeight: 900,
-    wordBreak: "break-word",
+    whiteSpace: "nowrap",
+    letterSpacing: "-0.025em",
   },
   infoGrid: {
     display: "grid",
@@ -236,10 +237,14 @@ export default function ThermalLabel4x6Portrait({ label }) {
     line: { ...styles.line, fontSize: "9.3pt", lineHeight: 1.03 },
     catchDate: { ...styles.catchDate, fontSize: "10.3pt", lineHeight: 1.03 },
   } : null;
+  const batchLength = String(label.batchId || "-").length;
+  const defaultBatchFontSize = compactCrayfishStyles ? 13.5 : 15;
+  const batchFontSize = `${Math.min(defaultBatchFontSize, (defaultBatchFontSize * 30) / Math.max(batchLength, 1)).toFixed(2)}pt`;
 
   return (
     <div style={styles.root}>
       <section style={styles.brand}>
+        {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
         <div style={styles.logoWrap}>
           {label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={styles.logo} /> : null}
         </div>
@@ -247,7 +252,6 @@ export default function ThermalLabel4x6Portrait({ label }) {
           <div style={styles.brandTitle}>Suoraan Kalastajalta</div>
           <div style={styles.brandSubtitle}>Kotimainen kala suoraan pyytäjältä</div>
         </div>
-        {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
       </section>
 
       <section style={compactCrayfishStyles?.main || styles.main}>
@@ -258,7 +262,7 @@ export default function ThermalLabel4x6Portrait({ label }) {
 
         <div style={compactCrayfishStyles?.batchBox || styles.batchBox}>
           <div style={styles.batchLabel}>Erätunnus</div>
-          <div style={compactCrayfishStyles?.batchValue || styles.batchValue}>{label.batchId || "-"}</div>
+          <div style={{ ...(compactCrayfishStyles?.batchValue || styles.batchValue), fontSize: batchFontSize }}>{label.batchId || "-"}</div>
         </div>
 
         <div style={compactCrayfishStyles?.infoGrid || styles.infoGrid}>

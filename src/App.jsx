@@ -1752,7 +1752,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           <div class="label-main-top">
             <div class="species">${label.species || "-"}</div>
             ${label.scientificName ? `<div class="scientific">${label.scientificName}</div>` : ""}
-            <div class="batch">Erätunnus: ${label.batchId || "-"}</div>
+            <div class="batch" style="font-size:${Math.min(7.2, (7.2 * 27) / Math.max(`Erätunnus: ${label.batchId || "-"}`.length, 1)).toFixed(2)}pt">Erätunnus: ${label.batchId || "-"}</div>
           ${label.catchArea ? `<div class="line">Pyyntialue: ${label.catchArea}</div>` : ""}
           ${label.harvestSourceText ? `<div class="line">${label.harvestSourceText}</div>` : ""}
           ${label.gearType ? `<div class="line">Pyyntimenetelmä: ${label.gearType}</div>` : ""}
@@ -1770,20 +1770,22 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           </div>
         </div>
         <div class="label-side">
-          <div class="label-brand">
-            <img src="${label.logoUrl}" alt="Suoraan Kalastajalta" />
-            <div class="label-brand-text">
-              <div>Suoraan</div>
-              <div>Kalastajalta</div>
+          <div class="label-brand-row">
+            ${label.eviraFacilityId ? `
+              <div class="label-oval" aria-label="Laitostunnus ${label.eviraFacilityId}">
+                <div class="label-oval-top">FI</div>
+                <div class="label-oval-mid">${label.eviraFacilityId}</div>
+                <div class="label-oval-bottom">EC</div>
+              </div>
+            ` : ""}
+            <div class="label-brand">
+              <img src="${label.logoUrl}" alt="Suoraan Kalastajalta" />
+              <div class="label-brand-text">
+                <div>Suoraan</div>
+                <div>Kalastajalta</div>
+              </div>
             </div>
           </div>
-          ${label.eviraFacilityId ? `
-            <div class="label-oval" aria-label="Laitostunnus ${label.eviraFacilityId}">
-              <div class="label-oval-top">FI</div>
-              <div class="label-oval-mid">${label.eviraFacilityId}</div>
-              <div class="label-oval-bottom">EC</div>
-            </div>
-          ` : ""}
           <div class="label-qr">
             <img src="${label.qrImageUrl}" alt="QR ${label.batchId}" />
           </div>
@@ -1811,7 +1813,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           .supplier-block { margin-top: auto; min-width: 0; }
           .species { font-size: 12.6pt; font-weight: 800; line-height: 1.03; margin-bottom: 0.45mm; }
           .scientific { font-size: 6.2pt; line-height: 1.12; color: #475569; margin-bottom: 0.7mm; }
-          .batch { font-size: 7.2pt; font-weight: 800; background: #eff6ff; border: 0.22mm solid #93c5fd; border-radius: 1.2mm; padding: 0.7mm 0.9mm; margin-bottom: 0.7mm; }
+          .batch { font-size: 7.2pt; font-weight: 800; background: #eff6ff; border: 0.22mm solid #93c5fd; border-radius: 1.2mm; padding: 0.7mm 0.9mm; margin-bottom: 0.7mm; white-space: nowrap; letter-spacing: -0.02em; overflow: hidden; }
           .line { font-size: 6.25pt; line-height: 1.12; margin-bottom: 0.3mm; }
           .catch-date { font-size: 7.4pt; line-height: 1.16; font-weight: 700; margin-bottom: 0.5mm; }
           .weight-line { display: flex; align-items: flex-end; gap: 1.1mm; font-size: 6.5pt; margin: 1.25mm 0 0.35mm; min-height: 4.8mm; }
@@ -1820,12 +1822,13 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           .weight-value { flex: 1; min-width: 0; font-weight: 700; }
           .weight-unit { font-weight: 700; white-space: nowrap; }
           .label-side { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; min-width: 0; }
+          .label-brand-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 0.7mm; padding-top: 0.4mm; }
           .label-brand { display: flex; flex-direction: column; align-items: center; width: 100%; padding-top: 0.6mm; }
-          .label-brand img { width: 14.4mm; max-height: 12mm; object-fit: contain; margin-bottom: 0.6mm; }
-          .label-brand-text { font-size: 5.2pt; line-height: 1.05; font-weight: 700; text-align: center; color: #0f172a; }
-          .label-oval { width: 18mm; min-height: 10.8mm; border: 0.28mm solid #111827; border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0.5mm 0.8mm; margin: 0.8mm 0 1.1mm; text-align: center; }
-          .label-oval-top, .label-oval-bottom { font-size: 4.5pt; line-height: 1; font-weight: 800; }
-          .label-oval-mid { font-size: 5.4pt; line-height: 1.02; font-weight: 800; word-break: break-word; }
+          .label-brand img { width: 11mm; max-height: 8.5mm; object-fit: contain; margin-bottom: 0.3mm; }
+          .label-brand-text { font-size: 4.5pt; line-height: 1.02; font-weight: 700; text-align: center; color: #0f172a; }
+          .label-oval { flex: 0 0 auto; width: 11mm; min-height: 8mm; border: 0.28mm solid #111827; border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0.35mm 0.5mm; text-align: center; }
+          .label-oval-top, .label-oval-bottom { font-size: 3.8pt; line-height: 1; font-weight: 800; }
+          .label-oval-mid { font-size: 4.5pt; line-height: 1.02; font-weight: 800; white-space: nowrap; }
           .label-qr { display: flex; align-items: flex-end; justify-content: flex-start; width: 100%; }
           .label-qr img { width: 18mm; height: 18mm; object-fit: contain; border: 0.22mm solid #cbd5e1; border-radius: 1.2mm; padding: 0.8mm; background: #fff; }
         </style>
@@ -2431,20 +2434,29 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     const logoHeight = logoAspectRatio >= 1
       ? Math.min(logoMaxHeight, logoMaxWidth / logoAspectRatio)
       : logoMaxHeight;
-    const brandX = qrX + ((qrSize - logoWidth) / 2);
+    const sideHeaderX = qrX - 4.2;
+    const facilityWidth = 10.5;
+    const facilityHeight = 8;
+    const compactLogoMaxWidth = label.eviraFacilityId ? 10.5 : logoMaxWidth;
+    const compactLogoWidth = Math.min(logoWidth, compactLogoMaxWidth);
+    const compactLogoHeight = Math.min(logoHeight, 8.5);
+    const brandX = label.eviraFacilityId
+      ? sideHeaderX + facilityWidth + 1.2
+      : qrX + ((qrSize - compactLogoWidth) / 2);
     const brandY = top + 0.2;
     const textWidth = qrX - left - 2.4;
     let currentY = top + 4.2;
 
     if (logoDataUrl) {
-      doc.addImage(logoDataUrl, "PNG", brandX, brandY, logoWidth, logoHeight);
+      doc.addImage(logoDataUrl, "PNG", brandX, brandY, compactLogoWidth, compactLogoHeight);
     }
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(5.2);
-    doc.text("Suoraan", qrX + (qrSize / 2), brandY + logoHeight + 2.2, { align: "center" });
-    doc.text("Kalastajalta", qrX + (qrSize / 2), brandY + logoHeight + 4.5, { align: "center" });
+    doc.setFontSize(label.eviraFacilityId ? 4.3 : 5.2);
+    const brandCenterX = brandX + (compactLogoWidth / 2);
+    doc.text("Suoraan", brandCenterX, brandY + compactLogoHeight + 2, { align: "center" });
+    doc.text("Kalastajalta", brandCenterX, brandY + compactLogoHeight + 4, { align: "center" });
     if (label.eviraFacilityId) {
-      drawFacilityOvalMark(doc, label.eviraFacilityId, qrX, brandY + logoHeight + 6.3, qrSize, 10);
+      drawFacilityOvalMark(doc, label.eviraFacilityId, sideHeaderX, brandY + 0.4, facilityWidth, facilityHeight);
     }
 
     doc.setFont("helvetica", "bold");
@@ -2468,8 +2480,14 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     doc.setDrawColor(147, 197, 253);
     doc.roundedRect(left, currentY - 2.6, textWidth, 6.2, 1.1, 1.1, "FD");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.6);
-    doc.text(`Erätunnus: ${label.batchId || "-"}`, left + 1.2, currentY + 1.6);
+    const batchText = `Erätunnus: ${label.batchId || "-"}`;
+    let batchFontSize = 7.6;
+    doc.setFontSize(batchFontSize);
+    while (batchFontSize > 4.8 && doc.getTextWidth(batchText) > textWidth - 2.4) {
+      batchFontSize -= 0.2;
+      doc.setFontSize(batchFontSize);
+    }
+    doc.text(batchText, left + 1.2, currentY + 1.6);
     currentY += 5.6;
 
     doc.setFont("helvetica", "normal");
@@ -4806,7 +4824,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
                       <div>
                         <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.03 }}>{previewLabel.species}</div>
                         {previewLabel.scientificName ? <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{previewLabel.scientificName}</div> : null}
-                        <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800, padding: "6px 8px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8 }}>Erätunnus: {previewLabel.batchId}</div>
+                        <div style={{ marginTop: 8, fontSize: Math.min(14, (14 * 27) / Math.max(`Erätunnus: ${previewLabel.batchId}`.length, 1)), fontWeight: 800, padding: "6px 8px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: 8, whiteSpace: "nowrap", letterSpacing: "-0.02em", overflow: "hidden" }}>Erätunnus: {previewLabel.batchId}</div>
                         {previewLabel.catchArea ? <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.12 }}>Pyyntialue: {previewLabel.catchArea}</div> : null}
                         {previewLabel.harvestSourceText ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>{previewLabel.harvestSourceText}</div> : null}
                         {previewLabel.gearType ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntimenetelmä: {previewLabel.gearType}</div> : null}
@@ -4832,18 +4850,18 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
                       </div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4 }}>
-                        <img src={previewLabel.logoUrl} alt="Suoraan Kalastajalta" style={{ width: 48, height: 48, objectFit: "contain", marginBottom: 0 }} />
-                        <div style={{ fontSize: 10, lineHeight: 1.05, fontWeight: 700, textAlign: "center", color: "#0f172a" }}>
-                          <div>Suoraan</div>
-                          <div>Kalastajalta</div>
+                      <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, paddingTop: 4 }}>
+                        {previewLabel.eviraFacilityId ? (
+                          <FacilityOvalPreview value={previewLabel.eviraFacilityId} width={40} minHeight={30} fontSize={7} />
+                        ) : null}
+                        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <img src={previewLabel.logoUrl} alt="Suoraan Kalastajalta" style={{ width: previewLabel.eviraFacilityId ? 38 : 48, height: previewLabel.eviraFacilityId ? 38 : 48, objectFit: "contain", marginBottom: 0 }} />
+                          <div style={{ fontSize: previewLabel.eviraFacilityId ? 8 : 10, lineHeight: 1.05, fontWeight: 700, textAlign: "center", color: "#0f172a" }}>
+                            <div>Suoraan</div>
+                            <div>Kalastajalta</div>
+                          </div>
                         </div>
                       </div>
-                      {previewLabel.eviraFacilityId ? (
-                        <div style={{ width: "100%", display: "flex", justifyContent: "center", margin: "6px 0 8px" }}>
-                          <FacilityOvalPreview value={previewLabel.eviraFacilityId} width={72} minHeight={40} fontSize={10} />
-                        </div>
-                      ) : null}
                       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-start", width: "100%" }}>
                         <img src={previewLabel.qrImageUrl} alt={`QR ${previewLabel.batchId}`} style={{ width: 82, height: 82, objectFit: "contain", border: "1px solid #cbd5e1", borderRadius: 8, padding: 4, background: "#fff" }} />
                       </div>
