@@ -242,7 +242,7 @@ export default function ThermalLabel4x6Portrait({ label }) {
   const batchFontSize = `${Math.min(defaultBatchFontSize, (defaultBatchFontSize * 30) / Math.max(batchLength, 1)).toFixed(2)}pt`;
 
   return (
-    <div style={styles.root}>
+    <div style={styles.root} data-label-root="true">
       <section style={styles.brand}>
         {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
         <div style={styles.logoWrap}>
@@ -262,7 +262,7 @@ export default function ThermalLabel4x6Portrait({ label }) {
 
         <div style={compactCrayfishStyles?.batchBox || styles.batchBox}>
           <div style={styles.batchLabel}>Erätunnus</div>
-          <div style={{ ...(compactCrayfishStyles?.batchValue || styles.batchValue), fontSize: batchFontSize }}>{label.batchId || "-"}</div>
+          <div data-label-single-line="true" style={{ ...(compactCrayfishStyles?.batchValue || styles.batchValue), fontSize: batchFontSize, overflow: "hidden" }}>{label.batchId || "-"}</div>
         </div>
 
         <div style={compactCrayfishStyles?.infoGrid || styles.infoGrid}>

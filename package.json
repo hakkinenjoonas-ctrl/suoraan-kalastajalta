@@ -10,6 +10,9 @@
     "preview": "vite preview",
     "sync:android": "npx cap sync android",
     "open:android": "npx cap open android",
+    "sync:ios": "npx cap sync ios",
+    "open:ios": "npx cap open ios",
+    "update:ios": "npm run build && npm run sync:ios",
     "update:all": "npm run build && npm run sync:android"
   },
   "dependencies": {
@@ -18,10 +21,12 @@
     "@capacitor/cli": "^8.3.0",
     "@capacitor/core": "^8.3.0",
     "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/ios": "8.3.0",
     "@capacitor/local-notifications": "^8.0.2",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.3",
     "@capacitor/share": "^8.0.1",
+    "@suoraan-kalastajalta/apple-storekit": "file:plugins/apple-storekit",
     "@supabase/supabase-js": "^2.49.8",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",

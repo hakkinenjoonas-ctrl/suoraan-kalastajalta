@@ -1,0 +1,20 @@
+{
+  "name": "@suoraan-kalastajalta/apple-storekit",
+  "version": "1.0.0",
+  "description": "iOS-only StoreKit 2 bridge for Fisher Premium",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "files": [
+    "dist/",
+    "ios/Sources/",
+    "Package.swift"
+  ],
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

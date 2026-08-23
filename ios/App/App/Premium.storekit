@@ -1,0 +1,101 @@
+{
+  "identifier" : "A15F2026",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "fi_FI",
+    "_storefront" : "FIN",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "A15F1001",
+      "localizations" : [
+
+      ],
+      "name" : "Kalastajan Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "12.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "A15F2001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Myynti, jäljitettävyys, etiketit ja virallinen saalisilmoitus ammattikalastajalle.",
+              "displayName" : "Kalastajan Premium",
+              "locale" : "fi_FI"
+            }
+          ],
+          "productID" : "fisher_premium_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Kalastajan Premium kuukausitilaus",
+          "subscriptionGroupID" : "A15F1001",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

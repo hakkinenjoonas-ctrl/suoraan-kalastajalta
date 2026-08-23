@@ -230,13 +230,13 @@ export default function ThermalLabel4x3({ label }) {
   const batchFontSize = `${Math.min(10.8, (10.8 * 27) / Math.max(batchLength, 1)).toFixed(2)}pt`;
 
   return (
-    <div style={styles.root}>
+    <div style={styles.root} data-label-root="true">
       <div style={styles.left}>
         <div>
           <div style={styles.species}>{label.species || "-"}</div>
           {label.scientificName ? <div style={styles.scientific}>{label.scientificName}</div> : null}
           <div style={styles.batchBox}>
-            <div style={{ ...styles.batchText, fontSize: batchFontSize }}>Erätunnus: {label.batchId || "-"}</div>
+            <div data-label-single-line="true" style={{ ...styles.batchText, fontSize: batchFontSize, overflow: "hidden" }}>Erätunnus: {label.batchId || "-"}</div>
           </div>
         </div>
 

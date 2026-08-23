@@ -1,11 +1,16 @@
 node_modules/
-dist/
+/dist/
 .DS_Store
+.tmp/
+tmp/
+*.inspect.ndjson
+plugins/**/.swiftpm/xcode/xcuserdata/
 supabase/.temp/
 android/.gradle/
 android/.idea/
 android/build/
 android/app/build/
+/output/android/
 *.keystore
 *.jks
 local.properties

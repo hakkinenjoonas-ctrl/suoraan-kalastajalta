@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Directory, Filesystem } from "@capacitor/filesystem";
@@ -102,11 +102,24 @@ import {
   fetchBuyerReport,
   getPublicBatchInfoUrl,
   invokeAdminDeleteEntity,
+  invokeDeleteOwnAccount,
   invokeBuyerOfferAction,
   invokeBulkOfferDispatch,
   invokeEdgeFunctionAuthenticated,
+  verifyAppleSubscription,
   verifyGooglePlaySubscription,
 } from "./services/edgeFunctions.js";
+import {
+  APPLE_FISHER_PREMIUM_PRODUCT_ID,
+  findAppleFisherPremiumPurchase,
+  finishAppleStoreKitTransaction,
+  getAppleFisherPremiumManagementUrl,
+  getAppleFisherPremiumProduct,
+  isAppleStoreKitAvailable,
+  isAppleStoreKitDebugBuild,
+  purchaseAppleFisherPremium,
+  restoreAppleFisherPremiumPurchases,
+} from "./services/appleStoreKit.js";
 import {
   FISHER_PREMIUM_PRODUCT_ID,
   findFisherPremiumPurchase,
@@ -792,6 +805,13 @@ function isFisherPremiumProfile(profileLike) {
     ["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD", "SUBSCRIPTION_STATE_CANCELED"].includes(subscriptionState)
     && Number.isFinite(expiryTime)
     && expiryTime > Date.now()
+  ) return true;
+  const appleSubscriptionState = String(profileLike.apple_subscription_status || "").trim();
+  const appleExpiryTime = Date.parse(profileLike.apple_subscription_expires_at || "");
+  if (
+    ["ACTIVE", "IN_GRACE_PERIOD"].includes(appleSubscriptionState)
+    && Number.isFinite(appleExpiryTime)
+    && appleExpiryTime > Date.now()
   ) return true;
   // Compatibility while the entitlement migration is being rolled out.
   if (!("fisher_premium_admin_enabled" in profileLike) && !subscriptionState) {
@@ -1612,6 +1632,112 @@ function getAppLogoUrl() {
   return new URL("/logo.png", window.location.origin).toString();
 }
 
+function fitLabelContent(root) {
+  if (!root || typeof window === "undefined") return;
+
+  const minimumFontSizePx = 1;
+  const tolerancePx = 0.75;
+  const textElements = Array.from(root.querySelectorAll("*"))
+    .filter((element) => !["IMG", "SVG", "PATH"].includes(element.tagName))
+    .filter((element) => String(element.textContent || "").trim().length > 0);
+
+  const shrinkElementFont = (element, factor = 0.94) => {
+    const currentSize = Number.parseFloat(window.getComputedStyle(element).fontSize);
+    if (!Number.isFinite(currentSize) || currentSize <= minimumFontSizePx) return false;
+    element.style.fontSize = `${Math.max(minimumFontSizePx, currentSize * factor)}px`;
+    return true;
+  };
+
+  Array.from(root.querySelectorAll("[data-label-single-line]")).forEach((element) => {
+    element.style.whiteSpace = "nowrap";
+    element.style.wordBreak = "normal";
+    for (let attempt = 0; attempt < 120 && element.scrollWidth > element.clientWidth + tolerancePx; attempt += 1) {
+      if (!shrinkElementFont(element, 0.92)) break;
+    }
+  });
+
+  const contentOverflows = () => {
+    const rootRect = root.getBoundingClientRect();
+    if (root.scrollWidth > root.clientWidth + tolerancePx || root.scrollHeight > root.clientHeight + tolerancePx) return true;
+    return Array.from(root.querySelectorAll("*")).some((element) => {
+      const style = window.getComputedStyle(element);
+      if (style.display === "none" || style.visibility === "hidden") return false;
+      const rect = element.getBoundingClientRect();
+      return rect.right > rootRect.right + tolerancePx
+        || rect.bottom > rootRect.bottom + tolerancePx
+        || rect.left < rootRect.left - tolerancePx
+        || rect.top < rootRect.top - tolerancePx
+        || element.scrollWidth > element.clientWidth + tolerancePx
+        || element.scrollHeight > element.clientHeight + tolerancePx;
+    });
+  };
+
+  for (let attempt = 0; attempt < 120 && contentOverflows(); attempt += 1) {
+    let changed = false;
+    textElements.forEach((element) => {
+      changed = shrinkElementFont(element) || changed;
+    });
+    if (!changed) break;
+  }
+
+  root.dataset.labelFitComplete = contentOverflows() ? "false" : "true";
+}
+
+function fitAllLabels(container) {
+  if (!container) return;
+  const roots = container.matches?.("[data-label-root]")
+    ? [container]
+    : Array.from(container.querySelectorAll?.("[data-label-root]") || []);
+  roots.forEach((root) => fitLabelContent(root));
+}
+
+function getLabelAutoFitScript() {
+  return "<script>(" + (function autoFitPrintedLabels() {
+    const run = () => {
+      document.querySelectorAll("[data-label-root]").forEach((root) => {
+        const minimumFontSizePx = 1;
+        const tolerancePx = 0.75;
+        const textElements = Array.from(root.querySelectorAll("*"))
+          .filter((element) => !["IMG", "SVG", "PATH"].includes(element.tagName))
+          .filter((element) => String(element.textContent || "").trim().length > 0);
+        const shrink = (element, factor = 0.94) => {
+          const size = Number.parseFloat(getComputedStyle(element).fontSize);
+          if (!Number.isFinite(size) || size <= minimumFontSizePx) return false;
+          element.style.fontSize = `${Math.max(minimumFontSizePx, size * factor)}px`;
+          return true;
+        };
+        root.querySelectorAll("[data-label-single-line]").forEach((element) => {
+          element.style.whiteSpace = "nowrap";
+          element.style.wordBreak = "normal";
+          for (let index = 0; index < 120 && element.scrollWidth > element.clientWidth + tolerancePx; index += 1) {
+            if (!shrink(element, 0.92)) break;
+          }
+        });
+        const overflows = () => {
+          const bounds = root.getBoundingClientRect();
+          if (root.scrollWidth > root.clientWidth + tolerancePx || root.scrollHeight > root.clientHeight + tolerancePx) return true;
+          return Array.from(root.querySelectorAll("*")).some((element) => {
+            const style = getComputedStyle(element);
+            if (style.display === "none" || style.visibility === "hidden") return false;
+            const rect = element.getBoundingClientRect();
+            return rect.right > bounds.right + tolerancePx || rect.bottom > bounds.bottom + tolerancePx
+              || rect.left < bounds.left - tolerancePx || rect.top < bounds.top - tolerancePx
+              || element.scrollWidth > element.clientWidth + tolerancePx || element.scrollHeight > element.clientHeight + tolerancePx;
+          });
+        };
+        for (let index = 0; index < 120 && overflows(); index += 1) {
+          let changed = false;
+          textElements.forEach((element) => { changed = shrink(element) || changed; });
+          if (!changed) break;
+        }
+        root.dataset.labelFitComplete = overflows() ? "false" : "true";
+      });
+    };
+    addEventListener("load", () => requestAnimationFrame(() => requestAnimationFrame(run)));
+    addEventListener("beforeprint", run);
+  }).toString() + ")();<\/script>";
+}
+
 function createInitialProcessedForm() {
   const storedCatchDefaults = getStoredCatchFormDefaults();
   return {
@@ -1735,7 +1861,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             .thermal-label-page:last-child { page-break-after: auto; }
           </style>
         </head>
-        <body>${labels.map((label) => `<section class="thermal-label-page">${renderToStaticMarkup(renderThermalLabelByFormat(printFormat, label))}</section>`).join("")}</body>
+        <body>${labels.map((label) => `<section class="thermal-label-page">${renderToStaticMarkup(renderThermalLabelByFormat(printFormat, label))}</section>`).join("")}${getLabelAutoFitScript()}</body>
       </html>
     `;
   }
@@ -1747,12 +1873,12 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
 
   const renderLabel = (label) => `
     <div class="label">
-      <div class="label-inner">
+      <div class="label-inner" data-label-root="true">
         <div class="label-main">
           <div class="label-main-top">
             <div class="species">${label.species || "-"}</div>
             ${label.scientificName ? `<div class="scientific">${label.scientificName}</div>` : ""}
-            <div class="batch" style="font-size:${Math.min(7.2, (7.2 * 27) / Math.max(`Erätunnus: ${label.batchId || "-"}`.length, 1)).toFixed(2)}pt">Erätunnus: ${label.batchId || "-"}</div>
+            <div class="batch" data-label-single-line="true" style="font-size:${Math.min(7.2, (7.2 * 27) / Math.max(`Erätunnus: ${label.batchId || "-"}`.length, 1)).toFixed(2)}pt">Erätunnus: ${label.batchId || "-"}</div>
           ${label.catchArea ? `<div class="line">Pyyntialue: ${label.catchArea}</div>` : ""}
           ${label.harvestSourceText ? `<div class="line">${label.harvestSourceText}</div>` : ""}
           ${label.gearType ? `<div class="line">Pyyntimenetelmä: ${label.gearType}</div>` : ""}
@@ -1835,6 +1961,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
       </head>
       <body>
         ${pages.map((page, pageIndex) => `<div class="sheet ${pageIndex < pages.length - 1 ? "page-break" : ""}">${page.map((label) => renderLabel(label)).join("")}</div>`).join("")}
+        ${getLabelAutoFitScript()}
       </body>
     </html>
   `;
@@ -1909,6 +2036,13 @@ function isNativeCapacitorApp() {
     return maybeCapacitor.getPlatform() !== "web";
   }
   return false;
+}
+
+function isNativeIosApp() {
+  if (typeof window === "undefined") return false;
+  const maybeCapacitor = window.Capacitor;
+  return typeof maybeCapacitor?.getPlatform === "function"
+    && maybeCapacitor.getPlatform() === "ios";
 }
 
 function isIosSafariWeb() {
@@ -2259,6 +2393,8 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl, printForma
       });
     }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    fitAllLabels(host);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
 
     const canvas = await html2canvas(host.firstElementChild || host, {
       backgroundColor: "#ffffff",
@@ -2305,6 +2441,8 @@ async function renderProcessedLabelCanvas(label, printFormat) {
       });
     }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    fitAllLabels(host);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
 
     const canvas = await html2canvas(host.firstElementChild || host, {
       backgroundColor: "#ffffff",
@@ -2352,7 +2490,7 @@ function buildProcessedLabelPrintHtml(entry, profileLike, printFormat) {
           * { box-sizing: border-box; }
         </style>
       </head>
-      <body>${renderToStaticMarkup(renderProcessedLabelByFormat(printFormat, label))}</body>
+      <body>${renderToStaticMarkup(renderProcessedLabelByFormat(printFormat, label))}${getLabelAutoFitScript()}</body>
     </html>
   `;
 }
@@ -2445,6 +2583,56 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       : qrX + ((qrSize - compactLogoWidth) / 2);
     const brandY = top + 0.2;
     const textWidth = qrX - left - 2.4;
+    const detailLines = [
+      label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
+      label.harvestSourceText || "",
+      label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
+      label.productStateText || "",
+      label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+      label.useByDate ? `Viimeinen käyttöpäivä: ${label.useByDate}` : "",
+      label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
+    ].filter(Boolean);
+    const supplierSourceLines = [
+      `Toimittaja: ${label.supplier || "-"}`,
+      label.supplierAddress || "",
+      label.supplierContact || "",
+    ].filter(Boolean);
+    let contentScale = 1;
+    const getScaledLayout = (scale) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13.5 * scale);
+      const species = doc.splitTextToSize(label.species || "-", textWidth);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7 * scale);
+      const scientific = label.scientificName ? doc.splitTextToSize(label.scientificName, textWidth) : [];
+      const details = detailLines.map((line) => {
+        const emphasized = line.startsWith("Pyyntipäivä:") || line.startsWith("Viimeinen käyttöpäivä:");
+        doc.setFont("helvetica", emphasized ? "bold" : "normal");
+        doc.setFontSize((emphasized ? 7.6 : 6.4) * scale);
+        return { emphasized, lines: doc.splitTextToSize(line, textWidth) };
+      });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.2 * scale);
+      const storage = doc.splitTextToSize(`Säilytys: ${label.storageText}`, textWidth);
+      doc.setFontSize(6.4 * scale);
+      const supplier = supplierSourceLines.flatMap((line) => doc.splitTextToSize(line, textWidth));
+      const requiredHeight = (species.length * 4.8 * scale)
+        + (scientific.length * 3 * scale)
+        + 6.1
+        + details.reduce((total, item) => total + (item.lines.length * (item.emphasized ? 3.2 : 2.8) * scale), 0)
+        + 1.6
+        + (storage.length * 2.8 * scale)
+        + 3.4
+        + 2.8
+        + (supplier.length * 2.6 * scale);
+      return { species, scientific, details, storage, supplier, requiredHeight };
+    };
+    let scaledLayout = getScaledLayout(contentScale);
+    const availableTextHeight = labelHeight - (labelPaddingY * 2) - 4.2;
+    while (scaledLayout.requiredHeight > availableTextHeight && contentScale > 0.12) {
+      contentScale = Math.max(0.12, contentScale - 0.04);
+      scaledLayout = getScaledLayout(contentScale);
+    }
     let currentY = top + 4.2;
 
     if (logoDataUrl) {
@@ -2460,18 +2648,16 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     }
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(13.5);
-    const speciesLines = doc.splitTextToSize(label.species || "-", textWidth);
-    doc.text(speciesLines, left, currentY);
-    currentY += speciesLines.length * 4.8;
+    doc.setFontSize(13.5 * contentScale);
+    doc.text(scaledLayout.species, left, currentY);
+    currentY += scaledLayout.species.length * 4.8 * contentScale;
 
     if (label.scientificName) {
       doc.setFont("helvetica", "normal");
       doc.setTextColor(71, 85, 105);
-      doc.setFontSize(7);
-      const scientificLines = doc.splitTextToSize(label.scientificName, textWidth);
-      doc.text(scientificLines, left, currentY);
-      currentY += scientificLines.length * 3;
+      doc.setFontSize(7 * contentScale);
+      doc.text(scaledLayout.scientific, left, currentY);
+      currentY += scaledLayout.scientific.length * 3 * contentScale;
       doc.setTextColor(17, 24, 39);
     }
 
@@ -2483,7 +2669,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     const batchText = `Erätunnus: ${label.batchId || "-"}`;
     let batchFontSize = 7.6;
     doc.setFontSize(batchFontSize);
-    while (batchFontSize > 4.8 && doc.getTextWidth(batchText) > textWidth - 2.4) {
+    while (batchFontSize > 1 && doc.getTextWidth(batchText) > textWidth - 2.4) {
       batchFontSize -= 0.2;
       doc.setFontSize(batchFontSize);
     }
@@ -2491,45 +2677,26 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     currentY += 5.6;
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.4);
-    const lines = [
-      label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
-      label.harvestSourceText || "",
-      label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
-      label.productStateText || "",
-      label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
-      label.useByDate ? `Viimeinen käyttöpäivä: ${label.useByDate}` : "",
-      label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
-    ].filter(Boolean);
-
-    lines.forEach((line) => {
-      const isCatchDateLine = line.startsWith("Pyyntipäivä:") || line.startsWith("Viimeinen käyttöpäivä:");
-      doc.setFont("helvetica", isCatchDateLine ? "bold" : "normal");
-      doc.setFontSize(isCatchDateLine ? 7.6 : 6.4);
-      const wrapped = doc.splitTextToSize(line, textWidth);
-      doc.text(wrapped, left, currentY);
-      currentY += wrapped.length * (isCatchDateLine ? 3.2 : 2.8);
+    scaledLayout.details.forEach((item) => {
+      doc.setFont("helvetica", item.emphasized ? "bold" : "normal");
+      doc.setFontSize((item.emphasized ? 7.6 : 6.4) * contentScale);
+      doc.text(item.lines, left, currentY);
+      currentY += item.lines.length * (item.emphasized ? 3.2 : 2.8) * contentScale;
     });
 
     currentY += 0.8;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.2);
-    const storageLines = doc.splitTextToSize(`Säilytys: ${label.storageText}`, textWidth);
-    doc.text(storageLines, left, currentY);
-    currentY += storageLines.length * 2.8 + 0.8;
+    doc.setFontSize(6.2 * contentScale);
+    doc.text(scaledLayout.storage, left, currentY);
+    currentY += scaledLayout.storage.length * 2.8 * contentScale + 0.8;
 
-    const supplierLines = [
-      `Toimittaja: ${label.supplier || "-"}`,
-      label.supplierAddress || "",
-      label.supplierContact || "",
-    ].filter(Boolean);
-    const wrappedSupplierLines = supplierLines.flatMap((line) => doc.splitTextToSize(line, textWidth));
-    const supplierLineHeight = 2.6;
+    const wrappedSupplierLines = scaledLayout.supplier;
+    const supplierLineHeight = 2.6 * contentScale;
     const supplierBlockHeight = wrappedSupplierLines.length * supplierLineHeight;
     const supplierStartY = Math.max(currentY + 3.4, qrY + qrSize - supplierBlockHeight);
     const weightY = supplierStartY - 2.8;
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.8);
+    doc.setFontSize(6.8 * contentScale);
     const quantityLabel = label.isCrayfish ? "Kpl:" : "Paino:";
     const quantityUnit = label.isCrayfish ? "kpl" : "kg";
     doc.text(quantityLabel, left, weightY);
@@ -2543,7 +2710,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
     doc.text(quantityUnit, qrX - 3.6, weightY);
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.4);
+    doc.setFontSize(6.4 * contentScale);
     wrappedSupplierLines.forEach((line, index) => {
       doc.text(line, left, supplierStartY + (index * supplierLineHeight));
     });
@@ -4232,15 +4399,178 @@ async function getSessionWithTimeout(timeoutMs = 5000) {
 }
 
 function MunicipalitySelect({ value, onChange, placeholder = "Valitse paikkakunta" }) {
+  const [query, setQuery] = useState(value || "");
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const wrapperRef = useRef(null);
+  const generatedId = useId();
+
+  const normalizeMunicipality = useCallback(
+    (text) =>
+      String(text || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("fi-FI")
+        .trim(),
+    [],
+  );
+
+  const filteredMunicipalities = useMemo(() => {
+    const normalizedQuery = normalizeMunicipality(query);
+    if (!normalizedQuery) return finlandMunicipalities;
+
+    const prefixMatches = [];
+    const otherMatches = [];
+    finlandMunicipalities.forEach((municipality) => {
+      const normalizedMunicipality = normalizeMunicipality(municipality);
+      if (normalizedMunicipality.startsWith(normalizedQuery)) {
+        prefixMatches.push(municipality);
+      } else if (normalizedMunicipality.includes(normalizedQuery)) {
+        otherMatches.push(municipality);
+      }
+    });
+    return [...prefixMatches, ...otherMatches];
+  }, [normalizeMunicipality, query]);
+
+  useEffect(() => {
+    setQuery(value || "");
+  }, [value]);
+
+  useEffect(() => {
+    const closeOnOutsidePress = (event) => {
+      if (!wrapperRef.current?.contains(event.target)) {
+        setIsOpen(false);
+        setActiveIndex(-1);
+        setQuery(value || "");
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
+  }, [value]);
+
+  const selectMunicipality = (municipality) => {
+    setQuery(municipality);
+    setIsOpen(false);
+    setActiveIndex(-1);
+    onChange?.({
+      target: { value: municipality },
+      currentTarget: { value: municipality },
+    });
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setIsOpen(true);
+      setActiveIndex((current) =>
+        Math.min(current + 1, filteredMunicipalities.length - 1),
+      );
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setIsOpen(true);
+      setActiveIndex((current) =>
+        current <= 0 ? filteredMunicipalities.length - 1 : current - 1,
+      );
+    } else if (event.key === "Enter" && isOpen && filteredMunicipalities.length) {
+      event.preventDefault();
+      selectMunicipality(filteredMunicipalities[Math.max(activeIndex, 0)]);
+    } else if (event.key === "Escape") {
+      setIsOpen(false);
+      setActiveIndex(-1);
+      setQuery(value || "");
+    }
+  };
+
+  const listboxId = `municipality-list-${generatedId.replace(/:/g, "")}`;
+
   return (
-    <select style={styles.input} value={value} onChange={onChange}>
-      <option value="">{placeholder}</option>
-      {finlandMunicipalities.map((municipality) => (
-        <option key={municipality} value={municipality}>
-          {municipality}
-        </option>
-      ))}
-    </select>
+    <div ref={wrapperRef} style={{ position: "relative", width: "100%", minWidth: 0 }}>
+      <input
+        type="search"
+        value={query}
+        placeholder="Hae paikkakuntaa"
+        aria-label={placeholder}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={isOpen}
+        aria-controls={listboxId}
+        aria-activedescendant={
+          isOpen && activeIndex >= 0
+            ? `${listboxId}-option-${activeIndex}`
+            : undefined
+        }
+        autoComplete="off"
+        style={{ ...styles.input, boxSizing: "border-box", width: "100%" }}
+        onFocus={() => setIsOpen(true)}
+        onClick={() => setIsOpen(true)}
+        onKeyDown={handleKeyDown}
+        onChange={(event) => {
+          const nextQuery = event.target.value;
+          setQuery(nextQuery);
+          setIsOpen(true);
+          setActiveIndex(-1);
+          if (!nextQuery) {
+            onChange?.({ target: { value: "" }, currentTarget: { value: "" } });
+          }
+        }}
+      />
+      {isOpen && (
+        <div
+          id={listboxId}
+          role="listbox"
+          style={{
+            position: "absolute",
+            zIndex: 1000,
+            top: "calc(100% + 6px)",
+            left: 0,
+            right: 0,
+            maxHeight: 260,
+            overflowY: "auto",
+            background: "#fff",
+            border: "1px solid #b8d8ff",
+            borderRadius: 14,
+            boxShadow: "0 12px 30px rgba(25, 68, 130, 0.18)",
+            padding: 6,
+          }}
+        >
+          {filteredMunicipalities.length ? (
+            filteredMunicipalities.map((municipality, index) => (
+              <button
+                key={municipality}
+                id={`${listboxId}-option-${index}`}
+                type="button"
+                role="option"
+                aria-selected={municipality === value}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => selectMunicipality(municipality)}
+                onMouseEnter={() => setActiveIndex(index)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "11px 12px",
+                  border: 0,
+                  borderRadius: 9,
+                  background:
+                    index === activeIndex || municipality === value
+                      ? "#e8f3ff"
+                      : "transparent",
+                  color: "#101b34",
+                  textAlign: "left",
+                  font: "inherit",
+                  cursor: "pointer",
+                }}
+              >
+                {municipality}
+              </button>
+            ))
+          ) : (
+            <div style={{ padding: "12px", color: "#64748b" }}>
+              Paikkakuntaa ei löytynyt
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -4615,6 +4945,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
     logoUrl: getAppLogoUrl(),
   };
   const isMobile = viewportWidth < 768;
+  const isIosMobileApp = isMobile && isNativeIosApp();
   const isThermalFormat = isThermalCatchLabelFormat(printFormat);
   const thermalPreviewBaseWidth = printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3 ? 420 : 386;
   const previewBaseWidth = isThermalFormat ? thermalPreviewBaseWidth : 420;
@@ -4644,13 +4975,14 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
       display: "flex",
       alignItems: isMobile ? "stretch" : "center",
       justifyContent: "center",
-      padding: isMobile ? 8 : 20,
+      padding: isMobile ? (isIosMobileApp ? "64px 8px 20px" : 8) : 20,
+      boxSizing: "border-box",
       zIndex: 2000,
     }} onClick={onClose}>
       <div style={{
         ...styles.card,
         width: isMobile ? "calc(100vw - 16px)" : "min(980px, 100%)",
-        maxHeight: isMobile ? "calc(100dvh - 16px)" : "90vh",
+        maxHeight: isMobile ? (isIosMobileApp ? "calc(100dvh - 84px)" : "calc(100dvh - 16px)") : "90vh",
         overflowY: "auto",
         overflowX: "hidden",
         padding: isMobile ? 14 : 24,
@@ -4750,7 +5082,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
             )}
             <div style={styles.field}>
               <label>Viimeinen käyttöpäivä (valinnainen)</label>
-              <input style={styles.input} type="date" value={useByDate} onChange={(e) => setUseByDate(e.target.value)} />
+              <input style={{ ...styles.input, ...styles.dateInput }} type="date" value={useByDate} onChange={(e) => setUseByDate(e.target.value)} />
               <div style={styles.small}>Jos jätät kentän tyhjäksi, viimeistä käyttöpäivää ei tulosteta etikettiin.</div>
             </div>
             <div style={styles.field}>
@@ -4878,17 +5210,18 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
 }
 
 function getHeaderBrandStyles(viewportWidth) {
-  const compact = viewportWidth < 480;
+  const compact = viewportWidth < 560;
   return {
     row: {
       display: "flex",
-      flexDirection: compact ? "column" : "row",
-      alignItems: compact ? "stretch" : "center",
-      gap: compact ? 10 : 2,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: compact ? 12 : 2,
       flexWrap: "nowrap",
       width: "100%",
-      marginTop: compact ? 44 : 12,
-      marginBottom: 12,
+      marginTop: compact ? 0 : 12,
+      marginBottom: compact ? 8 : 12,
       minWidth: 0,
     },
     title: {
@@ -4896,38 +5229,53 @@ function getHeaderBrandStyles(viewportWidth) {
       marginRight: compact ? 0 : -2,
       minWidth: 0,
       flex: "1 1 auto",
-      width: compact ? "100%" : "auto",
-      fontSize: compact ? "clamp(28px, 9vw, 34px)" : styles.title.fontSize,
-      lineHeight: compact ? 1.08 : styles.title.lineHeight,
+      width: "auto",
+      fontSize: compact ? "clamp(27px, 8vw, 34px)" : styles.title.fontSize,
+      lineHeight: compact ? 1.02 : styles.title.lineHeight,
     },
     logo: {
       height: compact ? "auto" : viewportWidth < 768 ? 116 : viewportWidth < 1024 ? 170 : 196,
-      width: compact ? "min(132px, 45vw)" : "auto",
-      maxWidth: compact ? "100%" : viewportWidth < 768 ? "36vw" : "none",
+      width: compact ? 86 : "auto",
+      maxWidth: compact ? 86 : viewportWidth < 768 ? "36vw" : "none",
       objectFit: "contain",
       display: "block",
       flex: "0 0 auto",
-      alignSelf: compact ? "flex-end" : "auto",
     },
   };
 }
 
 function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, onForgotPassword, onResetRecoveredPassword, authError, authInfo, authSubmitting, viewportWidth }) {
   const headerBrandStyles = getHeaderBrandStyles(viewportWidth);
+  const isMobile = viewportWidth < 560;
+  const isIosMobileApp = isMobile && isNativeIosApp();
+  const authCardStyle = isMobile
+    ? { borderRadius: 20, boxShadow: "0 14px 34px rgba(30, 64, 175, 0.08)" }
+    : null;
+  const authInputStyle = isMobile
+    ? { ...styles.input, minHeight: 48, padding: "11px 14px", borderRadius: 14, fontSize: 16 }
+    : styles.input;
+  const authButtonStyle = isMobile
+    ? { ...styles.button, minHeight: 48, padding: "10px 14px", borderRadius: 14 }
+    : styles.button;
 
   return (
-    <div style={styles.app}>
+    <div style={{ ...styles.app, ...(isMobile ? { padding: `${isIosMobileApp ? 64 : 12}px 12px 24px`, minHeight: "100dvh" } : {}) }}>
       <div style={{ ...styles.container, maxWidth: 520 }}>
-        <div style={{ ...styles.card, ...styles.headerCard, marginBottom: 16 }}>
+        <div style={{ ...styles.card, ...styles.headerCard, ...authCardStyle, marginBottom: isMobile ? 12 : 16, padding: isMobile ? "18px 18px 16px" : styles.headerCard.padding }}>
           <div style={headerBrandStyles.row}>
             <h1 style={headerBrandStyles.title}>Suoraan Kalastajalta</h1>
             <img
               src="/logo.png"
               alt=""
-              style={headerBrandStyles.logo}
+              style={{
+                ...headerBrandStyles.logo,
+                ...(isMobile
+                  ? { width: "clamp(104px, 28vw, 124px)", maxWidth: "clamp(104px, 28vw, 124px)" }
+                  : {}),
+              }}
             />
           </div>
-          <p style={styles.subtitle}>
+          <p style={{ ...styles.subtitle, ...(isMobile ? { marginTop: 4, fontSize: 15 } : {}) }}>
             {authMode === "signup"
               ? "Luo tunnus kalastajalle tai ostajalle."
               : authMode === "recovery"
@@ -4936,7 +5284,7 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
           </p>
         </div>
         <form
-          style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}
+          style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, ...authCardStyle, ...(isMobile ? { padding: 16, gap: 12 } : {}) }}
           onSubmit={(e) => {
             e.preventDefault();
             if (authMode === "signin") {
@@ -4949,9 +5297,9 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
           }}
         >
           {authMode !== "recovery" ? (
-            <div style={{ ...styles.tabs6, gridTemplateColumns: "1fr 1fr", marginBottom: 0 }}>
-              <button type="button" style={{ ...styles.tab, ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
-              <button type="button" style={{ ...styles.tab, ...(authMode === "signup" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signup")}>Rekisteröidy</button>
+            <div style={{ ...styles.tabs6, gridTemplateColumns: "1fr 1fr", marginBottom: 0, ...(isMobile ? { padding: 5, gap: 4, borderRadius: 16 } : {}) }}>
+              <button type="button" style={{ ...styles.tab, ...(isMobile ? { padding: "11px 8px", borderRadius: 12 } : {}), ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
+              <button type="button" style={{ ...styles.tab, ...(isMobile ? { padding: "11px 8px", borderRadius: 12 } : {}), ...(authMode === "signup" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signup")}>Rekisteröidy</button>
             </div>
           ) : (
             <div style={{ ...styles.card, padding: "12px 16px", background: "#eff6ff", border: "1px solid #93c5fd" }}>
@@ -4962,12 +5310,12 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
 
           <div style={styles.field}>
             <label>Sähköposti</label>
-            <input style={styles.input} type="email" value={authForm.email} onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. nimi@yritys.fi" disabled={authMode === "recovery"} />
+            <input style={authInputStyle} type="email" value={authForm.email} onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. nimi@yritys.fi" disabled={authMode === "recovery"} />
           </div>
 
           <div style={styles.field}>
             <label>{authMode === "recovery" ? "Uusi salasana" : "Salasana"}</label>
-            <input style={styles.input} type="password" value={authForm.password} onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))} placeholder={authMode === "recovery" ? "vähintään 8 merkkiä" : "salasana"} />
+            <input style={authInputStyle} type="password" value={authForm.password} onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))} placeholder={authMode === "recovery" ? "vähintään 8 merkkiä" : "salasana"} />
           </div>
 
           {authMode === "signup" ? (
@@ -5010,10 +5358,10 @@ function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSi
 
           {authMode === "signin" ? (
             <>
-              <button type="submit" style={{ ...styles.button, ...styles.primaryButton }} disabled={authSubmitting}>
+              <button type="submit" style={{ ...authButtonStyle, ...styles.primaryButton }} disabled={authSubmitting}>
                 {authSubmitting ? "Kirjaudutaan..." : "Kirjaudu sisään"}
               </button>
-              <button type="button" style={styles.button} onClick={onForgotPassword} disabled={authSubmitting}>Unohditko salasanan?</button>
+              <button type="button" style={authButtonStyle} onClick={onForgotPassword} disabled={authSubmitting}>Unohditko salasanan?</button>
             </>
           ) : authMode === "recovery" ? (
             <button type="submit" style={{ ...styles.button, ...styles.primaryButton }} disabled={authSubmitting}>
@@ -5058,7 +5406,7 @@ function RoleSelectionView({ roleOptions, buyers, onSelectRole }) {
   );
 }
 
-function PendingApprovalView({ profile, onLogout }) {
+function PendingApprovalView({ profile, onLogout, onDeleteAccount, accountDeletionBusy, showDeleteAccount }) {
   return (
     <div style={styles.app}>
       <div style={{ ...styles.container, maxWidth: 560 }}>
@@ -5073,7 +5421,47 @@ function PendingApprovalView({ profile, onLogout }) {
           <div style={{ ...styles.row, justifyContent: "flex-end" }}>
             <button style={styles.button} onClick={onLogout}>Kirjaudu ulos</button>
           </div>
+          {showDeleteAccount ? (
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#fff1f2", borderColor: "#fecaca" }}>
+              <strong style={{ color: "#991b1b" }}>Poista käyttäjätili</strong>
+              <div style={styles.muted}>Poisto on pysyvä. Tili ja siihen liittyvät henkilötiedot poistetaan tai lakisääteisesti säilytettävät kauppatiedot anonymisoidaan.</div>
+              <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  style={{ ...styles.button, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff" }}
+                  onClick={onDeleteAccount}
+                  disabled={accountDeletionBusy}
+                >
+                  {accountDeletionBusy ? "Poistetaan…" : "Poista käyttäjätili"}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AccountDeletionCard({ onDeleteAccount, busy }) {
+  return (
+    <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#fff1f2", borderColor: "#fecaca" }}>
+      <strong style={{ color: "#991b1b" }}>Poista käyttäjätili</strong>
+      <div style={styles.muted}>
+        Poisto on pysyvä. Profiili ja käyttäjän omat tiedot poistetaan. Lakisääteisesti säilytettävät kauppatiedot voidaan säilyttää anonymisoituina.
+      </div>
+      <div style={styles.muted}>
+        Käyttäjätilin poistaminen ei lopeta mahdollista App Store -tilausta. Tilaus lopetetaan erikseen Applen tilausten hallinnasta.
+      </div>
+      <div style={{ ...styles.row, justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          style={{ ...styles.button, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff" }}
+          onClick={onDeleteAccount}
+          disabled={busy}
+        >
+          {busy ? "Poistetaan…" : "Poista käyttäjätili"}
+        </button>
       </div>
     </div>
   );
@@ -5378,6 +5766,10 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   const reportScopeLabel = [reportDateLabel, reportSpotLabel ? `pyyntipaikka: ${reportSpotLabel}` : ""]
     .filter(Boolean)
     .join(" · ");
+  const reportDateGridStyle = {
+    ...styles.grid2,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
+  };
 
   const isWithinReportRange = (value) => {
     const normalizedValue = String(value || "").trim().slice(0, 10);
@@ -5747,7 +6139,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             <div style={styles.field}>
               <label>Alkupäivä</label>
               <input
-                style={styles.input}
+                style={{ ...styles.input, ...styles.dateInput }}
                 type="date"
                 value={reportStartDate}
                 onChange={(e) => setReportStartDate(e.target.value)}
@@ -5757,7 +6149,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             <div style={styles.field}>
               <label>Loppupäivä</label>
               <input
-                style={styles.input}
+                style={{ ...styles.input, ...styles.dateInput }}
                 type="date"
                 value={reportEndDate}
                 onChange={(e) => setReportEndDate(e.target.value)}
@@ -5874,11 +6266,11 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             <strong>Raportit</strong>
             <div style={styles.muted}>Valittu rajaus: {reportScopeLabel}</div>
           </div>
-          <div style={styles.grid2}>
+          <div style={reportDateGridStyle}>
             <div style={styles.field}>
               <label>Alkupäivä</label>
               <input
-                style={styles.input}
+                style={{ ...styles.input, ...styles.dateInput }}
                 type="date"
                 value={reportStartDate}
                 onChange={(e) => setReportStartDate(e.target.value)}
@@ -5888,7 +6280,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             <div style={styles.field}>
               <label>Loppupäivä</label>
               <input
-                style={styles.input}
+                style={{ ...styles.input, ...styles.dateInput }}
                 type="date"
                 value={reportEndDate}
                 onChange={(e) => setReportEndDate(e.target.value)}
@@ -6221,11 +6613,11 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
       <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
         <strong>Excel-raportit</strong>
         <div style={styles.noticeInfo}>Valitse raportille aikaväli. Voit ladata Excelin tai lähettää sen sähköpostiin liitetiedostona.</div>
-        <div style={styles.grid2}>
+        <div style={reportDateGridStyle}>
           <div style={styles.field}>
             <label>Alkupäivä</label>
             <input
-              style={styles.input}
+              style={{ ...styles.input, ...styles.dateInput }}
               type="date"
               value={reportStartDate}
               onChange={(e) => setReportStartDate(e.target.value)}
@@ -6235,7 +6627,7 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
           <div style={styles.field}>
             <label>Loppupäivä</label>
             <input
-              style={styles.input}
+              style={{ ...styles.input, ...styles.dateInput }}
               type="date"
               value={reportEndDate}
               onChange={(e) => setReportEndDate(e.target.value)}
@@ -8447,6 +8839,7 @@ export default function App() {
   const [authInfo, setAuthInfo] = useState("");
   const [authWarning, setAuthWarning] = useState("");
   const [premiumPurchaseBusy, setPremiumPurchaseBusy] = useState(false);
+  const [showAppleStoreKitTestPurchase, setShowAppleStoreKitTestPurchase] = useState(false);
   const visibleAuthError = formatVisibleAuthErrorMessage(authError);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -8649,12 +9042,11 @@ export default function App() {
   const [accountSaving, setAccountSaving] = useState(false);
   const [deletingOwnTestBuyerOffers, setDeletingOwnTestBuyerOffers] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [accountDeletionBusy, setAccountDeletionBusy] = useState(false);
   const foregroundNotificationRef = useRef({ key: "", at: 0 });
   const pushRegistrationKeyRef = useRef("");
   const currentPushTokenRef = useRef("");
   const tabsScrollRef = useRef(null);
-  const [tabsOverflowing, setTabsOverflowing] = useState(false);
-  const [showTabsScrollHint, setShowTabsScrollHint] = useState(false);
   const isCompactTabs = viewportWidth < 900;
   const [accountForm, setAccountForm] = useState({
     displayName: "",
@@ -8766,34 +9158,6 @@ export default function App() {
   const accountFormInitializedRef = useRef(false);
   const catchDefaultsStorageKeyRef = useRef(getCatchFormDefaultsStorageKey(null));
   const labelModalHistoryActiveRef = useRef(false);
-
-  useEffect(() => {
-    const tabScroller = tabsScrollRef.current;
-    const shouldTrackScrollHint = Boolean(tabScroller) && isCompactTabs && profile?.role !== "buyer";
-
-    if (!shouldTrackScrollHint) {
-      setTabsOverflowing(false);
-      setShowTabsScrollHint(false);
-      return undefined;
-    }
-
-    const updateScrollHintState = () => {
-      const maxScrollLeft = Math.max(0, tabScroller.scrollWidth - tabScroller.clientWidth);
-      const hasOverflow = maxScrollLeft > 16;
-      const isNearStart = tabScroller.scrollLeft < 24;
-      setTabsOverflowing(hasOverflow);
-      setShowTabsScrollHint(hasOverflow && isNearStart);
-    };
-
-    updateScrollHintState();
-    tabScroller.addEventListener("scroll", updateScrollHintState, { passive: true });
-    window.addEventListener("resize", updateScrollHintState);
-
-    return () => {
-      tabScroller.removeEventListener("scroll", updateScrollHintState);
-      window.removeEventListener("resize", updateScrollHintState);
-    };
-  }, [isCompactTabs, profile?.role, viewportWidth, availableRoleOptions.length]);
 
   useEffect(() => {
     const nextStorageKey = getCatchFormDefaultsStorageKey(profile);
@@ -8983,6 +9347,14 @@ export default function App() {
       && Number.isFinite(subscriptionExpiryTime)
       && subscriptionExpiryTime > Date.now();
   }, [profile]);
+  const hasActiveAppleFisherPremium = useMemo(() => {
+    const subscriptionState = String(profile?.apple_subscription_status || "").trim();
+    const subscriptionExpiryTime = Date.parse(profile?.apple_subscription_expires_at || "");
+    return profile?.apple_subscription_product_id === APPLE_FISHER_PREMIUM_PRODUCT_ID
+      && ["ACTIVE", "IN_GRACE_PERIOD"].includes(subscriptionState)
+      && Number.isFinite(subscriptionExpiryTime)
+      && subscriptionExpiryTime > Date.now();
+  }, [profile]);
   const hasBuyerRoleOption = useMemo(
     () => (availableRoleOptions || []).some((option) => option.role === "buyer"),
     [availableRoleOptions],
@@ -9018,19 +9390,61 @@ export default function App() {
     return Boolean(data?.entitled);
   }, [session?.access_token]);
 
+  const verifyAndApplyApplePurchase = useCallback(async (purchase) => {
+    const transactionId = String(purchase?.transactionId || "").trim();
+    const signedTransactionInfo = String(purchase?.signedTransactionInfo || "").trim();
+    if (!transactionId || !signedTransactionInfo || !session?.access_token) {
+      throw new Error("App Store -ostoksen tunniste puuttuu.");
+    }
+    const { data, error } = await verifyAppleSubscription(session.access_token, {
+      productId: APPLE_FISHER_PREMIUM_PRODUCT_ID,
+      transactionId,
+      signedTransactionInfo,
+    });
+    if (error) throw new Error(error.message);
+    if (data?.profile) setProfile(data.profile);
+    if (data?.entitled) await finishAppleStoreKitTransaction(transactionId);
+    setRefreshTick((previous) => previous + 1);
+    return Boolean(data?.entitled);
+  }, [session?.access_token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isAppleStoreKitAvailable()) {
+      setShowAppleStoreKitTestPurchase(false);
+      return () => { cancelled = true; };
+    }
+    isAppleStoreKitDebugBuild()
+      .then((enabled) => {
+        if (!cancelled) setShowAppleStoreKitTestPurchase(enabled);
+      })
+      .catch(() => {
+        if (!cancelled) setShowAppleStoreKitTestPurchase(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   const refreshFisherPremiumEntitlement = useCallback(async () => {
     if (profile?.role !== "member") return true;
     if (isFisherPremiumProfile(profile)) return true;
-    if (!isGooglePlayBillingAvailable()) return hasFisherPremium;
-
-    const result = await restoreFisherPremiumPurchases();
-    const purchase = findFisherPremiumPurchase(result?.purchases);
-    if (!purchase) return false;
-    return verifyAndApplyGooglePlayPurchase(purchase);
+    if (isGooglePlayBillingAvailable()) {
+      const result = await restoreFisherPremiumPurchases();
+      const purchase = findFisherPremiumPurchase(result?.purchases);
+      if (!purchase) return false;
+      return verifyAndApplyGooglePlayPurchase(purchase);
+    }
+    if (isAppleStoreKitAvailable()) {
+      const result = await restoreAppleFisherPremiumPurchases({ synchronize: false });
+      const purchase = findAppleFisherPremiumPurchase(result?.purchases);
+      if (!purchase) return false;
+      return verifyAndApplyApplePurchase(purchase);
+    }
+    return hasFisherPremium;
   }, [
     hasFisherPremium,
     profile,
     profile?.role,
+    verifyAndApplyApplePurchase,
     verifyAndApplyGooglePlayPurchase,
   ]);
 
@@ -9039,10 +9453,21 @@ export default function App() {
     setAuthError("");
     setAuthInfo("");
     try {
-      const product = await getFisherPremiumProduct();
-      const offerToken = product?.offers?.[0]?.offerToken || "";
-      const result = await purchaseFisherPremium(offerToken);
-      const entitled = await verifyAndApplyGooglePlayPurchase(result?.purchase);
+      let entitled = false;
+      if (isAppleStoreKitAvailable()) {
+        await getAppleFisherPremiumProduct();
+        const result = await purchaseAppleFisherPremium(profile?.id);
+        if (result?.pending) {
+          setAuthInfo("App Store -osto odottaa hyväksyntää. Premium aktivoituu hyväksynnän jälkeen.");
+          return;
+        }
+        entitled = await verifyAndApplyApplePurchase(result?.purchase);
+      } else {
+        const product = await getFisherPremiumProduct();
+        const offerToken = product?.offers?.[0]?.offerToken || "";
+        const result = await purchaseFisherPremium(offerToken);
+        entitled = await verifyAndApplyGooglePlayPurchase(result?.purchase);
+      }
       setAuthInfo(entitled
         ? "Kalastajan Premium on aktivoitu."
         : "Tilaus vastaanotettiin, mutta Premium ei ole vielä aktiivinen.");
@@ -9053,20 +9478,53 @@ export default function App() {
     } finally {
       setPremiumPurchaseBusy(false);
     }
-  }, [verifyAndApplyGooglePlayPurchase]);
+  }, [profile?.id, verifyAndApplyApplePurchase, verifyAndApplyGooglePlayPurchase]);
+
+  const handleTestApplePremiumPurchase = useCallback(async () => {
+    setPremiumPurchaseBusy(true);
+    setAuthError("");
+    setAuthInfo("");
+    try {
+      const debugBuild = await isAppleStoreKitDebugBuild();
+      if (!debugBuild) throw new Error("StoreKit-testi on käytettävissä vain Xcoden Debug-versiossa.");
+      await getAppleFisherPremiumProduct();
+      const result = await purchaseAppleFisherPremium(profile?.id);
+      if (result?.pending) {
+        setAuthInfo("Xcoden StoreKit-testi odottaa hyväksyntää.");
+        return;
+      }
+      const transactionId = String(result?.purchase?.transactionId || "").trim();
+      if (!transactionId) throw new Error("StoreKit-testitapahtuman tunniste puuttuu.");
+      await finishAppleStoreKitTransaction(transactionId);
+      setAuthInfo("Xcoden StoreKit-osto onnistui. Testi ei muuttanut oikeaa Premium-oikeutta eikä lähettänyt kuittia palvelimelle.");
+    } catch (error) {
+      if (String(error?.code || "") !== "USER_CANCELED") {
+        setAuthError(String(error?.message || error || "StoreKit-testin suorittaminen epäonnistui."));
+      }
+    } finally {
+      setPremiumPurchaseBusy(false);
+    }
+  }, [profile?.id]);
 
   const handleRestoreFisherPremium = useCallback(async () => {
     setPremiumPurchaseBusy(true);
     setAuthError("");
     setAuthInfo("");
     try {
-      const result = await restoreFisherPremiumPurchases();
-      const purchase = findFisherPremiumPurchase(result?.purchases);
+      const appleStore = isAppleStoreKitAvailable();
+      const result = appleStore
+        ? await restoreAppleFisherPremiumPurchases({ synchronize: true })
+        : await restoreFisherPremiumPurchases();
+      const purchase = appleStore
+        ? findAppleFisherPremiumPurchase(result?.purchases)
+        : findFisherPremiumPurchase(result?.purchases);
       if (!purchase) {
-        setAuthInfo("Tällä Google Play -tilillä ei löytynyt aktiivista Premium-tilausta.");
+        setAuthInfo(`Tällä ${appleStore ? "Apple" : "Google Play"} -tilillä ei löytynyt aktiivista Premium-tilausta.`);
         return;
       }
-      const entitled = await verifyAndApplyGooglePlayPurchase(purchase);
+      const entitled = appleStore
+        ? await verifyAndApplyApplePurchase(purchase)
+        : await verifyAndApplyGooglePlayPurchase(purchase);
       setAuthInfo(entitled
         ? "Premium-tilaus palautettiin onnistuneesti."
         : "Tilaus löytyi, mutta sen käyttöoikeus ei ole aktiivinen.");
@@ -9075,14 +9533,14 @@ export default function App() {
     } finally {
       setPremiumPurchaseBusy(false);
     }
-  }, [verifyAndApplyGooglePlayPurchase]);
+  }, [verifyAndApplyApplePurchase, verifyAndApplyGooglePlayPurchase]);
 
   useEffect(() => {
     if (
       profile?.role !== "member"
       || !profile?.id
       || !session?.access_token
-      || !isGooglePlayBillingAvailable()
+      || (!isGooglePlayBillingAvailable() && !isAppleStoreKitAvailable())
     ) return;
 
     let cancelled = false;
@@ -9090,7 +9548,7 @@ export default function App() {
       try {
         if (!cancelled) await refreshFisherPremiumEntitlement();
       } catch (error) {
-        console.warn("Google Play subscription refresh failed", error);
+        console.warn("Store subscription refresh failed", error);
       }
     };
     refreshGoogleEntitlement();
@@ -11867,6 +12325,52 @@ export default function App() {
     setSession(null);
     setAvailableRoleOptions([]);
     setRoleSelectionOpen(false);
+  };
+
+  const handleDeleteOwnAccount = async () => {
+    if (!isAppleStoreKitAvailable() || accountDeletionBusy) return;
+
+    const firstConfirmation = window.confirm(
+      "Haluatko varmasti poistaa käyttäjätilisi? Poisto on pysyvä, eikä poistettuja saalis-, tarjous- tai profiilitietoja voi palauttaa. Lakisääteisesti säilytettävät kauppatiedot voidaan säilyttää anonymisoituina.",
+    );
+    if (!firstConfirmation) return;
+
+    const finalConfirmation = window.confirm(
+      "Vahvista vielä käyttäjätilin pysyvä poistaminen. Mahdollinen App Store -tilaus täytyy lopettaa erikseen Applen tilausten hallinnasta.",
+    );
+    if (!finalConfirmation) return;
+
+    setAuthError("");
+    setAuthInfo("");
+    setAccountDeletionBusy(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) throw new Error("Istunto puuttuu. Kirjaudu uudelleen sisään.");
+
+      const { error } = await invokeDeleteOwnAccount(accessToken);
+      if (error) {
+        if (error.status === 401) {
+          await invalidateSession();
+          return;
+        }
+        throw new Error(error.message || "Käyttäjätilin poistaminen epäonnistui.");
+      }
+
+      currentPushTokenRef.current = "";
+      await clearBrokenSession();
+      setProfile(null);
+      setSession(null);
+      setAvailableRoleOptions([]);
+      setRoleSelectionOpen(false);
+      setAccountPanelOpen(false);
+      setAuthMode("signin");
+      setAuthInfo("Käyttäjätilisi on poistettu pysyvästi.");
+    } catch (error) {
+      setAuthError(String(error?.message || error || "Käyttäjätilin poistaminen epäonnistui."));
+    } finally {
+      setAccountDeletionBusy(false);
+    }
   };
 
   const handleRoleSelect = async (selectedRole) => {
@@ -15135,7 +15639,7 @@ export default function App() {
       && !profile.fisher_premium_admin_enabled
       && !profile.fisherPremiumAdminEnabled
       && !isFisherPremiumProfile(profile)
-      && isGooglePlayBillingAvailable()
+      && (isGooglePlayBillingAvailable() || isAppleStoreKitAvailable())
     ) {
       setSaving(true);
       try {
@@ -15999,7 +16503,15 @@ export default function App() {
   }
 
   if (!profile.is_active && availableRoleOptions.length === 0) {
-    return <PendingApprovalView profile={profile} onLogout={handleLogout} />;
+    return (
+      <PendingApprovalView
+        profile={profile}
+        onLogout={handleLogout}
+        onDeleteAccount={handleDeleteOwnAccount}
+        accountDeletionBusy={accountDeletionBusy}
+        showDeleteAccount={isAppleStoreKitAvailable()}
+      />
+    );
   }
 
   if (roleSelectionOpen && availableRoleOptions.length > 1) {
@@ -16148,13 +16660,16 @@ export default function App() {
             </button>
             <div style={styles.rowBetween}>
               <div>
-                <div style={headerBrandStyles.row}>
+                <div style={{ ...headerBrandStyles.row, ...(viewportWidth < 560 ? { marginTop: 12 } : {}) }}>
                   <h1 style={headerBrandStyles.title}>Suoraan Kalastajalta</h1>
                   <img
                     src="/logo.png"
                     alt=""
                     style={{
                       ...headerBrandStyles.logo,
+                      ...(viewportWidth < 560
+                        ? { width: "clamp(112px, 30vw, 132px)", maxWidth: "clamp(112px, 30vw, 132px)" }
+                        : {}),
                       marginLeft: viewportWidth < 480 ? 0 : viewportWidth < 768 ? -10 : -6,
                     }}
                   />
@@ -16318,6 +16833,9 @@ export default function App() {
                   <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleChangePassword} disabled={passwordSaving}>{passwordSaving ? "Vaihdetaan..." : "Vaihda salasana"}</button>
                 </div>
               </div>
+              {isAppleStoreKitAvailable() ? (
+                <AccountDeletionCard onDeleteAccount={handleDeleteOwnAccount} busy={accountDeletionBusy} />
+              ) : null}
             </div>
           ) : null}
 
@@ -17043,17 +17561,33 @@ export default function App() {
     ...(profile.role === "member" ? ["billing"] : []),
     ...(profile.role === "owner" ? ["operations", "buyers", "users", "billing"] : []),
   ];
-  const handleNextVisibleTab = () => {
-    const currentIndex = visibleTabIds.indexOf(activeTab);
-    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % visibleTabIds.length : 0;
-    const nextTab = visibleTabIds[nextIndex];
+  const visibleTabLabels = {
+    dashboard: "Yhteenveto",
+    add: profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis",
+    entries: profile.role === "processor" ? "Jaloste-erät" : "Saaliit",
+    offers: "Tarjoukset",
+    auctions: "Huutokaupat",
+    reports: "Raportit",
+    billing: "Laskutus",
+    operations: "Ylläpito",
+    buyers: "Ostajat",
+    users: "Käyttäjät",
+  };
+  const currentVisibleTabIndex = visibleTabIds.indexOf(activeTab);
+  const currentVisibleTab = currentVisibleTabIndex >= 0 ? visibleTabIds[currentVisibleTabIndex] : visibleTabIds[0];
+  const previousVisibleTab = currentVisibleTabIndex > 0 ? visibleTabIds[currentVisibleTabIndex - 1] : null;
+  const nextVisibleTab = currentVisibleTabIndex >= 0 && currentVisibleTabIndex < visibleTabIds.length - 1
+    ? visibleTabIds[currentVisibleTabIndex + 1]
+    : null;
+  const handleVisibleTabChange = (tabId) => {
+    if (!tabId) return;
 
-    setActiveTab(nextTab);
-    if (nextTab === "billing") setRefreshTick((prev) => prev + 1);
+    setActiveTab(tabId);
+    if (tabId === "billing") setRefreshTick((prev) => prev + 1);
 
     window.requestAnimationFrame(() => {
-      const nextTabButton = tabsScrollRef.current?.querySelector(`[data-tab-id="${nextTab}"]`);
-      nextTabButton?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      const tabButton = tabsScrollRef.current?.querySelector(`[data-tab-id="${tabId}"]`);
+      tabButton?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
     });
   };
   const grid3 = responsiveGridStyle(styles.grid3, viewportWidth);
@@ -17062,9 +17596,16 @@ export default function App() {
   const speciesRow = responsiveGridStyle(styles.speciesRow, viewportWidth);
   const fisherPremiumRequired = profile.role === "member" && !hasFisherPremium;
   const headerBrandStyles = getHeaderBrandStyles(viewportWidth);
+  const isIosMobileApp = viewportWidth < 768 && isNativeIosApp();
 
   return (
-    <div style={styles.app}>
+    <div style={{
+      ...styles.app,
+      ...(isIosMobileApp ? {
+        padding: "64px 12px max(28px, env(safe-area-inset-bottom))",
+        minHeight: "100dvh",
+      } : {}),
+    }}>
       <div style={styles.container}>
         <div style={{ ...styles.card, ...styles.headerCard, position: "relative", paddingRight: viewportWidth < 560 ? styles.headerCard.padding : 76 }}>
           <button
@@ -17096,12 +17637,17 @@ export default function App() {
           </button>
           <div style={styles.rowBetween}>
             <div>
-              <div style={headerBrandStyles.row}>
+              <div style={{ ...headerBrandStyles.row, ...(viewportWidth < 560 ? { marginTop: 12 } : {}) }}>
                 <h1 style={headerBrandStyles.title}>Suoraan Kalastajalta</h1>
                 <img
                   src="/logo.png"
                   alt=""
-                  style={headerBrandStyles.logo}
+                  style={{
+                    ...headerBrandStyles.logo,
+                    ...(viewportWidth < 560
+                      ? { width: "clamp(112px, 30vw, 132px)", maxWidth: "clamp(112px, 30vw, 132px)" }
+                      : {}),
+                  }}
                 />
               </div>
               <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · Rooli: <strong>{roleLabel(profile?.role)}</strong></p>
@@ -17177,7 +17723,7 @@ export default function App() {
                       ? "Voit käyttää jäljitettävyystunnuksia, etikettien tulostusta, myyntiin tarjoamista ja virallista saalisilmoitusta."
                       : "Ilmaisversiossa voit kirjata ja selata saaliita. Premium avaa myynnin, jäljitettävyyden, etiketit ja virallisen saalisilmoituksen."}
                   </div>
-                  {!hasFisherPremium && isGooglePlayBillingAvailable() ? (
+                  {!hasFisherPremium && (isGooglePlayBillingAvailable() || isAppleStoreKitAvailable()) ? (
                     <div style={{ ...styles.row, flexWrap: "wrap" }}>
                       <button
                         type="button"
@@ -17192,6 +17738,21 @@ export default function App() {
                       </button>
                     </div>
                   ) : null}
+                  {hasFisherPremium && showAppleStoreKitTestPurchase ? (
+                    <div style={{ ...styles.stack, gap: 8 }}>
+                      <div style={styles.muted}>
+                        Xcode-testi: kampanja-Premium on aktiivinen, mutta voit silti kokeilla Applen paikallista ostoruutua. Testi ei muuta käyttäjätilin oikeuksia.
+                      </div>
+                      <button
+                        type="button"
+                        style={{ ...styles.button, ...styles.primaryButton }}
+                        disabled={premiumPurchaseBusy}
+                        onClick={handleTestApplePremiumPurchase}
+                      >
+                        {premiumPurchaseBusy ? "Käsitellään…" : "Testaa App Store -osto 12,99 €/kk"}
+                      </button>
+                    </div>
+                  ) : null}
                   {hasActiveGooglePlayFisherPremium && isGooglePlayBillingAvailable() ? (
                     <a
                       href={getFisherPremiumManagementUrl()}
@@ -17202,8 +17763,18 @@ export default function App() {
                       Hallinnoi Google Play -tilausta
                     </a>
                   ) : null}
-                  {!hasFisherPremium && !isGooglePlayBillingAvailable() ? (
-                    <div style={styles.muted}>Premium-tilauksen voi ostaa Suoraan Kalastajalta -Android-sovelluksessa.</div>
+                  {hasActiveAppleFisherPremium && isAppleStoreKitAvailable() ? (
+                    <a
+                      href={getAppleFisherPremiumManagementUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ ...styles.button, display: "inline-flex", alignItems: "center", textDecoration: "none" }}
+                    >
+                      Hallinnoi App Store -tilausta
+                    </a>
+                  ) : null}
+                  {!hasFisherPremium && !isGooglePlayBillingAvailable() && !isAppleStoreKitAvailable() ? (
+                    <div style={styles.muted}>Premium-tilauksen voi ostaa Suoraan Kalastajalta -Android- tai iPhone-sovelluksessa.</div>
                   ) : null}
                 </>
               ) : null}
@@ -17447,11 +18018,23 @@ export default function App() {
                 <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleChangePassword} disabled={passwordSaving}>{passwordSaving ? "Vaihdetaan..." : "Vaihda salasana"}</button>
               </div>
             </div>
+            {isAppleStoreKitAvailable() ? (
+              <AccountDeletionCard onDeleteAccount={handleDeleteOwnAccount} busy={accountDeletionBusy} />
+            ) : null}
           </div>
         ) : null}
 
         {(visibleAuthError || authInfo || authWarning) ? (
-          <div style={styles.toastStack}>
+          <div style={{
+            ...styles.toastStack,
+            ...(isIosMobileApp ? {
+              top: 64,
+              right: 12,
+              maxHeight: "calc(100dvh - 84px)",
+              overflowY: "auto",
+              WebkitOverflowScrolling: "touch",
+            } : {}),
+          }}>
             {visibleAuthError ? (
               <div style={{ ...styles.noticeError, ...styles.toastCard }}>
                 {visibleAuthError}
@@ -17481,69 +18064,101 @@ export default function App() {
         />
 
         <div style={{ ...styles.stickyTabsWrap, position: "sticky" }}>
-          <div style={{ position: "relative" }}>
-            <div ref={tabsScrollRef} style={visibleTabStyle}>
-              <button data-tab-id="dashboard" style={{ ...visibleSingleTabStyle, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => setActiveTab("dashboard")}>Yhteenveto</button>
-              {profile.role !== "buyer" ? <button data-tab-id="add" style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => setActiveTab("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button> : null}
-              {profile.role !== "buyer" ? <button data-tab-id="entries" style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => setActiveTab("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button> : null}
-              <button data-tab-id="offers" style={{ ...visibleSingleTabStyle, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("offers")}>Tarjoukset</button>
-              {auctionsAvailable && ["member", "owner"].includes(profile.role) ? <button data-tab-id="auctions" style={{ ...visibleSingleTabStyle, ...(activeTab === "auctions" ? styles.activeTab : {}) }} onClick={() => setActiveTab("auctions")}>Huutokaupat</button> : null}
-              <button data-tab-id="reports" style={{ ...visibleSingleTabStyle, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => setActiveTab("reports")}>Raportit</button>
-              {profile.role === "member" ? <button data-tab-id="billing" style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
-              {profile.role === "owner" ? <button data-tab-id="operations" style={{ ...visibleSingleTabStyle, ...(activeTab === "operations" ? styles.activeTab : {}) }} onClick={() => setActiveTab("operations")}>Ylläpito</button> : null}
-              {profile.role === "owner" ? <button data-tab-id="buyers" style={{ ...visibleSingleTabStyle, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => setActiveTab("buyers")}>Ostajat</button> : null}
-              {profile.role === "owner" ? <button data-tab-id="users" style={{ ...visibleSingleTabStyle, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => setActiveTab("users")}>Käyttäjät</button> : null}
-              {profile.role === "owner" ? <button data-tab-id="billing" style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => { setActiveTab("billing"); setRefreshTick((prev) => prev + 1); }}>Laskutus</button> : null}
-            </div>
-            {tabsOverflowing ? (
-              <div
+          {isCompactTabs ? (
+            <nav
+              aria-label="Sivujen selaus"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+                alignItems: "stretch",
+                gap: 6,
+                marginBottom: 8,
+                padding: 6,
+                border: "1px solid rgba(147, 197, 253, 0.72)",
+                borderRadius: 18,
+                background: "rgba(255,255,255,0.98)",
+                boxShadow: "0 12px 28px rgba(15, 23, 42, 0.1)",
+              }}
+            >
+              <button
+                type="button"
+                disabled={!previousVisibleTab}
+                onClick={() => handleVisibleTabChange(previousVisibleTab)}
+                aria-label={previousVisibleTab ? `Edellinen sivu: ${visibleTabLabels[previousVisibleTab]}` : "Ei edellistä sivua"}
                 style={{
-                  position: "absolute",
-                  right: 10,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  width: showTabsScrollHint ? 108 : 40,
-                  height: 58,
-                  borderRadius: 20,
-                  background: showTabsScrollHint
-                    ? "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.84) 42%, rgba(255,255,255,0.98) 100%)"
-                    : "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.96) 82%)",
-                  pointerEvents: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  paddingRight: 8,
-                  boxSizing: "border-box",
+                  minWidth: 0,
+                  minHeight: 50,
+                  padding: "7px 8px",
+                  borderRadius: 13,
+                  border: previousVisibleTab ? "1px solid rgba(147, 197, 253, 0.82)" : "1px solid transparent",
+                  background: previousVisibleTab ? "#eff6ff" : "transparent",
+                  color: previousVisibleTab ? "#1e3a8a" : "#94a3b8",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  lineHeight: 1.15,
+                  cursor: previousVisibleTab ? "pointer" : "default",
+                  opacity: previousVisibleTab ? 1 : 0.42,
                 }}
               >
-                {showTabsScrollHint ? (
-                  <button
-                    type="button"
-                    onClick={handleNextVisibleTab}
-                    aria-label="Siirry seuraavalle sivulle"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "8px 10px",
-                      borderRadius: 999,
-                      background: "rgba(255,255,255,0.98)",
-                      border: "1px solid rgba(147, 197, 253, 0.8)",
-                      color: "#1e3a8a",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      boxShadow: "0 8px 20px rgba(37, 99, 235, 0.08)",
-                      whiteSpace: "nowrap",
-                      cursor: "pointer",
-                      pointerEvents: "auto",
-                    }}
-                  >
-                    <span>Lisää</span>
-                    <span>→</span>
-                  </button>
-                ) : null}
+                {previousVisibleTab ? `← ${visibleTabLabels[previousVisibleTab]}` : "← Alku"}
+              </button>
+              <div
+                aria-current="page"
+                style={{
+                  minWidth: 92,
+                  padding: "6px 5px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  color: "#0f172a",
+                }}
+              >
+                <span style={{ color: "#64748b", fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>Sivu</span>
+                <strong style={{ fontSize: 13, lineHeight: 1.15 }}>{visibleTabLabels[currentVisibleTab]}</strong>
+                <span style={{ color: "#475569", fontSize: 11, fontWeight: 700 }}>
+                  {Math.max(1, currentVisibleTabIndex + 1)}/{visibleTabIds.length}
+                </span>
               </div>
-            ) : null}
+              <button
+                type="button"
+                disabled={!nextVisibleTab}
+                onClick={() => handleVisibleTabChange(nextVisibleTab)}
+                aria-label={nextVisibleTab ? `Seuraava sivu: ${visibleTabLabels[nextVisibleTab]}` : "Ei seuraavaa sivua"}
+                style={{
+                  minWidth: 0,
+                  minHeight: 50,
+                  padding: "7px 8px",
+                  borderRadius: 13,
+                  border: nextVisibleTab ? "1px solid rgba(147, 197, 253, 0.82)" : "1px solid transparent",
+                  background: nextVisibleTab ? "#eff6ff" : "transparent",
+                  color: nextVisibleTab ? "#1e3a8a" : "#94a3b8",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  lineHeight: 1.15,
+                  cursor: nextVisibleTab ? "pointer" : "default",
+                  opacity: nextVisibleTab ? 1 : 0.42,
+                }}
+              >
+                {nextVisibleTab ? `${visibleTabLabels[nextVisibleTab]} →` : "Loppu →"}
+              </button>
+            </nav>
+          ) : null}
+          <div>
+            <div ref={tabsScrollRef} style={visibleTabStyle}>
+              <button data-tab-id="dashboard" style={{ ...visibleSingleTabStyle, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("dashboard")}>Yhteenveto</button>
+              {profile.role !== "buyer" ? <button data-tab-id="add" style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button> : null}
+              {profile.role !== "buyer" ? <button data-tab-id="entries" style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button> : null}
+              <button data-tab-id="offers" style={{ ...visibleSingleTabStyle, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("offers")}>Tarjoukset</button>
+              {auctionsAvailable && ["member", "owner"].includes(profile.role) ? <button data-tab-id="auctions" style={{ ...visibleSingleTabStyle, ...(activeTab === "auctions" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("auctions")}>Huutokaupat</button> : null}
+              <button data-tab-id="reports" style={{ ...visibleSingleTabStyle, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("reports")}>Raportit</button>
+              {profile.role === "member" ? <button data-tab-id="billing" style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("billing")}>Laskutus</button> : null}
+              {profile.role === "owner" ? <button data-tab-id="operations" style={{ ...visibleSingleTabStyle, ...(activeTab === "operations" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("operations")}>Ylläpito</button> : null}
+              {profile.role === "owner" ? <button data-tab-id="buyers" style={{ ...visibleSingleTabStyle, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("buyers")}>Ostajat</button> : null}
+              {profile.role === "owner" ? <button data-tab-id="users" style={{ ...visibleSingleTabStyle, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("users")}>Käyttäjät</button> : null}
+              {profile.role === "owner" ? <button data-tab-id="billing" style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("billing")}>Laskutus</button> : null}
+            </div>
           </div>
         </div>
 
@@ -17653,9 +18268,9 @@ export default function App() {
                 <div style={styles.small}>Valitse aiemmin tallennettu tuote ja muokkaa sen tietoja tarvittaessa ennen erän tallennusta.</div>
               </div>
               <div style={formGrid}>
-                <div style={styles.field}><label>Tuotantopäivä</label><input style={styles.input} type="date" value={processedForm.productionDate} onChange={(e) => setProcessedForm({ ...processedForm, productionDate: e.target.value })} /></div>
-                <div style={styles.field}><label>Parasta ennen</label><input style={styles.input} type="date" value={processedForm.bestBeforeDate} onChange={(e) => setProcessedForm({ ...processedForm, bestBeforeDate: e.target.value })} /></div>
-                <div style={styles.field}><label>Viimeinen käyttöpäivä</label><input style={styles.input} type="date" value={processedForm.useByDate} onChange={(e) => setProcessedForm({ ...processedForm, useByDate: e.target.value })} /></div>
+                <div style={styles.field}><label>Tuotantopäivä</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={processedForm.productionDate} onChange={(e) => setProcessedForm({ ...processedForm, productionDate: e.target.value })} /></div>
+                <div style={styles.field}><label>Parasta ennen</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={processedForm.bestBeforeDate} onChange={(e) => setProcessedForm({ ...processedForm, bestBeforeDate: e.target.value })} /></div>
+                <div style={styles.field}><label>Viimeinen käyttöpäivä</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={processedForm.useByDate} onChange={(e) => setProcessedForm({ ...processedForm, useByDate: e.target.value })} /></div>
                 <div style={styles.field}>
                   <label>Vesialue / alkuperä</label>
                   <select
@@ -17918,7 +18533,7 @@ export default function App() {
                 </div>
                 {processedForm.listForSale ? (
                   <>
-                <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={processedForm.earliestDeliveryDate} onChange={(e) => setProcessedForm({ ...processedForm, earliestDeliveryDate: e.target.value })} /></div>
+                <div style={styles.field}><label>Aikaisin toimitus</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={processedForm.earliestDeliveryDate} onChange={(e) => setProcessedForm({ ...processedForm, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={processedForm.coldTransport} onChange={(e) => setProcessedForm({ ...processedForm, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
                   <div style={{ ...styles.offerBox, ...styles.stack, ...(!DELIVERY_COMPETITION_AVAILABLE ? styles.disabledSection : null) }}>
@@ -18168,7 +18783,7 @@ export default function App() {
           ) : (
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <div style={formGrid}>
-                <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
+                <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
                 <div style={styles.field}>
                   <label>Kalastamisalue</label>
                   <select
@@ -18740,7 +19355,7 @@ export default function App() {
                     <div style={styles.small}>Viimeisten 3 minuutin aikana tehty hyväksytty huuto siirtää päättymisen aina 3 minuutin päähän viimeisestä huudosta.</div>
                   </div>
                 ) : null}
-                <div style={styles.field}><label>Aikaisin toimitus</label><input style={styles.input} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
+                <div style={styles.field}><label>Aikaisin toimitus</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
                 <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 {form.saleMode === "fixed" ? <div style={{ ...styles.field, ...styles.fieldFull }}>
                   <div style={{ ...styles.offerBox, ...styles.stack, ...(!DELIVERY_COMPETITION_AVAILABLE ? styles.disabledSection : null) }}>

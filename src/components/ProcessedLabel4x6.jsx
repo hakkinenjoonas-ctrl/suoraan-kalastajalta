@@ -88,7 +88,8 @@ const styles = {
     fontSize: "11.2pt",
     lineHeight: 1,
     fontWeight: 900,
-    wordBreak: "break-word",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
   },
   infoGrid: {
     display: "grid",
@@ -274,9 +275,11 @@ function NutritionBlock({ rows }) {
 
 export default function ProcessedLabel4x6({ label }) {
   if (!label) return null;
+  const batchText = `Erätunnus: ${label.batchId || "-"}`;
+  const batchFontSize = `${Math.min(11.2, (11.2 * 30) / Math.max(batchText.length, 1)).toFixed(2)}pt`;
 
   return (
-    <div style={styles.root}>
+    <div style={styles.root} data-label-root="true">
       <section style={styles.brand}>
         <div>{label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={styles.logo} /> : null}</div>
         <div style={{ minWidth: 0 }}>
@@ -291,7 +294,7 @@ export default function ProcessedLabel4x6({ label }) {
           <div style={styles.productName}>{label.productName || "Jalostettu kalatuote"}</div>
           {label.batchId ? (
             <div style={styles.batchBox}>
-              <div style={styles.batchText}>Erätunnus: {label.batchId}</div>
+              <div data-label-single-line="true" style={{ ...styles.batchText, fontSize: batchFontSize }}>{batchText}</div>
             </div>
           ) : null}
 

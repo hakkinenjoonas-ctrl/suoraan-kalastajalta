@@ -115,10 +115,12 @@ export const styles = {
   progress: { height: 12, background: "rgba(191,219,254,0.48)", borderRadius: 999, overflow: "hidden" },
   progressFill: { display: "block", height: "100%", background: "linear-gradient(90deg, #2563eb 0%, #0ea5e9 100%)", borderRadius: 999 },
   formGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 },
-  field: { display: "flex", flexDirection: "column", gap: 8 },
+  field: { display: "flex", flexDirection: "column", gap: 8, minWidth: 0 },
   fieldFull: { gridColumn: "1 / -1" },
   input: {
     width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
     padding: "13px 15px",
     border: "1px solid rgba(147, 197, 253, 0.75)",
     borderRadius: 16,
@@ -127,6 +129,12 @@ export const styles = {
     boxSizing: "border-box",
     color: "#0f172a",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.65)",
+  },
+  dateInput: {
+    width: "-webkit-fill-available",
+    minWidth: 0,
+    maxWidth: "100%",
+    display: "block",
   },
   textarea: {
     width: "100%",

@@ -540,12 +540,19 @@ Deno.serve(async (req) => {
     return authContext.response;
   }
 
+  const body = await req.json().catch(() => ({}));
+  const type = safeString(body.type).toLowerCase();
+
+  if (type === "self") {
+    return handleDeleteUser(authContext.adminClient, {
+      userId: authContext.callerUserId,
+      email: authContext.profile?.email,
+    });
+  }
+
   if (safeString(authContext.profile?.role) !== "owner") {
     return jsonResponse(403, { error: "Only owner can delete users or buyers" });
   }
-
-  const body = await req.json().catch(() => ({}));
-  const type = safeString(body.type).toLowerCase();
 
   if (type === "buyer") {
     return handleDeleteBuyer(authContext.adminClient, body as Record<string, unknown>);

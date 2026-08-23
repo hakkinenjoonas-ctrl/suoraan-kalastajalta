@@ -75,6 +75,14 @@ export async function invokeAdminDeleteEntity(accessToken, payload) {
   return invokeEdgeFunctionAuthenticated("admin-delete-entity", payload, accessToken);
 }
 
+export async function invokeDeleteOwnAccount(accessToken) {
+  return invokeEdgeFunctionAuthenticated("admin-delete-entity", { type: "self" }, accessToken);
+}
+
 export async function verifyGooglePlaySubscription(accessToken, payload) {
   return invokeEdgeFunctionAuthenticated("verify-google-play-subscription", payload, accessToken);
+}
+
+export async function verifyAppleSubscription(accessToken, payload) {
+  return invokeEdgeFunctionAuthenticated("verify-apple-subscription", payload, accessToken);
 }
