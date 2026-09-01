@@ -283,7 +283,7 @@ function AuctionCard({ auction, tradeOffer, isBuyer, onBid, onReceive, onCreateD
   );
 }
 
-export default function AuctionsView({ profile, buyerRecord = null, entries = [], onTradeCreated, notificationTarget = null, onNotificationTargetHandled, onCreateDeliveryNote, onOpenAccountDetails }) {
+export default function AuctionsView({ profile, buyerRecord = null, entries = [], onTradeCreated, notificationTarget = null, onNotificationTargetHandled, onCreateDeliveryNote, onOpenAccountDetails, createRequestKey = 0 }) {
   const isBuyer = profile?.role === "buyer";
   const canCreate = profile?.role === "member" || profile?.role === "owner";
   const [auctions, setAuctions] = useState([]);
@@ -345,6 +345,14 @@ export default function AuctionsView({ profile, buyerRecord = null, entries = []
     const timer = window.setTimeout(() => setFocusedAuctionId(""), 5000);
     return () => window.clearTimeout(timer);
   }, [focusedAuctionId]);
+
+  useEffect(() => {
+    if (!createRequestKey || !canCreate) return undefined;
+    const timer = window.setTimeout(() => {
+      document.getElementById("auction-create-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [canCreate, createRequestKey]);
 
   useEffect(() => {
     const requestedOfferId = String(notificationTarget?.offerId || "").trim();
@@ -629,7 +637,7 @@ export default function AuctionsView({ profile, buyerRecord = null, entries = []
       ) : null}
       {message ? <div style={{ padding: 12, borderRadius: 10, background: "#ecfdf5", color: "#166534" }}>{message}</div> : null}
       {canCreate ? (
-        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div id="auction-create-panel" style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
           <strong style={{ fontSize: 18 }}>Avaa uusi huutokauppa</strong>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, alignItems: "end" }}>
             <label style={field}><span>Kalaerä</span><select style={input} value={draft.entryId} onChange={(event) => setDraft({ ...draft, entryId: event.target.value })}><option value="">Valitse erä</option>{availableEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.species} · {isCrayfishLabel(entry.species) ? `${entry.count || 0} kpl` : `${entry.kilos || 0} kg`} · {entry.date}</option>)}</select></label>

@@ -32,31 +32,7 @@ Jos käyttäjätilillesi kuuluu useita rooleja, voit vaihtaa aktiivista roolia s
 
 ### Omat tiedot
 
-Valitse **Omat tiedot**, kun haluat tarkistaa tai muuttaa profiilisi tietoja. Täytä kaikki omaan toimintaasi liittyvät tiedot mahdollisimman huolellisesti.
-
-Kalastajan tärkeisiin tietoihin kuuluvat muun muassa:
-
-- yhteys- ja yritystiedot
-- kaupallisen kalastajan tunnus
-- käytettävien kaupallisten kalastusalusten tunnukset
-- laskutus- ja pankkitiedot
-
-Kaupallisen kalastusaluksen tunnus on tärkeä tieto. Jos käytössäsi on useampi kaupallinen kalastusalus, kirjoita jokaisen aluksen tunnus omalle rivilleen tekstiruutuun eli tunnukset allekkain.
-
-Kaikkien pakollisten profiili-, yritys-, kalastaja-, alus-, laskutus- ja muiden pyydettyjen tietojen on oltava täytettyinä ennen kuin voit käydä kauppaa sovelluksen kautta. Tarkista puuttuvat tiedot ja paina lopuksi **Tallenna tiedot**.
-
-Ostajan tärkeisiin tietoihin kuuluvat muun muassa:
-
-- yritys ja yhteyshenkilö
-- puhelinnumero ja sähköposti
-- vähimmäis- ja enimmäisostomäärä
-- toimitusosoite
-- laskutusosoite ja laskutussähköposti
-- Y-tunnus ja ALV-tiedot
-
-Jalostajan tulee täyttää lisäksi toimipaikan tai laitoksen tarvitsemat tiedot, kuten laitostunnus.
-
-Tallenna muutokset painamalla **Tallenna tiedot**.
+Valitse **Omat tiedot**, kun haluat tarkistaa tai muuttaa aktiiviseen käyttäjärooliisi kuuluvia profiili- ja yritystietoja. Sovellus näyttää tässä vain valitulle roolille olennaiset kentät. Täytä pakolliset tiedot huolellisesti ja paina lopuksi **Tallenna tiedot**.
 
 ### Salasanan vaihtaminen
 
@@ -71,6 +47,17 @@ Salasanan on oltava vähintään kahdeksan merkkiä pitkä.
 Valitse **Kirjaudu ulos**, kun haluat päättää istunnon. Uloskirjautumista suositellaan etenkin yhteiskäyttöisellä laitteella.
 
 ## 3. Kalastajan käyttöohje
+
+### Kalastajan omat tiedot
+
+Täytä ennen saaliin kirjaamista ja myyntiä:
+
+- yhteys- ja yritystiedot
+- kaupallisen kalastajan tunnus
+- käytettävien kaupallisten kalastusalusten tunnukset
+- laskutus- ja pankkitiedot
+
+Jos käytössäsi on useampi kaupallinen kalastusalus, kirjoita jokaisen aluksen tunnus omalle rivilleen. Kaikkien pakollisten kalastaja-, alus- ja laskutustietojen on oltava täytettyinä ennen kaupankäyntiä.
 
 ### Yhteenveto
 
@@ -163,7 +150,24 @@ Kun kauppa on hyväksytty:
 6. Muodosta tai lähetä lasku.
 7. Kun maksu näkyy tililläsi, merkitse lasku maksetuksi.
 
+### Viranomaisilmoitukset
+
+Sovellus voi valmistella viralliseen saalisilmoitukseen tarvittavia tietoja, mutta raportin muodostaminen ei itsessään lähetä tietoja viranomaiselle. Tarkista tiedot ja tee varsinainen ilmoitus kulloinkin voimassa olevassa virallisessa palvelussa.
+
 ## 4. Ostajan käyttöohje
+
+### Ostajan omat tiedot
+
+Täytä ennen ostamista:
+
+- yritys ja yhteyshenkilö
+- puhelinnumero ja sähköposti
+- vähimmäis- ja enimmäisostomäärä
+- toimitusosoite
+- laskutusosoite ja laskutussähköposti
+- Y-tunnus ja ALV-tiedot
+
+Jos pakollisia tietoja puuttuu, sovellus näyttää kehotuksen niiden täydentämiseen. Ostajapuolella omat tiedot, päivitys ja uloskirjautuminen löytyvät vasemman yläkulman valikosta.
 
 ### Tarjousten käsittely
 
@@ -218,6 +222,10 @@ Jos laskun tiedoissa on virhe, ota yhteyttä myyjään ennen maksamista. Lasku n
 
 ## 5. Jalostajan käyttöohje
 
+### Jalostajan omat tiedot
+
+Täytä yrityksen yhteystiedot, laskutustiedot sekä toimipaikan tai laitoksen tarvitsemat tiedot, kuten laitostunnus, ennen jaloste-erien käsittelyä ja kaupankäyntiä.
+
 ### Jaloste-erän lisääminen
 
 1. Avaa **Lisää jaloste-erä**.
@@ -247,17 +255,9 @@ Ostajien vastaukset käsitellään **Tarjoukset**-näkymässä samalla periaatte
 
 ## 6. Raportit
 
-Valitse **Raportit**, määritä haluttu aikaväli ja tarkista muodostettu yhteenveto. Käyttäjäroolista riippuen raportteihin voi kuulua:
-
-- saalisraportti
-- tarjous- ja myyntiraportti
-- jaloste-erien raportti
-- ostajan hankintaraportti
-- rannikkokalastuksen ilmoittamiseen valmisteltuja tietoja
+Valitse **Raportit**, määritä haluttu aikaväli ja tarkista muodostettu yhteenveto. Sovellus näyttää raporttinäkymässä vain aktiiviseen käyttäjärooliisi kuuluvat raportit.
 
 Raportin voi toiminnosta riippuen viedä Excel-tiedostoksi, jakaa tai lähettää sähköpostiin.
-
-**Tärkeää:** sovellus voi valmistella viralliseen saalisilmoitukseen tarvittavia tietoja, mutta raportin muodostaminen ei itsessään lähetä tietoja viranomaiselle. Tarkista tiedot ja tee varsinainen ilmoitus kulloinkin voimassa olevassa virallisessa palvelussa.
 
 ## 7. Etiketit, erätunnus ja QR-koodi
 

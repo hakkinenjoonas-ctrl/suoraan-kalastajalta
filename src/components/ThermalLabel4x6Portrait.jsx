@@ -26,7 +26,7 @@ const styles = {
     color: palette.text,
     fontFamily: "\"Avenir Next\", \"Helvetica Neue\", Arial, sans-serif",
     display: "grid",
-    gridTemplateRows: "21mm 1fr 45mm",
+    gridTemplateRows: "23mm 1fr 45mm",
     gap: "3mm",
   },
   brand: {
@@ -55,6 +55,8 @@ const styles = {
     objectFit: "contain",
     filter: "none",
     display: "block",
+    transform: "scale(1.25)",
+    transformOrigin: "center",
   },
   ovalWrap: {
     display: "flex",
@@ -200,8 +202,8 @@ function renderOvalMark(establishmentNumber) {
   if (!establishmentNumber) return null;
   return (
     <svg
-      width="28mm"
-      height="15mm"
+      width="35mm"
+      height="18.75mm"
       viewBox="0 0 160 90"
       xmlns="http://www.w3.org/2000/svg"
       aria-label={`Laitostunnus ${establishmentNumber}`}
@@ -243,7 +245,10 @@ export default function ThermalLabel4x6Portrait({ label }) {
 
   return (
     <div style={styles.root} data-label-root="true">
-      <section style={styles.brand}>
+      <section style={{
+        ...styles.brand,
+        gridTemplateColumns: label.eviraFacilityId ? "35mm 22mm 1fr" : "22mm 1fr",
+      }}>
         {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
         <div style={styles.logoWrap}>
           {label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={styles.logo} /> : null}

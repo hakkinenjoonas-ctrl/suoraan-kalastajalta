@@ -29,6 +29,9 @@ const styles = {
     gridTemplateColumns: "1fr 30mm",
     gap: "2.4mm",
   },
+  rootWithFacility: {
+    gridTemplateColumns: "1fr 36mm",
+  },
   left: {
     display: "flex",
     flexDirection: "column",
@@ -100,7 +103,7 @@ const styles = {
     minHeight: 0,
   },
   brandBlock: {
-    flex: "1 1 auto",
+    width: "100%",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
@@ -109,10 +112,13 @@ const styles = {
   },
   brandRow: {
     width: "100%",
-    display: "flex",
-    justifyContent: "space-between",
+    display: "grid",
+    gridTemplateColumns: "1fr",
     alignItems: "center",
     gap: "0.8mm",
+  },
+  brandRowWithFacility: {
+    gridTemplateColumns: "19mm 1fr",
   },
   ovalWrap: {
     flex: "0 0 auto",
@@ -126,6 +132,8 @@ const styles = {
     maxHeight: "11mm",
     objectFit: "contain",
     display: "block",
+    transform: "scale(1.25)",
+    transformOrigin: "center",
   },
   brandText: {
     marginTop: "0.3mm",
@@ -192,8 +200,8 @@ function renderOvalMark(establishmentNumber) {
   if (!establishmentNumber) return null;
   return (
     <svg
-      width="14mm"
-      height="9mm"
+      width="18.75mm"
+      height="11.25mm"
       viewBox="0 0 160 90"
       xmlns="http://www.w3.org/2000/svg"
       aria-label={`Laitostunnus ${establishmentNumber}`}
@@ -227,10 +235,10 @@ export default function ThermalLabel4x3({ label }) {
       ? "24pt"
       : "18pt";
   const batchLength = `Erätunnus: ${label.batchId || "-"}`.length;
-  const batchFontSize = `${Math.min(10.8, (10.8 * 27) / Math.max(batchLength, 1)).toFixed(2)}pt`;
+  const batchFontSize = `${Math.min(10.8, (10.8 * 24) / Math.max(batchLength, 1)).toFixed(2)}pt`;
 
   return (
-    <div style={styles.root} data-label-root="true">
+    <div style={label.eviraFacilityId ? { ...styles.root, ...styles.rootWithFacility } : styles.root} data-label-root="true">
       <div style={styles.left}>
         <div>
           <div style={styles.species}>{label.species || "-"}</div>
@@ -259,7 +267,7 @@ export default function ThermalLabel4x3({ label }) {
       </div>
 
       <div style={styles.right}>
-        <div style={styles.brandRow}>
+        <div style={label.eviraFacilityId ? { ...styles.brandRow, ...styles.brandRowWithFacility } : styles.brandRow}>
           {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
           <div style={styles.brandBlock}>
             {label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={styles.logo} /> : null}

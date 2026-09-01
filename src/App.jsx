@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Directory, Filesystem } from "@capacitor/filesystem";
@@ -18,6 +18,7 @@ import {
   findAllowedUserByEmail,
   findAllowedUsersByEmail,
   deduplicateAllowedUsers,
+  isFutureJwtClockSkewError,
   isMissingRefreshTokenError,
 } from "./lib/auth.js";
 import {
@@ -75,7 +76,6 @@ import {
   getMissingBuyerPurchaseFields,
   getMissingSellerSaleFields,
 } from "./lib/tradeProfile.js";
-import { finlandMunicipalitiesByRegion, finlandRegions } from "./lib/municipalityRegions.js";
 import {
   ALLOWED_AUCTION_IMAGE_TYPES,
   prepareAuctionImage,
@@ -85,6 +85,26 @@ import {
   extractPackagingFromNotes,
 } from "./lib/packaging.js";
 import {
+  getFishingVesselValidationIssue,
+  getOfficialCatchSaveBlocker,
+} from "./lib/catchValidationPolicy.js";
+import {
+  createInlandGearPreset,
+  formatInlandGearPresetLabel,
+  getInlandGearCode,
+  getInlandGearMeta,
+  getInlandGearTechnicalFields,
+  getInlandGearValidationIssues,
+  isInlandDualQuantitySpecies,
+  normalizeInlandGearPresets,
+  saveInlandGearPreset,
+} from "./lib/inlandCatch.js";
+import {
+  getCoastalEffortValidationIssues,
+  isCoastalReportSpeciesAllowed,
+  isMarineFykeGear,
+} from "./lib/coastalCatch.js";
+import {
   FISH_VAT_RATE,
   calculateGrossPrice,
   calculateNetPrice,
@@ -93,6 +113,25 @@ import {
   formatDeliveryPrice,
   formatVatPercent,
 } from "./lib/pricing.js";
+import {
+  getNotificationRouteTarget,
+  normalizeNotificationNavigationPayload,
+} from "./lib/notificationRouting.js";
+import {
+  applyIncomingAppUrl,
+  getRequestedOfferId,
+  getRequestedPublicBatchId,
+  leavePublicBatchView,
+} from "./lib/appLinks.js";
+import {
+  formatSpeciesForLabelTitle,
+  formatSpeciesForSale,
+  getSpeciesMetadata,
+  getSpeciesPriceUnit,
+  getSpeciesRowLabel,
+  isCrayfishSpecies,
+  normalizeSpeciesDisplayLabel,
+} from "./lib/species.js";
 import {
   DEFAULT_PUBLIC_APP_URL,
   supabase,
@@ -151,6 +190,21 @@ import {
 } from "./components/wholesaleOffersSections.jsx";
 import AdminOperationsView from "./components/AdminOperationsView.jsx";
 import AuctionsView from "./components/AuctionsView.jsx";
+import {
+  AccountDeletionCard,
+  PendingApprovalView,
+  RoleSelectionView,
+} from "./components/AccountViews.jsx";
+import {
+  FishSpeciesInput,
+  LandingPlaceInput,
+  MunicipalitySelect,
+  MultiCityInput,
+  RememberedTextInput,
+} from "./components/FormInputs.jsx";
+import PersistentAppNavigation from "./components/PersistentAppNavigation.jsx";
+import AuthView from "./components/AuthView.jsx";
+import PublicApp from "./public/PublicApp.jsx";
 import { AUCTION_DURATION_OPTIONS, normalizeAuctionMoney } from "./lib/auctionLogic.js";
 import ProcessedLabel4x3, { PROCESSED_LABEL_4X3_SIZE_MM } from "./components/ProcessedLabel4x3.jsx";
 import ProcessedLabel4x6, { PROCESSED_LABEL_4X6_SIZE_MM } from "./components/ProcessedLabel4x6.jsx";
@@ -198,6 +252,7 @@ function isTransientFetchError(error) {
     message.includes("unable to resolve host") ||
     message.includes("no address associated with hostname") ||
     message.includes("name not resolved") ||
+    isFutureJwtClockSkewError(error) ||
     message.includes("dns")
   );
 }
@@ -242,82 +297,11 @@ async function runWithConcurrency(items, concurrency, worker) {
   return results;
 }
 
-function getSpeciesRowLabel(row) {
-  if (row?.species === "Muu") {
-    return String(row?.customSpecies || "").trim() || "Muu";
-  }
-  return row?.species || "";
-}
-
-function getSpeciesMetadata(label) {
-  const normalized = String(label || "")
-    .split(",")[0]
-    .replace(/\b(filee|filet|avattu|perattu|päätön|nyljetty)\b/gi, "")
-    .replace(/\b\d+\+\s*cm\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-  return fishSpeciesByName[normalized] || null;
-}
-
-function isCrayfishSpecies(label) {
-  const metadata = getSpeciesMetadata(label);
-  if (metadata?.scientific === "Pacifastacus leniusculus" || metadata?.scientific === "Astacus astacus") return true;
-  const normalized = String(label || "").toLowerCase();
-  return normalized.includes("täplärapu") ||
-    normalized.includes("jokirapu") ||
-    normalized.includes("pacifastacus leniusculus") ||
-    normalized.includes("astacus astacus");
-}
-
 function parseCrayfishCountFromSummaryLine(line) {
   const text = String(line || "");
   const parenthesizedCount = text.match(/\(([0-9]+(?:[.,][0-9]+)?)\s*kpl\)/i);
   const directCount = text.match(/:\s*([0-9]+(?:[.,][0-9]+)?)\s*kpl/i);
   return parseLocaleNumber(parenthesizedCount?.[1] || directCount?.[1]);
-}
-
-function getSpeciesPriceUnit(label) {
-  return isCrayfishSpecies(label) ? "kpl" : "kg";
-}
-
-function normalizeSpeciesDisplayLabel(label) {
-  const raw = String(label || "").trim();
-  if (!raw) return "Muu";
-
-  const collapsed = raw.replace(/\s+/g, " ").trim();
-  const lowerCollapsed = collapsed.toLowerCase();
-  const sortedSpecies = [...fishSpeciesCatalog]
-    .map((item) => item.name_fi)
-    .sort((left, right) => right.length - left.length);
-
-  const matchedSpecies = sortedSpecies.find((speciesName) => {
-    const lowerSpecies = speciesName.toLowerCase();
-    return lowerCollapsed === lowerSpecies || lowerCollapsed.startsWith(`${lowerSpecies} `) || lowerCollapsed.startsWith(`${lowerSpecies},`);
-  });
-
-  if (!matchedSpecies) return collapsed;
-
-  const suffix = collapsed.slice(matchedSpecies.length).trim();
-  if (!suffix) return matchedSpecies;
-
-  if (suffix.startsWith(",")) {
-    return `${matchedSpecies}${suffix}`;
-  }
-
-  return `${matchedSpecies} ${suffix}`;
-}
-
-function formatSpeciesForSale(label) {
-  return normalizeSpeciesDisplayLabel(label);
-}
-
-function formatSpeciesForLabelTitle(label) {
-  const normalized = normalizeSpeciesDisplayLabel(label);
-  if (!normalized) return "Muu";
-
-  const metadata = getSpeciesMetadata(normalized);
-  return metadata?.name_fi || normalized;
 }
 
 function formatSpeciesSummaryLine(label, kilos, count) {
@@ -857,8 +841,26 @@ function isEntryOfferedForSale(entry) {
   return Boolean(
     entry?.offerToShops ||
     entry?.offerToRestaurants ||
-    entry?.offerToWholesalers,
+    entry?.offerToWholesalers ||
+    entry?.offerRestricted,
   );
+}
+
+function createCatchSaleDraft(entry = {}) {
+  return {
+    packaging: extractPackagingFromNotes(entry?.notes) || "",
+    pricePerKg: entry?.pricePerKg == null ? "" : String(entry.pricePerKg),
+    offerAudience: "groups",
+    selectedBuyerIds: [],
+    offerToShops: false,
+    offerToRestaurants: false,
+    offerToWholesalers: false,
+    deliveryMethod: entry?.deliveryMethod === "Myyjä toimittaa" ? "Myyjä toimittaa" : "Nouto",
+    deliveryArea: entry?.deliveryArea || "",
+    deliveryCost: entry?.deliveryCost == null ? "" : String(entry.deliveryCost),
+    earliestDeliveryDate: entry?.earliestDeliveryDate || today(),
+    coldTransport: Boolean(entry?.coldTransport),
+  };
 }
 
 function getCatchLabelScientificName(speciesValue) {
@@ -1691,6 +1693,45 @@ function fitAllLabels(container) {
   roots.forEach((root) => fitLabelContent(root));
 }
 
+function fitLabelSingleLineFields(container) {
+  if (!container || typeof window === "undefined") return;
+  const tolerancePx = 0.75;
+  const minimumFontSizePx = 4;
+  const roots = container.matches?.("[data-label-root]")
+    ? [container]
+    : Array.from(container.querySelectorAll?.("[data-label-root]") || []);
+
+  roots.forEach((root) => {
+    root.querySelectorAll("[data-label-single-line]").forEach((element) => {
+      element.style.whiteSpace = "nowrap";
+      element.style.wordBreak = "normal";
+      for (let attempt = 0; attempt < 80 && element.scrollWidth > element.clientWidth + tolerancePx; attempt += 1) {
+        const currentSize = Number.parseFloat(window.getComputedStyle(element).fontSize);
+        if (!Number.isFinite(currentSize) || currentSize <= minimumFontSizePx) break;
+        element.style.fontSize = `${Math.max(minimumFontSizePx, currentSize * 0.94)}px`;
+      }
+    });
+  });
+}
+
+function getLabelSingleLineFitScript() {
+  return "<script>(" + (function fitPrintedSingleLineFields() {
+    const run = () => {
+      document.querySelectorAll("[data-label-single-line]").forEach((element) => {
+        element.style.whiteSpace = "nowrap";
+        element.style.wordBreak = "normal";
+        for (let attempt = 0; attempt < 80 && element.scrollWidth > element.clientWidth + 0.75; attempt += 1) {
+          const currentSize = Number.parseFloat(getComputedStyle(element).fontSize);
+          if (!Number.isFinite(currentSize) || currentSize <= 4) break;
+          element.style.fontSize = `${Math.max(4, currentSize * 0.94)}px`;
+        }
+      });
+    };
+    addEventListener("load", () => requestAnimationFrame(() => requestAnimationFrame(run)));
+    addEventListener("beforeprint", run);
+  }).toString() + ")();<\/script>";
+}
+
 function getLabelAutoFitScript() {
   return "<script>(" + (function autoFitPrintedLabels() {
     const run = () => {
@@ -1861,7 +1902,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
             .thermal-label-page:last-child { page-break-after: auto; }
           </style>
         </head>
-        <body>${labels.map((label) => `<section class="thermal-label-page">${renderToStaticMarkup(renderThermalLabelByFormat(printFormat, label))}</section>`).join("")}${getLabelAutoFitScript()}</body>
+        <body>${labels.map((label) => `<section class="thermal-label-page">${renderToStaticMarkup(renderThermalLabelByFormat(printFormat, label))}</section>`).join("")}${getLabelSingleLineFitScript()}</body>
       </html>
     `;
   }
@@ -2393,7 +2434,7 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl, printForma
       });
     }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    fitAllLabels(host);
+    fitLabelSingleLineFields(host);
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
     const canvas = await html2canvas(host.firstElementChild || host, {
@@ -2733,60 +2774,6 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
   return doc;
 }
 
-function getRequestedPublicBatchId() {
-  if (typeof window === "undefined") return "";
-  const pathname = String(window.location.pathname || "");
-  if (pathname.startsWith("/batch/")) {
-    return decodeURIComponent(pathname.slice("/batch/".length)).trim();
-  }
-  const params = new URLSearchParams(window.location.search);
-  if (!params.get("offer") && params.get("batch")) {
-    return String(params.get("batch") || "").trim();
-  }
-  return "";
-}
-
-function getRequestedOfferId() {
-  if (typeof window === "undefined") return "";
-  const params = new URLSearchParams(window.location.search);
-  return String(params.get("offer") || "").trim();
-}
-
-function leavePublicBatchView() {
-  if (typeof window === "undefined") return;
-  window.history.replaceState({}, "", "/");
-}
-
-function applyIncomingAppUrl(urlString, handlers = {}) {
-  if (typeof window === "undefined" || !urlString) return;
-
-  let parsedUrl = null;
-  try {
-    parsedUrl = new URL(urlString);
-  } catch {
-    return;
-  }
-
-  const currentUrl = new URL(window.location.href);
-  const nextPath = `${parsedUrl.pathname || "/"}${parsedUrl.search || ""}${parsedUrl.hash || ""}`;
-  const currentPath = `${currentUrl.pathname || "/"}${currentUrl.search || ""}${currentUrl.hash || ""}`;
-  if (nextPath !== currentPath) {
-    window.history.replaceState({}, "", nextPath);
-  }
-
-  const nextParams = new URLSearchParams(parsedUrl.search || "");
-  const linkedOfferId = String(nextParams.get("offer") || "").trim();
-  const batchPathMatch = String(parsedUrl.pathname || "").match(/^\/batch\/(.+)$/);
-  const linkedBatchId = batchPathMatch ? decodeURIComponent(String(batchPathMatch[1] || "")).trim() : String(nextParams.get("batch") || "").trim();
-
-  if (linkedOfferId) {
-    handlers.setBuyerActiveOfferId?.(linkedOfferId);
-    handlers.setActiveTab?.("offers");
-  } else if (linkedBatchId) {
-    handlers.setPublicBatchId?.(linkedBatchId);
-  }
-}
-
 async function consumeIncomingPasswordRecoveryUrl(urlString, handlers = {}) {
   if (!urlString) return false;
 
@@ -2839,6 +2826,19 @@ function getCatchFormDefaultsStorageKey(profileLike) {
   return profileKey ? `${CATCH_FORM_DEFAULTS_KEY}:${profileKey}` : CATCH_FORM_DEFAULTS_KEY;
 }
 
+const INLAND_GEAR_PRESET_OPTION_PREFIX = "inland-preset:";
+
+function getInlandGearPresetOptionValue(presetId) {
+  return `${INLAND_GEAR_PRESET_OPTION_PREFIX}${presetId}`;
+}
+
+function getInlandGearPresetIdFromOption(value) {
+  const normalized = String(value || "");
+  return normalized.startsWith(INLAND_GEAR_PRESET_OPTION_PREFIX)
+    ? normalized.slice(INLAND_GEAR_PRESET_OPTION_PREFIX.length)
+    : "";
+}
+
 function parseStoredCatchFormDefaults(raw) {
   const parsed = raw ? JSON.parse(raw) : {};
   const parsedGearProfiles = parsed?.gearProfiles && typeof parsed.gearProfiles === "object" ? parsed.gearProfiles : {};
@@ -2881,6 +2881,7 @@ function parseStoredCatchFormDefaults(raw) {
     fykeHeight: String(parsed?.fykeHeight || ""),
     fykeHeightOptions: Array.isArray(parsed?.fykeHeightOptions) ? parsed.fykeHeightOptions.map((item) => String(item || "").trim()).filter(Boolean) : [],
     gearProfiles,
+    inlandGearPresets: normalizeInlandGearPresets(parsed?.inlandGearPresets),
   };
 }
 
@@ -2949,6 +2950,7 @@ function getStoredCatchFormDefaults(profileLike = null) {
       netHeight: "",
       netMeshSize: "",
       fykeHeight: "",
+      inlandGearPresets: [],
     };
   }
   try {
@@ -2977,6 +2979,7 @@ function getStoredCatchFormDefaults(profileLike = null) {
       netMeshSizeOptions: [],
       fykeHeight: "",
       fykeHeightOptions: [],
+      inlandGearPresets: [],
     };
   }
 }
@@ -3085,7 +3088,52 @@ function HelpMarkdown({ source }) {
   return <div>{blocks}</div>;
 }
 
-function HelpDialog({ onClose }) {
+function getRoleHelpGuideMarkdown(role) {
+  const allowedSectionNumbers = role === "buyer"
+    ? new Set([1, 2, 4, 6])
+    : role === "processor"
+      ? new Set([1, 2, 5, 6])
+      : role === "owner"
+        ? new Set([1, 2, 6])
+        : new Set([1, 2, 3, 6]);
+  const lines = String(helpGuideMarkdown || "").split("\n");
+  const sections = [];
+  let currentSection = null;
+
+  lines.forEach((line) => {
+    const sectionMatch = line.match(/^##\s+(\d+)\.\s+(.+)$/);
+    if (sectionMatch) {
+      currentSection = {
+        number: Number(sectionMatch[1]),
+        title: sectionMatch[2],
+        lines: [],
+      };
+      sections.push(currentSection);
+      return;
+    }
+    if (currentSection) currentSection.lines.push(line);
+  });
+
+  const roleTitle = role === "buyer"
+    ? "Ostajan käyttöohje"
+    : role === "processor"
+      ? "Jalostajan käyttöohje"
+      : role === "owner"
+        ? "Ylläpitäjän käyttöohje"
+        : "Kalastajan käyttöohje";
+  const selectedSections = sections.filter((section) => allowedSectionNumbers.has(section.number));
+  const normalizedSections = selectedSections.map((section, index) => (
+    [`## ${index + 1}. ${section.title}`, ...section.lines].join("\n").trim()
+  ));
+
+  return [
+    `# Suoraan Kalastajalta – ${roleTitle.toLocaleLowerCase("fi-FI")}`,
+    `Tässä ohjeessa näkyvät vain rooliin **${roleTitle.replace(" käyttöohje", "")}** kuuluvat toiminnot.`,
+    ...normalizedSections,
+  ].join("\n\n");
+}
+
+function HelpDialog({ role, onClose }) {
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === "Escape") onClose();
@@ -3137,7 +3185,9 @@ function HelpDialog({ onClose }) {
           background: "rgba(248, 250, 252, 0.97)",
         }}>
           <div>
-            <h2 id="help-dialog-title" style={{ margin: 0, color: "#0f172a" }}>Sovelluksen käyttöohje</h2>
+            <h2 id="help-dialog-title" style={{ margin: 0, color: "#0f172a" }}>
+              {role === "buyer" ? "Ostajan käyttöohje" : role === "processor" ? "Jalostajan käyttöohje" : role === "owner" ? "Ylläpitäjän käyttöohje" : "Kalastajan käyttöohje"}
+            </h2>
             <div style={{ marginTop: 4, color: "#64748b", fontSize: 14 }}>Suoraan Kalastajalta</div>
           </div>
           <button
@@ -3162,7 +3212,7 @@ function HelpDialog({ onClose }) {
         </div>
 
         <div style={{ padding: 20 }}>
-          <HelpMarkdown source={helpGuideMarkdown} />
+          <HelpMarkdown source={getRoleHelpGuideMarkdown(role)} />
         </div>
       </section>
     </div>
@@ -3330,38 +3380,6 @@ function fulfillmentStatusLabel(status) {
   if (status === "delivery_agreed") return "Toimitus sovittu";
   if (status === "delivered") return "Toimitettu";
   return "Yhteydenotto kesken";
-}
-
-function parseNotificationPayloadPart(value) {
-  if (!value) return {};
-  if (typeof value === "object") return value;
-  if (typeof value !== "string") return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function normalizeNotificationNavigationPayload(payload = {}) {
-  const root = parseNotificationPayloadPart(payload);
-  const nestedData = parseNotificationPayloadPart(root.data);
-  const nestedExtra = parseNotificationPayloadPart(root.extra);
-  return { ...root, ...nestedData, ...nestedExtra };
-}
-
-function getNotificationRouteTarget(data, role = "") {
-  const normalizedData = normalizeNotificationNavigationPayload(data);
-  const route = String(normalizedData?.route || "");
-  const eventType = String(normalizedData?.eventType || normalizedData?.event_type || "").toLowerCase();
-  const notificationText = `${String(normalizedData?.title || "")} ${String(normalizedData?.body || "")}`.toLocaleLowerCase("fi-FI");
-  if (route === "billing") return role === "buyer" ? "buyer_billing" : "billing";
-  if (route === "auctions") return "auctions";
-  if (route === "offers") return "offers";
-  if (eventType.startsWith("auction_")) return "auctions";
-  if (notificationText.includes("huutokauppa")) return "auctions";
-  return "dashboard";
 }
 
 function formatBatchArea(area) {
@@ -3550,22 +3568,62 @@ function parseLocaleNumber(value) {
 function normalizeCatchGearValue(value) {
   const gear = String(value || "").trim();
   if (!gear) return "";
-  if (gear === "Trooli" || gear === "Hoitokalastus troolilla") return "Trooli";
+  if (gear === "Trooli" || gear === "Paritrooli" || gear === "Hoitokalastus troolilla") return "Trooli";
   if (gear.startsWith("Nuotta")) return "Nuotta";
   if (gear === "Muikkuverkko" || gear.startsWith("Verkko") || gear === "Verkko") return "Verkko";
-  if (gear.startsWith("Rysä / paunetti") || gear === "Rysä" || gear === "Paunetti/avorysä") return "Rysä";
+  if (gear.startsWith("Rysä / paunetti") || gear === "Rysä" || gear === "Paunetti / avorysä" || gear === "Paunetti/avorysä") return "Rysä";
   if (gear === "Katiska") return "Katiska";
-  if (gear === "Merta") return "Merta";
+  if (gear === "Merta" || gear === "Merrat") return "Merta";
   if (gear === "Vapapyydys tai vetouistin" || gear === "Vapaväline") return "Vapaväline";
   if (gear === "Muu pyydys" || gear === "Muu") return "Muu";
   return gear;
 }
 
 function catchGearUsesCount(gearValue) {
-  return normalizeCatchGearValue(gearValue) !== "Trooli";
+  return Boolean(getInlandGearMeta(gearValue)) || normalizeCatchGearValue(gearValue) !== "Trooli";
 }
 
 function getFishingDurationFieldMeta(gearValue) {
+  const inlandGear = getInlandGearMeta(gearValue);
+  if (inlandGear?.effort === "time") {
+    if (inlandGear.secondaryField === "speed") {
+      return {
+        label: "Pyyntiaika ja vetonopeus",
+        durationLabel: "Pyyntiaika (hh:mm)",
+        speedLabel: "Vetonopeus (km/h)",
+        durationPlaceholder: "Esim. 4:20",
+        speedPlaceholder: "Esim. 4",
+        help: "Ilmoita pyyntiaika tunteina ja minuutteina sekä vetonopeus kilometreinä tunnissa.",
+        splitFields: true,
+      };
+    }
+    if (inlandGear.secondaryField === "haulLength") {
+      return {
+        label: "Pyyntiaika ja vedon pituus",
+        durationLabel: "Pyyntiaika (hh:mm)",
+        speedLabel: "Vedon pituus (m)",
+        durationPlaceholder: "Esim. 6:30",
+        speedPlaceholder: "Esim. 500",
+        help: "Ilmoita pyyntiaika tunteina ja minuutteina sekä vedon pituus metreinä.",
+        splitFields: true,
+      };
+    }
+    return {
+      label: "Pyyntiaika (hh:mm)",
+      placeholder: "Esim. 4:20",
+      help: "Ilmoita pyyntiaika tunteina ja minuutteina.",
+      splitFields: false,
+    };
+  }
+  if (inlandGear?.effort === "days") {
+    return {
+      label: "Pyyntipäiviä edellisestä koennasta",
+      placeholder: "Esim. 2",
+      help: "Ilmoita pyydyksen pyyntipäivien määrä edellisestä koennasta.",
+      splitFields: false,
+    };
+  }
+
   const normalizedGear = normalizeCatchGearValue(gearValue);
   const gear = String(gearValue || "").trim();
 
@@ -3638,10 +3696,18 @@ function buildFishingDurationValue(gearValue, duration, speed) {
 
 function validateCatchFormForOfficialReporting(form) {
   const issues = [];
-  const gear = String(form?.gear || "").trim();
-  const normalizedGear = normalizeCatchGearValue(gear);
-  const fishingMeta = getFishingDurationFieldMeta(gear);
-  const fishingParts = parseFishingDurationValue(gear, form?.fishingDurationDays);
+  const vesselIssue = getFishingVesselValidationIssue(form);
+  const catchYear = Number(String(form?.date || "").slice(0, 4));
+  const currentYear = new Date().getFullYear();
+
+  if (vesselIssue) {
+    issues.push(vesselIssue);
+  }
+  if (!String(form?.date || "").trim()) {
+    issues.push("Kalastuspäivä puuttuu.");
+  } else if (!Number.isInteger(catchYear) || catchYear < currentYear - 1 || catchYear > currentYear) {
+    issues.push("Sisävesisaalis voidaan ilmoittaa vain kuluvalle tai edelliselle vuodelle.");
+  }
 
   if (!String(form?.area || "").trim()) {
     issues.push("Kalastamisalue puuttuu.");
@@ -3652,36 +3718,7 @@ function validateCatchFormForOfficialReporting(form) {
   if (!String(form?.landingPlace || "").trim()) {
     issues.push("Purkamispaikka puuttuu.");
   }
-  if (!gear) {
-    issues.push("Pyydys puuttuu.");
-  }
-  if (catchGearUsesCount(gear) && !String(form?.gearCount || "").trim()) {
-    issues.push("Pyydysten määrä puuttuu.");
-  }
-
-  if (fishingMeta.splitFields) {
-    if (!fishingParts.duration) {
-      issues.push(`${fishingMeta.durationLabel} puuttuu.`);
-    }
-    if (!fishingParts.speed) {
-      issues.push(`${fishingMeta.speedLabel} puuttuu.`);
-    }
-  } else if (!String(form?.fishingDurationDays || "").trim()) {
-    issues.push("Pyyntivuorokaudet puuttuvat.");
-  }
-
-  if (normalizedGear === "Verkko" && !String(form?.netMeshSize || "").trim()) {
-    issues.push("Verkon solmuväli puuttuu.");
-  }
-
-  if (
-    normalizedGear === "Rysä" &&
-    gear !== "Rysä / paunetti, korkeus yli 1,5 m" &&
-    gear !== "Rysä / paunetti, korkeus alle 1,5 m" &&
-    !String(form?.fykeHeight || "").trim()
-  ) {
-    issues.push("Rysän tai paunetin korkeus puuttuu.");
-  }
+  issues.push(...getInlandGearValidationIssues(form));
 
   return issues;
 }
@@ -3690,43 +3727,30 @@ function validateOfficialCatchEntries(entries = []) {
   const issues = [];
 
   entries.forEach((entry) => {
-    const gear = String(entry?.gear || "").trim();
-    const normalizedGear = normalizeCatchGearValue(gear);
-    const fishingMeta = getFishingDurationFieldMeta(gear);
-    const fishingParts = parseFishingDurationValue(gear, entry?.fishingDurationDays);
-    const gearInfo = getOfficialGearCodeInfo(entry);
     const identifier = String(entry?.batchId || entry?.batch_id || entry?.id || "").trim() || "tuntematon erä";
-
     const missing = [];
     if (!String(entry?.date || "").trim()) missing.push("kalastuspäivä");
     if (!String(entry?.area || "").trim()) missing.push("kalastamisalue");
     if (!String(entry?.municipality || "").trim()) missing.push("paikkakunta");
     if (!String(entry?.landingPlace || "").trim()) missing.push("purkamispaikka");
-    if (!gear) missing.push("pyydys");
-    if (catchGearUsesCount(gear) && !String(entry?.gearCount || "").trim()) missing.push("pyydysten määrä");
+    if (!entry?.fishingWithoutVessel && !String(entry?.commercialFishingVesselId || "").trim()) missing.push("alus tai Kalastus ilman alusta -valinta");
 
-    if (fishingMeta.splitFields) {
-      if (!fishingParts.duration) missing.push(fishingMeta.durationLabel.toLowerCase());
-      if (!fishingParts.speed) missing.push(fishingMeta.speedLabel.toLowerCase());
-    } else if (!String(entry?.fishingDurationDays || "").trim()) {
-      missing.push("pyyntivuorokaudet");
-    }
+    const gearIssues = getInlandGearValidationIssues({
+      ...entry,
+      inlandGearCode: entry?.inlandGearCode || entry?.inland_gear_code || "",
+      gearCount: entry?.gearCount || entry?.gear_count || "",
+      fishingDurationDays: entry?.fishingDurationDays || entry?.fishing_effort || "",
+      fishingSecondaryValue: entry?.fishingSecondaryValue || entry?.fishing_secondary_value || "",
+      netMeshSize: entry?.netMeshSize || entry?.gear_mesh_size || "",
+      netHeight: entry?.netHeight || entry?.gear_height || "",
+      gearLength: entry?.gearLength || entry?.gear_length || "",
+      gearWidth: entry?.gearWidth || entry?.gear_width || "",
+      otherGearName: entry?.otherGearName || entry?.other_gear_name || "",
+    });
+    missing.push(...gearIssues.map((issue) => issue.replace(/\.$/, "").toLocaleLowerCase("fi-FI")));
 
-    if (normalizedGear === "Verkko" && !String(entry?.netMeshSize || entry?.gear_mesh_size || "").trim()) {
-      missing.push("verkon solmuväli");
-    }
-
-    if (
-      normalizedGear === "Rysä" &&
-      gear !== "Rysä / paunetti, korkeus yli 1,5 m" &&
-      gear !== "Rysä / paunetti, korkeus alle 1,5 m" &&
-      !String(entry?.fykeHeight || entry?.gear_fyke_height || "").trim()
-    ) {
-      missing.push("rysän tai paunetin korkeus");
-    }
-
-    if (!gearInfo.code) {
-      missing.push("virallinen pyydyskoodi");
+    if (!entry?.effortOnly && isInlandDualQuantitySpecies(entry?.species) && (Number(entry?.kilos || 0) <= 0 || Number(entry?.count || 0) <= 0)) {
+      missing.push("lajilta vaaditaan sekä kilot että kappaleet");
     }
 
     if (missing.length > 0) {
@@ -3739,14 +3763,21 @@ function validateOfficialCatchEntries(entries = []) {
 
 function validateMarineCatchForm(form) {
   const issues = [];
+  const vesselIssue = getFishingVesselValidationIssue(form);
+  if (vesselIssue) issues.push(vesselIssue);
   if (!String(form?.area || "").trim()) issues.push("Merialue puuttuu.");
   if (!String(form?.icesSubdivision || "").trim()) issues.push("ICES-osa-alue puuttuu.");
   if (!String(form?.statisticalRectangle || "").trim()) issues.push("Tilastoruutu puuttuu.");
   if (!String(form?.marineGearCode || "").trim()) issues.push("Merialueen pyydys puuttuu.");
   if (!String(form?.landingPlace || "").trim()) issues.push("Purkamispaikka puuttuu.");
   if (!String(form?.vesselLengthClass || "").trim()) issues.push("Aluksen pituusluokka puuttuu.");
-  if (form?.vesselLengthClass === "without_vessel" && !form?.fishingWithoutVessel) {
-    issues.push("Valitse myös Kalastus ilman alusta.");
+  if (form?.vesselLengthClass === "under_10m" || form?.vesselLengthClass === "without_vessel") {
+    issues.push(...getCoastalEffortValidationIssues({
+      gearCount: form?.gearCount,
+      fishingDays: form?.fishingDurationDays,
+      fishingHours: form?.fishingSecondaryValue,
+      marineGearCode: form?.marineGearCode,
+    }));
   }
   return issues;
 }
@@ -3764,47 +3795,20 @@ function validateCoastalCatchEntries(entries = []) {
     if (!entry?.vesselLengthClass) missing.push("aluksen pituusluokka");
     if (entry?.vesselLengthClass === "under_10m" && !entry?.commercialFishingVesselId) missing.push("aluksen rekisteritunnus");
     if (!getSpeciesMetadata(entry?.species)?.fao) missing.push("vahvistettu FAO-lajikoodi");
+    if (!isCoastalReportSpeciesAllowed(entry?.species)) missing.push("lohi ja turska ilmoitetaan purkamisilmoituksella");
+    missing.push(...getCoastalEffortValidationIssues({
+      gearCount: entry?.gearCount || entry?.gear_count || "",
+      fishingDays: entry?.fishingDurationDays || entry?.fishing_effort || "",
+      fishingHours: entry?.fishingSecondaryValue || entry?.fishing_secondary_value || "",
+      marineGearCode: entry?.marineGearCode || entry?.marine_gear_code || "",
+    }).map((issue) => issue.replace(/\.$/, "").toLocaleLowerCase("fi-FI")));
     if (missing.length > 0) issues.push(`${identifier}: ${missing.join(", ")}`);
   });
   return issues;
 }
 
-function isValidFinnishPersonalIdentityCode(value) {
-  const normalized = String(value || "").trim().toUpperCase();
-  const match = normalized.match(/^(\d{6})([+\-A-FYXWVU])(\d{3})([0-9A-Z])$/);
-  if (!match) return false;
-
-  const checksumCharacters = "0123456789ABCDEFHJKLMNPRSTUVWXY";
-  const checksumIndex = Number(`${match[1]}${match[3]}`) % 31;
-  if (checksumCharacters[checksumIndex] !== match[4]) return false;
-
-  const day = Number(match[1].slice(0, 2));
-  const month = Number(match[1].slice(2, 4));
-  const yearSuffix = Number(match[1].slice(4, 6));
-  const centuryByMarker = {
-    "+": 1800,
-    "-": 1900,
-    Y: 1900,
-    X: 1900,
-    W: 1900,
-    V: 1900,
-    U: 1900,
-    A: 2000,
-    B: 2000,
-    C: 2000,
-    D: 2000,
-    E: 2000,
-    F: 2000,
-  };
-  const date = new Date(Date.UTC((centuryByMarker[match[2]] || 0) + yearSuffix, month - 1, day));
-  return date.getUTCFullYear() === (centuryByMarker[match[2]] || 0) + yearSuffix
-    && date.getUTCMonth() === month - 1
-    && date.getUTCDate() === day;
-}
-
 function buildCoastalCatchWorkbook(entries = [], reportDateLabel = "kaikki", fisherProfile = null, reportingDetails = {}) {
   const coastalEntries = entries.filter((entry) => String(entry?.waterType || "") === WATER_TYPE_SEA);
-  const reporterIdentities = reportingDetails?.reporterIdentities || {};
   const buyers = Array.isArray(reportingDetails?.buyers) ? reportingDetails.buyers : [];
   const grouped = new Map();
 
@@ -3818,6 +3822,7 @@ function buildCoastalCatchWorkbook(entries = [], reportDateLabel = "kaikki", fis
       entry?.statisticalRectangle || "",
       entry?.marineGearCode || "",
       entry?.landingPlace || "",
+      entry?.gearCount || entry?.gear_count || "",
       speciesMeta?.fao || "",
     ].join("|");
     const current = grouped.get(key) || {
@@ -3830,10 +3835,15 @@ function buildCoastalCatchWorkbook(entries = [], reportDateLabel = "kaikki", fis
       marineGearName: entry?.marineGearName || getMarineGearByCode(entry?.marineGearCode)?.name || "",
       traceabilityCategory: getMarineGearByCode(entry?.marineGearCode)?.traceabilityCategory || "",
       landingPlace: entry?.landingPlace || "",
+      gearCount: entry?.gearCount || entry?.gear_count || "",
       species: formatSpeciesForLabelTitle(entry?.species || ""),
       scientificName: speciesMeta?.scientific || "",
       faoCode: speciesMeta?.fao || "",
       kilos: 0,
+      fishingDays: 0,
+      fishingHoursTotal: 0,
+      fishingHoursCount: 0,
+      effortKeys: new Set(),
       dates: new Set(),
       batchIds: new Set(),
       fishingDayIds: new Set(),
@@ -3842,6 +3852,17 @@ function buildCoastalCatchWorkbook(entries = [], reportDateLabel = "kaikki", fis
       lostGearDetails: new Set(),
     };
     current.kilos += Number(entry?.kilos || 0);
+    const effortKey = String(entry?.batchId || entry?.id || `${entry?.date || ""}|${current.effortKeys.size}`);
+    if (!current.effortKeys.has(effortKey)) {
+      const fishingDays = parseLocaleNumber(entry?.fishingDurationDays || entry?.fishing_effort);
+      const fishingHours = parseLocaleNumber(entry?.fishingSecondaryValue || entry?.fishing_secondary_value);
+      if (fishingDays != null) current.fishingDays += fishingDays;
+      if (fishingHours != null) {
+        current.fishingHoursTotal += fishingHours;
+        current.fishingHoursCount += 1;
+      }
+      current.effortKeys.add(effortKey);
+    }
     if (entry?.date) current.dates.add(entry.date);
     if (entry?.batchId) current.batchIds.add(entry.batchId);
     if (entry?.fishingDayId) current.fishingDayIds.add(entry.fishingDayId);
@@ -3852,18 +3873,15 @@ function buildCoastalCatchWorkbook(entries = [], reportDateLabel = "kaikki", fis
   });
 
   const instructions = [
-    ["Rannikkokalastusilmoituksen valmisteluraportti"],
+    ["Rannikkokalastuksen saalisilmoitus"],
     ["Valittu aikaväli", reportDateLabel],
-    ["Huomio", "Raportti ei lähetä tietoja viranomaiselle. Tarkista ja ilmoita tiedot virallisessa saalisilmoituspalvelussa."],
+    ["Huomio", "Raportti sisältää sovellukseen kirjatut rannikkokalastuksen saalistiedot valitulta aikaväliltä. Tarkista tiedot ennen toimittamista."],
     ["Rajaus", "Alle 10 metrin alusten ja ilman alusta kalastettujen merisaaliiden kuukausikooste."],
     [],
     ["Kalastaja", fisherProfile?.display_name || ""],
     ["Yritys", fisherProfile?.company_name || ""],
     ["Y-tunnus", fisherProfile?.business_id || ""],
     ["Kaupallisen kalastajan tunnus", fisherProfile?.commercial_fishing_id || ""],
-    [],
-    ["Alus / kalastustapa", "Aluksen päällikön / kalastaneen henkilön henkilötunnus"],
-    ...Object.entries(reporterIdentities).map(([vessel, personalIdentityCode]) => [vessel, personalIdentityCode]),
   ];
 
   const rows = [[
@@ -3875,7 +3893,9 @@ function buildCoastalCatchWorkbook(entries = [], reportDateLabel = "kaikki", fis
     "Pyydyskoodi",
     "Pyydys",
     "Jäljitettävyysryhmä",
+    "Pyydysten lkm",
     "Pyyntipäiviä",
+    "Keskimääräinen kalastusaika h",
     "Pääasiallinen purkamispaikka",
     "Laji",
     "Tieteellinen nimi",
@@ -3899,7 +3919,9 @@ function buildCoastalCatchWorkbook(entries = [], reportDateLabel = "kaikki", fis
       item.marineGearCode,
       item.marineGearName,
       item.traceabilityCategory,
-      item.dates.size,
+      item.gearCount,
+      item.fishingDays,
+      item.fishingHoursCount > 0 ? item.fishingHoursTotal / item.fishingHoursCount : "",
       item.landingPlace,
       item.species,
       item.scientificName,
@@ -4089,13 +4111,18 @@ const OFFICIAL_GEAR_CODE_NOTES = {
   9: "Rysä / paunetti, korkeus yli 1,5 m",
   10: "Rysä / paunetti, korkeus alle 1,5 m",
   11: "Katiska",
-  12: "Merta",
+  12: "Merrat",
   13: "Muu pyydys",
   14: "Hoitokalastus troolilla",
   15: "Hoitokalastus nuotalla",
   16: "Hoitokalastus rysällä, paunetilla, merralla ja katiskalla",
   17: "Hoitokalastus muulla pyydyksellä",
   18: "Vapapyydys tai vetouistin",
+  19: "Paritrooli",
+  20: "Nuotta",
+  21: "Verkko",
+  22: "Rysä",
+  23: "Paunetti / avorysä",
 };
 
 function parseMeasurementNumber(value) {
@@ -4124,11 +4151,20 @@ function getOfficialLandingPlaceLabel(entry) {
 function getOfficialGearCodeInfo(entry) {
   const gear = String(entry?.gear || "").trim();
   const normalizedGear = normalizeCatchGearValue(gear);
+  const currentInlandCode = String(entry?.inlandGearCode || entry?.inland_gear_code || getInlandGearCode(gear)).trim();
   if (!gear) {
     return {
       code: "",
       label: "-",
       note: "Pyydys puuttuu",
+    };
+  }
+
+  if (currentInlandCode && OFFICIAL_GEAR_CODE_NOTES[currentInlandCode]) {
+    return {
+      code: currentInlandCode,
+      label: OFFICIAL_GEAR_CODE_NOTES[currentInlandCode],
+      note: entry?.inlandGearCode || entry?.inland_gear_code ? "" : "Pyydyskoodi pääteltiin vanhasta pyydysnimestä.",
     };
   }
 
@@ -4291,14 +4327,15 @@ function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fi
     ...fisherInfoRows,
     ["Huomiot"],
     ["- Saalis ilmoitetaan pyyntipäivittäin, kalastamisalueittain ja pyydyksittäin."],
-    ["- Tässä raportissa saaliskilot pyöristetään täysiin kiloihin virallisen ohjeen mukaisesti."],
+    ["- Saaliskilot ilmoitetaan kokonaislukuina virallisen ohjeen mukaisesti."],
     ["- Viralliseen raporttiin otetaan vain kokonaisina kirjatut kalat. Peratut, avatut, fileoidut, päättömät ja nyljetyt tuote-erät jätetään pois, jotta sama saalis ei tule ilmoitetuksi kahdesti."],
-    ["- Nykyinen appi tallentaa kaupankäyntiä varten myös desimaalikilojen tiedon, joka säilytetään erillisessä sarakkeessa vertailua varten."],
+    ["- Ravuille, nahkiaiselle ja lohelle ilmoitetaan sekä kilot että kappaleet."],
+    ["- Hoitokalastus ilmoitetaan erillisenä kyllä/ei-tietona käytetyn pyydyksen lisäksi."],
     ["- Jos pyydyskoodia ei voitu päätellä varmasti, Huomio viralliseen ilmoitukseen -sarakkeessa kerrotaan miksi."],
     [],
     ["Pyydyskoodisto"],
     ["Koodi", "Selite"],
-    ...Object.entries(OFFICIAL_GEAR_CODE_NOTES).map(([code, label]) => [code, label]),
+    ...["1", "11", "12", "13", "18", "19", "20", "21", "22", "23"].map((code) => [code, OFFICIAL_GEAR_CODE_NOTES[code]]),
   ];
 
   const areaRows = [
@@ -4321,8 +4358,17 @@ function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fi
       "Kalastamisalue",
       "Pyydyskoodi",
       "Pyydys",
+      "Hoitokalastus",
+      "Vain pyyntiponnistus",
       "Pyydysten määrä",
       "Pyyntiaika / pyyntipäivät",
+      "Vetonopeus / vedon pituus",
+      "Solmuväli (mm)",
+      "Korkeus (m)",
+      "Pituus (m)",
+      "Leveys (m)",
+      "Verkkojen kokonaispituus (m)",
+      "Muu pyydys, mikä",
       "Purkamispaikan nro",
       "Purkamispaikka",
       "Laji",
@@ -4343,6 +4389,9 @@ function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fi
       const vesselLabel = String(entry?.commercialFishingVesselId || "").trim() || "Kalastus ilman alusta";
       const kilos = Number(entry?.kilos || 0);
       const count = Number(entry?.count || 0);
+      const gearLength = Number(entry?.gearLength || entry?.gear_length || 0);
+      const gearCount = Number(entry?.gearCount || entry?.gear_count || 0);
+      const effortOnly = Boolean(entry?.effortOnly || entry?.effort_only);
 
       return [
         entry?.date || "",
@@ -4351,15 +4400,24 @@ function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fi
         areaLabel || "-",
         gearInfo.code || "",
         String(entry?.gear || "").trim() || "-",
+        entry?.managementFishing || entry?.management_fishing ? "Kyllä" : "Ei",
+        effortOnly ? "Kyllä" : "Ei",
         String(entry?.gearCount || "").trim() || "",
         String(entry?.fishingDurationDays || "").trim() || "",
+        String(entry?.fishingSecondaryValue || entry?.fishing_secondary_value || "").trim(),
+        String(entry?.netMeshSize || entry?.gear_mesh_size || "").trim(),
+        String(entry?.netHeight || entry?.gear_height || "").trim(),
+        String(entry?.gearLength || entry?.gear_length || "").trim(),
+        String(entry?.gearWidth || entry?.gear_width || "").trim(),
+        gearInfo.code === "21" && gearLength > 0 && gearCount > 0 ? gearLength * gearCount : "",
+        String(entry?.otherGearName || entry?.other_gear_name || "").trim(),
         landingNumberMap.get(landingLabel) || "",
         landingLabel || "-",
-        isOtherSpecies ? "Muu laji" : speciesLabel,
+        effortOnly ? "Ei saalista" : (isOtherSpecies ? "Muu laji" : speciesLabel),
         otherSpeciesDetail,
-        toWholeKilo(kilos),
-        kilos,
-        isCrayfishSpecies(entry?.species) && count > 0 ? count : "",
+        effortOnly ? "" : toWholeKilo(kilos),
+        effortOnly ? "" : kilos,
+        !effortOnly && isInlandDualQuantitySpecies(entry?.species) && count > 0 ? count : "",
         gearInfo.note || "",
       ];
     }),
@@ -4376,8 +4434,9 @@ function buildOfficialCatchWorkbook(entries = [], reportDateLabel = "kaikki", fi
 function runLocalTests() {
   const tests = [
     { name: "Kuha on kalalistassa", pass: fishSpecies.includes("Kuha") },
-    { name: "Nuotta on pyydyslistassa", pass: gearTypes.some((gear) => gear.startsWith("Nuotta")) },
-    { name: "Merta on pyydyslistassa", pass: gearTypes.includes("Merta") },
+    { name: "Nuotta on pyydyslistassa", pass: gearTypes.includes("Nuotta") },
+    { name: "Merrat on pyydyslistassa", pass: gearTypes.includes("Merrat") },
+    { name: "Paritrooli on pyydyslistassa", pass: gearTypes.includes("Paritrooli") },
     { name: "Muu on vesialuelistassa", pass: defaultAreas.includes("Muu") },
     { name: "Refresh token -virhe tunnistuu", pass: isMissingRefreshTokenError(new Error("Invalid Refresh Token: Refresh Token Not Found")) },
   ];
@@ -4396,313 +4455,6 @@ async function getSessionWithTimeout(timeoutMs = 5000) {
       }, timeoutMs);
     }),
   ]);
-}
-
-function MunicipalitySelect({ value, onChange, placeholder = "Valitse paikkakunta" }) {
-  const [query, setQuery] = useState(value || "");
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const wrapperRef = useRef(null);
-  const generatedId = useId();
-
-  const normalizeMunicipality = useCallback(
-    (text) =>
-      String(text || "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLocaleLowerCase("fi-FI")
-        .trim(),
-    [],
-  );
-
-  const filteredMunicipalities = useMemo(() => {
-    const normalizedQuery = normalizeMunicipality(query);
-    if (!normalizedQuery) return finlandMunicipalities;
-
-    const prefixMatches = [];
-    const otherMatches = [];
-    finlandMunicipalities.forEach((municipality) => {
-      const normalizedMunicipality = normalizeMunicipality(municipality);
-      if (normalizedMunicipality.startsWith(normalizedQuery)) {
-        prefixMatches.push(municipality);
-      } else if (normalizedMunicipality.includes(normalizedQuery)) {
-        otherMatches.push(municipality);
-      }
-    });
-    return [...prefixMatches, ...otherMatches];
-  }, [normalizeMunicipality, query]);
-
-  useEffect(() => {
-    setQuery(value || "");
-  }, [value]);
-
-  useEffect(() => {
-    const closeOnOutsidePress = (event) => {
-      if (!wrapperRef.current?.contains(event.target)) {
-        setIsOpen(false);
-        setActiveIndex(-1);
-        setQuery(value || "");
-      }
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePress);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
-  }, [value]);
-
-  const selectMunicipality = (municipality) => {
-    setQuery(municipality);
-    setIsOpen(false);
-    setActiveIndex(-1);
-    onChange?.({
-      target: { value: municipality },
-      currentTarget: { value: municipality },
-    });
-  };
-
-  const handleKeyDown = (event) => {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setIsOpen(true);
-      setActiveIndex((current) =>
-        Math.min(current + 1, filteredMunicipalities.length - 1),
-      );
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setIsOpen(true);
-      setActiveIndex((current) =>
-        current <= 0 ? filteredMunicipalities.length - 1 : current - 1,
-      );
-    } else if (event.key === "Enter" && isOpen && filteredMunicipalities.length) {
-      event.preventDefault();
-      selectMunicipality(filteredMunicipalities[Math.max(activeIndex, 0)]);
-    } else if (event.key === "Escape") {
-      setIsOpen(false);
-      setActiveIndex(-1);
-      setQuery(value || "");
-    }
-  };
-
-  const listboxId = `municipality-list-${generatedId.replace(/:/g, "")}`;
-
-  return (
-    <div ref={wrapperRef} style={{ position: "relative", width: "100%", minWidth: 0 }}>
-      <input
-        type="search"
-        value={query}
-        placeholder="Hae paikkakuntaa"
-        aria-label={placeholder}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={isOpen}
-        aria-controls={listboxId}
-        aria-activedescendant={
-          isOpen && activeIndex >= 0
-            ? `${listboxId}-option-${activeIndex}`
-            : undefined
-        }
-        autoComplete="off"
-        style={{ ...styles.input, boxSizing: "border-box", width: "100%" }}
-        onFocus={() => setIsOpen(true)}
-        onClick={() => setIsOpen(true)}
-        onKeyDown={handleKeyDown}
-        onChange={(event) => {
-          const nextQuery = event.target.value;
-          setQuery(nextQuery);
-          setIsOpen(true);
-          setActiveIndex(-1);
-          if (!nextQuery) {
-            onChange?.({ target: { value: "" }, currentTarget: { value: "" } });
-          }
-        }}
-      />
-      {isOpen && (
-        <div
-          id={listboxId}
-          role="listbox"
-          style={{
-            position: "absolute",
-            zIndex: 1000,
-            top: "calc(100% + 6px)",
-            left: 0,
-            right: 0,
-            maxHeight: 260,
-            overflowY: "auto",
-            background: "#fff",
-            border: "1px solid #b8d8ff",
-            borderRadius: 14,
-            boxShadow: "0 12px 30px rgba(25, 68, 130, 0.18)",
-            padding: 6,
-          }}
-        >
-          {filteredMunicipalities.length ? (
-            filteredMunicipalities.map((municipality, index) => (
-              <button
-                key={municipality}
-                id={`${listboxId}-option-${index}`}
-                type="button"
-                role="option"
-                aria-selected={municipality === value}
-                onPointerDown={(event) => event.preventDefault()}
-                onClick={() => selectMunicipality(municipality)}
-                onMouseEnter={() => setActiveIndex(index)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "11px 12px",
-                  border: 0,
-                  borderRadius: 9,
-                  background:
-                    index === activeIndex || municipality === value
-                      ? "#e8f3ff"
-                      : "transparent",
-                  color: "#101b34",
-                  textAlign: "left",
-                  font: "inherit",
-                  cursor: "pointer",
-                }}
-              >
-                {municipality}
-              </button>
-            ))
-          ) : (
-            <div style={{ padding: "12px", color: "#64748b" }}>
-              Paikkakuntaa ei löytynyt
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MultiCityInput({ value, onChange, suggestions = [], label = "Valitut kaupungit" }) {
-  const [selectedCity, setSelectedCity] = useState("");
-  const [selectedArea, setSelectedArea] = useState("");
-  const selectedCities = normalizeDestinationCities(value);
-  const quickSuggestions = normalizeDestinationCities(suggestions).filter((city) => !selectedCities.includes(city)).slice(0, 8);
-
-  const addCity = (city) => {
-    const normalized = String(city || "").trim();
-    if (!normalized) return;
-    onChange(normalizeDestinationCities([...selectedCities, normalized]));
-    setSelectedCity("");
-  };
-
-  const removeCity = (city) => {
-    onChange(selectedCities.filter((item) => item !== city));
-  };
-
-  const addArea = (area) => {
-    if (!area) return;
-    const areaCities = area === "__all__"
-      ? finlandMunicipalities
-      : finlandMunicipalitiesByRegion[area] || [];
-    onChange(normalizeDestinationCities([...selectedCities, ...areaCities]));
-    setSelectedArea("");
-  };
-
-  return (
-    <div style={{ ...styles.stack, gap: 10 }}>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <div style={{ minWidth: 220, flex: "1 1 260px" }}>
-          <MunicipalitySelect value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} placeholder="Valitse kaupunki" />
-        </div>
-        <button type="button" style={styles.button} onClick={() => addCity(selectedCity)} disabled={!selectedCity}>
-          Lisää kaupunki
-        </button>
-      </div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <div style={{ minWidth: 220, flex: "1 1 260px" }}>
-          <select style={styles.input} value={selectedArea} onChange={(e) => setSelectedArea(e.target.value)}>
-            <option value="">Valitse kaikki kaupungit tai maakunta</option>
-            <option value="__all__">Kaikki kaupungit</option>
-            <optgroup label="Maakunnat">
-              {finlandRegions.map((region) => (
-                <option key={region} value={region}>{region}</option>
-              ))}
-            </optgroup>
-          </select>
-        </div>
-        <button type="button" style={styles.button} onClick={() => addArea(selectedArea)} disabled={!selectedArea}>
-          Lisää alue
-        </button>
-      </div>
-      {quickSuggestions.length > 0 ? (
-        <div style={{ ...styles.stack, gap: 6 }}>
-          <div style={styles.small}>Nopeat ehdotukset</div>
-          <div style={styles.checkboxRow}>
-            {quickSuggestions.map((city) => (
-              <button key={city} type="button" style={styles.button} onClick={() => addCity(city)}>
-                {city}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      <div style={{ ...styles.stack, gap: 6 }}>
-        <div style={styles.small}>{label}</div>
-        {selectedCities.length === 0 ? (
-          <div style={styles.noticeInfo}>Ei vielä valittuja kaupunkeja.</div>
-        ) : (
-          <div style={styles.checkboxRow}>
-            {selectedCities.map((city) => (
-              <button key={city} type="button" style={styles.checkboxCard} onClick={() => removeCity(city)}>
-                {city} x
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function LandingPlaceInput({ value, onChange, options, placeholder = "Esim. Kyläniemen kalasatama" }) {
-  return (
-    <>
-      <input
-        style={styles.input}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        list="landing-place-options"
-      />
-      <datalist id="landing-place-options">
-        {(options || []).map((option) => (
-          <option key={option} value={option} />
-        ))}
-      </datalist>
-    </>
-  );
-}
-
-function RememberedTextInput({ value, onChange, options, placeholder = "", listId }) {
-  return (
-    <>
-      <input
-        style={styles.input}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        list={listId}
-      />
-      <datalist id={listId}>
-        {(options || []).map((option) => (
-          <option key={option} value={option} />
-        ))}
-      </datalist>
-    </>
-  );
-}
-
-function FishSpeciesInput({ value, onChange, placeholder = "Valitse tai kirjoita kalalaji" }) {
-  return (
-      <select style={styles.input} value={value} onChange={onChange}>
-        <option value="">{placeholder}</option>
-        {fishSpecies.map((species) => (
-          <option key={species} value={species}>{species}</option>
-        ))}
-      </select>
-  );
 }
 
 function FirstUseGuideCard({ profile, guideState, onDismissNow, onHideForever, viewportWidth }) {
@@ -4737,200 +4489,6 @@ function FirstUseGuideCard({ profile, guideState, onDismissNow, onHideForever, v
         <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={onHideForever}>
           Älä näytä enää
         </button>
-      </div>
-    </div>
-  );
-}
-
-function PublicBatchView({ batchId, data, loading, error, onLeave }) {
-  const formatPublicQuantity = (row) => {
-    if (!row) return "";
-    const crayfish = isCrayfishSpecies(row.species || row.species_summary);
-    const unit = crayfish ? "kpl" : String(row.unit || "kg");
-    const quantity = crayfish
-      ? (row.count ?? (unit === "kpl" ? row.quantity : ""))
-      : row.quantity;
-    return quantity != null && quantity !== "" ? `${quantity} ${unit}` : "";
-  };
-  const headerSummary = [formatSpeciesForSale(data?.species), formatPublicQuantity(data)]
-    .filter(Boolean)
-    .join(" · ");
-  const saleInfoRows = [
-    ["Tarjouksia", data?.sale_info?.offer_count],
-    [
-      "Viimeisin tarjouspäivitys",
-      data?.sale_info?.updated_at ? new Date(data.sale_info.updated_at).toLocaleString("fi-FI") : "",
-    ],
-  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
-  const infoRows = [
-    ["Erätunnus", data?.batch_id],
-    ["Tila", data?.status],
-    ["Laji", formatSpeciesForSale(data?.species)],
-    ["Erän lajit", data?.species_summary],
-    ["Tuote", data?.product_name],
-    ["Käsittelymenetelmä", data?.processing_method],
-    ["Pyyntipäivämäärä", data?.catch_date],
-    ["Tuotantopäivä", data?.production_date],
-    ["Parasta ennen", data?.best_before_date],
-    ["Alue", data?.area],
-    ["ICES-osa-alue", data?.ices_subdivision],
-    ["Tilastoruutu", data?.statistical_rectangle],
-    ["Paikka", [data?.municipality, data?.spot].filter(Boolean).join(" / ")],
-    ["Pyydys", data?.marine_gear_name || data?.gear],
-    ["Merialueen pyydyskoodi", data?.marine_gear_code],
-    ["Kalastuspäivätunnus", data?.fishing_day_id],
-    ["Määrä", formatPublicQuantity(data)],
-    ["Myyjä / jalostaja", data?.seller_name],
-    ["Lisätiedot", data?.notes],
-    ["Luotu", data?.created_at ? new Date(data.created_at).toLocaleString("fi-FI") : ""],
-  ].filter(([, value]) => value);
-
-  const processingRows = [
-    ["Tuotetyyppi", data?.related_processing?.product_type],
-    ["Pakkauskoko", data?.related_processing?.package_size_g ? `${data.related_processing.package_size_g} g` : ""],
-    ["Pakkausten määrä", data?.related_processing?.package_count],
-  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
-
-  return (
-    <div style={styles.app}>
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          body { background: #fff !important; }
-          .print-card { box-shadow: none !important; border-color: #cbd5e1 !important; break-inside: avoid; }
-        }
-
-        .public-batch-header {
-          display: flex;
-          justify-content: space-between;
-          gap: 16px;
-          align-items: flex-start;
-          flex-wrap: wrap;
-        }
-
-        .public-batch-row {
-          display: grid;
-          grid-template-columns: 220px minmax(0, 1fr);
-          gap: 12px;
-          border-bottom: 1px solid #e2e8f0;
-          padding-bottom: 8px;
-        }
-
-        .public-batch-value {
-          min-width: 0;
-          overflow-wrap: anywhere;
-          word-break: break-word;
-        }
-
-        .public-batch-source {
-          display: flex;
-          justify-content: space-between;
-          gap: 16px;
-          align-items: flex-start;
-          flex-wrap: wrap;
-        }
-
-        @media (max-width: 640px) {
-          .public-batch-row {
-            grid-template-columns: 1fr;
-            gap: 4px;
-          }
-
-          .public-batch-header {
-            gap: 12px;
-          }
-
-          .public-batch-source {
-            gap: 12px;
-          }
-        }
-      `}</style>
-      <div style={{ ...styles.container, maxWidth: 960 }}>
-        <div style={{ ...styles.card, ...styles.headerCard, marginBottom: 16, background: "linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)" }} className="print-card">
-          <div className="public-batch-header">
-            <div>
-              <div style={{ fontSize: 14, color: "#1d4ed8", fontWeight: 700, marginBottom: 6 }}>Erän jäljitettävyys</div>
-              <h1 style={{ ...styles.title, marginBottom: 8 }}>ERÄTIEDOT</h1>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{batchId}</div>
-              {headerSummary ? <div style={{ marginTop: 8, fontSize: 18, color: "#0f172a", fontWeight: 700 }}>{headerSummary}</div> : null}
-            </div>
-            <div className="no-print" style={styles.row}>
-              <button style={styles.button} onClick={onLeave}>
-                Palaa sovellukseen
-              </button>
-              <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => window.print()}>
-                Tulosta erätiedot
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {loading ? <div style={{ ...styles.card, ...styles.sectionCard }} className="print-card">Haetaan erän tietoja...</div> : null}
-        {error ? <div style={{ ...styles.noticeError, marginBottom: 16 }}>{error}</div> : null}
-
-        {!loading && !error && data ? (
-          <div style={{ display: "grid", gap: 16 }}>
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
-              <strong style={{ fontSize: 20 }}>Erän perustiedot</strong>
-              {infoRows.map(([label, value]) => (
-                <div key={label} className="public-batch-row">
-                  <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
-                  <div className="public-batch-value" style={{ color: "#0f172a" }}>{String(value)}</div>
-                </div>
-              ))}
-            </div>
-
-            {saleInfoRows.length > 0 ? (
-              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
-                <strong style={{ fontSize: 20 }}>Kauppatiedot</strong>
-                {saleInfoRows.map(([label, value]) => (
-                  <div key={label} className="public-batch-row">
-                    <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
-                    <div className="public-batch-value" style={{ color: "#0f172a" }}>{String(value)}</div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {processingRows.length > 0 ? (
-              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
-                <strong style={{ fontSize: 20 }}>Jalostustiedot</strong>
-                {processingRows.map(([label, value]) => (
-                  <div key={label} className="public-batch-row">
-                    <div style={{ color: "#475569", fontWeight: 600 }}>{label}</div>
-                    <div className="public-batch-value" style={{ color: "#0f172a" }}>{String(value)}</div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {Array.isArray(data?.source_batches) && data.source_batches.length > 0 ? (
-              <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }} className="print-card">
-                <strong style={{ fontSize: 20 }}>Raaka-aine-erät</strong>
-                {data.source_batches.map((source) => (
-                  <div key={`${source.batch_id}-${source.source_entry_id || source.species || Math.random()}`} style={{ ...styles.entry, background: "#f8fbff" }}>
-                    <div className="public-batch-source">
-                      <div style={{ ...styles.stack, gap: 6 }}>
-                        <div><strong>Erätunnus:</strong> {source.batch_id || "-"}</div>
-                        <div style={styles.muted}><strong>Laji:</strong> {formatSpeciesForSale(source.species)}</div>
-                        {source.catch_date ? <div style={styles.muted}><strong>Pyyntipäivämäärä:</strong> {source.catch_date}</div> : null}
-                        <div style={styles.muted}><strong>Määrä:</strong> {formatPublicQuantity(source) || "-"}</div>
-                      </div>
-                      {source.qr_image_url ? (
-                        <div className="no-print" style={styles.qrBlock}>
-                          <img src={source.qr_image_url} alt={`QR ${source.batch_id || "source"}`} style={styles.qrImage} />
-                          <div style={styles.small}>QR-koodi lähde-erälle</div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-          </div>
-        ) : null}
-
       </div>
     </div>
   );
@@ -5244,229 +4802,6 @@ function getHeaderBrandStyles(viewportWidth) {
   };
 }
 
-function AuthView({ authMode, setAuthMode, authForm, setAuthForm, onSignIn, onSignUp, onForgotPassword, onResetRecoveredPassword, authError, authInfo, authSubmitting, viewportWidth }) {
-  const headerBrandStyles = getHeaderBrandStyles(viewportWidth);
-  const isMobile = viewportWidth < 560;
-  const isIosMobileApp = isMobile && isNativeIosApp();
-  const authCardStyle = isMobile
-    ? { borderRadius: 20, boxShadow: "0 14px 34px rgba(30, 64, 175, 0.08)" }
-    : null;
-  const authInputStyle = isMobile
-    ? { ...styles.input, minHeight: 48, padding: "11px 14px", borderRadius: 14, fontSize: 16 }
-    : styles.input;
-  const authButtonStyle = isMobile
-    ? { ...styles.button, minHeight: 48, padding: "10px 14px", borderRadius: 14 }
-    : styles.button;
-
-  return (
-    <div style={{ ...styles.app, ...(isMobile ? { padding: `${isIosMobileApp ? 64 : 12}px 12px 24px`, minHeight: "100dvh" } : {}) }}>
-      <div style={{ ...styles.container, maxWidth: 520 }}>
-        <div style={{ ...styles.card, ...styles.headerCard, ...authCardStyle, marginBottom: isMobile ? 12 : 16, padding: isMobile ? "18px 18px 16px" : styles.headerCard.padding }}>
-          <div style={headerBrandStyles.row}>
-            <h1 style={headerBrandStyles.title}>Suoraan Kalastajalta</h1>
-            <img
-              src="/logo.png"
-              alt=""
-              style={{
-                ...headerBrandStyles.logo,
-                ...(isMobile
-                  ? { width: "clamp(104px, 28vw, 124px)", maxWidth: "clamp(104px, 28vw, 124px)" }
-                  : {}),
-              }}
-            />
-          </div>
-          <p style={{ ...styles.subtitle, ...(isMobile ? { marginTop: 4, fontSize: 15 } : {}) }}>
-            {authMode === "signup"
-              ? "Luo tunnus kalastajalle tai ostajalle."
-              : authMode === "recovery"
-              ? "Aseta uusi salasana turvallisesti."
-              : "Kirjaudu sisään jatkaaksesi sovellukseen."}
-          </p>
-        </div>
-        <form
-          style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, ...authCardStyle, ...(isMobile ? { padding: 16, gap: 12 } : {}) }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (authMode === "signin") {
-              onSignIn();
-            } else if (authMode === "recovery") {
-              onResetRecoveredPassword();
-            } else {
-              onSignUp();
-            }
-          }}
-        >
-          {authMode !== "recovery" ? (
-            <div style={{ ...styles.tabs6, gridTemplateColumns: "1fr 1fr", marginBottom: 0, ...(isMobile ? { padding: 5, gap: 4, borderRadius: 16 } : {}) }}>
-              <button type="button" style={{ ...styles.tab, ...(isMobile ? { padding: "11px 8px", borderRadius: 12 } : {}), ...(authMode === "signin" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signin")}>Kirjaudu</button>
-              <button type="button" style={{ ...styles.tab, ...(isMobile ? { padding: "11px 8px", borderRadius: 12 } : {}), ...(authMode === "signup" ? styles.activeTab : {}) }} onClick={() => setAuthMode("signup")}>Rekisteröidy</button>
-            </div>
-          ) : (
-            <div style={{ ...styles.card, padding: "12px 16px", background: "#eff6ff", border: "1px solid #93c5fd" }}>
-              <strong>Aseta uusi salasana</strong>
-              <div style={styles.muted}>Avaa sähköpostista tullut palautuslinkki ja aseta tähän uusi salasana.</div>
-            </div>
-          )}
-
-          <div style={styles.field}>
-            <label>Sähköposti</label>
-            <input style={authInputStyle} type="email" value={authForm.email} onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. nimi@yritys.fi" disabled={authMode === "recovery"} />
-          </div>
-
-          <div style={styles.field}>
-            <label>{authMode === "recovery" ? "Uusi salasana" : "Salasana"}</label>
-            <input style={authInputStyle} type="password" value={authForm.password} onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))} placeholder={authMode === "recovery" ? "vähintään 8 merkkiä" : "salasana"} />
-          </div>
-
-          {authMode === "signup" ? (
-            <>
-              <div style={styles.field}>
-                <label>Nimi</label>
-                <input style={styles.input} value={authForm.displayName} onChange={(e) => setAuthForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Kala Yritys Oy" />
-              </div>
-              <div style={styles.field}>
-                <label>Rooli</label>
-                <select style={styles.input} value={authForm.requestedRole} onChange={(e) => setAuthForm((prev) => ({ ...prev, requestedRole: e.target.value }))}>
-                  <option value="member">Kalastaja</option>
-                  <option value="buyer">Ostaja</option>
-                </select>
-              </div>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: 10, lineHeight: 1.4 }}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(authForm.acceptedTerms)}
-                  onChange={(e) => setAuthForm((prev) => ({ ...prev, acceptedTerms: e.target.checked }))}
-                  style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0 }}
-                />
-                <span>
-                  Olen lukenut ja hyväksyn palvelun{" "}
-                  <a href={LEGAL_TERMS_URL} target="_blank" rel="noreferrer">käyttöehdot ja tietosuojaselosteen</a>.
-                </span>
-              </label>
-            </>
-          ) : null}
-
-          {authMode === "recovery" ? (
-            <div style={styles.field}>
-              <label>Uusi salasana uudelleen</label>
-              <input style={styles.input} type="password" value={authForm.confirmPassword} onChange={(e) => setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }))} placeholder="kirjoita uusi salasana uudelleen" />
-            </div>
-          ) : null}
-
-          {authError ? <div style={styles.noticeError}>{authError}</div> : null}
-          {authInfo ? <div style={styles.noticeSuccess}>{authInfo}</div> : null}
-
-          {authMode === "signin" ? (
-            <>
-              <button type="submit" style={{ ...authButtonStyle, ...styles.primaryButton }} disabled={authSubmitting}>
-                {authSubmitting ? "Kirjaudutaan..." : "Kirjaudu sisään"}
-              </button>
-              <button type="button" style={authButtonStyle} onClick={onForgotPassword} disabled={authSubmitting}>Unohditko salasanan?</button>
-            </>
-          ) : authMode === "recovery" ? (
-            <button type="submit" style={{ ...styles.button, ...styles.primaryButton }} disabled={authSubmitting}>
-              {authSubmitting ? "Tallennetaan..." : "Tallenna uusi salasana"}
-            </button>
-          ) : (
-            <button type="submit" style={{ ...styles.button, ...styles.primaryButton }} disabled={authSubmitting}>
-              {authSubmitting ? "Luodaan..." : "Luo tunnus"}
-            </button>
-          )}
-
-          {authMode === "signup" ? <div style={styles.muted}>Ostaja ja kalastaja pääsevät appiin heti rekisteröitymisen jälkeen. Vain erikoisroolit voivat vaatia ylläpitäjän hyväksynnän.</div> : null}
-
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function RoleSelectionView({ roleOptions, buyers, onSelectRole }) {
-  return (
-    <div style={styles.app}>
-      <div style={{ ...styles.container, maxWidth: 560 }}>
-        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-          <h1 style={styles.title}>Valitse rooli</h1>
-          <div style={styles.muted}>Tällä sähköpostilla on useita rooleja. Valitse millä roolilla haluat jatkaa.</div>
-          <div style={{ ...styles.stack, marginTop: 8 }}>
-            {roleOptions.map((option) => (
-              <button
-                key={option.id}
-                style={{ ...styles.button, ...styles.primaryButton, justifyContent: "space-between", width: "100%" }}
-                onClick={() => onSelectRole(option)}
-              >
-                <span>{buildRoleOptionLabel(option, buyers)}</span>
-                <span>{option.display_name || option.email}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PendingApprovalView({ profile, onLogout, onDeleteAccount, accountDeletionBusy, showDeleteAccount }) {
-  return (
-    <div style={styles.app}>
-      <div style={{ ...styles.container, maxWidth: 560 }}>
-        <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
-          <h1 style={styles.title}>Odottaa hyväksyntää</h1>
-          <div style={styles.muted}>
-            Tunnus on luotu sähköpostille <strong>{profile?.email || "-"}</strong>, mutta valittu rooli tarvitsee vielä ylläpitäjän hyväksynnän ennen kuin tämä näkymä aukeaa kokonaan.
-          </div>
-          <div style={styles.noticeInfo}>
-            Valittu rooli: <strong>{roleLabel(profile?.role || "member")}</strong>
-          </div>
-          <div style={{ ...styles.row, justifyContent: "flex-end" }}>
-            <button style={styles.button} onClick={onLogout}>Kirjaudu ulos</button>
-          </div>
-          {showDeleteAccount ? (
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#fff1f2", borderColor: "#fecaca" }}>
-              <strong style={{ color: "#991b1b" }}>Poista käyttäjätili</strong>
-              <div style={styles.muted}>Poisto on pysyvä. Tili ja siihen liittyvät henkilötiedot poistetaan tai lakisääteisesti säilytettävät kauppatiedot anonymisoidaan.</div>
-              <div style={{ ...styles.row, justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  style={{ ...styles.button, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff" }}
-                  onClick={onDeleteAccount}
-                  disabled={accountDeletionBusy}
-                >
-                  {accountDeletionBusy ? "Poistetaan…" : "Poista käyttäjätili"}
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AccountDeletionCard({ onDeleteAccount, busy }) {
-  return (
-    <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, background: "#fff1f2", borderColor: "#fecaca" }}>
-      <strong style={{ color: "#991b1b" }}>Poista käyttäjätili</strong>
-      <div style={styles.muted}>
-        Poisto on pysyvä. Profiili ja käyttäjän omat tiedot poistetaan. Lakisääteisesti säilytettävät kauppatiedot voidaan säilyttää anonymisoituina.
-      </div>
-      <div style={styles.muted}>
-        Käyttäjätilin poistaminen ei lopeta mahdollista App Store -tilausta. Tilaus lopetetaan erikseen Applen tilausten hallinnasta.
-      </div>
-      <div style={{ ...styles.row, justifyContent: "flex-end" }}>
-        <button
-          type="button"
-          style={{ ...styles.button, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff" }}
-          onClick={onDeleteAccount}
-          disabled={busy}
-        >
-          {busy ? "Poistetaan…" : "Poista käyttäjätili"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function WholesaleOffersView({
   profile,
   saleEntries,
@@ -5751,10 +5086,6 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   const [buyerReportLoading, setBuyerReportLoading] = useState(false);
   const [buyerReportError, setBuyerReportError] = useState("");
   const [buyerReportData, setBuyerReportData] = useState(null);
-  const [coastalReviewOpen, setCoastalReviewOpen] = useState(false);
-  const [coastalReporterIdentities, setCoastalReporterIdentities] = useState({});
-  const [coastalBuyerDrafts, setCoastalBuyerDrafts] = useState([]);
-  const [coastalReviewError, setCoastalReviewError] = useState("");
 
   const isBuyerRole = profile?.role === "buyer";
   const hasFisherPremium = isFisherPremiumProfile(profile);
@@ -6504,11 +5835,6 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
     && (entry?.vesselLengthClass === "under_10m" || entry?.vesselLengthClass === "without_vessel")
   ));
   const coastalBatchIds = new Set(coastalReportEntries.map((entry) => String(entry?.batchId || "").trim()).filter(Boolean));
-  const coastalReporterKeys = Array.from(new Set(coastalReportEntries.map((entry) => (
-    entry?.vesselLengthClass === "without_vessel"
-      ? "Kalastus ilman alusta"
-      : String(entry?.commercialFishingVesselId || "").trim() || "Alus ilman rekisteritunnusta"
-  )))).sort((left, right) => left.localeCompare(right, "fi"));
   const automaticCoastalBuyers = Array.from((offers || []).reduce((buyersByKey, offer) => {
     const offerBatchId = String(offer?.batch_id || offer?.batchId || "").trim();
     if (String(offer?.status || "") !== "accepted" || !coastalBatchIds.has(offerBatchId)) return buyersByKey;
@@ -6526,87 +5852,14 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
   const officialCatchWorkbook = buildOfficialCatchWorkbook(inlandOfficialEntries, reportDateLabel, profile, reportSpotLabel);
   const officialCatchIssues = validateOfficialCatchEntries(inlandOfficialEntries);
   const coastalCatchIssues = validateCoastalCatchEntries(coastalReportEntries);
+  const coastalCatchWorkbook = buildCoastalCatchWorkbook(
+    coastalReportEntries,
+    reportDateLabel,
+    profile,
+    { buyers: automaticCoastalBuyers },
+  );
   const offerReportRows = [["Pvm", "Yritys", "Yhteyshenkilö", "Sähköposti", "Puhelin", "Tarjous €/kg", "Tila", "Viesti"], ...offerRows];
   const processedReportRows = [["Tuotantopäivä", "Kirjaaja", "Vesialue", "Paikkakunta", "Tuotenimi", "Tuotetyyppi", "Käsittely", "Lajiyhteenveto", "Kg", "Pakkauskoko g", "Pakkausten määrä", "Parasta ennen", "Toimitustapa", "Toimitusalue", "Toimituskustannus €", "Aikaisin toimitus", "Kylmäkuljetus", "Lisätiedot"], ...processedRows];
-
-  const closeCoastalReview = () => {
-    setCoastalReviewOpen(false);
-    setCoastalReporterIdentities({});
-    setCoastalBuyerDrafts([]);
-    setCoastalReviewError("");
-  };
-
-  const openCoastalReview = () => {
-    if (coastalCatchIssues.length > 0) {
-      setAuthError("Rannikkokalastusilmoitusta ei voi muodostaa ennen kuin puuttuvat saalistiedot on täydennetty.");
-      return;
-    }
-    setCoastalReporterIdentities(Object.fromEntries(coastalReporterKeys.map((key) => [key, ""])));
-    setCoastalBuyerDrafts(automaticCoastalBuyers.map((buyer) => ({
-      ...buyer,
-      id: crypto.randomUUID(),
-    })));
-    setCoastalReviewError("");
-    setCoastalReviewOpen(true);
-  };
-
-  const updateCoastalBuyerDraft = (buyerId, field, value) => {
-    setCoastalBuyerDrafts((current) => current.map((buyer) => (
-      buyer.id === buyerId ? { ...buyer, [field]: value } : buyer
-    )));
-  };
-
-  const addCoastalBuyerDraft = () => {
-    setCoastalBuyerDrafts((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        companyName: "",
-        contactName: "",
-        email: "",
-        phone: "",
-        source: "manual",
-      },
-    ]);
-  };
-
-  const downloadReviewedCoastalReport = () => {
-    const invalidReporter = coastalReporterKeys.find((key) => !isValidFinnishPersonalIdentityCode(coastalReporterIdentities[key]));
-    if (invalidReporter) {
-      setCoastalReviewError(`Tarkista henkilötunnus kohdassa “${invalidReporter}”. Tunnusta ei tallenneta sovellukseen.`);
-      return;
-    }
-    const incompleteBuyer = coastalBuyerDrafts.find((buyer) => (
-      !String(buyer.companyName || "").trim()
-      || (!normalizeEmail(buyer.email) && !String(buyer.phone || "").trim())
-    ));
-    if (incompleteBuyer) {
-      setCoastalReviewError("Jokaisella ostajalla pitää olla nimi sekä vähintään sähköposti tai puhelinnumero.");
-      return;
-    }
-
-    const workbook = buildCoastalCatchWorkbook(
-      coastalReportEntries,
-      reportDateLabel,
-      profile,
-      {
-        reporterIdentities: Object.fromEntries(Object.entries(coastalReporterIdentities).map(([key, value]) => [key, String(value || "").trim().toUpperCase()])),
-        buyers: coastalBuyerDrafts.map((buyer) => ({
-          ...buyer,
-          companyName: String(buyer.companyName || "").trim(),
-          contactName: String(buyer.contactName || "").trim(),
-          email: normalizeEmail(buyer.email),
-          phone: String(buyer.phone || "").trim(),
-        })),
-      },
-    );
-    void exportSpreadsheet(
-      `rannikkokalastusilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`,
-      workbook,
-      "Rannikkoilmoitus",
-    );
-    closeCoastalReview();
-  };
 
   return (
     <div style={styles.stack}>
@@ -6693,6 +5946,12 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
           <div style={{ ...styles.noticeInfo, whiteSpace: "pre-line", marginTop: 12 }}>
             Sisävesien virallinen saalisilmoitus käyttää erillistä raporttia, jossa tiedot esitetään kalastamisalueen numerolla, pyydyskoodilla ja purkamispaikan numerolla täyttöohjeen mukaisesti.
             {"\n"}Kilot pyöristetään siinä täysiin kiloihin virallisen ilmoituksen vuoksi, mutta appin oma kaupallinen data säilyy ennallaan.
+            {"\n"}Ilmoitus toimitetaan viranomaiselle tallentamalla kalastuspäiväkohtaiset saalisrivit suoraan Sisävesisaalisilmoitus-järjestelmään. Excelin lataaminen tai lähettäminen omaan sähköpostiin ei toimita ilmoitusta viranomaiselle.
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <a href="https://sisaalis.mmm.fi/sisaalis/" target="_blank" rel="noreferrer">
+              Avaa virallinen Sisävesisaalisilmoitus-järjestelmä
+            </a>
           </div>
           {officialCatchIssues.length > 0 ? (
             <div style={{ ...styles.noticeError, whiteSpace: "pre-line", marginTop: 12 }}>
@@ -6746,7 +6005,16 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
             Rannikkokalastuksen saalisilmoitus
           </div>
           <div style={{ ...styles.muted, marginTop: 8 }}>
-            Kooste sisältää vain alle 10 metrin aluksilla tai ilman alusta kirjatut merisaaliit. Vähintään 10 metrin alusten tiedot kuuluvat aluskohtaiseen kalastuspäiväkirjaan.
+            Kuukausikooste sisältää vain alle 10 metrin aluksilla tai ilman alusta kirjatut merisaaliit. Vähintään 10 metrin alusten tiedot kuuluvat aluskohtaiseen kalastuspäiväkirjaan.
+            Lohi ja turska ilmoitetaan aina päiväkohtaisella purkamisilmoituksella.
+          </div>
+          <div style={{ ...styles.noticeInfo, marginTop: 12 }}>
+            Excel-kooste tai sen lähettäminen omaan sähköpostiin ei toimita rannikkokalastusilmoitusta viranomaiselle. Ilmoituksen tiedot tallennetaan ja lähetetään merialueen sähköisessä saalisilmoitusjärjestelmässä.
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <a href="https://saalisilmoitus.mmm.fi/" target="_blank" rel="noreferrer">
+              Avaa virallinen merialueen saalisilmoitusjärjestelmä
+            </a>
           </div>
           {coastalCatchIssues.length > 0 ? (
             <div style={{ ...styles.noticeError, whiteSpace: "pre-line", marginTop: 12 }}>
@@ -6758,165 +6026,49 @@ function ReportsView({ entries, processedEntries, offers, profile }) {
           <div style={{ ...styles.row, marginTop: 12 }}>
             <button
               style={{ ...styles.button, ...styles.primaryButton, ...styles.reportActionButton }}
-              onClick={openCoastalReview}
+              onClick={() => {
+                if (coastalCatchIssues.length > 0) {
+                  setAuthError("Rannikkokalastuksen saalisilmoitusta ei voi ladata ennen kuin puuttuvat saalistiedot on täydennetty.");
+                  return;
+                }
+                void exportSpreadsheet(
+                  `rannikkokalastuksen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`,
+                  coastalCatchWorkbook,
+                  "Rannikkoilmoitus",
+                );
+              }}
               disabled={coastalReportEntries.length === 0 || coastalCatchIssues.length > 0}
             >
-              Tarkista ja muodosta rannikkokalastusilmoitus
+              Lataa rannikkokalastuksen saalisilmoitus Exceliin
             </button>
-            <a
-              href="https://saalisilmoitus.mmm.fi/"
-              target="_blank"
-              rel="noreferrer"
-              style={{ ...styles.button, ...styles.reportActionButton, textDecoration: "none" }}
+            <button
+              style={{ ...styles.button, ...styles.reportActionButton }}
+              onClick={() => {
+                if (coastalCatchIssues.length > 0) {
+                  setAuthError("Rannikkokalastuksen saalisilmoitusta ei voi lähettää ennen kuin puuttuvat saalistiedot on täydennetty.");
+                  return;
+                }
+                const filename = `rannikkokalastuksen-saalisilmoitus-${reportStartDate || "alku"}-${reportEndDate || today()}.xlsx`;
+                setReportSendingKey("coastal_catch");
+                void sendReportEmail({
+                  filename,
+                  rows: coastalCatchWorkbook,
+                  sheetName: "Rannikkoilmoitus",
+                  reportLabel: "Rannikkokalastuksen saalisilmoitus",
+                })
+                  .then(() => setAuthInfo(`Rannikkokalastuksen saalisilmoitus lähetetty osoitteeseen ${normalizeEmail(reportEmail)}.`))
+                  .catch((error) => setAuthError(String(error?.message || error)))
+                  .finally(() => setReportSendingKey(""));
+              }}
+              disabled={coastalReportEntries.length === 0 || coastalCatchIssues.length > 0 || reportSendingKey === "coastal_catch"}
             >
-              Avaa virallinen ilmoituspalvelu
-            </a>
+              {reportSendingKey === "coastal_catch" ? "Lähetetään..." : "Lähetä rannikkokalastuksen saalisilmoitus sähköpostiin"}
+            </button>
           </div>
           <div style={{ ...styles.small, marginTop: 8 }}>
-            Raportti valmistelee tiedot, mutta ei lähetä niitä automaattisesti viranomaiselle.
+            Raportti ryhmittelee saaliit kuukausittain ja sisältää pyydysten lukumäärän, pyyntipäivät sekä mahdollisen keskimääräisen kalastusajan. Tarkista Excel ennen sen toimittamista.
           </div>
         </div>
-        {coastalReviewOpen ? (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 2500,
-              padding: 16,
-              background: "rgba(15, 23, 42, 0.5)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            onClick={closeCoastalReview}
-          >
-            <div
-              style={{
-                ...styles.card,
-                ...styles.sectionCard,
-                width: "min(900px, calc(100vw - 32px))",
-                maxHeight: "calc(100dvh - 32px)",
-                overflowY: "auto",
-                boxSizing: "border-box",
-                background: "#ffffff",
-              }}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div style={styles.rowBetween}>
-                <div>
-                  <div style={{ fontSize: 22, fontWeight: 800 }}>Tarkista rannikkokalastusilmoitus</div>
-                  <div style={styles.muted}>Valittu rajaus: {reportScopeLabel}</div>
-                </div>
-                <button style={styles.button} type="button" onClick={closeCoastalReview}>Sulje</button>
-              </div>
-
-              <div style={{ ...styles.noticeInfo, marginTop: 16 }}>
-                Henkilötunnukset ovat käytössä vain tämän tiedoston muodostamisen ajan. Niitä ei tallenneta tietokantaan tai käyttäjäprofiiliin.
-              </div>
-
-              <div style={{ ...styles.stack, marginTop: 16 }}>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>Päällikön tai kalastaneen henkilön tiedot</div>
-                {coastalReporterKeys.map((reporterKey) => (
-                  <div key={reporterKey} style={styles.field}>
-                    <label>{reporterKey} – henkilötunnus</label>
-                    <input
-                      style={styles.input}
-                      type="text"
-                      value={coastalReporterIdentities[reporterKey] || ""}
-                      onChange={(event) => setCoastalReporterIdentities((current) => ({
-                        ...current,
-                        [reporterKey]: event.target.value.toUpperCase(),
-                      }))}
-                      placeholder="PPKKVV-XXXX"
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ ...styles.stack, marginTop: 22 }}>
-                <div style={styles.rowBetween}>
-                  <div>
-                    <div style={{ fontSize: 18, fontWeight: 800 }}>Saaliin ostajat</div>
-                    <div style={styles.muted}>
-                      Sovelluksessa hyväksytyt, tämän raportin saaliseriin liittyvät kaupat on lisätty automaattisesti. Lisää myös sovelluksen ulkopuoliset ostajat.
-                    </div>
-                  </div>
-                  <button style={styles.button} type="button" onClick={addCoastalBuyerDraft}>Lisää ostaja</button>
-                </div>
-
-                {coastalBuyerDrafts.length === 0 ? (
-                  <div style={styles.noticeWarning}>
-                    Raporttiin ei löytynyt ostajia. Jos saalista ei ole myyty ilmoitusjaksolla, ostajia ei tarvitse lisätä.
-                  </div>
-                ) : coastalBuyerDrafts.map((buyer) => (
-                  <div key={buyer.id} style={{ ...styles.entry, padding: 14 }}>
-                    <div style={styles.rowBetween}>
-                      <strong>{buyer.source === "automatic" ? "Sovelluksessa toteutunut kauppa" : "Muu ostaja"}</strong>
-                      <button
-                        style={{ ...styles.button, color: "#b91c1c", borderColor: "#fecaca" }}
-                        type="button"
-                        onClick={() => setCoastalBuyerDrafts((current) => current.filter((item) => item.id !== buyer.id))}
-                      >
-                        Poista
-                      </button>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))", gap: 12, marginTop: 12 }}>
-                      <div style={styles.field}>
-                        <label>Yritys tai ostajan nimi</label>
-                        <input
-                          style={styles.input}
-                          value={buyer.companyName}
-                          onChange={(event) => updateCoastalBuyerDraft(buyer.id, "companyName", event.target.value)}
-                        />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Yhteyshenkilö</label>
-                        <input
-                          style={styles.input}
-                          value={buyer.contactName}
-                          onChange={(event) => updateCoastalBuyerDraft(buyer.id, "contactName", event.target.value)}
-                        />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Sähköposti</label>
-                        <input
-                          style={styles.input}
-                          type="email"
-                          value={buyer.email}
-                          onChange={(event) => updateCoastalBuyerDraft(buyer.id, "email", event.target.value)}
-                        />
-                      </div>
-                      <div style={styles.field}>
-                        <label>Puhelin</label>
-                        <input
-                          style={styles.input}
-                          type="tel"
-                          value={buyer.phone}
-                          onChange={(event) => updateCoastalBuyerDraft(buyer.id, "phone", event.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {coastalReviewError ? <div style={{ ...styles.noticeError, marginTop: 16 }}>{coastalReviewError}</div> : null}
-
-              <div style={{ ...styles.row, marginTop: 20 }}>
-                <button
-                  style={{ ...styles.button, ...styles.primaryButton }}
-                  type="button"
-                  onClick={downloadReviewedCoastalReport}
-                >
-                  Muodosta ja lataa Excel
-                </button>
-                <button style={styles.button} type="button" onClick={closeCoastalReview}>Peruuta</button>
-              </div>
-            </div>
-          </div>
-        ) : null}
         <div style={styles.row}>
           <button
             style={styles.button}
@@ -8817,7 +7969,7 @@ export default function App() {
   const [processedEntries, setProcessedEntries] = useState([]);
   const [offers, setOffers] = useState([]);
   const [buyerOffers, setBuyerOffers] = useState([]);
-  const [buyerOffersFilter, setBuyerOffersFilter] = useState("open");
+  const [buyerOffersFilter, setBuyerOffersFilter] = useState("new");
   const [billingFilter, setBillingFilter] = useState("unbilled");
   const [buyerOffersSearch, setBuyerOffersSearch] = useState("");
   const [buyerActiveOfferId, setBuyerActiveOfferId] = useState(null);
@@ -8847,8 +7999,10 @@ export default function App() {
   const [auctionsAvailable, setAuctionsAvailable] = useState(false);
   const [pendingEntriesScrollTarget, setPendingEntriesScrollTarget] = useState("");
   const [pendingAuctionTarget, setPendingAuctionTarget] = useState(null);
+  const [auctionCreateRequestKey, setAuctionCreateRequestKey] = useState(0);
   const [pendingOfferTarget, setPendingOfferTarget] = useState(null);
   const [focusedFixedOfferId, setFocusedFixedOfferId] = useState("");
+  const [buyerMenuOpen, setBuyerMenuOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -8905,6 +8059,14 @@ export default function App() {
       landingPlace: defaults.landingPlace,
       gearCount: initialGearDefaults.gearCount,
       fishingDurationDays: initialGearDefaults.fishingDurationDays,
+      fishingSecondaryValue: "",
+      inlandGearCode: getInlandGearCode(defaults.gear),
+      inlandGearPresetId: "",
+      managementFishing: false,
+      effortOnly: false,
+      gearLength: "",
+      gearWidth: "",
+      otherGearName: "",
       originCity: "",
       selectedVesselId: "",
       fishingWithoutVessel: false,
@@ -8977,6 +8139,7 @@ export default function App() {
   const [catchAreaSelector, setCatchAreaSelector] = useState(() => resolveAreaSelectorValue(initialCatchDefaults.area, initialCatchDefaults.customLakeAreas, initialCatchDefaults.customSeaAreas));
   const [savedLandingPlaces, setSavedLandingPlaces] = useState(() => getStoredCatchFormDefaults().landingPlaces || []);
   const [savedGearProfiles, setSavedGearProfiles] = useState(() => initialCatchDefaults.gearProfiles || {});
+  const [savedInlandGearPresets, setSavedInlandGearPresets] = useState(() => initialCatchDefaults.inlandGearPresets || []);
   const [savedGearCountOptions, setSavedGearCountOptions] = useState(() => initialGearDefaults.gearCountOptions || []);
   const [savedFishingDurationOptions, setSavedFishingDurationOptions] = useState(() => initialGearDefaults.fishingDurationOptions || []);
   const [savedNetHeightOptions, setSavedNetHeightOptions] = useState(() => initialGearDefaults.netHeightOptions || []);
@@ -9047,6 +8210,7 @@ export default function App() {
   const pushRegistrationKeyRef = useRef("");
   const currentPushTokenRef = useRef("");
   const tabsScrollRef = useRef(null);
+  const [tabCarouselEdges, setTabCarouselEdges] = useState({ canScrollLeft: false, canScrollRight: true });
   const isCompactTabs = viewportWidth < 900;
   const [accountForm, setAccountForm] = useState({
     displayName: "",
@@ -9082,6 +8246,7 @@ export default function App() {
     deliveryCity: "",
     notes: "",
   });
+  const [salesSelectionMode, setSalesSelectionMode] = useState(false);
   const [sendInvoiceCopyToSelf, setSendInvoiceCopyToSelf] = useState(true);
   const [sendInvoiceCopyToAccountant, setSendInvoiceCopyToAccountant] = useState(false);
   const [accountFormDirty, setAccountFormDirty] = useState(false);
@@ -9120,17 +8285,33 @@ export default function App() {
     if (!targetOffer) return undefined;
 
     if (profile?.role === "buyer") {
+      setBuyerOffersSearch("");
       setBuyerOffersFilter(getBuyerOffersFilterForStatus(targetOffer.status));
       setBuyerActiveOfferId(offerId);
     }
     setFocusedFixedOfferId(offerId);
 
-    const timer = window.setTimeout(() => {
-      const targetId = profile?.role === "buyer" ? `buyer-offer-card-${offerId}` : `linked-buyer-offer-${offerId}`;
-      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "center" });
-      setPendingOfferTarget(null);
-    }, 140);
-    return () => window.clearTimeout(timer);
+    let cancelled = false;
+    let timeoutId = null;
+    const targetId = profile?.role === "buyer" ? `buyer-offer-card-${offerId}` : `linked-buyer-offer-${offerId}`;
+
+    const attemptScroll = (attempt = 0) => {
+      if (cancelled) return;
+      const target = document.getElementById(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        setPendingOfferTarget(null);
+        return;
+      }
+      if (attempt >= 12) return;
+      timeoutId = window.setTimeout(() => attemptScroll(attempt + 1), 120);
+    };
+
+    timeoutId = window.setTimeout(() => attemptScroll(0), 80);
+    return () => {
+      cancelled = true;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
   }, [activeTab, buyerOffers, pendingOfferTarget, profile?.role]);
 
   useEffect(() => {
@@ -9145,6 +8326,9 @@ export default function App() {
   const [publicBatchError, setPublicBatchError] = useState("");
   const [slowBoot, setSlowBoot] = useState(false);
   const [labelPrintEntry, setLabelPrintEntry] = useState(null);
+  const [catchSaleEntry, setCatchSaleEntry] = useState(null);
+  const [catchSaleDraft, setCatchSaleDraft] = useState(() => createCatchSaleDraft());
+  const [catchSaleSaving, setCatchSaleSaving] = useState(false);
   const [labelPrintCount, setLabelPrintCount] = useState(10);
   const [labelPrintPieceCount, setLabelPrintPieceCount] = useState("");
   const [labelPrintWeightKg, setLabelPrintWeightKg] = useState("");
@@ -9181,6 +8365,8 @@ export default function App() {
       gearCount: gearDefaults.gearCount,
       fishingDurationDays: gearDefaults.fishingDurationDays,
       gear: defaults.gear,
+      inlandGearCode: getInlandGearCode(defaults.gear),
+      inlandGearPresetId: "",
       netHeight: gearDefaults.netHeight,
       netMeshSize: gearDefaults.netMeshSize,
       fykeHeight: gearDefaults.fykeHeight,
@@ -9192,6 +8378,7 @@ export default function App() {
     setCatchAreaSelector(resolveAreaSelectorValue(defaults.area, defaults.customLakeAreas, defaults.customSeaAreas));
     setSavedLandingPlaces(defaults.landingPlaces || []);
     setSavedGearProfiles(defaults.gearProfiles || {});
+    setSavedInlandGearPresets(defaults.inlandGearPresets || []);
     setSavedGearCountOptions(gearDefaults.gearCountOptions || []);
     setSavedFishingDurationOptions(gearDefaults.fishingDurationOptions || []);
     setSavedNetHeightOptions(gearDefaults.netHeightOptions || []);
@@ -9573,6 +8760,7 @@ export default function App() {
       setActiveTab(nextTab);
     }
     if (nextTab === "offers" && profile?.role === "buyer") {
+      setBuyerOffersSearch("");
       setBuyerOffersFilter("open");
       if (String(normalizedPayload.eventType || "").trim() === "offer_accepted") {
         setBuyerActiveOfferId(null);
@@ -10291,6 +9479,9 @@ export default function App() {
     return matches.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
   };
   const isCatchAuction = form.saleMode === "auction";
+  const currentCalendarYear = Number(today().slice(0, 4));
+  const currentInlandGearMeta = getInlandGearMeta(form.inlandGearCode || form.gear);
+  const currentInlandTechnicalFields = getInlandGearTechnicalFields(form.inlandGearCode || form.gear);
   const auctionContainsOnlyCrayfish = speciesRows.length > 0 && speciesRows.every((row) => isCrayfishSpecies(getSpeciesRowLabel(row)));
   const shouldSendOffer = hasFisherPremium && form.saleMode === "fixed" && form.listForSale && (
     form.offerAudience === "selected"
@@ -10798,13 +9989,17 @@ export default function App() {
       return;
     }
 
-    const ensureProfile = async () => {
+    const ensureProfile = async (attempt = 0) => {
       const email = (session.user.email || "").trim().toLowerCase();
       const { data: allowedRows, error: allowedError } = await findAllowedUsersByEmail(supabase, email);
       if (allowedError && allowedError.code !== "PGRST116") {
         if (isMissingRefreshTokenError(allowedError)) {
           await invalidateSession();
           return;
+        }
+        if (isFutureJwtClockSkewError(allowedError) && attempt < 2) {
+          await waitForRetry(700 * (attempt + 1));
+          return ensureProfile(attempt + 1);
         }
         setAuthError(allowedError.message);
         return;
@@ -10829,6 +10024,10 @@ export default function App() {
         if (isMissingRefreshTokenError(profileError)) {
           await invalidateSession();
           return;
+        }
+        if (isFutureJwtClockSkewError(profileError) && attempt < 2) {
+          await waitForRetry(700 * (attempt + 1));
+          return ensureProfile(attempt + 1);
         }
         setAuthError(profileError.message);
         return;
@@ -10921,6 +10120,10 @@ export default function App() {
         if (isMissingRefreshTokenError(insertError)) {
           await invalidateSession();
           return;
+        }
+        if (isFutureJwtClockSkewError(insertError) && attempt < 2) {
+          await waitForRetry(700 * (attempt + 1));
+          return ensureProfile(attempt + 1);
         }
         setAuthError(insertError.message);
         return;
@@ -11176,6 +10379,18 @@ export default function App() {
             releasedCatchDetails: entry.released_catch_details || "",
             incidentalBycatchDetails: entry.incidental_bycatch_details || "",
             lostGearDetails: entry.lost_gear_details || "",
+            inlandGearCode: entry.inland_gear_code || getInlandGearCode(entry.gear),
+            managementFishing: Boolean(entry.management_fishing) || String(entry.gear || "").startsWith("Hoitokalastus "),
+            fishingWithoutVessel: Boolean(entry.fishing_without_vessel),
+            effortOnly: Boolean(entry.effort_only),
+            gearCount: entry.gear_count || extractCatchLogisticsDetailsFromNotes(entry.notes).gearCount || "",
+            fishingDurationDays: entry.fishing_effort || extractCatchLogisticsDetailsFromNotes(entry.notes).fishingDurationDays || "",
+            fishingSecondaryValue: entry.fishing_secondary_value || "",
+            netMeshSize: entry.gear_mesh_size || extractCatchGearDetailsFromNotes(entry.notes).netMeshSize || "",
+            netHeight: entry.gear_height || extractCatchGearDetailsFromNotes(entry.notes).netHeight || "",
+            gearLength: entry.gear_length || "",
+            gearWidth: entry.gear_width || "",
+            otherGearName: entry.other_gear_name || "",
             kilos: Number(entry.kilos || 0),
             count: Number(entry.count || 0),
             gear: entry.gear,
@@ -11261,6 +10476,18 @@ export default function App() {
                 releasedCatchDetails: entry.released_catch_details || "",
                 incidentalBycatchDetails: entry.incidental_bycatch_details || "",
                 lostGearDetails: entry.lost_gear_details || "",
+                inlandGearCode: entry.inland_gear_code || getInlandGearCode(entry.gear),
+                managementFishing: Boolean(entry.management_fishing) || String(entry.gear || "").startsWith("Hoitokalastus "),
+                fishingWithoutVessel: Boolean(entry.fishing_without_vessel),
+                effortOnly: Boolean(entry.effort_only),
+                gearCount: entry.gear_count || extractCatchLogisticsDetailsFromNotes(entry.notes).gearCount || "",
+                fishingDurationDays: entry.fishing_effort || extractCatchLogisticsDetailsFromNotes(entry.notes).fishingDurationDays || "",
+                fishingSecondaryValue: entry.fishing_secondary_value || "",
+                netMeshSize: entry.gear_mesh_size || extractCatchGearDetailsFromNotes(entry.notes).netMeshSize || "",
+                netHeight: entry.gear_height || extractCatchGearDetailsFromNotes(entry.notes).netHeight || "",
+                gearLength: entry.gear_length || "",
+                gearWidth: entry.gear_width || "",
+                otherGearName: entry.other_gear_name || "",
                 kilos: Number(entry.kilos || 0),
                 count: Number(entry.count || 0),
                 gear: entry.gear,
@@ -11771,6 +10998,7 @@ export default function App() {
         fykeHeight: form.fykeHeight || "",
         fykeHeightOptions,
         gearProfiles: nextGearProfiles,
+        inlandGearPresets: savedInlandGearPresets,
       }));
       setSavedGearProfiles((prev) => {
         const previousSerialized = JSON.stringify(prev || {});
@@ -11822,6 +11050,7 @@ export default function App() {
     savedCustomSeaAreas,
     savedLandingPlaces,
     savedGearProfiles,
+    savedInlandGearPresets,
     savedGearCountOptions,
     savedFishingDurationOptions,
     savedNetHeightOptions,
@@ -15068,6 +14297,7 @@ export default function App() {
       earliest_delivery_date: null,
       cold_transport: false,
     };
+    if (!isProcessedEntry) updatePayload.offer_restricted = false;
 
     const { error: entryUpdateError } = await supabase
       .from(tableName)
@@ -15097,6 +14327,143 @@ export default function App() {
     setAuthInfo("Erä poistettu myynnistä. Tarjous ei enää näy ostajille.");
     await refreshBuyerOffers();
     setRefreshTick((prev) => prev + 1);
+  };
+
+  const openCatchSaleDialog = (entry) => {
+    if (!entry || isEntryOfferedForSale(entry)) return;
+    if (profile?.role === "member" && !hasFisherPremium) {
+      showFisherPremiumRequired("Kalaerän laittaminen myyntiin");
+      return;
+    }
+    setAuthError("");
+    setAuthInfo("");
+    setCatchSaleEntry(entry);
+    setCatchSaleDraft(createCatchSaleDraft(entry));
+  };
+
+  const closeCatchSaleDialog = () => {
+    if (catchSaleSaving) return;
+    setCatchSaleEntry(null);
+    setCatchSaleDraft(createCatchSaleDraft());
+  };
+
+  const handlePutSavedCatchOnSale = async () => {
+    if (!catchSaleEntry || catchSaleSaving) return;
+    const pricePerKg = parseLocaleNumber(catchSaleDraft.pricePerKg);
+    if (pricePerKg == null || pricePerKg <= 0) {
+      setAuthError("Täytä kalaerälle myyntihinta.");
+      return;
+    }
+    if (!String(catchSaleDraft.packaging || "").trim()) {
+      setAuthError("Valitse, miten kalaerä on pakattu.");
+      return;
+    }
+    if (catchSaleDraft.offerAudience === "selected" && catchSaleDraft.selectedBuyerIds.length === 0) {
+      setAuthError("Valitse vähintään yksi ostaja, jolle tarjous lähetetään.");
+      return;
+    }
+    if (catchSaleDraft.offerAudience !== "selected" && !catchSaleDraft.offerToShops && !catchSaleDraft.offerToRestaurants && !catchSaleDraft.offerToWholesalers) {
+      setAuthError("Valitse vähintään yksi ostajaryhmä tai vain tietyt ostajat.");
+      return;
+    }
+    const missingSellerSaleFields = getMissingSellerSaleFields(profile);
+    if (missingSellerSaleFields.length > 0) {
+      setAccountPanelOpen(true);
+      setAuthError(`Täytä omat tiedot ennen kuin voit asettaa kalaerän myyntiin. Puuttuu: ${missingSellerSaleFields.join(", ")}.`);
+      return;
+    }
+
+    const resolvedSaleArea = catchSaleDraft.deliveryMethod === "Nouto"
+      ? (String(catchSaleDraft.deliveryArea || "").trim() || getDefaultProfilePickupAddress(profile))
+      : String(catchSaleDraft.deliveryArea || "").trim();
+    if (!resolvedSaleArea) {
+      setAuthError(catchSaleDraft.deliveryMethod === "Nouto" ? "Täytä nouto-osoite." : "Täytä toimitusalue.");
+      return;
+    }
+
+    const notesWithoutPackaging = String(catchSaleEntry.notes || "")
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("Pakkaustapa:"))
+      .join("\n")
+      .trim();
+    const notes = [notesWithoutPackaging, `Pakkaustapa: ${String(catchSaleDraft.packaging).trim()}`].filter(Boolean).join("\n");
+    const selectedForGroups = catchSaleDraft.offerAudience !== "selected";
+    const updatePayload = {
+      offer_to_shops: selectedForGroups && catchSaleDraft.offerToShops,
+      offer_to_restaurants: selectedForGroups && catchSaleDraft.offerToRestaurants,
+      offer_to_wholesalers: selectedForGroups && catchSaleDraft.offerToWholesalers,
+      offer_restricted: !selectedForGroups,
+      price_per_kg: pricePerKg,
+      notes,
+      delivery_possible: false,
+      delivery_method: catchSaleDraft.deliveryMethod,
+      delivery_area: resolvedSaleArea,
+      delivery_cost: parseLocaleNumber(catchSaleDraft.deliveryCost),
+      earliest_delivery_date: catchSaleDraft.earliestDeliveryDate || null,
+      cold_transport: Boolean(catchSaleDraft.coldTransport),
+    };
+    const offerFormState = {
+      date: catchSaleEntry.date,
+      area: catchSaleEntry.area,
+      municipality: catchSaleEntry.municipality || "",
+      originCity: catchSaleEntry.municipality || "",
+      spot: catchSaleEntry.spot || "",
+      gear: catchSaleEntry.gear || "",
+      notes,
+      listForSale: true,
+      offerAudience: catchSaleDraft.offerAudience,
+      selectedBuyerIds: catchSaleDraft.selectedBuyerIds,
+      offerToShops: updatePayload.offer_to_shops,
+      offerToRestaurants: updatePayload.offer_to_restaurants,
+      offerToWholesalers: updatePayload.offer_to_wholesalers,
+      deliveryPossible: false,
+      deliveryMethod: catchSaleDraft.deliveryMethod,
+      transportMode: "",
+      originPointId: "",
+      transportCompanyId: "",
+      pickupSurcharge: "",
+      estimatedPickupTime: "",
+      deliveryDestinations: [],
+      deliveryArea: resolvedSaleArea,
+      deliveryCost: catchSaleDraft.deliveryCost,
+      earliestDeliveryDate: catchSaleDraft.earliestDeliveryDate,
+      coldTransport: Boolean(catchSaleDraft.coldTransport),
+    };
+    const offerRows = [{
+      species: catchSaleEntry.species,
+      kilos: Number(catchSaleEntry.kilos || 0),
+      count: Number(catchSaleEntry.count || 0),
+      price_per_kg: pricePerKg,
+      batch_id: catchSaleEntry.batchId || "",
+    }];
+
+    setCatchSaleSaving(true);
+    let entryUpdated = false;
+    try {
+      const { error: updateError } = await supabase.from("catch_entries").update(updatePayload).eq("id", catchSaleEntry.id);
+      if (updateError) throw updateError;
+      entryUpdated = true;
+      const emailResult = await sendCatchOfferEmail({ formState: offerFormState, rows: offerRows, profileState: profile });
+      if (emailResult.skipped) {
+        setAuthInfo("Kalaerä asetettiin myyntiin, mutta yhtään ostajaa ei täyttänyt tarjousehtoja.");
+      } else if (emailResult.failed.length > 0) {
+        setAuthError(`Kalaerä asetettiin myyntiin. Tarjous lähetettiin ${emailResult.sent.length} ostajalle, mutta lähetys epäonnistui ${emailResult.failed.length} ostajalle.`);
+      } else {
+        setAuthInfo(`Kalaerä asetettiin myyntiin ja tarjous lähetettiin ${emailResult.sent.length} ostajalle.`);
+      }
+    } catch (error) {
+      setAuthError(entryUpdated
+        ? `Kalaerä asetettiin myyntiin, mutta tarjouksen lähetys epäonnistui: ${String(error?.message || error)}`
+        : `Kalaerän asettaminen myyntiin epäonnistui: ${String(error?.message || error)}`);
+    } finally {
+      setCatchSaleSaving(false);
+      if (entryUpdated) {
+        setCatchSaleEntry(null);
+        setCatchSaleDraft(createCatchSaleDraft());
+        await refreshBuyerOffers();
+        setRefreshTick((prev) => prev + 1);
+      }
+    }
   };
 
   const handleCreateOffer = async (entry) => {
@@ -15587,13 +14954,18 @@ export default function App() {
       ? String(profile.commercial_fishing_id || "").trim()
       : getPreferredBatchSourceIdentifier(profile, selectedVesselId);
     const marineCatch = isMarineCatchForm(form, catchAreaSelector);
-    const validRows = speciesRows.filter((row) => {
+    const selectedInlandGear = marineCatch ? null : getInlandGearMeta(form.inlandGearCode || form.gear);
+    const resolvedGearCount = selectedInlandGear?.fixedCount === 1 ? "1" : form.gearCount;
+    const catchAmountRows = speciesRows.filter((row) => {
       const kilos = Number(row.kilos || 0);
       const count = Number(row.count || 0);
-      return isCrayfishSpecies(getSpeciesRowLabel(row)) ? count > 0 : kilos > 0;
+      return marineCatch ? kilos > 0 : (kilos > 0 || count > 0);
     });
+    const validRows = !marineCatch && form.effortOnly
+      ? [{ ...createSpeciesRow(), species: "Ei saalista", kilos: 0, count: 0, effortOnly: true }]
+      : catchAmountRows;
     if (!validRows.length) {
-      setAuthError("Täytä saaliille määrä ennen tallennusta. Ravuille kappalemäärä, muille lajeille vähintään kilot.");
+      setAuthError("Täytä saaliille määrä tai valitse Tallenna pyyntiponnistus ilman saalista.");
       return;
     }
     if (validRows.some((row) => row.species === "Muu" && !String(row.customSpecies || "").trim())) {
@@ -15602,6 +14974,25 @@ export default function App() {
     }
     if (marineCatch && validRows.some((row) => !getSpeciesMetadata(getSpeciesRowLabel(row))?.fao)) {
       setAuthError("Rannikkokalastusilmoitus tarvitsee jokaiselle lajille vahvistetun FAO-koodin. Valitse laji valmiista lajilistasta.");
+      return;
+    }
+    if (
+      marineCatch
+      && (form.vesselLengthClass === "under_10m" || form.vesselLengthClass === "without_vessel")
+      && validRows.some((row) => !isCoastalReportSpeciesAllowed(getSpeciesRowLabel(row)))
+    ) {
+      setAuthError("Lohta ja turskaa ei ilmoiteta rannikkokalastusilmoituksella. Tee niistä päiväkohtainen purkamisilmoitus.");
+      return;
+    }
+    if (!marineCatch && !form.effortOnly && validRows.some((row) => !Number.isInteger(Number(row.kilos || 0)))) {
+      setAuthError("Sisävesisaaliin kilot ilmoitetaan viranomaisjärjestelmään kokonaislukuina.");
+      return;
+    }
+    if (!marineCatch && !form.effortOnly && validRows.some((row) => (
+      isInlandDualQuantitySpecies(getSpeciesRowLabel(row))
+      && (Number(row.kilos || 0) <= 0 || !Number.isInteger(Number(row.count || 0)) || Number(row.count || 0) <= 0)
+    ))) {
+      setAuthError("Ravuille, nahkiaiselle ja lohelle ilmoitetaan sekä kokonaiset kilot että kappaleet.");
       return;
     }
     if (!String(form.landingPlace || "").trim()) {
@@ -15706,6 +15097,19 @@ export default function App() {
         return;
       }
     }
+    const officialForm = { ...form, selectedVesselId, gearCount: resolvedGearCount };
+    const officialFormIssues = marineCatch
+      ? validateMarineCatchForm(officialForm)
+      : validateCatchFormForOfficialReporting(officialForm);
+    const officialCatchSaveBlocker = getOfficialCatchSaveBlocker({
+      marineCatch,
+      issues: officialFormIssues,
+      fisherPremiumRequired,
+    });
+    if (officialCatchSaveBlocker) {
+      setAuthError(officialCatchSaveBlocker);
+      return;
+    }
     if (!fisherPremiumRequired) {
       if (form.fishingWithoutVessel && !String(profile.commercial_fishing_id || "").trim()) {
         setAuthError("Aseta kaupallisen kalastajan tunnus kohdassa Omat tiedot ennen eräkoodin luontia, kun kalastat ilman alusta.");
@@ -15713,13 +15117,6 @@ export default function App() {
       }
       if (!form.fishingWithoutVessel && commercialFishingVesselOptions.length > 0 && !selectedVesselId) {
         setAuthError("Valitse käytetty kaupallinen kalastusalus ennen saaliin tallennusta.");
-        return;
-      }
-      const officialFormIssues = marineCatch
-        ? validateMarineCatchForm(form)
-        : validateCatchFormForOfficialReporting(form);
-      if (officialFormIssues.length > 0) {
-        setAuthError(`Täytä virallisen ${marineCatch ? "rannikkokalastusilmoituksen" : "saalisilmoituksen"} tiedot ennen tallennusta: ${officialFormIssues.join(" ")}`);
         return;
       }
     }
@@ -15784,6 +15181,20 @@ export default function App() {
       released_catch_details: marineCatch ? (String(form.releasedCatchDetails || "").trim() || null) : null,
       incidental_bycatch_details: marineCatch ? (String(form.incidentalBycatchDetails || "").trim() || null) : null,
       lost_gear_details: marineCatch ? (String(form.lostGearDetails || "").trim() || null) : null,
+      fishing_without_vessel: Boolean(form.fishingWithoutVessel),
+      gear_count: String(resolvedGearCount || "").trim() || null,
+      fishing_effort: String(form.fishingDurationDays || "").trim() || null,
+      fishing_secondary_value: String(form.fishingSecondaryValue || "").trim() || null,
+      gear_mesh_size: String(form.netMeshSize || "").trim() || null,
+      gear_height: String(form.netHeight || "").trim() || null,
+      ...(!marineCatch ? {
+        inland_gear_code: getInlandGearCode(form.inlandGearCode || form.gear) || null,
+        management_fishing: Boolean(form.managementFishing),
+        effort_only: Boolean(form.effortOnly),
+        gear_length: String(form.gearLength || "").trim() || null,
+        gear_width: String(form.gearWidth || "").trim() || null,
+        other_gear_name: String(form.otherGearName || "").trim() || null,
+      } : {}),
       kilos: Number(row.kilos || 0),
       count: Number(row.count || 0),
       gear: form.gear,
@@ -15801,7 +15212,7 @@ export default function App() {
       commercial_fishing_id: profile.commercial_fishing_id || null,
       commercial_fishing_vessel_id: selectedVesselId || null,
       price_per_kg: parseLocaleNumber(row.price_per_kg),
-      notes: appendCatchDetailsToNotes(form.notes, form),
+      notes: appendCatchDetailsToNotes(form.notes, officialForm),
       batch_id: row.batch_id,
       owner_user_id: profile.id,
       owner_name: profile.display_name,
@@ -15824,6 +15235,26 @@ export default function App() {
       "incidental_bycatch_details",
       "lost_gear_details",
     ];
+    const inlandSchemaColumns = [
+      "inland_gear_code",
+      "management_fishing",
+      "fishing_without_vessel",
+      "effort_only",
+      "gear_count",
+      "fishing_effort",
+      "fishing_secondary_value",
+      "gear_mesh_size",
+      "gear_height",
+      "gear_length",
+      "gear_width",
+      "other_gear_name",
+    ];
+    const missingInlandSchema = insertError && inlandSchemaColumns.some((column) => String(insertError.message || "").includes(column));
+    if (missingInlandSchema && !marineCatch) {
+      setSaving(false);
+      setAuthError("Tietokannasta puuttuvat vuoden 2025 sisävesisaalisilmoituksen kentät. Suorita migraatio 2026082501 ennen sisävesisaaliin tallentamista.");
+      return;
+    }
     const missingMarineSchema = insertError && marineSchemaColumns.some((column) => String(insertError.message || "").includes(column));
     if (missingMarineSchema && marineCatch) {
       setSaving(false);
@@ -15859,6 +15290,11 @@ export default function App() {
       }
       setAuthError(error.message);
       return;
+    }
+
+    const newlySavedInlandGearPreset = marineCatch ? null : createInlandGearPreset(form);
+    if (newlySavedInlandGearPreset) {
+      setSavedInlandGearPresets((prev) => saveInlandGearPreset(prev, newlySavedInlandGearPreset));
     }
 
     const normalizedWaterType = String(form.waterType || "").trim();
@@ -15983,6 +15419,14 @@ export default function App() {
       landingPlace: prev.landingPlace || "",
       gearCount: prev.gearCount || "",
       fishingDurationDays: prev.fishingDurationDays || "",
+      fishingSecondaryValue: prev.fishingSecondaryValue || "",
+      inlandGearCode: getInlandGearCode(prev.inlandGearCode || prev.gear),
+      inlandGearPresetId: newlySavedInlandGearPreset?.id || prev.inlandGearPresetId || "",
+      managementFishing: false,
+      effortOnly: false,
+      gearLength: prev.gearLength || "",
+      gearWidth: prev.gearWidth || "",
+      otherGearName: prev.otherGearName || "",
       selectedVesselId: commercialFishingVesselOptions[0] || "",
       fishingWithoutVessel: false,
       vesselLengthClass: prev.vesselLengthClass || "",
@@ -16482,7 +15926,17 @@ export default function App() {
   };
 
   if (publicBatchId) {
-    return <PublicBatchView batchId={publicBatchId} data={publicBatchData} loading={publicBatchLoading} error={publicBatchError} onLeave={closePublicBatchView} />;
+    return (
+      <PublicApp
+        batchView={{
+          batchId: publicBatchId,
+          data: publicBatchData,
+          loading: publicBatchLoading,
+          error: publicBatchError,
+          onLeave: closePublicBatchView,
+        }}
+      />
+    );
   }
 
   if (loading) {
@@ -16517,6 +15971,23 @@ export default function App() {
   if (roleSelectionOpen && availableRoleOptions.length > 1) {
     return <RoleSelectionView roleOptions={availableRoleOptions} buyers={buyers} onSelectRole={handleRoleSelect} />;
   }
+
+  const handleGoToHome = () => {
+    setAccountPanelOpen(false);
+    setHelpOpen(false);
+    setCatchSaleEntry(null);
+    setLabelPrintEntry(null);
+    setBuyerActiveOfferId(null);
+    setPendingAuctionTarget(null);
+    setPendingOfferTarget(null);
+    setBuyerOffersFilter("new");
+    setBuyerOffersSearch("");
+    setActiveTab("dashboard");
+    window.requestAnimationFrame(() => {
+      tabsScrollRef.current?.scrollTo({ left: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    });
+  };
 
   if (profile.role === "buyer") {
     const missingBuyerTradeFields = getMissingBuyerTradeFields(linkedBuyerRecord, profile);
@@ -16571,12 +16042,29 @@ export default function App() {
       const q = buyerOffersSearch.trim().toLowerCase();
       const statusOk = buyerOffersFilter === "all"
         ? true
+        : buyerOffersFilter === "new"
+        ? offer.status === "sent"
+        : buyerOffersFilter === "decision"
+        ? offer.status === "viewed"
         : buyerOffersFilter === "open"
-        ? hasBuyerOfferStatus(offer.status, [...BUYER_OFFER_OPEN_RESPONSE_STATUSES, ...BUYER_OFFER_ACTION_REQUIRED_STATUSES, "sold"])
-        : buyerOffersFilter === "accepted"
+        ? hasBuyerOfferStatus(offer.status, BUYER_OFFER_OPEN_RESPONSE_STATUSES)
+        : buyerOffersFilter === "reserved_purchased"
+        ? ["reserved", "accepted"].includes(String(offer.status || ""))
+        : buyerOffersFilter === "incoming"
+        ? isBuyerOfferAccepted(offer.status) && !["delivered", "received"].includes(String(offer.fulfillment_status || ""))
+        : buyerOffersFilter === "purchased" || buyerOffersFilter === "accepted"
         ? isBuyerOfferAccepted(offer.status)
         : offer.status === buyerOffersFilter;
-      const text = [offer.seller_name, offer.area, offer.spot, offer.species_summary, offer.status, offer.buyer_message]
+      const text = [
+        offer.seller_name,
+        offer.area,
+        offer.spot,
+        offer.species_summary,
+        offer.status,
+        offer.buyer_message,
+        offer.delivery_destination_city,
+        offer.earliest_delivery_date,
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -16625,12 +16113,150 @@ export default function App() {
     );
     const openBuyerInvoiceGroups = buyerInvoiceGroups.filter(({ offers }) => String(offers?.[0]?.billing_status || "").trim() === "invoiced");
     const paidBuyerInvoiceGroups = buyerInvoiceGroups.filter(({ offers }) => String(offers?.[0]?.billing_status || "").trim() === "paid");
+    const fixedPriceBuyerOffers = (buyerOffers || []).filter((offer) => !isAuctionTradeOffer(offer));
+    const buyerMarketplaceSpecies = Array.from(new Set(
+      fixedPriceBuyerOffers
+        .filter((offer) => hasBuyerOfferStatus(offer.status, BUYER_OFFER_OPEN_RESPONSE_STATUSES))
+        .map((offer) => getOfferSpeciesHeadline(offer?.species_summary, { hideTraceability: true }))
+        .map((label) => String(label || "").split(/[·,]/)[0].trim())
+        .filter(Boolean)
+    )).slice(0, 4);
+    const buyerLocationQuickFilter = String(
+      linkedBuyerRecord?.delivery_city || linkedBuyerRecord?.city || ""
+    ).trim();
+    const buyerDashboardCounts = {
+      newOffers: fixedPriceBuyerOffers.filter((offer) => offer.status === "sent").length,
+      requiresDecision: fixedPriceBuyerOffers.filter((offer) => offer.status === "viewed").length,
+      reservedAndPurchased: fixedPriceBuyerOffers.filter((offer) => ["reserved", "accepted"].includes(String(offer.status || ""))).length,
+      incomingDeliveries: fixedPriceBuyerOffers.filter((offer) => isBuyerOfferAccepted(offer.status) && !["delivered", "received"].includes(String(offer.fulfillment_status || ""))).length,
+      openInvoices: openBuyerInvoiceGroups.length,
+    };
+    const scrollBuyerViewIntoPlace = (targetId = "") => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const targetElement = targetId ? document.getElementById(targetId) : null;
+          if (targetElement) {
+            targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+            return;
+          }
+          window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+        });
+      });
+    };
+    const openBuyerTab = (targetTab, targetId = "") => {
+      setBuyerMenuOpen(false);
+      setAccountPanelOpen(false);
+      setActiveTab(targetTab);
+      scrollBuyerViewIntoPlace(targetId);
+    };
+    const openBuyerOfferCategory = (filter, targetTab = "offers") => {
+      setBuyerOffersFilter(filter);
+      openBuyerTab(targetTab, targetTab === "buyer_billing" ? "buyer-invoices-view" : "buyer-offers-list");
+    };
     const headerBrandStyles = getHeaderBrandStyles(viewportWidth);
 
     return (
-      <div style={styles.app}>
+      <div style={{ ...styles.app, paddingBottom: "max(96px, calc(76px + env(safe-area-inset-bottom)))" }}>
         <div style={styles.container}>
-          <div style={{ ...styles.card, ...styles.headerCard, position: "relative", paddingRight: viewportWidth < 560 ? styles.headerCard.padding : 76 }}>
+          <div style={{
+            ...styles.card,
+            ...styles.headerCard,
+            position: "relative",
+            zIndex: buyerMenuOpen ? 100 : "auto",
+            backdropFilter: buyerMenuOpen ? "none" : styles.card.backdropFilter,
+            paddingLeft: viewportWidth < 560 ? 62 : 82,
+            paddingRight: viewportWidth < 560 ? 58 : 76,
+          }}>
+            <button
+              type="button"
+              aria-label={buyerMenuOpen ? "Sulje käyttäjävalikko" : "Avaa käyttäjävalikko"}
+              aria-expanded={buyerMenuOpen}
+              onClick={() => setBuyerMenuOpen((previous) => !previous)}
+              style={{
+                position: "absolute",
+                top: viewportWidth < 560 ? 12 : 18,
+                left: viewportWidth < 560 ? 12 : 18,
+                zIndex: 62,
+                width: viewportWidth < 560 ? 38 : 44,
+                height: viewportWidth < 560 ? 38 : 44,
+                display: "inline-flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                border: "1px solid #93c5fd",
+                borderRadius: 999,
+                background: buyerMenuOpen ? "#0f3d5e" : "#eff6ff",
+                color: buyerMenuOpen ? "#fff" : "#1d4ed8",
+                cursor: "pointer",
+                boxShadow: "0 6px 16px rgba(37, 99, 235, 0.12)",
+              }}
+            >
+              {[0, 1, 2].map((line) => (
+                <span key={line} aria-hidden="true" style={{ width: 17, height: 2, borderRadius: 999, background: "currentColor" }} />
+              ))}
+            </button>
+            {buyerMenuOpen ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="Sulje käyttäjävalikko"
+                  onClick={() => setBuyerMenuOpen(false)}
+                  style={{ position: "fixed", inset: 0, zIndex: 60, border: 0, background: "rgba(15, 23, 42, 0.12)", cursor: "default" }}
+                />
+                <div style={{
+                  position: "absolute",
+                  top: viewportWidth < 560 ? 58 : 70,
+                  left: viewportWidth < 560 ? 12 : 18,
+                  zIndex: 63,
+                  width: `min(330px, calc(100vw - ${viewportWidth < 560 ? 24 : 36}px))`,
+                  padding: 14,
+                  display: "grid",
+                  gap: 9,
+                  border: "1px solid #bfdbfe",
+                  borderRadius: 20,
+                  background: "rgba(255,255,255,0.98)",
+                  boxShadow: "0 22px 52px rgba(15, 23, 42, 0.24)",
+                  backdropFilter: "blur(18px)",
+                }}>
+                  <div style={{ padding: "4px 5px 10px", borderBottom: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>{profile.display_name || "Ostaja"}</div>
+                    <div style={{ marginTop: 3, fontSize: 13, color: "#64748b" }}>{profile.email || ""}</div>
+                    <div style={{ marginTop: 5, fontSize: 12, fontWeight: 850, color: "#0f3d5e" }}>Rooli: {roleLabel(profile?.role)}</div>
+                  </div>
+                  {availableRoleOptions.length > 1 ? (
+                    <select
+                      aria-label="Vaihda roolia"
+                      style={{ ...styles.input, width: "100%" }}
+                      value={activeRoleOption?.id || ""}
+                      onChange={(event) => {
+                        const selectedRole = availableRoleOptions.find((option) => String(option.id) === String(event.target.value));
+                        setBuyerMenuOpen(false);
+                        if (selectedRole) handleRoleSelect(selectedRole);
+                      }}
+                    >
+                      {availableRoleOptions.map((option) => (
+                        <option key={option.id} value={option.id}>{buildRoleOptionLabel(option, buyers)}</option>
+                      ))}
+                    </select>
+                  ) : null}
+                  <button type="button" style={{ ...styles.button, width: "100%", justifyContent: "flex-start" }} onClick={() => {
+                    setBuyerMenuOpen(false);
+                    void handleManualRefresh();
+                  }}>↻ Päivitä tiedot</button>
+                  <button type="button" style={{ ...styles.button, width: "100%", justifyContent: "flex-start" }} onClick={() => {
+                    const nextOpen = !accountPanelOpen;
+                    setBuyerMenuOpen(false);
+                    setAccountPanelOpen(nextOpen);
+                    if (nextOpen) scrollBuyerViewIntoPlace("account-details-panel");
+                  }}>{accountPanelOpen ? "Sulje omat tiedot" : "Omat tiedot"}</button>
+                  <button type="button" style={{ ...styles.button, width: "100%", justifyContent: "flex-start", background: "#fff7ed", borderColor: "#fdba74", color: "#9a3412" }} onClick={() => {
+                    setBuyerMenuOpen(false);
+                    handleLogout();
+                  }}>Kirjaudu ulos</button>
+                </div>
+              </>
+            ) : null}
             <button
               type="button"
               aria-label="Avaa sovelluksen käyttöohje"
@@ -16658,58 +16284,55 @@ export default function App() {
             >
               i
             </button>
-            <div style={styles.rowBetween}>
-              <div>
-                <div style={{ ...headerBrandStyles.row, ...(viewportWidth < 560 ? { marginTop: 12 } : {}) }}>
+            <div>
+              <div style={{ ...headerBrandStyles.row, ...(viewportWidth < 560 ? { marginTop: 4 } : {}) }}>
                   <h1 style={headerBrandStyles.title}>Suoraan Kalastajalta</h1>
-                  <img
-                    src="/logo.png"
-                    alt=""
-                    style={{
-                      ...headerBrandStyles.logo,
-                      ...(viewportWidth < 560
-                        ? { width: "clamp(112px, 30vw, 132px)", maxWidth: "clamp(112px, 30vw, 132px)" }
-                        : {}),
-                      marginLeft: viewportWidth < 480 ? 0 : viewportWidth < 768 ? -10 : -6,
-                    }}
-                  />
+                  {viewportWidth < 560 ? (
+                    <div aria-hidden="true" style={{
+                      position: "relative",
+                      flex: "0 0 auto",
+                      width: "clamp(70px, 20vw, 78px)",
+                      height: "clamp(70px, 20vw, 78px)",
+                      overflow: "hidden",
+                    }}>
+                      <img
+                        src="/logo.png"
+                        alt=""
+                        style={{
+                          position: "absolute",
+                          top: "50%",
+                          left: "50%",
+                          width: "270%",
+                          height: "auto",
+                          maxWidth: "none",
+                          transform: "translate(-50%, -50%)",
+                          display: "block",
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <img
+                      src="/logo.png"
+                      alt=""
+                      style={{ ...headerBrandStyles.logo, marginLeft: viewportWidth < 768 ? -10 : -6 }}
+                    />
+                  )}
               </div>
-              <p style={styles.subtitle}>Kirjautunut: <strong>{profile.display_name}</strong> · Rooli: <strong>{roleLabel(profile?.role)}</strong></p>
-            </div>
-            <div style={styles.toolbar}>
-              {availableRoleOptions.length > 1 ? (
-                <select
-                  style={styles.input}
-                  value={activeRoleOption?.id || ""}
-                  onChange={(e) => {
-                    const selectedRole = availableRoleOptions.find((option) => String(option.id) === String(e.target.value));
-                    if (selectedRole) {
-                      handleRoleSelect(selectedRole);
-                    }
-                  }}
-                >
-                  {availableRoleOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {buildRoleOptionLabel(option, buyers)}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-              <div style={viewportWidth < 560 ? {
-                display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                gap: 8,
-                width: "100%",
-              } : styles.toolbarActions}>
-                <button type="button" style={viewportWidth < 560 ? { ...styles.button, minWidth: 0, padding: "11px 8px", fontSize: 14 } : styles.button} onClick={handleManualRefresh}>Päivitä</button>
-                <button type="button" style={viewportWidth < 560 ? { ...styles.button, minWidth: 0, padding: "11px 8px", fontSize: 14 } : styles.button} onClick={() => setAccountPanelOpen((prev) => !prev)}>{accountPanelOpen ? "Sulje tiedot" : "Omat tiedot"}</button>
-                <button type="button" style={viewportWidth < 560 ? { ...styles.button, minWidth: 0, padding: "11px 8px", fontSize: 14 } : styles.button} onClick={handleLogout}>Kirjaudu ulos</button>
-              </div>
-            </div>
             </div>
           </div>
           {helpOpen ? <HelpDialog role={profile.role} onClose={() => setHelpOpen(false)} /> : null}
-
+          {buyerTradeProfileIncomplete && !accountPanelOpen ? (
+            <div style={{ ...styles.noticeInfo, ...styles.rowBetween, gap: 12, marginBottom: 16 }}>
+              <div>
+                <strong>Täydennä ostajan tiedot</strong>
+                <div style={{ ...styles.muted, marginTop: 3 }}>Puuttuvat tiedot: {missingBuyerTradeFields.join(", ")}.</div>
+              </div>
+              <button type="button" style={{ ...styles.button, ...styles.primaryButton, flex: "0 0 auto" }} onClick={() => {
+                setAccountPanelOpen(true);
+                scrollBuyerViewIntoPlace("account-details-panel");
+              }}>Täydennä</button>
+            </div>
+          ) : null}
           {accountPanelOpen ? (
             <div id="account-details-panel" style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginBottom: 16 }}>
               <div style={styles.rowBetween}>
@@ -16849,13 +16472,18 @@ export default function App() {
             viewportWidth={viewportWidth}
           />
 
-          <div style={styles.stickyTabsWrap}>
+          <div style={{
+            ...styles.stickyTabsWrap,
+            top: viewportWidth < 768 && isNativeIosApp() ? 116 : viewportWidth < 560 ? 70 : 76,
+            ...(viewportWidth < 620 ? { display: "none" } : {}),
+          }}>
             <div style={{
               ...styles.tabs6,
-              gridTemplateColumns: viewportWidth < 520
-                ? "repeat(2, minmax(0, 1fr))"
-                : `repeat(${auctionsAvailable ? 4 : 3}, minmax(0, 1fr))`,
-              gap: viewportWidth < 520 ? 8 : 10,
+              gridTemplateColumns: `repeat(${auctionsAvailable ? 5 : 4}, minmax(0, 1fr))`,
+              gap: 10,
+              padding: 8,
+              borderRadius: 20,
+              boxShadow: "0 14px 32px rgba(15, 23, 42, 0.10)",
             }}>
               <button
                 style={{
@@ -16867,9 +16495,25 @@ export default function App() {
                   fontSize: viewportWidth < 520 ? 15 : styles.tab.fontSize,
                   border: "1px solid rgba(147, 197, 253, 0.72)",
                   background: "rgba(239, 246, 255, 0.72)",
-                  ...((activeTab === "offers" || activeTab === "dashboard") ? styles.activeTab : {}),
+                  ...(activeTab === "dashboard" ? styles.activeTab : {}),
                 }}
-                onClick={() => setActiveTab("offers")}
+                onClick={() => openBuyerTab("dashboard")}
+              >
+                Aloitus
+              </button>
+              <button
+                style={{
+                  ...styles.tab,
+                  minWidth: 0,
+                  minHeight: 50,
+                  whiteSpace: "nowrap",
+                  padding: viewportWidth < 520 ? "12px 8px" : styles.tab.padding,
+                  fontSize: viewportWidth < 520 ? 15 : styles.tab.fontSize,
+                  border: "1px solid rgba(147, 197, 253, 0.72)",
+                  background: "rgba(239, 246, 255, 0.72)",
+                  ...(activeTab === "offers" ? styles.activeTab : {}),
+                }}
+                onClick={() => openBuyerOfferCategory(buyerOffersFilter, "offers")}
               >
                 Tarjoukset
               </button>
@@ -16886,7 +16530,7 @@ export default function App() {
                     background: "rgba(239, 246, 255, 0.72)",
                     ...(activeTab === "auctions" ? styles.activeTab : {}),
                   }}
-                  onClick={() => setActiveTab("auctions")}
+                  onClick={() => openBuyerTab("auctions")}
                 >
                   Huutokaupat
                 </button>
@@ -16903,7 +16547,7 @@ export default function App() {
                   background: "rgba(239, 246, 255, 0.72)",
                   ...(activeTab === "reports" ? styles.activeTab : {}),
                 }}
-                onClick={() => setActiveTab("reports")}
+                onClick={() => openBuyerTab("reports")}
               >
                 Raportit
               </button>
@@ -16919,7 +16563,7 @@ export default function App() {
                   background: "rgba(239, 246, 255, 0.72)",
                   ...(activeTab === "buyer_billing" ? styles.activeTab : {}),
                 }}
-                onClick={() => setActiveTab("buyer_billing")}
+                onClick={() => openBuyerTab("buyer_billing", "buyer-invoices-view")}
               >
                 Laskut
               </button>
@@ -16935,7 +16579,7 @@ export default function App() {
           ) : null}
 
           {activeTab === "buyer_billing" ? (
-            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+            <div id="buyer-invoices-view" style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <div style={styles.rowBetween}>
                 <div>
                   <strong>Minulle lähetetyt laskut</strong>
@@ -17080,6 +16724,138 @@ export default function App() {
             </div>
           ) : null}
 
+          {activeTab === "dashboard" ? (
+            <div style={{ ...styles.stack, marginBottom: 20, gap: 14 }}>
+              <section style={{
+                position: "relative",
+                overflow: "hidden",
+                padding: viewportWidth < 560 ? "24px 20px" : "34px 36px",
+                borderRadius: viewportWidth < 560 ? 24 : 30,
+                color: "#fff",
+                background: "linear-gradient(135deg, #0f3d5e 0%, #087ea4 52%, #10a37f 115%)",
+                boxShadow: "0 22px 48px rgba(8, 126, 164, 0.24)",
+              }}>
+                <div aria-hidden="true" style={{
+                  position: "absolute",
+                  width: 220,
+                  height: 220,
+                  right: -74,
+                  top: -92,
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.10)",
+                }} />
+                <div aria-hidden="true" style={{
+                  position: "absolute",
+                  width: 130,
+                  height: 130,
+                  right: 62,
+                  bottom: -86,
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.08)",
+                }} />
+                <div style={{ position: "relative", maxWidth: 720 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.11em", textTransform: "uppercase", opacity: 0.86 }}>
+                    Kalakauppa lähelläsi
+                  </div>
+                  <h2 style={{ margin: "8px 0 8px", fontSize: viewportWidth < 560 ? 31 : 43, lineHeight: 1.04, letterSpacing: "-0.035em" }}>
+                    Tuoretta kalaa suoraan kalastajalta
+                  </h2>
+                  <div style={{ maxWidth: 580, fontSize: viewportWidth < 560 ? 16 : 18, lineHeight: 1.45, color: "rgba(255,255,255,0.88)" }}>
+                    Löydä saatavilla olevat kalaerät, sovi toimitus ja hoida ostot yhdessä paikassa.
+                  </div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 20 }}>
+                    <button
+                      type="button"
+                      onClick={() => openBuyerOfferCategory("open", "offers")}
+                      style={{ ...styles.button, minHeight: 50, padding: "12px 20px", border: "1px solid #fff", background: "#fff", color: "#075985", fontWeight: 900, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.18)" }}
+                    >
+                      Selaa kalaeriä →
+                    </button>
+                    {auctionsAvailable ? (
+                      <button
+                        type="button"
+                        onClick={() => openBuyerTab("auctions")}
+                        style={{ ...styles.button, minHeight: 50, padding: "12px 20px", border: "1px solid rgba(255,255,255,0.6)", background: "rgba(255,255,255,0.12)", color: "#fff", fontWeight: 850, backdropFilter: "blur(10px)" }}
+                      >
+                        Avaa huutokaupat
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+
+              <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "2px 1px 6px", scrollbarWidth: "none" }}>
+                {[
+                  { label: "Kaikki", value: "" },
+                  ...(buyerLocationQuickFilter ? [{ label: `Lähellä: ${buyerLocationQuickFilter}`, value: buyerLocationQuickFilter }] : []),
+                  { label: "Pyydetty tänään", value: today() },
+                  ...buyerMarketplaceSpecies.map((species) => ({ label: species, value: species })),
+                ].map((filter) => {
+                  const isSelected = buyerOffersSearch.trim().toLocaleLowerCase("fi-FI") === filter.value.toLocaleLowerCase("fi-FI");
+                  return (
+                    <button
+                      key={`${filter.label}-${filter.value}`}
+                      type="button"
+                      onClick={() => {
+                        setBuyerOffersSearch(filter.value);
+                        setBuyerOffersFilter("open");
+                        scrollBuyerViewIntoPlace("buyer-offers-list");
+                      }}
+                      style={{
+                        ...styles.button,
+                        flex: "0 0 auto",
+                        minHeight: 42,
+                        padding: "9px 14px",
+                        borderRadius: 999,
+                        background: isSelected ? "#0f3d5e" : "#fff",
+                        color: isSelected ? "#fff" : "#0f3d5e",
+                        borderColor: isSelected ? "#0f3d5e" : "#bae6fd",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {filter.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
+                {[
+                  { title: "Uusia", count: buyerDashboardCounts.newOffers, color: "#1d4ed8", background: "#eff6ff", filter: "new", tab: "offers" },
+                  { title: "Päätettävää", count: buyerDashboardCounts.requiresDecision, color: "#c2410c", background: "#fff7ed", filter: "decision", tab: "offers" },
+                  { title: "Ostettu", count: buyerDashboardCounts.reservedAndPurchased, color: "#166534", background: "#f0fdf4", filter: "reserved_purchased", tab: "offers" },
+                  { title: "Toimituksia", count: buyerDashboardCounts.incomingDeliveries, color: "#0f766e", background: "#f0fdfa", filter: "incoming", tab: "offers" },
+                  { title: "Laskuja", count: buyerDashboardCounts.openInvoices, color: "#7e22ce", background: "#faf5ff", filter: "all", tab: "buyer_billing" },
+                ].map((item) => (
+                  <button
+                    key={item.title}
+                    type="button"
+                    onClick={() => openBuyerOfferCategory(item.filter, item.tab)}
+                    style={{
+                      ...styles.button,
+                      flex: viewportWidth < 620 ? "0 0 auto" : "1 1 0",
+                      minWidth: viewportWidth < 620 ? 126 : 0,
+                      minHeight: 66,
+                      padding: "11px 13px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      textAlign: "left",
+                      background: item.background,
+                      borderColor: `${item.color}44`,
+                      color: item.color,
+                      boxShadow: "0 7px 18px rgba(15, 23, 42, 0.06)",
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 850 }}>{item.title}</span>
+                    <span style={{ fontSize: 25, fontWeight: 950, lineHeight: 1 }}>{item.count}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {(activeTab === "offers" || activeTab === "dashboard") && acceptedBuyerOffers.length > 0 ? (
             <div style={{ ...styles.successHighlightBox, ...styles.stack, marginBottom: 16 }}>
               <div style={styles.rowBetween}>
@@ -17096,7 +16872,7 @@ export default function App() {
                 </div>
                 <button
                   style={{ ...styles.button, background: "#166534", borderColor: "#166534", color: "#fff" }}
-                  onClick={() => setBuyerOffersFilter("accepted")}
+                  onClick={() => openBuyerOfferCategory("accepted", "offers")}
                 >
                   Näytä hyväksytyt
                 </button>
@@ -17105,34 +16881,61 @@ export default function App() {
           ) : null}
 
           {activeTab === "offers" || activeTab === "dashboard" ? (
-          <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+          <div id="buyer-offers-list" style={{ ...styles.stack, padding: viewportWidth < 560 ? 0 : 4 }}>
             <div style={styles.rowBetween}>
-              <strong>Minulle tarjotut erät</strong>
-              <div style={styles.row}>
-                <select style={styles.input} value={buyerOffersFilter} onChange={(e) => setBuyerOffersFilter(e.target.value)}>
-                  <option value="open">Avoimet</option>
-                  <option value="reserved">Varatut</option>
-                  <option value="accepted">Hyväksytyt</option>
-                  <option value="countered">Vastatarjoukset</option>
-                  <option value="rejected">Hylätyt</option>
-                  <option value="all">Kaikki</option>
-                </select>
-                <input
-                  style={{ ...styles.input, width: viewportWidth < 768 ? "100%" : 320, flex: "1 1 320px", minWidth: 0 }}
-                  placeholder="Hae myyjällä, alueella, lajilla..."
-                  value={buyerOffersSearch}
-                  onChange={(e) => setBuyerOffersSearch(e.target.value)}
-                />
+              <div>
+                <div style={{ fontSize: viewportWidth < 560 ? 24 : 29, fontWeight: 900, color: "#0f172a", letterSpacing: "-0.025em" }}>
+                  {activeTab === "dashboard" ? "Uusimmat kalaerät" : "Saatavilla olevat kalaerät"}
+                </div>
+                <div style={{ ...styles.muted, marginTop: 4 }}>Valitse sopiva erä tai rajaa näkymää haulla ja tilalla.</div>
               </div>
             </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {["decision", "reserved_purchased", "incoming"].includes(buyerOffersFilter) ? (
+                <button type="button" style={{ ...styles.button, ...styles.primaryButton, minHeight: 42, padding: "9px 14px", borderRadius: 999 }}>
+                  {buyerOffersFilter === "decision" ? "Vaatii päätöksen" : buyerOffersFilter === "incoming" ? "Saapuvat toimitukset" : "Varatut ja ostetut"}
+                </button>
+              ) : null}
+              {[
+                { value: "new", label: "Uudet" },
+                { value: "open", label: "Avoimet" },
+                { value: "countered", label: "Vastatarjoukset" },
+                { value: "reserved", label: "Varatut" },
+                { value: "purchased", label: "Ostetut" },
+                { value: "rejected", label: "Hylätyt" },
+                { value: "all", label: "Kaikki" },
+              ].map((filter) => (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => setBuyerOffersFilter(filter.value)}
+                  style={{
+                    ...styles.button,
+                    minHeight: 42,
+                    padding: "9px 14px",
+                    borderRadius: 999,
+                    ...(buyerOffersFilter === filter.value ? styles.primaryButton : {}),
+                  }}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+            <input
+              style={{ ...styles.input, width: "100%", minWidth: 0, minHeight: 50, borderRadius: 16, background: "#fff", boxShadow: "0 8px 20px rgba(15, 23, 42, 0.05)" }}
+              placeholder="Hae kalalajilla, alueella, päivällä tai myyjällä..."
+              value={buyerOffersSearch}
+              onChange={(e) => setBuyerOffersSearch(e.target.value)}
+            />
 
             {filteredBuyerOffers.length === 0 ? (
               <div style={styles.muted}>Ei tarjottuja eriä.</div>
             ) : (
               orderedGroups.map(([dayLabel, offersForDay]) => (
                 <div key={dayLabel} style={styles.stack}>
-                  <div style={{ ...styles.card, ...styles.sectionCard, padding: "12px 16px", background: "#eff6ff", borderColor: "#bfdbfe" }}>
-                    <strong style={{ fontSize: 18 }}>{dayLabel}</strong>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+                    <strong style={{ flex: "0 0 auto", fontSize: 14, color: "#0f3d5e", letterSpacing: "0.025em" }}>{dayLabel}</strong>
+                    <div style={{ height: 1, flex: 1, background: "linear-gradient(90deg, #bae6fd, rgba(186,230,253,0))" }} />
                   </div>
 
                   {offersForDay.map((o) => {
@@ -17140,6 +16943,8 @@ export default function App() {
                     const visiblePrice = getVisibleOfferPrice(o);
                     const sellerInfo = getBuyerVisibleSellerInfo(o);
                     const mixedOffer = isMixedOffer(o);
+                    const offerHeadline = buildOfferHeadline(o);
+                    const offerIsCrayfish = /rapu/i.test(offerHeadline);
                     const offerCountDisplay = getOfferCountDisplay(o);
                     const showTraceability = isBuyerOfferAccepted(o.status);
                     const visibleAdditionalNotes = extractVisibleAdditionalNotes(o.notes, {
@@ -17149,15 +16954,47 @@ export default function App() {
                     const ownDeliveryPrice = o.route_price_eur !== "" && o.route_price_eur != null ? Number(o.route_price_eur) : null;
                     const ownTotalPrice = o.total_price_eur !== "" && o.total_price_eur != null ? Number(o.total_price_eur) : null;
                     const ownDeliveredPricePerKg = o.delivered_price_per_kg !== "" && o.delivered_price_per_kg != null ? Number(o.delivered_price_per_kg) : null;
+                    const offerTradeValue = Number(calculateCommissionDetails(o).tradeValue || 0);
+                    const displayedTotalPrice = ownTotalPrice != null ? ownTotalPrice : (offerTradeValue > 0 ? offerTradeValue : null);
                     const offerCatchDates = getOfferSummaryCatchDates(o.species_summary);
                     const buyerOfferActionsOpen = hasBuyerOfferStatus(o.status, BUYER_OFFER_OPEN_RESPONSE_STATUSES);
                     const showCounterAction = isActive && buyerActionMode === "counter";
+                    const acceptedNeedsReceipt = isBuyerOfferAccepted(o.status) && !["delivered", "received"].includes(String(o.fulfillment_status || ""));
+                    const acceptedInvoiceReady = isBuyerOfferAccepted(o.status) && ["invoiced", "paid"].includes(String(o.billing_status || ""));
                     const offerInlineError = buyerOfferInlineError.offerId === String(o?.id || "") ? buyerOfferInlineError.message : "";
                     return (
-                      <div id={`buyer-offer-card-${o.id}`} key={o.id} style={{ ...styles.entry, borderLeft: "5px solid #0f172a", ...(focusedFixedOfferId === String(o.id) ? { border: "2px solid #2563eb", borderLeft: "5px solid #2563eb", boxShadow: "0 0 0 4px rgba(37, 99, 235, 0.16), 0 10px 28px rgba(15,23,42,0.10)" } : {}) }}>
+                      <div id={`buyer-offer-card-${o.id}`} key={o.id} style={{
+                        ...styles.entry,
+                        padding: viewportWidth < 560 ? 16 : 22,
+                        border: "1px solid #dbeafe",
+                        borderRadius: viewportWidth < 560 ? 21 : 26,
+                        background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
+                        boxShadow: "0 16px 38px rgba(15, 61, 94, 0.10)",
+                        ...(focusedFixedOfferId === String(o.id) ? { border: "2px solid #2563eb", boxShadow: "0 0 0 4px rgba(37, 99, 235, 0.16), 0 18px 42px rgba(15,61,94,0.15)" } : {}),
+                      }}>
                         <div style={{ marginBottom: 10 }}>
-                          <div style={{ fontSize: 13, color: "#64748b", marginBottom: 6 }}>{formatOfferDate(o.updated_at || o.created_at)}</div>
-                          <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, marginBottom: 8 }}>{buildOfferHeadline(o)}</div>
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 13, marginBottom: 13 }}>
+                            <div aria-hidden="true" style={{
+                              flex: "0 0 auto",
+                              width: viewportWidth < 560 ? 48 : 56,
+                              height: viewportWidth < 560 ? 48 : 56,
+                              display: "grid",
+                              placeItems: "center",
+                              borderRadius: 18,
+                              background: offerIsCrayfish ? "linear-gradient(135deg, #fff7ed, #ffedd5)" : "linear-gradient(135deg, #e0f2fe, #ccfbf1)",
+                              fontSize: viewportWidth < 560 ? 27 : 31,
+                              boxShadow: "inset 0 0 0 1px rgba(14,116,144,0.10)",
+                            }}>
+                              {offerIsCrayfish ? "🦞" : "🐟"}
+                            </div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 5 }}>
+                                {o.status === "sent" ? <span style={{ ...styles.badge, background: "#dbeafe", borderColor: "#93c5fd", color: "#1d4ed8", fontSize: 11, fontWeight: 900 }}>UUSI</span> : null}
+                                <span style={{ fontSize: 12, color: "#64748b" }}>{formatOfferDate(o.updated_at || o.created_at)}</span>
+                              </div>
+                              <div style={{ fontSize: viewportWidth < 560 ? 23 : 28, fontWeight: 900, lineHeight: 1.08, color: "#0f172a", letterSpacing: "-0.025em" }}>{offerHeadline}</div>
+                            </div>
+                          </div>
                           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
                             {mixedOffer ? (
                               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -17171,16 +17008,16 @@ export default function App() {
                                 ) : null}
                               </div>
                             ) : visiblePrice !== "" && visiblePrice != null ? (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
-                                  Hinta ALV 0 %: {euro(visiblePrice)} / {getOfferDisplayUnit(o)}
+                              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                <div style={{ fontSize: viewportWidth < 560 ? 22 : 25, fontWeight: 950, color: "#08775f", letterSpacing: "-0.02em" }}>
+                                  {euro(visiblePrice)} / {getOfferDisplayUnit(o)} <span style={{ fontSize: 13, fontWeight: 750, color: "#64748b" }}>ALV 0 %</span>
                                 </div>
-                                <div style={{ fontSize: 16, fontWeight: 700, color: "#475569" }}>
-                                  {`Hinta sis. ALV ${formatVatPercent()} %:`} {euro(calculateGrossPrice(visiblePrice) || 0)} / {getOfferDisplayUnit(o)}
+                                <div style={{ fontSize: 14, fontWeight: 750, color: "#64748b" }}>
+                                  {euro(calculateGrossPrice(visiblePrice) || 0)} / {getOfferDisplayUnit(o)} sis. ALV {formatVatPercent()} %
                                 </div>
                                 {offerCatchDates.length > 0 ? (
-                                  <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>
-                                    Pyyntipäivä: {offerCatchDates.join(", ")}
+                                  <div style={{ marginTop: 4, fontSize: 15, fontWeight: 800, color: "#334155" }}>
+                                    Pyydetty {offerCatchDates.join(", ")}
                                   </div>
                                 ) : null}
                               </div>
@@ -17202,39 +17039,34 @@ export default function App() {
                                 <img src={getBatchQrImageUrl(o.batch_id)} alt={`QR ${o.batch_id}`} style={styles.qrImage} />
                                 <div style={styles.small}>QR-koodi erälle</div>
                               </div>
-                              {!["delivered", "received"].includes(String(o.fulfillment_status || "")) ? (
-                                <button
-                                  style={{
-                                    ...styles.button,
-                                    ...styles.primaryButton,
-                                    minWidth: 150,
-                                    minHeight: 86,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    textAlign: "center",
-                                    lineHeight: 1.15,
-                                    whiteSpace: "normal",
-                                    padding: "14px 12px",
-                                  }}
-                                  onClick={() => updateFulfillmentStatus(o, "delivered")}
-                                >
-                                  <span>Kuittaa<br />vastaanotetuksi</span>
-                                </button>
-                              ) : null}
                             </div>
                           ) : null}
                           <div style={styles.entryBadges}>
-                            <span style={styles.badge}>{buyerStatusLabel(o.status)}</span>
-                            <span style={styles.badge}>{o.area || "-"}</span>
+                            {o.status !== "sent" ? <span style={styles.badge}>{buyerStatusLabel(o.status)}</span> : null}
                             {o.status === "reserved" ? <span style={{ ...styles.badge, background: "#fff7ed", borderColor: "#fdba74" }}>Varaus käynnissä</span> : null}
                             {o.status === "countered" ? <span style={{ ...styles.badge, background: "#eff6ff", borderColor: "#93c5fd", color: "#1d4ed8" }}>Vastatarjous lähetetty</span> : null}
                             {o.status === "sold" ? <span style={{ ...styles.badge, background: "#fee2e2", borderColor: "#fca5a5", color: "#b91c1c" }}>MYYTY JO TOISELLE OSTAJALLE</span> : null}
                             <span style={styles.badge}>Tarjoaja: {sellerInfo.sellerLabel}</span>
                           </div>
+                          <div style={{ display: "grid", gridTemplateColumns: viewportWidth < 560 ? "repeat(2, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))", gap: 9, marginTop: 13 }}>
+                            {[
+                              ["Määrä", getOfferQuantityDisplay(o)],
+                              ["Kokonaishinta", displayedTotalPrice != null ? formatDeliveryPrice(displayedTotalPrice) : "-"],
+                              ["Alue", sellerInfo.publicLocation || o.area || "-"],
+                              ["Pyyntipäivä", offerCatchDates.length > 0 ? offerCatchDates.join(", ") : "-"],
+                              ["Aikaisin toimitus", sellerInfo.earliestDeliveryDate || "-"],
+                              ["Toimitustapa", sellerInfo.deliveryMethod || "-"],
+                            ].map(([label, value]) => (
+                              <div key={label} style={{ padding: viewportWidth < 560 ? 10 : 12, borderRadius: 15, background: label === "Määrä" || label === "Kokonaishinta" ? "#f0fdfa" : "#f8fafc", border: `1px solid ${label === "Määrä" || label === "Kokonaishinta" ? "#99f6e4" : "#e2e8f0"}`, minWidth: 0 }}>
+                                <div style={{ color: "#64748b", fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
+                                <div style={{ marginTop: 4, color: "#0f172a", fontSize: label === "Määrä" || label === "Kokonaishinta" ? 17 : 14, fontWeight: 850, overflowWrap: "anywhere" }}>{value}</div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
 
-                        <div style={{ ...(viewportWidth < 768 ? { display: "grid", gridTemplateColumns: "1fr", gap: 18 } : styles.grid2), marginBottom: 10 }}>
+                        {isActive && buyerActionMode === "details" ? (
+                        <div style={{ ...(viewportWidth < 768 ? { display: "grid", gridTemplateColumns: "1fr", gap: 18 } : styles.grid2), margin: "16px 0 10px", padding: 15, borderRadius: 17, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
                           <div>
                             <div style={styles.muted}><strong>Erän tiedot</strong></div>
                             {mixedOffer ? <div style={{ ...styles.noticeInfo, marginBottom: 8 }}>Tämä monilajinen erä myydään kokonaisuutena. Kalalajit, hinnat ja erätunnukset näkyvät alla riveittäin.</div> : null}
@@ -17274,6 +17106,7 @@ export default function App() {
                             {visibleAdditionalNotes ? <div style={{ ...styles.muted, whiteSpace: "pre-wrap" }}>{visibleAdditionalNotes}</div> : <div style={styles.muted}>Ei lisätietoja</div>}
                           </div>
                         </div>
+                        ) : null}
 
                         {o.buyer_message ? <div style={styles.muted}>Sinun viesti: {o.buyer_message}</div> : null}
                         {o.status === "accepted" ? (
@@ -17303,6 +17136,34 @@ export default function App() {
                               <button
                                 style={{
                                   ...styles.button,
+                                  background: "linear-gradient(135deg, #059669, #16a34a)",
+                                  borderColor: "#047857",
+                                  color: "#ffffff",
+                                  fontWeight: 900,
+                                  boxShadow: "0 9px 20px rgba(5, 150, 105, 0.22)",
+                                }}
+                                onClick={async () => {
+                                  if (buyerTradeProfileIncomplete) {
+                                    setAccountPanelOpen(true);
+                                    setBuyerOfferInlineError({
+                                      offerId: String(o?.id || ""),
+                                      message: `Täytä omat tiedot ennen kuin voit ostaa erän. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`,
+                                    });
+                                    return;
+                                  }
+                                  setBuyerOfferInlineError({ offerId: "", message: "" });
+                                  if (o.status === "sent") {
+                                    const viewedOk = await markBuyerOfferViewed(o);
+                                    if (!viewedOk) return;
+                                  }
+                                  await onReserve(o);
+                                }}
+                              >
+                                Osta erä
+                              </button>
+                              <button
+                                style={{
+                                  ...styles.button,
                                   ...(showCounterAction ? styles.primaryButton : {}),
                                   background: showCounterAction ? "#2563eb" : "#eff6ff",
                                   borderColor: "#93c5fd",
@@ -17328,38 +17189,46 @@ export default function App() {
                                 {showCounterAction ? "Sulje vastatarjous" : "Tee vastatarjous"}
                               </button>
                               <button
+                                type="button"
                                 style={{
                                   ...styles.button,
-                                  background: "#f0fdf4",
-                                  borderColor: "#86efac",
-                                  color: "#166534",
+                                  background: "#ffffff",
+                                  borderColor: "#cbd5e1",
+                                  color: "#334155",
+                                  fontWeight: 800,
                                 }}
-                                onClick={async () => {
-                                  if (buyerTradeProfileIncomplete) {
-                                    setAccountPanelOpen(true);
-                                    setBuyerOfferInlineError({
-                                      offerId: String(o?.id || ""),
-                                      message: `Täytä omat tiedot ennen kuin voit varata erän. Puuttuvat tiedot: ${missingBuyerTradeFields.join(", ")}.`,
-                                    });
-                                    return;
-                                  }
+                                onClick={() => {
+                                  const detailsOpen = isActive && buyerActionMode === "details";
                                   setBuyerOfferInlineError({ offerId: "", message: "" });
-                                  if (o.status === "sent") {
-                                    const viewedOk = await markBuyerOfferViewed(o);
-                                    if (!viewedOk) return;
-                                  }
-                                  await onReserve(o);
+                                  setBuyerActionMode("details");
+                                  setBuyerActiveOfferId(detailsOpen ? null : o.id);
                                 }}
                               >
-                                Varaa erä
+                                {isActive && buyerActionMode === "details" ? "Sulje tiedot" : "Näytä tiedot"}
                               </button>
                             </>
+                          ) : acceptedInvoiceReady ? (
+                            <button
+                              style={{ ...styles.button, ...styles.primaryButton, fontWeight: 900 }}
+                              onClick={() => openBuyerTab("buyer_billing", "buyer-invoices-view")}
+                            >
+                              Avaa lasku
+                            </button>
+                          ) : acceptedNeedsReceipt ? (
+                            <button
+                              style={{ ...styles.button, background: "linear-gradient(135deg, #0f766e, #0d9488)", borderColor: "#0f766e", color: "#fff", fontWeight: 900 }}
+                              onClick={() => updateFulfillmentStatus(o, "delivered")}
+                            >
+                              Kuittaa vastaanotetuksi
+                            </button>
                           ) : (
                             <button style={styles.button} onClick={() => {
+                              const detailsOpen = isActive && buyerActionMode === "details";
                               setBuyerOfferInlineError({ offerId: "", message: "" });
-                              setBuyerActiveOfferId(isActive ? null : o.id);
+                              setBuyerActionMode("details");
+                              setBuyerActiveOfferId(detailsOpen ? null : o.id);
                             }}>
-                              {isActive ? "Sulje" : "Näytä tiedot"}
+                              {isActive && buyerActionMode === "details" ? "Sulje tiedot" : isBuyerOfferAccepted(o.status) ? "Näytä kaupan tiedot" : "Näytä tiedot"}
                             </button>
                           )}
                           {o.status === "sold" ? (
@@ -17516,6 +17385,66 @@ export default function App() {
             )}
           </div>
           ) : null}
+
+          {viewportWidth < 620 ? (
+            <nav
+              aria-label="Ostajan päänavigointi"
+              style={{
+                position: "fixed",
+                left: "max(10px, env(safe-area-inset-left))",
+                right: "max(10px, env(safe-area-inset-right))",
+                bottom: "max(10px, env(safe-area-inset-bottom))",
+                zIndex: 40,
+                display: "grid",
+                gridTemplateColumns: `repeat(${auctionsAvailable ? 5 : 4}, minmax(0, 1fr))`,
+                gap: 4,
+                padding: 7,
+                border: "1px solid rgba(148, 163, 184, 0.34)",
+                borderRadius: 22,
+                background: "rgba(255,255,255,0.96)",
+                boxShadow: "0 18px 46px rgba(15, 23, 42, 0.22)",
+                backdropFilter: "blur(18px)",
+              }}
+            >
+              {[
+                { id: "dashboard", label: "Aloitus", icon: "⌂", onClick: () => openBuyerTab("dashboard") },
+                { id: "offers", label: "Kalaerät", icon: "◉", onClick: () => openBuyerOfferCategory("open", "offers") },
+                ...(auctionsAvailable ? [{ id: "auctions", label: "Huutok.", icon: "◇", onClick: () => openBuyerTab("auctions") }] : []),
+                { id: "reports", label: "Raportit", icon: "▥", onClick: () => openBuyerTab("reports") },
+                { id: "buyer_billing", label: "Laskut", icon: "€", onClick: () => openBuyerTab("buyer_billing", "buyer-invoices-view") },
+              ].map((item) => {
+                const isCurrent = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-current={isCurrent ? "page" : undefined}
+                    onClick={item.onClick}
+                    style={{
+                      minWidth: 0,
+                      minHeight: 58,
+                      padding: "6px 2px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 2,
+                      border: "none",
+                      borderRadius: 16,
+                      background: isCurrent ? "linear-gradient(135deg, #0f3d5e, #087ea4)" : "transparent",
+                      color: isCurrent ? "#ffffff" : "#475569",
+                      fontFamily: "inherit",
+                      cursor: "pointer",
+                      boxShadow: isCurrent ? "0 7px 16px rgba(8, 126, 164, 0.22)" : "none",
+                    }}
+                  >
+                    <span aria-hidden="true" style={{ fontSize: 20, fontWeight: 900, lineHeight: 1 }}>{item.icon}</span>
+                    <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", fontSize: auctionsAvailable ? 10 : 11, fontWeight: 850, whiteSpace: "nowrap" }}>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          ) : null}
         </div>
       </div>
     );
@@ -17533,11 +17462,15 @@ export default function App() {
         ...tabStyle,
         display: "flex",
         flexWrap: "nowrap",
+        alignItems: "center",
         overflowX: "auto",
         overflowY: "hidden",
         WebkitOverflowScrolling: "touch",
-        padding: 8,
-        gap: 8,
+        scrollBehavior: "smooth",
+        scrollSnapType: "x proximity",
+        scrollPaddingInline: 52,
+        padding: 10,
+        gap: 6,
         borderRadius: 18,
         background: "rgba(255,255,255,0.92)",
         backdropFilter: "blur(12px)",
@@ -17548,21 +17481,19 @@ export default function App() {
     ? {
         ...styles.tab,
         flex: "0 0 auto",
-        minWidth: 124,
         whiteSpace: "nowrap",
       }
     : styles.tab;
   const visibleTabIds = [
     "dashboard",
-    ...(profile.role !== "buyer" ? ["add", "entries"] : []),
-    "offers",
+    ...(profile.role !== "buyer" ? ["add", "offers", "entries"] : ["offers"]),
     ...(auctionsAvailable && ["member", "owner"].includes(profile.role) ? ["auctions"] : []),
     "reports",
     ...(profile.role === "member" ? ["billing"] : []),
     ...(profile.role === "owner" ? ["operations", "buyers", "users", "billing"] : []),
   ];
   const visibleTabLabels = {
-    dashboard: "Yhteenveto",
+    dashboard: "Aloitus",
     add: profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis",
     entries: profile.role === "processor" ? "Jaloste-erät" : "Saaliit",
     offers: "Tarjoukset",
@@ -17575,20 +17506,90 @@ export default function App() {
   };
   const currentVisibleTabIndex = visibleTabIds.indexOf(activeTab);
   const currentVisibleTab = currentVisibleTabIndex >= 0 ? visibleTabIds[currentVisibleTabIndex] : visibleTabIds[0];
-  const previousVisibleTab = currentVisibleTabIndex > 0 ? visibleTabIds[currentVisibleTabIndex - 1] : null;
-  const nextVisibleTab = currentVisibleTabIndex >= 0 && currentVisibleTabIndex < visibleTabIds.length - 1
-    ? visibleTabIds[currentVisibleTabIndex + 1]
-    : null;
+  const getVisibleTabButtonStyle = (tabId) => {
+    const isActive = tabId === currentVisibleTab;
+    if (!isCompactTabs) {
+      return { ...visibleSingleTabStyle, ...(isActive ? styles.activeTab : {}) };
+    }
+
+    return {
+      ...visibleSingleTabStyle,
+      minWidth: 128,
+      minHeight: 50,
+      padding: "10px 14px",
+      fontSize: 15,
+      opacity: 1,
+      scrollSnapAlign: "start",
+      scrollMarginInlineStart: 52,
+      transition: "background 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease",
+      ...(isActive ? styles.activeTab : {}),
+    };
+  };
   const handleVisibleTabChange = (tabId) => {
     if (!tabId) return;
 
+    if (tabId !== "entries") setSalesSelectionMode(false);
     setActiveTab(tabId);
     if (tabId === "billing") setRefreshTick((prev) => prev + 1);
 
     window.requestAnimationFrame(() => {
-      const tabButton = tabsScrollRef.current?.querySelector(`[data-tab-id="${tabId}"]`);
-      tabButton?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      const tabsContainer = tabsScrollRef.current;
+      const tabButton = tabsContainer?.querySelector(`[data-tab-id="${tabId}"]`);
+      if (!tabsContainer || !tabButton) return;
+
+      const leftArrowClearance = tabId === visibleTabIds[0] ? 10 : 54;
+      const targetLeft = tabButton.offsetLeft - leftArrowClearance;
+      tabsContainer.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" });
     });
+  };
+  const handleTabCarouselStep = (direction) => {
+    const nextTabIndex = currentVisibleTabIndex + direction;
+    if (nextTabIndex < 0 || nextTabIndex >= visibleTabIds.length) return;
+    handleVisibleTabChange(visibleTabIds[nextTabIndex]);
+  };
+  const updateTabCarouselEdges = (element = tabsScrollRef.current) => {
+    if (!element) return;
+    const nextEdges = {
+      canScrollLeft: element.scrollLeft > 4,
+      canScrollRight: element.scrollLeft < element.scrollWidth - element.clientWidth - 4,
+    };
+    setTabCarouselEdges((previous) => (
+      previous.canScrollLeft === nextEdges.canScrollLeft && previous.canScrollRight === nextEdges.canScrollRight
+        ? previous
+        : nextEdges
+    ));
+  };
+  const handleTabCarouselArrow = (direction) => {
+    const tabsContainer = tabsScrollRef.current;
+    if (direction < 0 && currentVisibleTabIndex <= 0) {
+      tabsContainer?.scrollTo({ left: 0, behavior: "smooth" });
+      return;
+    }
+    if (direction > 0 && currentVisibleTabIndex >= visibleTabIds.length - 1) {
+      tabsContainer?.scrollTo({ left: tabsContainer.scrollWidth, behavior: "smooth" });
+      return;
+    }
+    handleTabCarouselStep(direction);
+  };
+  const handleOpenCatchSales = () => {
+    if (profile.role === "processor") {
+      handleVisibleTabChange("add");
+      return;
+    }
+
+    setSearch("");
+    setSalesSelectionMode(true);
+    setPendingEntriesScrollTarget("sales");
+    handleVisibleTabChange("entries");
+  };
+  const handleOpenCatchAuction = () => {
+    if (!auctionsAvailable) {
+      setAuthError("Huutokauppa ei ole juuri nyt käytettävissä.");
+      return;
+    }
+
+    setAuctionCreateRequestKey(Date.now());
+    handleVisibleTabChange("auctions");
   };
   const grid3 = responsiveGridStyle(styles.grid3, viewportWidth);
   const grid2 = responsiveGridStyle(styles.grid2, viewportWidth);
@@ -17601,8 +17602,9 @@ export default function App() {
   return (
     <div style={{
       ...styles.app,
+      paddingBottom: "max(96px, calc(76px + env(safe-area-inset-bottom)))",
       ...(isIosMobileApp ? {
-        padding: "64px 12px max(28px, env(safe-area-inset-bottom))",
+        padding: "64px 12px max(96px, calc(76px + env(safe-area-inset-bottom)))",
         minHeight: "100dvh",
       } : {}),
     }}>
@@ -17691,6 +17693,11 @@ export default function App() {
           </div>
         </div>
         {helpOpen ? <HelpDialog role={profile.role} onClose={() => setHelpOpen(false)} /> : null}
+        <PersistentAppNavigation
+          onHome={handleGoToHome}
+          viewportWidth={viewportWidth}
+          hidden={Boolean(catchSaleEntry || labelPrintEntry)}
+        />
 
         {accountPanelOpen ? (
           <div id="account-details-panel" style={{ ...styles.card, ...styles.sectionCard, ...styles.stack, marginBottom: 16 }}>
@@ -18063,107 +18070,164 @@ export default function App() {
           viewportWidth={viewportWidth}
         />
 
-        <div style={{ ...styles.stickyTabsWrap, position: "sticky" }}>
-          {isCompactTabs ? (
-            <nav
-              aria-label="Sivujen selaus"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
-                alignItems: "stretch",
-                gap: 6,
-                marginBottom: 8,
-                padding: 6,
-                border: "1px solid rgba(147, 197, 253, 0.72)",
-                borderRadius: 18,
-                background: "rgba(255,255,255,0.98)",
-                boxShadow: "0 12px 28px rgba(15, 23, 42, 0.1)",
-              }}
-            >
+        <div style={{ ...styles.stickyTabsWrap, position: "sticky", top: isIosMobileApp ? 116 : viewportWidth < 560 ? 70 : 76 }}>
+          <div style={{ position: "relative" }}>
+            {isCompactTabs && (currentVisibleTabIndex > 0 || tabCarouselEdges.canScrollLeft) ? (
               <button
                 type="button"
-                disabled={!previousVisibleTab}
-                onClick={() => handleVisibleTabChange(previousVisibleTab)}
-                aria-label={previousVisibleTab ? `Edellinen sivu: ${visibleTabLabels[previousVisibleTab]}` : "Ei edellistä sivua"}
+                aria-label={currentVisibleTabIndex > 0 ? `Siirry edelliselle välilehdelle: ${visibleTabLabels[visibleTabIds[currentVisibleTabIndex - 1]]}` : "Vieritä välilehtivalikko alkuun"}
+                title={currentVisibleTabIndex > 0 ? `Edellinen: ${visibleTabLabels[visibleTabIds[currentVisibleTabIndex - 1]]}` : "Valikon alkuun"}
+                onClick={() => handleTabCarouselArrow(-1)}
                 style={{
-                  minWidth: 0,
-                  minHeight: 50,
-                  padding: "7px 8px",
-                  borderRadius: 13,
-                  border: previousVisibleTab ? "1px solid rgba(147, 197, 253, 0.82)" : "1px solid transparent",
-                  background: previousVisibleTab ? "#eff6ff" : "transparent",
-                  color: previousVisibleTab ? "#1e3a8a" : "#94a3b8",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  lineHeight: 1.15,
-                  cursor: previousVisibleTab ? "pointer" : "default",
-                  opacity: previousVisibleTab ? 1 : 0.42,
+                  position: "absolute",
+                  zIndex: 4,
+                  left: 0,
+                  top: 6,
+                  bottom: 6,
+                  width: 42,
+                  padding: 0,
+                  border: 0,
+                  borderRadius: "16px 0 0 16px",
+                  background: "linear-gradient(90deg, rgba(255,255,255,1) 35%, rgba(255,255,255,0.9) 70%, rgba(255,255,255,0))",
+                  color: "#1d4ed8",
+                  fontSize: 30,
+                  fontWeight: 900,
+                  cursor: "pointer",
                 }}
               >
-                {previousVisibleTab ? `← ${visibleTabLabels[previousVisibleTab]}` : "← Alku"}
+                ‹
               </button>
-              <div
-                aria-current="page"
-                style={{
-                  minWidth: 92,
-                  padding: "6px 5px",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  color: "#0f172a",
-                }}
-              >
-                <span style={{ color: "#64748b", fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>Sivu</span>
-                <strong style={{ fontSize: 13, lineHeight: 1.15 }}>{visibleTabLabels[currentVisibleTab]}</strong>
-                <span style={{ color: "#475569", fontSize: 11, fontWeight: 700 }}>
-                  {Math.max(1, currentVisibleTabIndex + 1)}/{visibleTabIds.length}
-                </span>
-              </div>
-              <button
-                type="button"
-                disabled={!nextVisibleTab}
-                onClick={() => handleVisibleTabChange(nextVisibleTab)}
-                aria-label={nextVisibleTab ? `Seuraava sivu: ${visibleTabLabels[nextVisibleTab]}` : "Ei seuraavaa sivua"}
-                style={{
-                  minWidth: 0,
-                  minHeight: 50,
-                  padding: "7px 8px",
-                  borderRadius: 13,
-                  border: nextVisibleTab ? "1px solid rgba(147, 197, 253, 0.82)" : "1px solid transparent",
-                  background: nextVisibleTab ? "#eff6ff" : "transparent",
-                  color: nextVisibleTab ? "#1e3a8a" : "#94a3b8",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  lineHeight: 1.15,
-                  cursor: nextVisibleTab ? "pointer" : "default",
-                  opacity: nextVisibleTab ? 1 : 0.42,
-                }}
-              >
-                {nextVisibleTab ? `${visibleTabLabels[nextVisibleTab]} →` : "Loppu →"}
-              </button>
-            </nav>
-          ) : null}
-          <div>
-            <div ref={tabsScrollRef} style={visibleTabStyle}>
-              <button data-tab-id="dashboard" style={{ ...visibleSingleTabStyle, ...(activeTab === "dashboard" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("dashboard")}>Yhteenveto</button>
-              {profile.role !== "buyer" ? <button data-tab-id="add" style={{ ...visibleSingleTabStyle, ...(activeTab === "add" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("add")}>{profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis"}</button> : null}
-              {profile.role !== "buyer" ? <button data-tab-id="entries" style={{ ...visibleSingleTabStyle, ...(activeTab === "entries" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("entries")}>{profile.role === "processor" ? "Jaloste-erät" : "Saaliit"}</button> : null}
-              <button data-tab-id="offers" style={{ ...visibleSingleTabStyle, ...(activeTab === "offers" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("offers")}>Tarjoukset</button>
-              {auctionsAvailable && ["member", "owner"].includes(profile.role) ? <button data-tab-id="auctions" style={{ ...visibleSingleTabStyle, ...(activeTab === "auctions" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("auctions")}>Huutokaupat</button> : null}
-              <button data-tab-id="reports" style={{ ...visibleSingleTabStyle, ...(activeTab === "reports" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("reports")}>Raportit</button>
-              {profile.role === "member" ? <button data-tab-id="billing" style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("billing")}>Laskutus</button> : null}
-              {profile.role === "owner" ? <button data-tab-id="operations" style={{ ...visibleSingleTabStyle, ...(activeTab === "operations" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("operations")}>Ylläpito</button> : null}
-              {profile.role === "owner" ? <button data-tab-id="buyers" style={{ ...visibleSingleTabStyle, ...(activeTab === "buyers" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("buyers")}>Ostajat</button> : null}
-              {profile.role === "owner" ? <button data-tab-id="users" style={{ ...visibleSingleTabStyle, ...(activeTab === "users" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("users")}>Käyttäjät</button> : null}
-              {profile.role === "owner" ? <button data-tab-id="billing" style={{ ...visibleSingleTabStyle, ...(activeTab === "billing" ? styles.activeTab : {}) }} onClick={() => handleVisibleTabChange("billing")}>Laskutus</button> : null}
+            ) : null}
+            <div ref={tabsScrollRef} style={visibleTabStyle} aria-label="Sovelluksen näkymät" onScroll={(event) => updateTabCarouselEdges(event.currentTarget)}>
+              {visibleTabIds.map((tabId) => (
+                <button
+                  key={tabId}
+                  type="button"
+                  data-tab-id={tabId}
+                  aria-current={tabId === currentVisibleTab ? "page" : undefined}
+                  style={getVisibleTabButtonStyle(tabId)}
+                  onClick={() => handleVisibleTabChange(tabId)}
+                >
+                  {visibleTabLabels[tabId]}
+                </button>
+              ))}
             </div>
+            {isCompactTabs && currentVisibleTabIndex >= 0 && (currentVisibleTabIndex < visibleTabIds.length - 1 || tabCarouselEdges.canScrollRight) ? (
+              <button
+                type="button"
+                aria-label={currentVisibleTabIndex < visibleTabIds.length - 1 ? `Siirry seuraavalle välilehdelle: ${visibleTabLabels[visibleTabIds[currentVisibleTabIndex + 1]]}` : "Vieritä välilehtivalikko loppuun"}
+                title={currentVisibleTabIndex < visibleTabIds.length - 1 ? `Seuraava: ${visibleTabLabels[visibleTabIds[currentVisibleTabIndex + 1]]}` : "Valikon loppuun"}
+                onClick={() => handleTabCarouselArrow(1)}
+                style={{
+                  position: "absolute",
+                  zIndex: 4,
+                  right: 0,
+                  top: 6,
+                  bottom: 6,
+                  width: 42,
+                  padding: 0,
+                  border: 0,
+                  borderRadius: "0 16px 16px 0",
+                  background: "linear-gradient(270deg, rgba(255,255,255,1) 35%, rgba(255,255,255,0.9) 70%, rgba(255,255,255,0))",
+                  color: "#1d4ed8",
+                  fontSize: 30,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                ›
+              </button>
+            ) : null}
           </div>
         </div>
 
         {activeTab === "dashboard" ? (
           <div style={styles.stack}>
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div>
+                <div style={{ fontSize: viewportWidth < 560 ? 24 : 28, fontWeight: 900, color: "#0f172a" }}>Aloitus</div>
+                <div style={styles.muted}>
+                  {profile.role === "processor"
+                    ? "Kirjaa uusi jaloste-erä tai aseta jaloste myyntiin."
+                    : "Valitse tärkein tehtävä: kirjaa uusi saalis tai myy jo kirjattu kalaerä."}
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.button,
+                    ...styles.primaryButton,
+                    minHeight: 92,
+                    padding: 16,
+                    alignItems: "flex-start",
+                    justifyContent: "flex-start",
+                    textAlign: "left",
+                  }}
+                  onClick={() => handleVisibleTabChange("add")}
+                >
+                  <span style={{ display: "flex", width: "100%", flexDirection: "column", alignItems: "flex-start", gap: 5 }}>
+                    <strong style={{ fontSize: 19 }}>{profile.role === "processor" ? "Kirjaa jaloste-erä" : "Kirjaa uusi saalis"}</strong>
+                    <span style={{ fontSize: 13, fontWeight: 700, opacity: 0.88 }}>
+                      {profile.role === "processor" ? "Tallenna uusi valmistettu erä." : "Tallenna pyyntitiedot ja uusi kalaerä."}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.button,
+                    minHeight: 92,
+                    padding: 16,
+                    alignItems: "flex-start",
+                    justifyContent: "flex-start",
+                    textAlign: "left",
+                    borderColor: "#047857",
+                    background: "linear-gradient(135deg, #059669, #16a34a)",
+                    color: "#ffffff",
+                    boxShadow: "0 10px 22px rgba(5, 150, 105, 0.22)",
+                  }}
+                  onClick={handleOpenCatchSales}
+                >
+                  <span style={{ display: "flex", width: "100%", flexDirection: "column", alignItems: "flex-start", gap: 5 }}>
+                    <strong style={{ fontSize: 19 }}>{profile.role === "processor" ? "Myy jaloste-erä" : "Myy saalis"}</strong>
+                    <span style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>
+                      {profile.role === "processor" ? "Kirjaa erä ja tarjoa sitä ostajille." : "Valitse kirjattu erä ja tarjoa sitä kiinteällä hinnalla."}
+                    </span>
+                  </span>
+                </button>
+                {["member", "owner"].includes(profile.role) ? (
+                  <button
+                    type="button"
+                    disabled={!auctionsAvailable}
+                    style={{
+                      ...styles.button,
+                      minHeight: 92,
+                      padding: 16,
+                      alignItems: "flex-start",
+                      justifyContent: "flex-start",
+                      textAlign: "left",
+                      borderColor: "#6d28d9",
+                      background: auctionsAvailable ? "linear-gradient(135deg, #7c3aed, #4f46e5)" : "#e2e8f0",
+                      color: auctionsAvailable ? "#ffffff" : "#64748b",
+                      boxShadow: auctionsAvailable ? "0 10px 22px rgba(109, 40, 217, 0.22)" : "none",
+                      cursor: auctionsAvailable ? "pointer" : "not-allowed",
+                    }}
+                    onClick={handleOpenCatchAuction}
+                  >
+                    <span style={{ display: "flex", width: "100%", flexDirection: "column", alignItems: "flex-start", gap: 5 }}>
+                      <strong style={{ fontSize: 19 }}>Myy saalis huutokaupassa</strong>
+                      <span style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>
+                        {auctionsAvailable ? "Valitse kirjattu erä ja anna ostajien huutaa siitä." : "Huutokauppa ei ole juuri nyt käytettävissä."}
+                      </span>
+                    </span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#0f172a", padding: "4px 2px 0" }}>
+              {profile.role === "processor" ? "Yhteenveto omista jaloste-eristä" : "Yhteenveto omista saaliista"}
+            </div>
             <div style={grid3}>
               <div style={{ ...styles.card, ...styles.sectionCard }}>
                 <div style={styles.metric}>{profile.role === "processor" ? `${totals.totalProcessedKg.toFixed(1)} kg` : `${totals.totalKg.toFixed(1)} kg`}</div>
@@ -18783,7 +18847,7 @@ export default function App() {
           ) : (
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
               <div style={formGrid}>
-                <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
+                <div style={styles.field}><label>Pyyntipäivämäärä</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" min={isMarineCatchForm(form, catchAreaSelector) ? undefined : `${currentCalendarYear - 1}-01-01`} max={today()} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
                 <div style={styles.field}>
                   <label>Kalastamisalue</label>
                   <select
@@ -18957,10 +19021,50 @@ export default function App() {
                     </label>
                   </div>
                 )}
+                {!isMarineCatchForm(form, catchAreaSelector) ? (
+                  <>
+                    <div style={styles.field}>
+                      <label style={{ ...styles.row, gap: 8, marginTop: 8, fontWeight: 500, color: "#334155" }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(form.managementFishing)}
+                          onChange={(e) => setForm((prev) => ({ ...prev, managementFishing: e.target.checked }))}
+                        />
+                        <span>Hoitokalastus</span>
+                      </label>
+                      <div style={styles.small}>Merkitse tämä erikseen käytetystä pyydyksestä.</div>
+                    </div>
+                    <div style={styles.field}>
+                      <label style={{ ...styles.row, gap: 8, marginTop: 8, fontWeight: 500, color: "#334155" }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(form.effortOnly)}
+                          onChange={(e) => {
+                            const effortOnly = e.target.checked;
+                            setForm((prev) => ({
+                              ...prev,
+                              effortOnly,
+                              saleMode: effortOnly ? "none" : prev.saleMode,
+                              listForSale: effortOnly ? false : prev.listForSale,
+                            }));
+                            if (effortOnly) setSpeciesRows([createSpeciesRow()]);
+                          }}
+                        />
+                        <span>Tallenna pyyntiponnistus ilman saalista</span>
+                      </label>
+                      <div style={styles.small}>Vuoden 2025 ilmoituksessa kalastuspäivän ja pyydyksen tiedot voidaan tallentaa myös ilman saalismäärää.</div>
+                    </div>
+                  </>
+                ) : null}
                 <div style={{ ...styles.field, ...styles.fieldFull, ...styles.speciesBox, ...styles.stack }}>
                   <div style={styles.rowBetween}><div><label>KALAERÄ</label></div><button style={styles.button} type="button" onClick={addSpeciesRow}>Lisää laji</button></div>
+                  {form.effortOnly ? <div style={styles.noticeInfo}>Saalismäärät jätetään tyhjiksi, koska tallennat vain pyyntiponnistuksen.</div> : null}
                   {speciesRows.map((row, index) => {
                     const isCrayfishRow = isCrayfishSpecies(getSpeciesRowLabel(row));
+                    const requiresInlandKgAndCount = !isMarineCatchForm(form, catchAreaSelector) && isInlandDualQuantitySpecies(getSpeciesRowLabel(row));
+                    const requiresLandingDeclaration = isMarineCatchForm(form, catchAreaSelector)
+                      && (form.vesselLengthClass === "under_10m" || form.vesselLengthClass === "without_vessel")
+                      && !isCoastalReportSpeciesAllowed(getSpeciesRowLabel(row));
                     return (
                       <div key={row.id} style={{
                         ...speciesRow,
@@ -18974,12 +19078,15 @@ export default function App() {
                       }}>
                         <div style={styles.field}>
                           <label>Laji {index + 1}</label>
-                          <FishSpeciesInput value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)} />
+                          <FishSpeciesInput value={row.species} onChange={(e) => updateSpeciesRow(row.id, "species", e.target.value)} disabled={form.effortOnly} />
                           {row.species === "Muu" ? <input style={{ ...styles.input, marginTop: 8 }} placeholder="Kirjoita kalalaji" value={row.customSpecies} onChange={(e) => updateSpeciesRow(row.id, "customSpecies", e.target.value)} /> : null}
+                          {requiresLandingDeclaration ? (
+                            <div style={{ ...styles.small, color: "#b91c1c", marginTop: 6 }}>
+                              Lohi ja turska ilmoitetaan päiväkohtaisella purkamisilmoituksella, ei rannikkokalastusilmoituksella.
+                            </div>
+                          ) : null}
                         </div>
-                        {!isCrayfishRow ? (
-                          <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" placeholder="0" value={row.kilos} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
-                        ) : null}
+                        <div style={styles.field}><label>Kg</label><input style={styles.input} type="number" min="0" step={isMarineCatchForm(form, catchAreaSelector) ? "any" : "1"} placeholder="0" value={row.kilos} disabled={form.effortOnly} onChange={(e) => updateSpeciesRow(row.id, "kilos", e.target.value)} /></div>
                         <div style={styles.field}>
                           <label>{`${form.saleMode === "auction" ? "Huutokaupan lähtöhinta" : form.saleMode === "fixed" ? "Kiinteä myyntihinta" : "Hinta"} ALV 0 % (€/${getSpeciesPriceUnit(getSpeciesRowLabel(row))})`}</label>
                           <input
@@ -19007,28 +19114,40 @@ export default function App() {
                           />
                         </div>
                         <div style={styles.field}>
-                          <label>{isCrayfishRow ? "Kpl (pakollinen)" : "Kpl/kg (valinnainen)"}</label>
-                          <input style={styles.input} type="number" placeholder={isCrayfishRow ? "0" : "Esim. 20"} value={row.count} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} />
-                          {!isCrayfishRow ? <div style={styles.small}>Valinnainen tieto, tärkeä erityisesti pienten kalojen osalta.</div> : null}
+                          <label>{requiresInlandKgAndCount ? "Kpl (pakollinen)" : "Kpl/kg (valinnainen)"}</label>
+                          <input style={styles.input} type="number" min="0" step="1" placeholder={isCrayfishRow ? "0" : "Esim. 20"} value={row.count} disabled={form.effortOnly} onChange={(e) => updateSpeciesRow(row.id, "count", e.target.value)} />
+                          {!requiresInlandKgAndCount ? <div style={styles.small}>Valinnainen tieto, tärkeä erityisesti pienten kalojen osalta.</div> : <div style={styles.small}>Viranomaisilmoituksessa vaaditaan sekä kilot että kappaleet.</div>}
                         </div>
                         <div style={styles.row}><button style={styles.button} type="button" onClick={() => duplicateSpeciesRow(row.id)}>Kopioi</button><button style={styles.button} type="button" onClick={() => removeSpeciesRow(row.id)}>Poista</button></div>
                       </div>
                     );
                   })}
                 </div>
-                <div style={styles.field}><label>{isMarineCatchForm(form, catchAreaSelector) ? "Merialueen pyydys" : "Pyydys"}</label><select style={styles.input} value={form.gear} onChange={(e) => {
-                  const nextGear = e.target.value;
+                <div style={styles.field}><label>{isMarineCatchForm(form, catchAreaSelector) ? "Merialueen pyydys" : "Pyydys"}</label><select style={styles.input} value={!isMarineCatchForm(form, catchAreaSelector) && form.inlandGearPresetId ? getInlandGearPresetOptionValue(form.inlandGearPresetId) : form.gear} onChange={(e) => {
+                  const selectedValue = e.target.value;
+                  const selectedPresetId = getInlandGearPresetIdFromOption(selectedValue);
+                  const selectedPreset = selectedPresetId
+                    ? savedInlandGearPresets.find((item) => item.id === selectedPresetId) || null
+                    : null;
+                  const nextGear = selectedPreset?.gearName || selectedValue;
                   const nextMarineGear = marineGearTypes.find((item) => item.name === nextGear) || null;
                   const normalizedNextGear = normalizeCatchGearValue(nextGear);
+                  const nextInlandGear = getInlandGearMeta(nextGear);
                   const nextGearDefaults = getStoredGearProfile({ gearProfiles: savedGearProfiles }, nextGear);
                   setForm((prev) => ({
                     ...prev,
                     gear: nextGear,
                     marineGearCode: isMarineCatchForm(prev, catchAreaSelector) ? (nextMarineGear?.code || "") : "",
-                    gearCount: nextGearDefaults.gearCount || "",
+                    inlandGearCode: isMarineCatchForm(prev, catchAreaSelector) ? "" : (nextInlandGear?.code || ""),
+                    inlandGearPresetId: selectedPreset?.id || "",
+                    gearCount: nextInlandGear?.fixedCount === 1 ? "1" : (nextGearDefaults.gearCount || ""),
                     fishingDurationDays: nextGearDefaults.fishingDurationDays || "",
-                    netHeight: normalizedNextGear === "Verkko" ? nextGearDefaults.netHeight || "" : "",
-                    netMeshSize: normalizedNextGear === "Verkko" ? nextGearDefaults.netMeshSize || "" : "",
+                    fishingSecondaryValue: "",
+                    netHeight: selectedPreset?.netHeight || (nextInlandGear?.technicalFields.includes("height") || normalizedNextGear === "Verkko" ? nextGearDefaults.netHeight || "" : ""),
+                    netMeshSize: selectedPreset?.netMeshSize || (nextInlandGear?.technicalFields.includes("mesh") || normalizedNextGear === "Verkko" ? nextGearDefaults.netMeshSize || "" : ""),
+                    gearLength: selectedPreset?.gearLength || "",
+                    gearWidth: selectedPreset?.gearWidth || "",
+                    otherGearName: selectedPreset?.otherGearName || "",
                     fykeHeight: normalizedNextGear === "Rysä" ? nextGearDefaults.fykeHeight || "" : "",
                   }));
                   setSavedGearCountOptions(nextGearDefaults.gearCountOptions || []);
@@ -19036,10 +19155,32 @@ export default function App() {
                   setSavedNetHeightOptions(normalizedNextGear === "Verkko" ? nextGearDefaults.netHeightOptions || [] : []);
                   setSavedNetMeshSizeOptions(normalizedNextGear === "Verkko" ? nextGearDefaults.netMeshSizeOptions || [] : []);
                   setSavedFykeHeightOptions(normalizedNextGear === "Rysä" ? nextGearDefaults.fykeHeightOptions || [] : []);
-                }}>{(isMarineCatchForm(form, catchAreaSelector) ? marineGearTypes.map((item) => item.name) : gearTypes).map((gear) => <option key={gear} value={gear}>{gear}</option>)}</select>
+                }}>
+                  {isMarineCatchForm(form, catchAreaSelector) ? marineGearTypes.map((item) => (
+                    <option key={item.name} value={item.name}>{item.name}</option>
+                  )) : (
+                    <>
+                      {savedInlandGearPresets.length > 0 ? (
+                        <optgroup label="Tallennetut pyydykset">
+                          {savedInlandGearPresets.map((preset) => (
+                            <option key={preset.id} value={getInlandGearPresetOptionValue(preset.id)}>
+                              {formatInlandGearPresetLabel(preset)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      <optgroup label="Pyydystyypit">
+                        {gearTypes.map((gear) => <option key={gear} value={gear}>{gear}</option>)}
+                      </optgroup>
+                    </>
+                  )}
+                </select>
+                  {!isMarineCatchForm(form, catchAreaSelector) ? (
+                    <div style={styles.small}>Tallennetun pyydyksen valinta täyttää sen tekniset tiedot automaattisesti.</div>
+                  ) : null}
                   {isMarineCatchForm(form, catchAreaSelector) && form.marineGearCode ? (
                     <div style={styles.small}>Virallinen pyydyskoodi: {form.marineGearCode}</div>
-                  ) : null}
+                  ) : form.inlandGearCode ? <div style={styles.small}>Virallinen sisävesipyydyskoodi: {form.inlandGearCode}</div> : null}
                 </div>
                 <div style={styles.field}>
                   <label>Vesityyppi</label>
@@ -19131,80 +19272,146 @@ export default function App() {
                     </div>
                   </>
                 ) : null}
-                {catchGearUsesCount(form.gear) ? (
-                  <div style={styles.field}>
-                    <label>Pyydysten määrä</label>
-                    <RememberedTextInput
-                      value={form.gearCount}
-                      onChange={(e) => setForm({ ...form, gearCount: e.target.value })}
-                      options={savedGearCountOptions}
-                      placeholder="Esim. 30"
-                      listId="gear-count-options"
-                    />
-                  </div>
-                ) : null}
-                {getFishingDurationFieldMeta(form.gear).splitFields ? (
+                {isMarineCatchForm(form, catchAreaSelector) ? (
                   <>
                     <div style={styles.field}>
-                      <label>{getFishingDurationFieldMeta(form.gear).durationLabel}</label>
-                      <RememberedTextInput
-                        value={parseFishingDurationValue(form.gear, form.fishingDurationDays).duration}
-                        onChange={(e) => setForm((prev) => ({
-                          ...prev,
-                          fishingDurationDays: buildFishingDurationValue(
-                            prev.gear,
-                            e.target.value,
-                            parseFishingDurationValue(prev.gear, prev.fishingDurationDays).speed
-                          ),
-                        }))}
-                        options={savedFishingDurationOptions
-                          .map((option) => parseFishingDurationValue(form.gear, option).duration)
-                          .filter(Boolean)}
-                        placeholder={getFishingDurationFieldMeta(form.gear).durationPlaceholder}
-                        listId="fishing-duration-options"
+                      <label>Pyydysten lkm (pakollinen)</label>
+                      <input
+                        style={styles.input}
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={form.gearCount}
+                        onChange={(e) => setForm((prev) => ({ ...prev, gearCount: e.target.value }))}
+                        placeholder="Esim. 30"
                       />
                     </div>
                     <div style={styles.field}>
-                      <label>{getFishingDurationFieldMeta(form.gear).speedLabel}</label>
-                      <RememberedTextInput
-                        value={parseFishingDurationValue(form.gear, form.fishingDurationDays).speed}
-                        onChange={(e) => setForm((prev) => ({
-                          ...prev,
-                          fishingDurationDays: buildFishingDurationValue(
-                            prev.gear,
-                            parseFishingDurationValue(prev.gear, prev.fishingDurationDays).duration,
-                            e.target.value
-                          ),
-                        }))}
-                        options={savedFishingDurationOptions
-                          .map((option) => parseFishingDurationValue(form.gear, option).speed)
-                          .filter(Boolean)}
-                        placeholder={getFishingDurationFieldMeta(form.gear).speedPlaceholder}
-                        listId="fishing-speed-options"
+                      <label>Pyyntipäiviä (pakollinen)</label>
+                      <input
+                        style={styles.input}
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={form.fishingDurationDays}
+                        onChange={(e) => setForm((prev) => ({ ...prev, fishingDurationDays: e.target.value }))}
+                        placeholder="Esim. 2"
                       />
+                      <div style={{ ...styles.small, marginTop: 6 }}>Aika päivinä edellisestä kokemiskerrasta.</div>
                     </div>
-                    <div style={{ ...styles.field, ...styles.fieldFull }}>
-                      <div style={{ ...styles.small, marginTop: 6 }}>
-                        {getFishingDurationFieldMeta(form.gear).help}
+                    {!isMarineFykeGear(form.marineGearCode) ? (
+                      <div style={styles.field}>
+                        <label>Kalastusaika tunneissa (valinnainen)</label>
+                        <input
+                          style={styles.input}
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={form.fishingSecondaryValue}
+                          onChange={(e) => setForm((prev) => ({ ...prev, fishingSecondaryValue: e.target.value }))}
+                          placeholder="Esim. 36"
+                        />
+                        <div style={{ ...styles.small, marginTop: 6 }}>Keskimääräinen aika edellisestä kokemiskerrasta; ei koske rysäkalastusta.</div>
                       </div>
-                    </div>
+                    ) : null}
                   </>
                 ) : (
-                  <div style={styles.field}>
-                    <label>{getFishingDurationFieldMeta(form.gear).label}</label>
-                    <RememberedTextInput
-                      value={form.fishingDurationDays}
-                      onChange={(e) => setForm({ ...form, fishingDurationDays: e.target.value })}
-                      options={savedFishingDurationOptions}
-                      placeholder={getFishingDurationFieldMeta(form.gear).placeholder}
-                      listId="fishing-duration-options"
-                    />
-                    <div style={{ ...styles.small, marginTop: 6 }}>
-                      {getFishingDurationFieldMeta(form.gear).help}
-                    </div>
-                  </div>
+                  <>
+                    {catchGearUsesCount(form.gear) ? (
+                      <div style={styles.field}>
+                        <label>Pyydysten määrä</label>
+                        <input
+                          style={styles.input}
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={currentInlandGearMeta?.fixedCount === 1 ? "1" : form.gearCount}
+                          disabled={currentInlandGearMeta?.fixedCount === 1}
+                          onChange={(e) => setForm({ ...form, gearCount: e.target.value })}
+                          placeholder="Esim. 30"
+                        />
+                        {currentInlandGearMeta?.fixedCount === 1 ? <div style={styles.small}>Määrä on viranomaisjärjestelmässä aina 1.</div> : null}
+                      </div>
+                    ) : null}
+                    {getFishingDurationFieldMeta(form.gear).splitFields ? (
+                      <>
+                        <div style={styles.field}>
+                          <label>{getFishingDurationFieldMeta(form.gear).durationLabel}</label>
+                          <RememberedTextInput
+                            value={form.fishingDurationDays}
+                            onChange={(e) => setForm((prev) => ({ ...prev, fishingDurationDays: e.target.value }))}
+                            options={savedFishingDurationOptions}
+                            placeholder={getFishingDurationFieldMeta(form.gear).durationPlaceholder}
+                            listId="fishing-duration-options"
+                          />
+                        </div>
+                        <div style={styles.field}>
+                          <label>{getFishingDurationFieldMeta(form.gear).speedLabel}</label>
+                          <RememberedTextInput
+                            value={form.fishingSecondaryValue}
+                            onChange={(e) => setForm((prev) => ({ ...prev, fishingSecondaryValue: e.target.value }))}
+                            options={[]}
+                            placeholder={getFishingDurationFieldMeta(form.gear).speedPlaceholder}
+                            listId="fishing-speed-options"
+                          />
+                        </div>
+                        <div style={{ ...styles.field, ...styles.fieldFull }}>
+                          <div style={{ ...styles.small, marginTop: 6 }}>
+                            {getFishingDurationFieldMeta(form.gear).help}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div style={styles.field}>
+                        <label>{getFishingDurationFieldMeta(form.gear).label}</label>
+                        <RememberedTextInput
+                          value={form.fishingDurationDays}
+                          onChange={(e) => setForm({ ...form, fishingDurationDays: e.target.value })}
+                          options={savedFishingDurationOptions}
+                          placeholder={getFishingDurationFieldMeta(form.gear).placeholder}
+                          listId="fishing-duration-options"
+                        />
+                        <div style={{ ...styles.small, marginTop: 6 }}>
+                          {getFishingDurationFieldMeta(form.gear).help}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
-                {normalizeCatchGearValue(form.gear) === "Verkko" ? (
+                {!isMarineCatchForm(form, catchAreaSelector) && currentInlandTechnicalFields.includes("mesh") ? (
+                  <div style={styles.field}>
+                    <label>Solmuväli (mm)</label>
+                    <input style={styles.input} type="text" inputMode="decimal" value={form.netMeshSize} onChange={(e) => setForm({ ...form, inlandGearPresetId: "", netMeshSize: e.target.value })} placeholder="Esim. 55" />
+                  </div>
+                ) : null}
+                {!isMarineCatchForm(form, catchAreaSelector) && currentInlandTechnicalFields.includes("height") ? (
+                  <div style={styles.field}>
+                    <label>Korkeus (m)</label>
+                    <input style={styles.input} type="text" inputMode="decimal" value={form.netHeight} onChange={(e) => setForm({ ...form, inlandGearPresetId: "", netHeight: e.target.value })} placeholder="Esim. 3,5" />
+                  </div>
+                ) : null}
+                {!isMarineCatchForm(form, catchAreaSelector) && currentInlandTechnicalFields.includes("length") ? (
+                  <div style={styles.field}>
+                    <label>Pituus (m)</label>
+                    <input style={styles.input} type="text" inputMode="decimal" value={form.gearLength} onChange={(e) => setForm({ ...form, inlandGearPresetId: "", gearLength: e.target.value })} placeholder="Esim. 30" />
+                    {currentInlandGearMeta?.code === "21" && Number(parseLocaleNumber(form.gearLength) || 0) > 0 && Number(parseLocaleNumber(form.gearCount) || 0) > 0 ? (
+                      <div style={styles.small}>Verkkojen kokonaispituus: {Number(parseLocaleNumber(form.gearLength)) * Number(parseLocaleNumber(form.gearCount))} m</div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {!isMarineCatchForm(form, catchAreaSelector) && currentInlandTechnicalFields.includes("width") ? (
+                  <div style={styles.field}>
+                    <label>Leveys (m)</label>
+                    <input style={styles.input} type="text" inputMode="decimal" value={form.gearWidth} onChange={(e) => setForm({ ...form, inlandGearPresetId: "", gearWidth: e.target.value })} placeholder="Esim. 30" />
+                  </div>
+                ) : null}
+                {!isMarineCatchForm(form, catchAreaSelector) && currentInlandGearMeta?.requiresOtherName ? (
+                  <div style={styles.field}>
+                    <label>Muu pyydys, mikä?</label>
+                    <input style={styles.input} value={form.otherGearName} onChange={(e) => setForm({ ...form, inlandGearPresetId: "", otherGearName: e.target.value })} placeholder="Kirjoita pyydyksen nimi" />
+                  </div>
+                ) : null}
+                {isMarineCatchForm(form, catchAreaSelector) && normalizeCatchGearValue(form.gear) === "Verkko" ? (
                   <>
                     <div style={styles.field}>
                       <label>Verkon korkeus</label>
@@ -19228,7 +19435,7 @@ export default function App() {
                     </div>
                   </>
                 ) : null}
-                {normalizeCatchGearValue(form.gear) === "Rysä" ? (
+                {isMarineCatchForm(form, catchAreaSelector) && normalizeCatchGearValue(form.gear) === "Rysä" ? (
                   <div style={styles.field}>
                     <label>Rysän korkeus</label>
                     <RememberedTextInput
@@ -19246,15 +19453,21 @@ export default function App() {
                     {[
                       { value: "none", title: "Ei myyntiin", detail: "Tallenna erä vain saaliskirjanpitoon." },
                       { value: "fixed", title: "Myy kiinteällä hinnalla", detail: "Lähetä erä valituille ostajaryhmille annetulla hinnalla." },
-                      { value: "auction", title: "Huutokauppaa kalaerä", detail: "Ostajat kilpailevat erästä huutamalla hintaa ylöspäin." },
+                      { value: "auction", title: "Myy saalis huutokaupassa", detail: "Ostajat kilpailevat erästä huutamalla hintaa ylöspäin." },
                     ].map((option) => {
                       const selected = form.saleMode === option.value;
-                      const disabled = (fisherPremiumRequired && option.value !== "none") || (option.value === "auction" && !auctionsAvailable);
+                      const disabled = (form.effortOnly && option.value !== "none") || (fisherPremiumRequired && option.value !== "none") || (option.value === "auction" && !auctionsAvailable);
                       const optionColors = option.value === "none"
-                        ? { background: selected ? "#e2e8f0" : "#f8fafc", border: selected ? "#64748b" : "#cbd5e1", color: "#334155" }
+                        ? selected
+                          ? { background: "linear-gradient(135deg, #64748b, #475569)", border: "#475569", color: "#ffffff", shadow: "rgba(71, 85, 105, 0.25)" }
+                          : { background: "#f8fafc", border: "#cbd5e1", color: "#334155", shadow: "transparent" }
                         : option.value === "fixed"
-                          ? { background: selected ? "#dcfce7" : "#f0fdf4", border: selected ? "#16a34a" : "#86efac", color: "#166534" }
-                          : { background: selected ? "#dbeafe" : "#eff6ff", border: selected ? "#2563eb" : "#93c5fd", color: "#1e40af" };
+                          ? selected
+                            ? { background: "linear-gradient(135deg, #059669, #16a34a)", border: "#047857", color: "#ffffff", shadow: "rgba(5, 150, 105, 0.25)" }
+                            : { background: "#f0fdf4", border: "#86efac", color: "#166534", shadow: "transparent" }
+                          : selected
+                            ? { background: "linear-gradient(135deg, #7c3aed, #4f46e5)", border: "#6d28d9", color: "#ffffff", shadow: "rgba(109, 40, 217, 0.25)" }
+                            : { background: "#f5f3ff", border: "#c4b5fd", color: "#5b21b6", shadow: "transparent" };
                       return (
                         <button
                           key={option.value}
@@ -19263,16 +19476,18 @@ export default function App() {
                           style={{
                             ...styles.button,
                             width: "100%",
-                            minHeight: 92,
-                            padding: 14,
+                            minHeight: 104,
+                            padding: 16,
                             textAlign: "left",
                             justifyContent: "flex-start",
                             alignItems: "stretch",
-                            opacity: disabled ? 0.55 : 1,
+                            opacity: disabled ? 0.5 : selected ? 1 : 0.92,
                             background: optionColors.background,
                             borderColor: optionColors.border,
                             color: optionColors.color,
-                            boxShadow: selected ? `0 0 0 2px ${optionColors.border}22, 0 8px 18px ${optionColors.border}22` : "none",
+                            boxShadow: selected ? `0 0 0 2px ${optionColors.border}33, 0 10px 22px ${optionColors.shadow}` : "none",
+                            transform: selected ? "translateY(-1px)" : "none",
+                            transition: "transform 160ms ease, box-shadow 160ms ease, background 160ms ease, opacity 160ms ease",
                           }}
                           onClick={() => setForm((prev) => ({
                             ...prev,
@@ -19282,7 +19497,13 @@ export default function App() {
                             ...(option.value !== "none" ? {} : { deliveryPossible: false }),
                           }))}
                         >
-                          <span style={{ display: "flex", width: "100%", flexDirection: "column", alignItems: "flex-start", gap: 5 }}><strong>{option.title}</strong><span style={{ ...styles.small, color: optionColors.color, opacity: 0.82 }}>{option.detail}</span></span>
+                          <span style={{ display: "flex", width: "100%", flexDirection: "column", alignItems: "flex-start", gap: 7 }}>
+                            <span style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                              <strong style={{ fontSize: 17 }}>{option.title}</strong>
+                              {selected ? <span style={{ padding: "4px 8px", borderRadius: 999, background: "rgba(255,255,255,0.2)", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" }}>✓ Valittu</span> : null}
+                            </span>
+                            <span style={{ ...styles.small, color: optionColors.color, opacity: 0.88 }}>{option.detail}</span>
+                          </span>
                         </button>
                       );
                     })}
@@ -19780,6 +20001,12 @@ export default function App() {
             </div>
           ) : (
             <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              {salesSelectionMode ? (
+                <div id="catch-entry-sales" style={{ ...styles.noticeInfo, borderColor: "#86efac", background: "#f0fdf4", color: "#166534" }}>
+                  <strong>Valitse myytävä saaliserä.</strong>{" "}
+                  Paina haluamasi, vielä myymättömän erän kohdalta “Laita erä myyntiin”. Jos saalista ei ole vielä kirjattu, siirry ensin Lisää saalis -näkymään.
+                </div>
+              ) : null}
               <div style={styles.rowBetween}><strong>{profile.role === "owner" && entryScope === "all" ? "Kaikkien saaliit" : "Omat saaliit"}</strong><input style={{ ...styles.input, maxWidth: 360 }} placeholder="Hae lajilla, paikalla, pyydyksellä..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
               {groupedFilteredEntries.length === 0 ? <div style={styles.muted}>Ei hakutuloksia.</div> : groupedFilteredEntries.map((group) => (
                 <div key={group.key} style={{ ...styles.stack, gap: 12 }}>
@@ -19835,6 +20062,21 @@ export default function App() {
                           {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                         </div>
                         <div style={styles.row}>
+                          {!isEntryOfferedForSale(entry) && String(entry.ownerUserId || profile.id) === String(profile.id) ? (
+                            <button
+                              style={{
+                                ...styles.button,
+                                background: "linear-gradient(135deg, #059669, #16a34a)",
+                                borderColor: "#047857",
+                                color: "#ffffff",
+                                fontWeight: 800,
+                                boxShadow: "0 8px 18px rgba(5, 150, 105, 0.2)",
+                              }}
+                              onClick={() => openCatchSaleDialog(entry)}
+                            >
+                              Laita erä myyntiin
+                            </button>
+                          ) : null}
                           {canPrintCatchLabels(entry) ? (
                             <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); setLabelPrintPieceCount(""); setLabelPrintWeightKg(""); setLabelPrintProductForm(getCatchLabelProductForm(entry.species)); setLabelPrintUseByDate(""); }}>
                               Tulosta etiketit
@@ -19881,7 +20123,7 @@ export default function App() {
         ) : null}
 
         {activeTab === "auctions" && auctionsAvailable && ["member", "owner"].includes(profile.role) ? (
-          <AuctionsView profile={profile} buyerRecord={linkedBuyerRecord} entries={entries} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} onCreateDeliveryNote={handleCreateAuctionDeliveryNote} onOpenAccountDetails={openAccountDetails} />
+          <AuctionsView profile={profile} buyerRecord={linkedBuyerRecord} entries={entries} notificationTarget={pendingAuctionTarget} onNotificationTargetHandled={handleAuctionTargetHandled} onTradeCreated={() => setRefreshTick((previous) => previous + 1)} onCreateDeliveryNote={handleCreateAuctionDeliveryNote} onOpenAccountDetails={openAccountDetails} createRequestKey={auctionCreateRequestKey} />
         ) : null}
 
         {activeTab === "reports" ? <ReportsView entries={entries} processedEntries={processedEntries} offers={offers} profile={profile} /> : null}
@@ -20215,6 +20457,154 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
                   ));
                 })()
               )}
+            </div>
+          </div>
+        ) : null}
+
+        {catchSaleEntry ? (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 2600,
+              padding: 16,
+              background: "rgba(15, 23, 42, 0.55)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onClick={closeCatchSaleDialog}
+          >
+            <div
+              style={{
+                ...styles.card,
+                ...styles.sectionCard,
+                width: "min(820px, calc(100vw - 32px))",
+                maxHeight: "calc(100dvh - 32px)",
+                overflowY: "auto",
+                boxSizing: "border-box",
+                background: "#ffffff",
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div style={styles.rowBetween}>
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 800 }}>Laita kalaerä myyntiin</div>
+                  <div style={styles.muted}>
+                    {formatSpeciesForSale(catchSaleEntry.species)} · {formatCatchEntryQuantity(catchSaleEntry)} · {catchSaleEntry.batchId || "Erätunnus puuttuu"}
+                  </div>
+                </div>
+                <button style={styles.button} type="button" onClick={closeCatchSaleDialog} disabled={catchSaleSaving}>Sulje</button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))", gap: 14, marginTop: 18 }}>
+                <div style={styles.field}>
+                  <label>Pakkaustapa</label>
+                  <select style={styles.input} value={catchSaleDraft.packaging} onChange={(event) => setCatchSaleDraft((current) => ({ ...current, packaging: event.target.value }))}>
+                    <option value="">Valitse pakkaustapa</option>
+                    {FISH_PACKAGING_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </div>
+                <div style={styles.field}>
+                  <label>Myyntihinta ALV 0 % (€/{getSpeciesPriceUnit(catchSaleEntry.species)})</label>
+                  <input
+                    style={styles.input}
+                    type="text"
+                    inputMode="decimal"
+                    value={catchSaleDraft.pricePerKg}
+                    onChange={(event) => setCatchSaleDraft((current) => ({ ...current, pricePerKg: event.target.value }))}
+                    placeholder="Esim. 8,50"
+                  />
+                </div>
+              </div>
+
+              <div style={{ ...styles.offerBox, ...styles.stack, marginTop: 16 }}>
+                <div>
+                  <strong>Tarjouksen vastaanottajat</strong>
+                  <div style={styles.small}>Valitse ostajaryhmät tai lähetä tarjous vain nimetyille ostajille.</div>
+                </div>
+                <div style={styles.checkboxRow}>
+                  <label style={styles.checkboxCard}>
+                    <input type="radio" name="savedCatchOfferAudience" checked={catchSaleDraft.offerAudience === "groups"} onChange={() => setCatchSaleDraft((current) => ({ ...current, offerAudience: "groups", selectedBuyerIds: [] }))} />
+                    Ostajaryhmille
+                  </label>
+                  <label style={styles.checkboxCard}>
+                    <input type="radio" name="savedCatchOfferAudience" checked={catchSaleDraft.offerAudience === "selected"} onChange={() => setCatchSaleDraft((current) => ({ ...current, offerAudience: "selected", offerToShops: false, offerToRestaurants: false, offerToWholesalers: false }))} />
+                    Vain tietyille ostajille
+                  </label>
+                </div>
+                {catchSaleDraft.offerAudience === "selected" ? (
+                  <div style={styles.stack}>
+                    <select
+                      style={styles.input}
+                      value=""
+                      onChange={(event) => {
+                        const buyerId = event.target.value;
+                        if (!buyerId) return;
+                        setCatchSaleDraft((current) => ({ ...current, selectedBuyerIds: Array.from(new Set([...current.selectedBuyerIds, buyerId])) }));
+                      }}
+                    >
+                      <option value="">Valitse ostaja</option>
+                      {(buyers || []).filter((buyer) => buyer.is_active && !catchSaleDraft.selectedBuyerIds.includes(String(buyer.id))).map((buyer) => (
+                        <option key={buyer.id} value={String(buyer.id)}>{buyer.company_name || buyer.email || "Nimetön ostaja"}</option>
+                      ))}
+                    </select>
+                    {catchSaleDraft.selectedBuyerIds.map((buyerId) => {
+                      const buyer = (buyers || []).find((item) => String(item.id) === String(buyerId));
+                      return buyer ? (
+                        <div key={buyerId} style={{ ...styles.checkboxCard, justifyContent: "space-between" }}>
+                          <strong>{buyer.company_name || buyer.email}</strong>
+                          <button style={styles.button} type="button" onClick={() => setCatchSaleDraft((current) => ({ ...current, selectedBuyerIds: current.selectedBuyerIds.filter((id) => id !== buyerId) }))}>Poista</button>
+                        </div>
+                      ) : null;
+                    })}
+                  </div>
+                ) : (
+                  <div style={styles.checkboxRow}>
+                    <label style={styles.checkboxCard}><input type="checkbox" checked={catchSaleDraft.offerToShops} onChange={(event) => setCatchSaleDraft((current) => ({ ...current, offerToShops: event.target.checked }))} /> Kauppoihin</label>
+                    <label style={styles.checkboxCard}><input type="checkbox" checked={catchSaleDraft.offerToRestaurants} onChange={(event) => setCatchSaleDraft((current) => ({ ...current, offerToRestaurants: event.target.checked }))} /> Ravintoloihin</label>
+                    <label style={styles.checkboxCard}><input type="checkbox" checked={catchSaleDraft.offerToWholesalers} onChange={(event) => setCatchSaleDraft((current) => ({ ...current, offerToWholesalers: event.target.checked }))} /> Tukkuihin</label>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: 14, marginTop: 16 }}>
+                <div style={styles.field}>
+                  <label>Toimitustapa</label>
+                  <select style={styles.input} value={catchSaleDraft.deliveryMethod} onChange={(event) => setCatchSaleDraft((current) => ({ ...current, deliveryMethod: event.target.value }))}>
+                    {fishermanDeliveryMethods.map((method) => <option key={method} value={method}>{method}</option>)}
+                  </select>
+                </div>
+                <div style={styles.field}>
+                  <label>{catchSaleDraft.deliveryMethod === "Nouto" ? "Nouto-osoite" : "Toimitusalue"}</label>
+                  <input style={styles.input} value={catchSaleDraft.deliveryArea} onChange={(event) => setCatchSaleDraft((current) => ({ ...current, deliveryArea: event.target.value }))} placeholder={catchSaleDraft.deliveryMethod === "Nouto" ? getDefaultProfilePickupAddress(profile) || "Nouto-osoite" : "Esim. Etelä-Savo"} />
+                </div>
+                <div style={styles.field}>
+                  <label>Toimituskustannus €</label>
+                  <input style={styles.input} type="text" inputMode="decimal" value={catchSaleDraft.deliveryCost} onChange={(event) => setCatchSaleDraft((current) => ({ ...current, deliveryCost: event.target.value }))} placeholder="0" />
+                </div>
+                <div style={styles.field}>
+                  <label>Aikaisin toimituspäivä</label>
+                  <input style={{ ...styles.input, ...styles.dateInput }} type="date" value={catchSaleDraft.earliestDeliveryDate} onChange={(event) => setCatchSaleDraft((current) => ({ ...current, earliestDeliveryDate: event.target.value }))} />
+                </div>
+              </div>
+              <label style={{ ...styles.checkboxCard, marginTop: 14 }}>
+                <input type="checkbox" checked={catchSaleDraft.coldTransport} onChange={(event) => setCatchSaleDraft((current) => ({ ...current, coldTransport: event.target.checked }))} />
+                Kylmäkuljetus
+              </label>
+
+              {authError ? <div style={{ ...styles.noticeError, marginTop: 16 }}>{authError}</div> : null}
+              <div style={{ ...styles.row, marginTop: 18 }}>
+                <button
+                  type="button"
+                  style={{ ...styles.button, background: "linear-gradient(135deg, #059669, #16a34a)", borderColor: "#047857", color: "#ffffff", fontWeight: 800 }}
+                  onClick={handlePutSavedCatchOnSale}
+                  disabled={catchSaleSaving}
+                >
+                  {catchSaleSaving ? "Asetetaan myyntiin..." : "Laita erä myyntiin ja lähetä tarjous"}
+                </button>
+                <button type="button" style={styles.button} onClick={closeCatchSaleDialog} disabled={catchSaleSaving}>Peruuta</button>
+              </div>
             </div>
           </div>
         ) : null}

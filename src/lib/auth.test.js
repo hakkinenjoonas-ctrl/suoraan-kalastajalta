@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deduplicateAllowedUsers, isMissingRefreshTokenError } from "./auth.js";
+import { deduplicateAllowedUsers, isFutureJwtClockSkewError, isMissingRefreshTokenError } from "./auth.js";
 
 describe("auth", () => {
   describe("isMissingRefreshTokenError", () => {
@@ -13,6 +13,17 @@ describe("auth", () => {
 
     it("ignores unrelated auth errors", () => {
       expect(isMissingRefreshTokenError(new Error("Email rate limit exceeded"))).toBe(false);
+    });
+  });
+
+  describe("isFutureJwtClockSkewError", () => {
+    it("detects the transient Supabase clock-skew message", () => {
+      expect(isFutureJwtClockSkewError(new Error("JWT issued at future"))).toBe(true);
+      expect(isFutureJwtClockSkewError("JWT issued in the future")).toBe(true);
+    });
+
+    it("does not classify ordinary authentication failures as clock skew", () => {
+      expect(isFutureJwtClockSkewError("Invalid login credentials")).toBe(false);
     });
   });
 });

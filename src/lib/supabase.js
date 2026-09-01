@@ -33,7 +33,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    // Capacitor restores authentication from Preferences. Treating the native
+    // WebView URL as an auth callback can make a stale URL fragment look like a
+    // newly issued session and trigger misleading device-clock warnings.
+    detectSessionInUrl: !isNativeCapacitorRuntime(),
     storage: isNativeCapacitorRuntime() ? preferenceStorage : undefined,
     lock: isNativeCapacitorRuntime() ? nativeNoOpLock : undefined,
   },

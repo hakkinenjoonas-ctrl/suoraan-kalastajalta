@@ -6,6 +6,15 @@ export function isMissingRefreshTokenError(error) {
   return message.includes("invalid refresh token") || message.includes("refresh token not found");
 }
 
+export function isFutureJwtClockSkewError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    message.includes("jwt issued at future") ||
+    message.includes("jwt issued in the future") ||
+    message.includes("token used before issued")
+  );
+}
+
 export async function clearBrokenSession() {
   try {
     await supabase.auth.signOut({ scope: "local" });

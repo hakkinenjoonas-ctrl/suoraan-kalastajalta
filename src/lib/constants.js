@@ -19,6 +19,7 @@ export const fishSpeciesCatalog = [
   { name_fi: "Kirjolohi", name_en: "Rainbow trout", scientific: "Oncorhynchus mykiss", fao: "TRR" },
   { name_fi: "Taimen", name_en: "Brown trout", scientific: "Salmo trutta", fao: "TRU" },
   { name_fi: "Ankerias", name_en: "Eel", scientific: "Anguilla anguilla", fao: "ELE" },
+  { name_fi: "Nahkiainen", name_en: "River lamprey", scientific: "Lampetra fluviatilis", fao: "" },
   { name_fi: "Toutain", name_en: "Asp", scientific: "Aspius aspius", fao: "ASU" },
   { name_fi: "Suutari", name_en: "Tench", scientific: "Tinca tinca", fao: "FTE" },
   { name_fi: "Kampela", name_en: "Flounder", scientific: "Platichthys flesus", fao: "FLE" },
@@ -56,30 +57,21 @@ export const fishSpeciesByName = Object.fromEntries(
 
 export const fishSpecies = [
   ...fishSpeciesCatalog
-    .map((item) => item.name_fi)
-    .filter((name) => name !== "Täplärapu" && name !== "Jokirapu"),
+    .map((item) => item.name_fi),
   ...fishSpeciesVariants,
   "Muu",
 ];
 export const gearTypes = [
   "Trooli",
-  "Nuotta, korkeus yli 10 m",
-  "Nuotta, korkeus alle 10 m",
-  "Muikkuverkko",
-  "Verkko, solmuväli alle 25 mm",
-  "Verkko, solmuväli 25 - 40 mm",
-  "Verkko, solmuväli 41 - 54 mm",
-  "Verkko, solmuväli yli 54 mm",
-  "Rysä / paunetti, korkeus yli 1,5 m",
-  "Rysä / paunetti, korkeus alle 1,5 m",
   "Katiska",
-  "Merta",
+  "Merrat",
   "Muu pyydys",
-  "Hoitokalastus troolilla",
-  "Hoitokalastus nuotalla",
-  "Hoitokalastus rysällä, paunetilla, merralla ja katiskalla",
-  "Hoitokalastus muulla pyydyksellä",
   "Vapapyydys tai vetouistin",
+  "Paritrooli",
+  "Nuotta",
+  "Verkko",
+  "Rysä",
+  "Paunetti / avorysä",
 ];
 
 export const officialMarineAreas = [
