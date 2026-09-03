@@ -3,6 +3,10 @@
     {
       "source": "/batch/(.*)",
       "destination": "/index.html"
+    },
+    {
+      "source": "/kuluttaja(.*)",
+      "destination": "/index.html"
     }
   ]
 }

@@ -1,6 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
+import ConsumerApp from "./public/ConsumerApp.jsx";
+import { isConsumerMarketplaceRequested } from "./lib/consumerMarketplace.js";
 
 class AppErrorBoundary extends React.Component {
   constructor(props) {
@@ -97,7 +99,7 @@ class AppErrorBoundary extends React.Component {
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AppErrorBoundary>
-      <App />
+      {isConsumerMarketplaceRequested() ? <ConsumerApp /> : <App />}
     </AppErrorBoundary>
   </React.StrictMode>
 );

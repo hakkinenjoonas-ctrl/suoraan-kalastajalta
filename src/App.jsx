@@ -205,6 +205,9 @@ import {
 import PersistentAppNavigation from "./components/PersistentAppNavigation.jsx";
 import AuthView from "./components/AuthView.jsx";
 import PublicApp from "./public/PublicApp.jsx";
+import ConsumerApp from "./public/ConsumerApp.jsx";
+import ConsumerSellerPanel from "./components/ConsumerSellerPanel.jsx";
+import { getConsumerListingUrl, getRequestedConsumerListingId } from "./lib/consumerMarketplace.js";
 import { AUCTION_DURATION_OPTIONS, normalizeAuctionMoney } from "./lib/auctionLogic.js";
 import ProcessedLabel4x3, { PROCESSED_LABEL_4X3_SIZE_MM } from "./components/ProcessedLabel4x3.jsx";
 import ProcessedLabel4x6, { PROCESSED_LABEL_4X6_SIZE_MM } from "./components/ProcessedLabel4x6.jsx";
@@ -772,7 +775,7 @@ function canPrintCatchLabels(entry) {
 }
 
 function isRoleAutomaticallyActive(role) {
-  return role === "buyer" || role === "member";
+  return role === "buyer" || role === "member" || role === "consumer";
 }
 
 function isFisherPremiumProfile(profileLike) {
@@ -860,6 +863,20 @@ function createCatchSaleDraft(entry = {}) {
     deliveryCost: entry?.deliveryCost == null ? "" : String(entry.deliveryCost),
     earliestDeliveryDate: entry?.earliestDeliveryDate || today(),
     coldTransport: Boolean(entry?.coldTransport),
+  };
+}
+
+function createConsumerSaleVariant(unitType = "package") {
+  return {
+    id: safeId(),
+    unitType,
+    label: "",
+    packageSizeKg: unitType === "package" ? "1" : "",
+    unitPrice: "",
+    minWeightKg: unitType === "whole_fish" ? "0,8" : "",
+    maxWeightKg: unitType === "whole_fish" ? "1,2" : "",
+    pricePerKg: "",
+    availableUnits: "1",
   };
 }
 
@@ -7937,6 +7954,7 @@ function SellerBillingView({
 
 export default function App() {
   const [publicBatchId, setPublicBatchId] = useState(() => getRequestedPublicBatchId());
+  const [consumerListingId, setConsumerListingId] = useState(() => getRequestedConsumerListingId());
   const requestedOfferId = getRequestedOfferId();
   const initialCatchDefaults = getStoredCatchFormDefaults();
   const initialGearDefaults = getStoredGearProfile(initialCatchDefaults, initialCatchDefaults.gear);
@@ -8087,6 +8105,15 @@ export default function App() {
       packaging: "",
       saleMode: "none",
       listForSale: false,
+      consumerProductName: "",
+      consumerDescription: "",
+      consumerPickupLocation: "",
+      consumerPickupDate: today(),
+      consumerPickupStartTime: "12:00",
+      consumerPickupEndTime: "13:00",
+      consumerOrderDeadlineHours: "2",
+      consumerSaleUnitType: "package",
+      consumerVariants: [createConsumerSaleVariant("package")],
       auctionDurationMinutes: 180,
       auctionMinimumIncrement: "0,20",
       auctionReservePrice: "",
@@ -8756,6 +8783,10 @@ export default function App() {
   const handleNotificationNavigation = useCallback((payload = {}) => {
     const normalizedPayload = normalizeNotificationNavigationPayload(payload);
     const nextTab = getNotificationRouteTarget(normalizedPayload, profile?.role);
+    const linkedConsumerListingId = String(normalizedPayload.consumerListingId || normalizedPayload.listingId || "").trim();
+    if (linkedConsumerListingId && profile?.role === "consumer") {
+      setConsumerListingId(linkedConsumerListingId);
+    }
     if (nextTab) {
       setActiveTab(nextTab);
     }
@@ -9234,7 +9265,7 @@ export default function App() {
           const title = String(notification?.title || "Suoraan Kalastajalta");
           const body = String(notification?.body || "");
           const data = notification?.data || {};
-          const notificationKey = JSON.stringify([title, body, data?.eventType || "", data?.offerId || "", data?.batchId || ""]);
+          const notificationKey = JSON.stringify([title, body, data?.eventType || "", data?.offerId || "", data?.batchId || "", data?.consumerListingId || data?.listingId || ""]);
           const now = Date.now();
           if (
             foregroundNotificationRef.current.key === notificationKey &&
@@ -9479,6 +9510,7 @@ export default function App() {
     return matches.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
   };
   const isCatchAuction = form.saleMode === "auction";
+  const isConsumerSale = form.saleMode === "consumer";
   const currentCalendarYear = Number(today().slice(0, 4));
   const currentInlandGearMeta = getInlandGearMeta(form.inlandGearCode || form.gear);
   const currentInlandTechnicalFields = getInlandGearTechnicalFields(form.inlandGearCode || form.gear);
@@ -9858,6 +9890,7 @@ export default function App() {
       setActiveTab,
       setBuyerActiveOfferId,
       setPublicBatchId,
+      setConsumerListingId,
     };
 
     const handleIncomingUrl = async (url) => {
@@ -10102,6 +10135,8 @@ export default function App() {
         ? "buyer"
         : session.user.user_metadata?.requested_role === "processor"
           ? "processor"
+          : session.user.user_metadata?.requested_role === "consumer"
+            ? "consumer"
           : "member";
       const autoActiveRole = isRoleAutomaticallyActive(defaultAllowedRole?.role || requestedRole);
       const { data: insertedProfile, error: insertError } = await supabase
@@ -11424,7 +11459,7 @@ export default function App() {
       const email = normalizeEmail(authForm.email);
       const password = authForm.password;
       const displayName = authForm.displayName.trim();
-      const requestedRole = authForm.requestedRole === "buyer" ? "buyer" : authForm.requestedRole === "processor" ? "processor" : "member";
+      const requestedRole = authForm.requestedRole === "buyer" ? "buyer" : authForm.requestedRole === "processor" ? "processor" : authForm.requestedRole === "consumer" ? "consumer" : "member";
       if (!email || !password || !displayName) {
         setAuthError("Täytä sähköposti, salasana ja nimi.");
         return;
@@ -15058,6 +15093,84 @@ export default function App() {
       setAuthError("Valitse, miten myytävä kalaerä on pakattu.");
       return;
     }
+    const consumerSaleUnitType = form.consumerSaleUnitType === "whole_fish" ? "whole_fish" : "package";
+    const consumerVariants = (Array.isArray(form.consumerVariants) ? form.consumerVariants : []).map((variant) => ({
+      id: String(variant.id || safeId()),
+      sale_unit_type: consumerSaleUnitType,
+      label: String(variant.label || "").trim(),
+      package_size_kg: consumerSaleUnitType === "package" ? parseLocaleNumber(variant.packageSizeKg) : null,
+      unit_price_including_vat: consumerSaleUnitType === "package" ? parseLocaleNumber(variant.unitPrice) : null,
+      min_weight_kg: consumerSaleUnitType === "whole_fish" ? parseLocaleNumber(variant.minWeightKg) : null,
+      max_weight_kg: consumerSaleUnitType === "whole_fish" ? parseLocaleNumber(variant.maxWeightKg) : null,
+      price_per_kg_including_vat: consumerSaleUnitType === "whole_fish" ? parseLocaleNumber(variant.pricePerKg) : null,
+      available_units: Math.floor(Number(variant.availableUnits || 0)),
+    }));
+    const consumerPickupLocation = String(form.consumerPickupLocation || derivedDeliveryArea || savedPickupAddress || "").trim();
+    const consumerPickupStart = new Date(`${form.consumerPickupDate || ""}T${form.consumerPickupStartTime || ""}:00`);
+    const consumerPickupEnd = new Date(`${form.consumerPickupDate || ""}T${form.consumerPickupEndTime || ""}:00`);
+    const consumerOrderDeadlineHours = Number(form.consumerOrderDeadlineHours);
+    if (isConsumerSale && consumerVariants.length < 1) {
+      setAuthError("Lisää kuluttajamyyntiin vähintään yksi myyntiyksikkö.");
+      return;
+    }
+    if (isConsumerSale && consumerVariants.some((variant) => !variant.label)) {
+      setAuthError(consumerSaleUnitType === "whole_fish" ? "Nimeä jokainen kalan kokoluokka." : "Nimeä jokainen pakkauskoko.");
+      return;
+    }
+    if (isConsumerSale && consumerSaleUnitType === "package" && consumerVariants.some((variant) => (
+      !variant.package_size_kg || variant.package_size_kg <= 0
+      || !variant.unit_price_including_vat || variant.unit_price_including_vat <= 0
+      || variant.available_units < 1
+    ))) {
+      setAuthError("Täytä jokaiselle pakkaukselle koko, hinta ja myyntiin tuleva pakkausmäärä.");
+      return;
+    }
+    if (isConsumerSale && consumerSaleUnitType === "whole_fish" && consumerVariants.some((variant) => (
+      !variant.min_weight_kg || variant.min_weight_kg <= 0
+      || !variant.max_weight_kg || variant.max_weight_kg < variant.min_weight_kg
+      || !variant.price_per_kg_including_vat || variant.price_per_kg_including_vat <= 0
+      || variant.available_units < 1
+    ))) {
+      setAuthError("Täytä jokaiselle kokoluokalle pienin ja suurin paino, kilohinta sekä kalojen määrä.");
+      return;
+    }
+    if (isConsumerSale && !consumerPickupLocation) {
+      setAuthError("Täytä kuluttajamyynnin noutopaikka.");
+      return;
+    }
+    if (isConsumerSale && (!form.consumerPickupDate || !form.consumerPickupStartTime || !form.consumerPickupEndTime || Number.isNaN(consumerPickupStart.getTime()) || Number.isNaN(consumerPickupEnd.getTime()))) {
+      setAuthError("Täytä noutopäivä sekä noudon alkamis- ja päättymisaika.");
+      return;
+    }
+    if (isConsumerSale && consumerPickupEnd <= consumerPickupStart) {
+      setAuthError("Noudon päättymisajan pitää olla alkamisajan jälkeen.");
+      return;
+    }
+    if (isConsumerSale && (!String(form.consumerOrderDeadlineHours ?? "").trim() || !Number.isFinite(consumerOrderDeadlineHours) || consumerOrderDeadlineHours < 0)) {
+      setAuthError("Täytä, montako tuntia ennen noutoa tilausten vastaanotto päättyy.");
+      return;
+    }
+    const consumerOrderDeadline = new Date(consumerPickupStart.getTime() - consumerOrderDeadlineHours * 60 * 60 * 1000);
+    if (isConsumerSale && consumerOrderDeadline <= new Date()) {
+      setAuthError("Kuluttajamyynnin tilausaika on jo päättynyt. Siirrä noutoaikaa tai lyhennä tilauksen määräaikaa.");
+      return;
+    }
+    if (isConsumerSale && validRows.length !== 1) {
+      setAuthError("Suoraan kuluttajille myytävässä erässä voi olla yksi kalalaji kerrallaan.");
+      return;
+    }
+    const consumerCatchKilos = Number(validRows[0]?.kilos || 0);
+    const consumerAllocatedMinimumKilos = consumerVariants.reduce((sum, variant) => sum + (
+      consumerSaleUnitType === "package"
+        ? Number(variant.package_size_kg || 0) * variant.available_units
+        : Number(variant.min_weight_kg || 0) * variant.available_units
+    ), 0);
+    if (isConsumerSale && consumerAllocatedMinimumKilos > consumerCatchKilos + 0.001) {
+      setAuthError(consumerSaleUnitType === "whole_fish"
+        ? "Kokoluokkien kalamäärien vähimmäispaino ylittää saaliin kokonaispainon. Pienennä kalojen määrää tai painoluokkia."
+        : "Pakkausten yhteenlaskettu paino ylittää saaliin kokonaispainon. Pienennä pakkausmääriä.");
+      return;
+    }
     if (form.saleMode === "fixed" && form.listForSale && form.offerAudience === "selected" && form.selectedBuyerIds.length === 0) {
       setAuthError("Valitse vähintään yksi ostaja, jolle rajattu tarjous lähetetään.");
       return;
@@ -15355,6 +15468,36 @@ export default function App() {
         setAuthInfo(insertedCatchEntries.length === 1
           ? "Saalis tallennettu ja huutokauppa avattu. Palvelin lähettää ilmoitukset huutokauppaan oikeutetuille ostajille."
           : `Saalis tallennettu ja ${insertedCatchEntries.length} huutokauppaa avattu. Palvelin lähettää ilmoitukset huutokauppoihin oikeutetuille ostajille.`);
+      } else if (isConsumerSale) {
+        if (insertedCatchEntries.length !== 1) {
+          throw new Error("Tallennetun saaliin tunnistetta ei saatu kuluttajalistausta varten.");
+        }
+        const consumerRow = rowsWithBatchIds[0];
+        const { data: publishedConsumerListingId, error: consumerListingError } = await supabase.rpc("publish_consumer_listing", {
+          p_catch_entry_id: insertedCatchEntries[0].id,
+          p_batch_id: insertedCatchEntries[0].batch_id || consumerRow.batch_id,
+          p_species: formatSpeciesForSale(getSpeciesRowLabel(consumerRow)),
+          p_product_name: String(form.consumerProductName || formatSpeciesForSale(getSpeciesRowLabel(consumerRow))).trim(),
+          p_description: String(form.consumerDescription || "").trim(),
+          p_seller_name: profile.company_name || profile.display_name || "Paikallinen kalastaja",
+          p_municipality: form.municipality || profile.city || "",
+          p_pickup_location: consumerPickupLocation,
+          p_catch_date: form.date || null,
+          p_cold_storage: Boolean(form.coldTransport),
+          p_pickup_start: consumerPickupStart.toISOString(),
+          p_pickup_end: consumerPickupEnd.toISOString(),
+          p_order_deadline: consumerOrderDeadline.toISOString(),
+          p_variants: consumerVariants,
+        });
+        if (consumerListingError) throw consumerListingError;
+        const consumerListingUrl = getConsumerListingUrl(publishedConsumerListingId, getPublicAppBaseUrl());
+        const consumerNotificationResult = await invokeEdgeFunctionAuthenticated("notify-consumer-listing", {
+          listingId: publishedConsumerListingId,
+        }, session?.access_token);
+        const notificationSummary = consumerNotificationResult.error
+          ? "Kuluttajailmoitusten lähetys epäonnistui, mutta erä on julkaistu ja linkki toimii."
+          : `Ilmoitus lähetettiin ${Number(consumerNotificationResult.data?.recipients || 0)} erää seuranneelle kuluttajalle.`;
+        setAuthInfo(`Saalis julkaistiin vain kuluttajamarkkinapaikalle. Yritysostajille ei lähetetty tarjousta.\n${notificationSummary}\nJulkinen linkki: ${consumerListingUrl}`);
       } else {
         const emailResult = await sendCatchOfferEmail({
           formState: form,
@@ -15393,10 +15536,12 @@ export default function App() {
       }
       }
     } catch (saveFollowupError) {
-      console.error(isCatchAuction ? "Huutokaupan avaaminen epäonnistui:" : "Sähköpostin lähetys epäonnistui:", saveFollowupError);
+      console.error(isCatchAuction ? "Huutokaupan avaaminen epäonnistui:" : isConsumerSale ? "Kuluttajalistauksen avaaminen epäonnistui:" : "Sähköpostin lähetys epäonnistui:", saveFollowupError);
       setAuthError(isCatchAuction
         ? `Saalis tallennettiin, mutta huutokaupan avaaminen epäonnistui: ${String(saveFollowupError?.message || saveFollowupError)}`
-        : `Saalis tallennettu, mutta tarjoussähköpostin lähetys epäonnistui: ${String(saveFollowupError?.message || saveFollowupError)}`);
+        : isConsumerSale
+          ? `Saalis tallennettiin, mutta kuluttajalistauksen avaaminen epäonnistui: ${String(saveFollowupError?.message || saveFollowupError)}`
+          : `Saalis tallennettu, mutta tarjoussähköpostin lähetys epäonnistui: ${String(saveFollowupError?.message || saveFollowupError)}`);
       setAuthInfo("");
     }
 
@@ -15445,6 +15590,15 @@ export default function App() {
       date: today(),
       saleMode: "none",
       listForSale: false,
+      consumerProductName: "",
+      consumerDescription: "",
+      consumerPickupLocation: "",
+      consumerPickupDate: today(),
+      consumerPickupStartTime: "12:00",
+      consumerPickupEndTime: "13:00",
+      consumerOrderDeadlineHours: "2",
+      consumerSaleUnitType: "package",
+      consumerVariants: [createConsumerSaleVariant("package")],
       auctionDurationMinutes: 180,
       auctionMinimumIncrement: "0,20",
       auctionReservePrice: "",
@@ -15970,6 +16124,10 @@ export default function App() {
 
   if (roleSelectionOpen && availableRoleOptions.length > 1) {
     return <RoleSelectionView roleOptions={availableRoleOptions} buyers={buyers} onSelectRole={handleRoleSelect} />;
+  }
+
+  if (profile.role === "consumer") {
+    return <ConsumerApp initialListingId={consumerListingId} />;
   }
 
   const handleGoToHome = () => {
@@ -19454,6 +19612,7 @@ export default function App() {
                       { value: "none", title: "Ei myyntiin", detail: "Tallenna erä vain saaliskirjanpitoon." },
                       { value: "fixed", title: "Myy kiinteällä hinnalla", detail: "Lähetä erä valituille ostajaryhmille annetulla hinnalla." },
                       { value: "auction", title: "Myy saalis huutokaupassa", detail: "Ostajat kilpailevat erästä huutamalla hintaa ylöspäin." },
+                      { value: "consumer", title: "Myy suoraan kuluttajille", detail: "Julkaise erä vain kuluttajamarkkinapaikalle noudettavaksi." },
                     ].map((option) => {
                       const selected = form.saleMode === option.value;
                       const disabled = (form.effortOnly && option.value !== "none") || (fisherPremiumRequired && option.value !== "none") || (option.value === "auction" && !auctionsAvailable);
@@ -19465,6 +19624,10 @@ export default function App() {
                           ? selected
                             ? { background: "linear-gradient(135deg, #059669, #16a34a)", border: "#047857", color: "#ffffff", shadow: "rgba(5, 150, 105, 0.25)" }
                             : { background: "#f0fdf4", border: "#86efac", color: "#166534", shadow: "transparent" }
+                          : option.value === "consumer"
+                            ? selected
+                              ? { background: "linear-gradient(135deg, #0f766e, #0891b2)", border: "#0f766e", color: "#ffffff", shadow: "rgba(15, 118, 110, 0.25)" }
+                              : { background: "#ecfeff", border: "#67e8f9", color: "#155e75", shadow: "transparent" }
                           : selected
                             ? { background: "linear-gradient(135deg, #7c3aed, #4f46e5)", border: "#6d28d9", color: "#ffffff", shadow: "rgba(109, 40, 217, 0.25)" }
                             : { background: "#f5f3ff", border: "#c4b5fd", color: "#5b21b6", shadow: "transparent" };
@@ -19494,6 +19657,7 @@ export default function App() {
                             saleMode: option.value,
                             listForSale: option.value !== "none",
                             ...(option.value === "fixed" ? {} : { offerToShops: false, offerToRestaurants: false, offerToWholesalers: false }),
+                            ...(option.value === "consumer" ? { deliveryPossible: false, deliveryMethod: "Nouto", deliveryArea: savedPickupAddress, deliveryDestinations: [] } : {}),
                             ...(option.value !== "none" ? {} : { deliveryPossible: false }),
                           }))}
                         >
@@ -19528,8 +19692,73 @@ export default function App() {
                     <option value="">Valitse, miten kalaerä on pakattu</option>
                     {FISH_PACKAGING_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
-                  <div style={styles.small}>Pakkaustapa näkyy ostajalle sekä kiinteähintaisessa tarjouksessa että huutokaupassa.</div>
+                  <div style={styles.small}>{form.saleMode === "consumer" ? "Pakkaustapa näkyy kuluttajalle markkinapaikalla." : "Pakkaustapa näkyy yritysostajalle sekä kiinteähintaisessa tarjouksessa että huutokaupassa."}</div>
                 </div>
+                {form.saleMode === "consumer" ? (
+                  <div style={{ ...styles.field, ...styles.fieldFull, ...styles.offerBox, ...styles.stack, background: "#ecfeff", borderColor: "#67e8f9" }}>
+                    <div><strong>Suoraan kuluttajille</strong><div style={styles.small}>Tämä erä julkaistaan vain kuluttajamarkkinapaikalle. Yritysostajille ei lähetetä tarjousta eikä erää avata huutokauppaan.</div></div>
+                    <div style={styles.field}>
+                      <label>Myyntiyksikkö</label>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+                        {[
+                          { value: "package", title: "Valmiit pakkaukset", detail: "Esimerkiksi 0,5 kg, 1 kg ja 2 kg pakkaukset." },
+                          { value: "whole_fish", title: "Kokonaiset kalat", detail: "Kuluttaja varaa kalat kappaleittain valitsemastaan kokoluokasta." },
+                        ].map((option) => {
+                          const selected = form.consumerSaleUnitType === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              style={{ ...styles.button, minHeight: 88, textAlign: "left", justifyContent: "flex-start", background: selected ? "#0f766e" : "#fff", color: selected ? "#fff" : "#134e4a", borderColor: selected ? "#0f766e" : "#99f6e4" }}
+                              onClick={() => setForm((prev) => ({ ...prev, consumerSaleUnitType: option.value, consumerVariants: [createConsumerSaleVariant(option.value)] }))}
+                            >
+                              <span><strong>{selected ? "✓ " : ""}{option.title}</strong><span style={{ display: "block", marginTop: 5, fontSize: 13, opacity: 0.86 }}>{option.detail}</span></span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+                      <div style={{ ...styles.field, gridColumn: "1 / -1" }}><label>Tuotteen nimi</label><input style={styles.input} value={form.consumerProductName} onChange={(event) => setForm((prev) => ({ ...prev, consumerProductName: event.target.value }))} placeholder={formatSpeciesForSale(getSpeciesRowLabel(speciesRows[0])) || "Esim. Tuore kokonainen kuha"} /></div>
+                      {(form.consumerVariants || []).map((variant, variantIndex) => (
+                        <div key={variant.id} style={{ ...styles.field, gridColumn: "1 / -1", border: "1px solid #99f6e4", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.75)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}>
+                            <strong>{form.consumerSaleUnitType === "whole_fish" ? `Kokoluokka ${variantIndex + 1}` : `Pakkauskoko ${variantIndex + 1}`}</strong>
+                            {(form.consumerVariants || []).length > 1 ? <button type="button" onClick={() => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.filter((item) => item.id !== variant.id) }))}>Poista</button> : null}
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+                            <div style={styles.field}>
+                              <label>{form.consumerSaleUnitType === "whole_fish" ? "Kokoluokan nimi" : "Pakkauksen nimi"}</label>
+                              <input style={styles.input} value={variant.label} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, label: event.target.value } : item) }))} placeholder={form.consumerSaleUnitType === "whole_fish" ? "Esim. Kuha 1,2–1,8 kg" : "Esim. 1 kg pakkaus"} />
+                            </div>
+                            {form.consumerSaleUnitType === "package" ? (
+                              <>
+                                <div style={styles.field}><label>Pakkauksen koko kg</label><input style={styles.input} inputMode="decimal" value={variant.packageSizeKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, packageSizeKg: event.target.value } : item) }))} placeholder="1,0" /></div>
+                                <div style={styles.field}><label>Hinta / pakkaus sis. ALV (€)</label><input style={styles.input} inputMode="decimal" value={variant.unitPrice} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, unitPrice: event.target.value } : item) }))} placeholder="12,90" /></div>
+                              </>
+                            ) : (
+                              <>
+                                <div style={styles.field}><label>Pienin paino kg / kala</label><input style={styles.input} inputMode="decimal" value={variant.minWeightKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, minWeightKg: event.target.value } : item) }))} placeholder="0,8" /></div>
+                                <div style={styles.field}><label>Suurin paino kg / kala</label><input style={styles.input} inputMode="decimal" value={variant.maxWeightKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, maxWeightKg: event.target.value } : item) }))} placeholder="1,2" /></div>
+                                <div style={styles.field}><label>Kilohinta sis. ALV (€ / kg)</label><input style={styles.input} inputMode="decimal" value={variant.pricePerKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, pricePerKg: event.target.value } : item) }))} placeholder="16,90" /></div>
+                              </>
+                            )}
+                            <div style={styles.field}><label>{form.consumerSaleUnitType === "whole_fish" ? "Kaloja myyntiin (kpl)" : "Pakkauksia myyntiin (kpl)"}</label><input style={styles.input} type="number" min="1" step="1" value={variant.availableUnits} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, availableUnits: event.target.value } : item) }))} /></div>
+                          </div>
+                        </div>
+                      ))}
+                      <button type="button" style={{ ...styles.button, gridColumn: "1 / -1", justifySelf: "start" }} onClick={() => setForm((prev) => ({ ...prev, consumerVariants: [...(prev.consumerVariants || []), createConsumerSaleVariant(prev.consumerSaleUnitType)] }))}>+ Lisää {form.consumerSaleUnitType === "whole_fish" ? "kokoluokka" : "pakkauskoko"}</button>
+                      <div style={{ ...styles.field, gridColumn: "1 / -1" }}><label>Nouto-osoite tai tarkka noutopaikka</label><input style={styles.input} value={form.consumerPickupLocation || savedPickupAddress} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupLocation: event.target.value }))} placeholder="Esim. Puumalan satama, Satamatie 2" /></div>
+                      <div style={styles.field}><label>Noutopäivä</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={form.consumerPickupDate} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupDate: event.target.value }))} /></div>
+                      <div style={styles.field}><label>Noudettavissa alkaen</label><input style={styles.input} type="time" value={form.consumerPickupStartTime} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupStartTime: event.target.value }))} /></div>
+                      <div style={styles.field}><label>Noudettavissa asti</label><input style={styles.input} type="time" value={form.consumerPickupEndTime} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupEndTime: event.target.value }))} /></div>
+                      <div style={styles.field}><label>Tilaukset viimeistään (tuntia ennen noutoa)</label><input style={styles.input} type="number" min="0" step="0.5" value={form.consumerOrderDeadlineHours} onChange={(event) => setForm((prev) => ({ ...prev, consumerOrderDeadlineHours: event.target.value }))} placeholder="2" /><div style={styles.small}>Esimerkiksi 2 sulkee tilaamisen kaksi tuntia ennen noutoajan alkua.</div></div>
+                      <div style={{ ...styles.field, gridColumn: "1 / -1" }}><label>Kuluttajalle näkyvä kuvaus</label><textarea style={styles.textarea} value={form.consumerDescription} onChange={(event) => setForm((prev) => ({ ...prev, consumerDescription: event.target.value }))} placeholder="Kerro käsittelystä, tuoreudesta ja noudosta." /></div>
+                    </div>
+                    <div style={styles.small}>{form.consumerSaleUnitType === "whole_fish" ? "Kuluttaja varaa kappalemäärän. Sovellus näyttää paino- ja hinta-arvion, ja lopullinen hinta lasketaan punnitusta painosta noudon yhteydessä." : "Kuluttaja voi valita pakkauskoon ja useita pakkauksia, esimerkiksi 1 kg + 1 kg + 0,5 kg erillisinä varauksina."}</div>
+                    <div style={styles.noticeInfo}>Kuluttaja maksaa suoraan kalastajalle noudon yhteydessä. Palvelu kirjaa toteutuneesta kaupasta 3 % komission verottomasta myyntiarvosta.</div>
+                  </div>
+                ) : null}
                 {form.saleMode === "auction" ? (
                   <div style={{ ...styles.field, ...styles.fieldFull, ...styles.offerBox, ...styles.stack }}>
                     <strong>Huutokaupan asetukset</strong>
@@ -19576,7 +19805,7 @@ export default function App() {
                     <div style={styles.small}>Viimeisten 3 minuutin aikana tehty hyväksytty huuto siirtää päättymisen aina 3 minuutin päähän viimeisestä huudosta.</div>
                   </div>
                 ) : null}
-                <div style={styles.field}><label>Aikaisin toimitus</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div>
+                {form.saleMode !== "consumer" ? <div style={styles.field}><label>Aikaisin toimitus</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div> : null}
                 <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
                 {form.saleMode === "fixed" ? <div style={{ ...styles.field, ...styles.fieldFull }}>
                   <div style={{ ...styles.offerBox, ...styles.stack, ...(!DELIVERY_COMPETITION_AVAILABLE ? styles.disabledSection : null) }}>
@@ -19930,7 +20159,7 @@ export default function App() {
                   </div>
                 ) : null}
               </div>
-              <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : isCatchAuction ? "Tallenna saalis ja aloita huutokauppa" : shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis"}</button></div>
+              <div style={{ ...styles.row, justifyContent: "flex-end" }}><button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleSave} disabled={saving}>{saving ? "Tallennetaan..." : isCatchAuction ? "Tallenna saalis ja aloita huutokauppa" : isConsumerSale ? "Tallenna ja julkaise kuluttajille" : shouldSendOffer ? "Tallenna saalis ja lähetä tarjous" : "Tallenna saalis"}</button></div>
             </div>
           )
         ) : null}
@@ -20101,6 +20330,8 @@ export default function App() {
         ) : null}
 
         {activeTab === "offers" ? (
+          <div style={styles.stack}>
+          {profile.role === "member" ? <ConsumerSellerPanel profile={profile} /> : null}
           <WholesaleOffersView
             profile={profile}
             saleEntries={profile.role === "processor" ? processedSaleEntries : saleEntries}
@@ -20120,6 +20351,7 @@ export default function App() {
             shouldRevealBuyerIdentity={shouldRevealBuyerIdentity}
             onCreateDeliveryNote={handleCreateDeliveryNote}
           />
+          </div>
         ) : null}
 
         {activeTab === "auctions" && auctionsAvailable && ["member", "owner"].includes(profile.role) ? (

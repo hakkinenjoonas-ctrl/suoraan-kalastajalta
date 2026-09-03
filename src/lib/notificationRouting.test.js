@@ -37,6 +37,11 @@ describe("notification routing", () => {
     expect(getNotificationRouteTarget({ data: '{"route":"auctions"}' })).toBe("auctions");
   });
 
+  it("keeps consumer notifications on the separate consumer marketplace route", () => {
+    expect(getNotificationRouteTarget({ route: "consumer_marketplace", consumerListingId: "listing-1" }, "consumer")).toBe("consumer_marketplace");
+    expect(getNotificationRouteTarget({ eventType: "consumer_listing_published" }, "consumer")).toBe("consumer_marketplace");
+  });
+
   it("falls back to the dashboard for unknown notifications", () => {
     expect(getNotificationRouteTarget({ eventType: "general" }, "buyer")).toBe("dashboard");
   });

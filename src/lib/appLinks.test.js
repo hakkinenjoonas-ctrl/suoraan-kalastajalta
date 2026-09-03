@@ -3,6 +3,7 @@ import {
   applyIncomingAppUrl,
   getRequestedOfferId,
   getRequestedPublicBatchId,
+  getIncomingConsumerListingId,
   leavePublicBatchView,
 } from "./appLinks.js";
 
@@ -63,5 +64,17 @@ describe("app links", () => {
 
     leavePublicBatchView();
     expect(replaceState).toHaveBeenLastCalledWith({}, "", "/");
+  });
+
+  it("routes public consumer listing links without mixing them with B2B offers", () => {
+    const replaceState = setWindow("https://example.test/");
+    const setConsumerListingId = vi.fn();
+    const setActiveTab = vi.fn();
+    applyIncomingAppUrl("https://example.test/kuluttaja/era/listing%2042", { setConsumerListingId, setActiveTab });
+    expect(getIncomingConsumerListingId("https://example.test/kuluttaja/era/listing%2042")).toBe("listing 42");
+    expect(getIncomingConsumerListingId("fi.suoraankalastajalta.app:///kuluttaja/era/listing%2042")).toBe("listing 42");
+    expect(replaceState).toHaveBeenCalledWith({}, "", "/kuluttaja/era/listing%2042");
+    expect(setConsumerListingId).toHaveBeenCalledWith("listing 42");
+    expect(setActiveTab).not.toHaveBeenCalled();
   });
 });

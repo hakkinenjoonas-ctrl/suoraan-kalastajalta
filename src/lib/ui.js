@@ -477,6 +477,7 @@ export function getPublicPickupLocation({ municipality, deliveryArea, area }) {
 export function roleLabel(role) {
   if (role === "owner") return "Omistaja";
   if (role === "buyer") return "Ostaja";
+  if (role === "consumer") return "Kuluttaja";
   if (role === "processor") return "Jalostaja";
   return "Kalastaja";
 }

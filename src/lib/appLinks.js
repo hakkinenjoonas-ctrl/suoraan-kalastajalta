@@ -17,6 +17,21 @@ export function getRequestedOfferId() {
   return String(params.get("offer") || "").trim();
 }
 
+export function getIncomingConsumerListingId(urlString) {
+  if (!urlString) return "";
+  try {
+    const parsedUrl = new URL(urlString);
+    const normalizedPath = parsedUrl.protocol === "fi.suoraankalastajalta.app:"
+      ? `/${parsedUrl.host || ""}${parsedUrl.pathname || ""}`.replace(/^\/\//, "/")
+      : String(parsedUrl.pathname || "");
+    const pathMatch = normalizedPath.match(/^\/kuluttaja\/era\/([^/?#]+)/);
+    if (pathMatch) return decodeURIComponent(pathMatch[1]).trim();
+    return String(parsedUrl.searchParams.get("listing") || "").trim();
+  } catch {
+    return "";
+  }
+}
+
 export function leavePublicBatchView() {
   if (typeof window === "undefined") return;
   window.history.replaceState({}, "", "/");
@@ -41,10 +56,13 @@ export function applyIncomingAppUrl(urlString, handlers = {}) {
 
   const nextParams = new URLSearchParams(parsedUrl.search || "");
   const linkedOfferId = String(nextParams.get("offer") || "").trim();
+  const linkedConsumerListingId = getIncomingConsumerListingId(parsedUrl.href);
   const batchPathMatch = String(parsedUrl.pathname || "").match(/^\/batch\/(.+)$/);
   const linkedBatchId = batchPathMatch ? decodeURIComponent(String(batchPathMatch[1] || "")).trim() : String(nextParams.get("batch") || "").trim();
 
-  if (linkedOfferId) {
+  if (linkedConsumerListingId) {
+    handlers.setConsumerListingId?.(linkedConsumerListingId);
+  } else if (linkedOfferId) {
     handlers.setBuyerActiveOfferId?.(linkedOfferId);
     handlers.setActiveTab?.("offers");
   } else if (linkedBatchId) {

@@ -21,6 +21,25 @@ export function getPublicBatchInfoUrl(batchId) {
   return `${SUPABASE_URL}/functions/v1/public-batch-info?batchId=${encodeURIComponent(batchId)}`;
 }
 
+export function getPublicConsumerMarketplaceUrl() {
+  return `${SUPABASE_URL}/functions/v1/public-consumer-marketplace`;
+}
+
+export async function fetchPublicConsumerListings() {
+  try {
+    const response = await fetch(getPublicConsumerMarketplaceUrl(), {
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { data: null, error: { message: data?.error || `HTTP ${response.status}`, status: response.status, context: data } };
+    }
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error: { message: formatEdgeFunctionNetworkError(error), status: 0, context: error } };
+  }
+}
+
 export async function invokeEdgeFunctionAuthenticated(functionName, body, accessToken) {
   let response;
   try {
@@ -65,6 +84,10 @@ export async function fetchBuyerReport(accessToken) {
 
 export async function invokeBuyerOfferAction(accessToken, payload) {
   return invokeEdgeFunctionAuthenticated("buyer-offer-action", payload, accessToken);
+}
+
+export async function invokeConsumerOrderAction(accessToken, payload) {
+  return invokeEdgeFunctionAuthenticated("consumer-order-action", payload, accessToken);
 }
 
 export async function invokeBulkOfferDispatch(accessToken, payload) {

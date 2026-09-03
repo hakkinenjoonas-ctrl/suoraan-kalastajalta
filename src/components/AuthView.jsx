@@ -129,6 +129,7 @@ export default function AuthView({ authMode, setAuthMode, authForm, setAuthForm,
                 <select style={styles.input} value={authForm.requestedRole} onChange={(e) => setAuthForm((prev) => ({ ...prev, requestedRole: e.target.value }))}>
                   <option value="member">Kalastaja</option>
                   <option value="buyer">Ostaja</option>
+                  <option value="consumer">Kuluttaja</option>
                 </select>
               </div>
               <label style={{ display: "flex", alignItems: "flex-start", gap: 10, lineHeight: 1.4 }}>
@@ -173,7 +174,7 @@ export default function AuthView({ authMode, setAuthMode, authForm, setAuthForm,
             </button>
           )}
 
-          {authMode === "signup" ? <div style={styles.muted}>Ostaja ja kalastaja pääsevät appiin heti rekisteröitymisen jälkeen. Vain erikoisroolit voivat vaatia ylläpitäjän hyväksynnän.</div> : null}
+          {authMode === "signup" ? <div style={styles.muted}>Kuluttaja, ostaja ja kalastaja pääsevät appiin heti rekisteröitymisen jälkeen. Kuluttajapuoli toimii erillään yritysostajien B2B-myynnistä.</div> : null}
 
         </form>
       </div>

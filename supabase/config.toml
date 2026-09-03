@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.public-batch-info]
 verify_jwt = false
+
+[functions.public-consumer-marketplace]
+verify_jwt = false

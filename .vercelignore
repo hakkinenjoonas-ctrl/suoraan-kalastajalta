@@ -7,4 +7,8 @@ android
 dist
 node_modules
 coverage
+output
+tools
+*.pdf
+*.pptx
 *.csv
