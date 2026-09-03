@@ -5,7 +5,11 @@
       "destination": "/index.html"
     },
     {
-      "source": "/kuluttaja(.*)",
+      "source": "/kuluttaja",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/kuluttaja/(.*)",
       "destination": "/index.html"
     }
   ]
