@@ -7984,6 +7984,7 @@ export default function App() {
   const [availableRoleOptions, setAvailableRoleOptions] = useState([]);
   const [roleSelectionOpen, setRoleSelectionOpen] = useState(false);
   const [entries, setEntries] = useState([]);
+  const [consumerListings, setConsumerListings] = useState([]);
   const [processedEntries, setProcessedEntries] = useState([]);
   const [offers, setOffers] = useState([]);
   const [buyerOffers, setBuyerOffers] = useState([]);
@@ -9509,6 +9510,20 @@ export default function App() {
     if (matches.length === 0) return null;
     return matches.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
   };
+  const getEntryConsumerListing = (entry) => (consumerListings || []).find((listing) => (
+    String(listing.catch_entry_id || "") === String(entry?.id || "")
+    || (!listing.catch_entry_id && listing.batch_id && String(listing.batch_id) === String(entry?.batchId || ""))
+  )) || null;
+  const copyConsumerListingLink = async (listing) => {
+    const link = getConsumerListingUrl(listing?.id, getPublicAppBaseUrl());
+    try {
+      if (!navigator?.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(link);
+      setAuthInfo("Kuluttajailmoituksen julkinen linkki kopioitiin.");
+    } catch {
+      setAuthInfo(`Kuluttajailmoituksen julkinen linkki: ${link}`);
+    }
+  };
   const isCatchAuction = form.saleMode === "auction";
   const isConsumerSale = form.saleMode === "consumer";
   const currentCalendarYear = Number(today().slice(0, 4));
@@ -9770,6 +9785,7 @@ export default function App() {
     setAvailableRoleOptions([]);
     setRoleSelectionOpen(false);
     setEntries([]);
+    setConsumerListings([]);
       setProcessedEntries([]);
       setOffers([]);
       setAllowedUsers([]);
@@ -10015,6 +10031,7 @@ export default function App() {
       setAvailableRoleOptions([]);
       setRoleSelectionOpen(false);
       setEntries([]);
+      setConsumerListings([]);
       setProcessedEntries([]);
       setOffers([]);
       setAllowedUsers([]);
@@ -10305,9 +10322,17 @@ export default function App() {
               .eq("status", "accepted")
               .order("updated_at", { ascending: false })
           : Promise.resolve({ data: [], error: null });
+        const consumerListingsPromise = profile.role === "member"
+          ? supabase
+              .from("consumer_listings")
+              .select("id, catch_entry_id, batch_id, status")
+              .eq("seller_user_id", profile.id)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [], error: null });
 
         const [
           { data: entryData, error: entryError },
+          consumerListingsResult,
           processedEntriesResult,
           processedProductsResult,
           { data: allowedData, error: allowedError },
@@ -10319,6 +10344,7 @@ export default function App() {
           processorAcceptedOffersResult,
         ] = await Promise.all([
           finalEntriesQuery,
+          consumerListingsPromise,
           hasProcessedBatchesTable
             ? ((profile.role === "owner" && entryScope === "all")
               ? supabase.from("processed_batches").select("*").order("production_date", { ascending: false }).order("created_at", { ascending: false })
@@ -10369,6 +10395,7 @@ export default function App() {
 
         const transientLoadError = [
           entryError,
+          consumerListingsResult?.error,
           processedEntriesResult?.error,
           processedProductsResult?.error,
           allowedError,
@@ -10451,6 +10478,17 @@ export default function App() {
             offerToWholesalers: Boolean(entry.offer_to_wholesalers),
             offerRestricted: Boolean(entry.offer_restricted),
           })));
+        }
+
+        if (consumerListingsResult?.error && consumerListingsResult.error.code !== "PGRST116") {
+          if (isMissingRefreshTokenError(consumerListingsResult.error)) {
+            await invalidateSession();
+            return;
+          }
+          setAuthError(consumerListingsResult.error.message);
+          setConsumerListings([]);
+        } else {
+          setConsumerListings(consumerListingsResult?.data || []);
         }
 
         if (processorAcceptedOffersResult?.error && processorAcceptedOffersResult.error.code !== "PGRST116") {
@@ -14365,7 +14403,7 @@ export default function App() {
   };
 
   const openCatchSaleDialog = (entry) => {
-    if (!entry || isEntryOfferedForSale(entry)) return;
+    if (!entry || isEntryOfferedForSale(entry) || getEntryConsumerListing(entry)) return;
     if (profile?.role === "member" && !hasFisherPremium) {
       showFisherPremiumRequired("Kalaerän laittaminen myyntiin");
       return;
@@ -20285,13 +20323,23 @@ export default function App() {
                           {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>{`Hinta sis. ALV ${formatVatPercent()} %:`} {formatEntryGrossPrice(entry.species, entry.pricePerKg)}</div> : null}
                           {entry.gearCount ? <div style={styles.muted}>Pyydysten määrä: {entry.gearCount}</div> : null}
                           {entry.fishingDurationDays ? <div style={styles.muted}>Pyyntiaika: {entry.fishingDurationDays}</div> : null}
+                          {getEntryConsumerListing(entry) ? (
+                            <div style={{ ...styles.noticeInfo, marginTop: 10, display: "grid", gap: 7 }}>
+                              <div><strong>Suoraan kuluttajille</strong> · {getEntryConsumerListing(entry).status === "published" ? "Myynnissä" : getEntryConsumerListing(entry).status === "sold_out" ? "Loppuunmyyty" : getEntryConsumerListing(entry).status}</div>
+                              <div style={{ ...styles.small, overflowWrap: "anywhere" }}>{getConsumerListingUrl(getEntryConsumerListing(entry).id, getPublicAppBaseUrl())}</div>
+                              <div style={styles.row}>
+                                <a href={getConsumerListingUrl(getEntryConsumerListing(entry).id, getPublicAppBaseUrl())} target="_blank" rel="noreferrer" style={{ fontWeight: 800 }}>Avaa myynti-ilmoitus</a>
+                                <button type="button" style={styles.button} onClick={() => copyConsumerListingLink(getEntryConsumerListing(entry))}>Kopioi linkki</button>
+                              </div>
+                            </div>
+                          ) : null}
                           {isEntryOfferedForSale(entry) ? (
                             <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                           ) : null}
                           {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                         </div>
                         <div style={styles.row}>
-                          {!isEntryOfferedForSale(entry) && String(entry.ownerUserId || profile.id) === String(profile.id) ? (
+                          {!isEntryOfferedForSale(entry) && !getEntryConsumerListing(entry) && String(entry.ownerUserId || profile.id) === String(profile.id) ? (
                             <button
                               style={{
                                 ...styles.button,
