@@ -15671,9 +15671,9 @@ export default function App() {
     setSpeciesRows([createSpeciesRow()]);
     setAuctionImageFile(null);
     setAuctionImagePreviewUrl("");
-    setPendingEntriesScrollTarget(savedCatchScrollTarget);
+    setPendingEntriesScrollTarget(isConsumerSale ? "" : savedCatchScrollTarget);
     setRefreshTick((prev) => prev + 1);
-    setActiveTab(isCatchAuction ? "auctions" : "entries");
+    setActiveTab(isCatchAuction ? "auctions" : isConsumerSale ? "offers" : "entries");
   };
 
   const handleSaveProcessed = async () => {
