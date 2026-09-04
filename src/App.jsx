@@ -19806,7 +19806,7 @@ export default function App() {
                   </div>
                 ) : null}
                 {form.saleMode !== "consumer" ? <div style={styles.field}><label>Aikaisin toimitus</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={form.earliestDeliveryDate} onChange={(e) => setForm({ ...form, earliestDeliveryDate: e.target.value })} /></div> : null}
-                <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div>
+                {form.saleMode !== "consumer" ? <div style={styles.field}><label><input type="checkbox" checked={form.coldTransport} onChange={(e) => setForm({ ...form, coldTransport: e.target.checked })} /> Kylmäkuljetus</label></div> : null}
                 {form.saleMode === "fixed" ? <div style={{ ...styles.field, ...styles.fieldFull }}>
                   <div style={{ ...styles.offerBox, ...styles.stack, ...(!DELIVERY_COMPETITION_AVAILABLE ? styles.disabledSection : null) }}>
                     <label><input type="checkbox" checked={DELIVERY_COMPETITION_AVAILABLE && form.deliveryPossible} disabled /> Kilpailuta kuljetus</label>
@@ -19860,7 +19860,7 @@ export default function App() {
                     ) : null}
                   </div>
                 </div> : null}
-                {DELIVERY_COMPETITION_AVAILABLE && form.deliveryPossible ? (
+                {form.saleMode !== "consumer" ? (DELIVERY_COMPETITION_AVAILABLE && form.deliveryPossible ? (
                   <>
                     {form.transportMode === "terminal" || form.transportMode === "collection_point" ? (
                       <div style={{ ...styles.field, ...styles.fieldFull, ...styles.stack }}>
@@ -20031,7 +20031,7 @@ export default function App() {
                       />
                     </div>
                   </>
-                )}
+                )) : null}
                 {form.saleMode === "fixed" ? (
                 <div style={{ ...styles.field, ...styles.fieldFull }}>
                   <div style={{ ...styles.offerBox, ...styles.stack }}>
