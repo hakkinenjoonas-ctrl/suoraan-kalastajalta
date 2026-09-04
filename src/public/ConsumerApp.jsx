@@ -12,10 +12,21 @@ const TERMS_URL = "https://www.suoraankalastajalta.fi/tietosuojaseloste-ja-k%C3%
 const GOOGLE_PLAY_URL = String(import.meta.env?.VITE_GOOGLE_PLAY_URL || "https://play.google.com/store/apps/details?id=fi.suoraankalastajalta.app").trim();
 const CONFIGURED_APP_STORE_URL = String(import.meta.env?.VITE_APP_STORE_URL || "").trim();
 const APP_STORE_SEARCH_URL = "https://apps.apple.com/fi/search?term=Suoraan%20Kalastajalta";
+const money = (value) => `${Number(value || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+const pickupWindow = (start, end) => {
+  if (!start) return "Noutoaika sovitaan kalastajan kanssa";
+  const startDate = new Date(start);
+  const endDate = end ? new Date(end) : null;
+  const date = startDate.toLocaleDateString("fi-FI", { weekday: "long", day: "numeric", month: "numeric", year: "numeric" });
+  const startTime = startDate.toLocaleTimeString("fi-FI", { hour: "2-digit", minute: "2-digit" });
+  const endTime = endDate?.toLocaleTimeString("fi-FI", { hour: "2-digit", minute: "2-digit" });
+  return `${date} klo ${startTime}${endTime ? `–${endTime}` : ""}`;
+};
 
 export default function ConsumerApp({ initialListingId = "" }) {
   const requestedListingId = initialListingId || getRequestedConsumerListingId();
   const [session, setSession] = useState(null);
+  const [accountRole, setAccountRole] = useState("");
   const [listings, setListings] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +37,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
   const [authMode, setAuthMode] = useState("signin");
   const [authForm, setAuthForm] = useState({ email: "", password: "", name: "", acceptedTerms: false });
   const [authError, setAuthError] = useState("");
-  const [installPromptOpen, setInstallPromptOpen] = useState(false);
+  const [reservationConfirmation, setReservationConfirmation] = useState(null);
 
   const loadListings = useCallback(async () => {
     setLoading(true);
@@ -92,6 +103,23 @@ export default function ConsumerApp({ initialListingId = "" }) {
     return () => listener.subscription.unsubscribe();
   }, [loadListings, loadOrders]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!session?.user?.id) {
+      setAccountRole("");
+      return () => { cancelled = true; };
+    }
+    void supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", session.user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setAccountRole(String(data?.role || ""));
+      });
+    return () => { cancelled = true; };
+  }, [session?.user?.id]);
+
   const openAuth = () => {
     setAuthError("");
     setAuthOpen(true);
@@ -137,9 +165,14 @@ export default function ConsumerApp({ initialListingId = "" }) {
     }
   };
 
-  const reserve = async ({ listing, variant, unitCount, phone, note }) => {
+  const reserve = async ({ listing, variant, unitCount, customerName, phone, note }) => {
     if (!session?.access_token) {
       openAuth();
+      return false;
+    }
+    const normalizedCustomerName = String(customerName || "").trim();
+    if (normalizedCustomerName.length < 2) {
+      setError("Täytä varaajan nimi.");
       return false;
     }
     setBusy(true);
@@ -151,15 +184,28 @@ export default function ConsumerApp({ initialListingId = "" }) {
       setBusy(false);
       return false;
     }
-    const result = await invokeConsumerOrderAction(session.access_token, { action: "reserve", listingId: listing.id, variantId: variant.id, unitCount, phone, note });
+    const result = await invokeConsumerOrderAction(session.access_token, { action: "reserve", listingId: listing.id, variantId: variant.id, unitCount, name: normalizedCustomerName, phone, note });
     setBusy(false);
     if (result.error) {
       setError(result.error.message || "Varaus epäonnistui.");
       return false;
     }
-    setMessage("Kalaerä on varattu. Kalastaja saa varauksesta tiedon.");
+    const savedOrder = result.data?.order || {};
+    setReservationConfirmation({
+      id: savedOrder.id || "",
+      customerName: normalizedCustomerName,
+      productName: listing.productName,
+      variantLabel: variant.label,
+      unitCount,
+      totalIncludingVat: savedOrder.total_including_vat,
+      pickupLocation: listing.pickupLocation || listing.municipality,
+      pickupStart: listing.pickupStart,
+      pickupEnd: listing.pickupEnd,
+      email: session.user?.email || "",
+      confirmationEmailSent: result.data?.confirmationEmailSent === true,
+    });
+    setMessage("Varaus on vastaanotettu ja tallennettu Omiin varauksiin.");
     await Promise.all([loadListings(), loadOrders(session)]);
-    if (!Capacitor.isNativePlatform()) setInstallPromptOpen(true);
     return true;
   };
 
@@ -198,6 +244,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
         busy={busy}
         message={message}
         onOpenAuth={openAuth}
+        onReturnToMainApp={Capacitor.isNativePlatform() && accountRole && accountRole !== "consumer" ? () => window.location.replace("/") : null}
         onSignOut={() => supabase.auth.signOut()}
         onReserve={reserve}
         onSubscribe={subscribe}
@@ -216,18 +263,32 @@ export default function ConsumerApp({ initialListingId = "" }) {
           </form>
         </div>
       ) : null}
-      {installPromptOpen ? (
-        <div className="consumer-overlay" role="dialog" aria-modal="true" aria-label="Jatka sovelluksessa" onMouseDown={(event) => { if (event.target === event.currentTarget) setInstallPromptOpen(false); }}>
+      {reservationConfirmation ? (
+        <div className="consumer-overlay" role="dialog" aria-modal="true" aria-label="Varausvahvistus" onMouseDown={(event) => { if (event.target === event.currentTarget) setReservationConfirmation(null); }}>
           <div className="consumer-dialog consumer-form">
             <div className="consumer-dialog-head">
-              <div><div className="consumer-kicker">Varaus onnistui</div><h2>Jatka samalla tilillä sovelluksessa</h2></div>
-              <button type="button" className="consumer-close" onClick={() => setInstallPromptOpen(false)} aria-label="Sulje">×</button>
+              <div><div className="consumer-kicker">Varausvahvistus</div><h2>Varaus meni perille</h2></div>
+              <button type="button" className="consumer-close" onClick={() => setReservationConfirmation(null)} aria-label="Sulje">×</button>
             </div>
-            <p className="consumer-description">Kirjaudu sovellukseen samalla sähköpostilla ja salasanalla. Näet varauksesi ja saat puhelimeen ilmoitukset uusista kiinnostavista kalaeristä.</p>
-            <a className="consumer-button consumer-primary" href={GOOGLE_PLAY_URL} target="_blank" rel="noreferrer" style={{ textAlign: "center", textDecoration: "none" }}>Lataa Google Playsta</a>
-            <a className="consumer-button" href={CONFIGURED_APP_STORE_URL || APP_STORE_SEARCH_URL} target="_blank" rel="noreferrer" style={{ textAlign: "center", textDecoration: "none" }}>{CONFIGURED_APP_STORE_URL ? "Lataa App Storesta" : "Etsi App Storesta"}</a>
-            {!CONFIGURED_APP_STORE_URL ? <div className="consumer-small">Suora App Store -latauslinkki korvaa hakulinkin automaattisesti, kun App Storen sovellustunnus lisätään julkaisuasetuksiin.</div> : null}
-            <button type="button" className="consumer-button" onClick={() => setInstallPromptOpen(false)}>Jatka selaimessa</button>
+            <p className="consumer-description"><strong>{reservationConfirmation.customerName}</strong>, varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.</p>
+            <div className="consumer-summary">
+              <span><strong>Tuote:</strong> {reservationConfirmation.productName}</span>
+              <span><strong>Määrä:</strong> {reservationConfirmation.unitCount} × {reservationConfirmation.variantLabel}</span>
+              <span><strong>Yhteensä:</strong> {money(reservationConfirmation.totalIncludingVat)}</span>
+              <span><strong>Nouto:</strong> {reservationConfirmation.pickupLocation}</span>
+              <span><strong>Noudettavissa:</strong> {pickupWindow(reservationConfirmation.pickupStart, reservationConfirmation.pickupEnd)}</span>
+              {reservationConfirmation.id ? <span><strong>Varaustunnus:</strong> {reservationConfirmation.id.slice(0, 8).toUpperCase()}</span> : null}
+            </div>
+            <div className="consumer-notice consumer-success">{reservationConfirmation.confirmationEmailSent ? `Vahvistus lähetettiin myös sähköpostiin ${reservationConfirmation.email}.` : "Varaus näkyy nyt Omat varaukset -kohdassa."}</div>
+            {!Capacitor.isNativePlatform() ? (
+              <>
+                <p className="consumer-description">Voit käyttää samaa tiliä sovelluksessa ja saada puhelimeen ilmoituksia uusista kalaeristä.</p>
+                <a className="consumer-button consumer-primary" href={GOOGLE_PLAY_URL} target="_blank" rel="noreferrer" style={{ textAlign: "center", textDecoration: "none" }}>Lataa Google Playsta</a>
+                <a className="consumer-button" href={CONFIGURED_APP_STORE_URL || APP_STORE_SEARCH_URL} target="_blank" rel="noreferrer" style={{ textAlign: "center", textDecoration: "none" }}>{CONFIGURED_APP_STORE_URL ? "Lataa App Storesta" : "Etsi App Storesta"}</a>
+                {!CONFIGURED_APP_STORE_URL ? <div className="consumer-small">Suora App Store -latauslinkki korvaa hakulinkin automaattisesti, kun App Storen sovellustunnus lisätään julkaisuasetuksiin.</div> : null}
+              </>
+            ) : null}
+            <button type="button" className="consumer-button" onClick={() => setReservationConfirmation(null)}>Näytä omat varaukset</button>
           </div>
         </div>
       ) : null}

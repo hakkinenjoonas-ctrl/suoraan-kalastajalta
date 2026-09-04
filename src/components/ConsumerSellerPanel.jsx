@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { Browser } from "@capacitor/browser";
 import { supabase } from "../lib/supabase.js";
 import { invokeConsumerOrderAction } from "../services/edgeFunctions.js";
 import { getConsumerListingUrl } from "../lib/consumerMarketplace.js";
@@ -58,6 +59,14 @@ export default function ConsumerSellerPanel({ profile }) {
     setBusyId("");
   };
 
+  const openExternal = async (url) => {
+    try {
+      await Browser.open({ url });
+    } catch {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  };
+
   if (unavailable) {
     return <div style={{ border: "1px dashed #94a3b8", borderRadius: 18, padding: 16, color: "#64748b", background: "#f8fafc" }}><strong>Kuluttajamyynti</strong><div style={{ marginTop: 5 }}>Kuluttajatilauksia ei voitu hakea. Nykyinen B2B-myynti toimii normaalisti.</div></div>;
   }
@@ -66,7 +75,7 @@ export default function ConsumerSellerPanel({ profile }) {
     <div style={{ border: "1px solid #86efac", borderRadius: 20, padding: 18, background: "#f0fdf4", display: "grid", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
         <div><strong style={{ fontSize: 20 }}>Kuluttajatilaukset</strong><div style={{ color: "#47705c", marginTop: 4 }}>B2C-varaukset ovat erillään yritysostajien tarjouksista.</div></div>
-        <a href="/kuluttaja" target="_blank" rel="noreferrer" style={{ color: "#166534", fontWeight: 800 }}>Avaa kuluttajamarkkinapaikka</a>
+        <button type="button" onClick={() => openExternal(getConsumerListingUrl("", DEFAULT_PUBLIC_APP_URL))} style={{ color: "#166534", fontWeight: 800 }}>Avaa kuluttajamarkkinapaikka</button>
       </div>
       {listings.length > 0 ? (
         <div style={{ display: "grid", gap: 9 }}>
@@ -84,7 +93,7 @@ export default function ConsumerSellerPanel({ profile }) {
                 <div style={{ color: "#526b60", fontSize: 13 }}>Nouto {pickupTime(listing.pickup_start, listing.pickup_end)} · {listing.pickup_location}</div>
                 <div style={{ color: "#526b60", fontSize: 13 }}>Tilaukset viimeistään {listing.order_deadline ? new Date(listing.order_deadline).toLocaleString("fi-FI", { dateStyle: "short", timeStyle: "short" }) : "–"}</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <a href={link} target="_blank" rel="noreferrer">Avaa julkinen linkki</a>
+                  <button type="button" onClick={() => openExternal(link)}>Avaa julkinen linkki</button>
                   <button type="button" onClick={async () => { await navigator.clipboard.writeText(link); setMessage("Kalaerän julkinen linkki kopioitiin."); }}>Kopioi linkki</button>
                 </div>
               </div>

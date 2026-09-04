@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 const safe = (value: unknown) => String(value || "").trim();
+const htmlEscapes: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const escapeHtml = (value: unknown) => safe(value).replace(/[&<>"']/g, (character) => htmlEscapes[character] || character);
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -23,13 +25,19 @@ Deno.serve(async (request) => {
         p_listing_id: safe(body.listingId),
         p_variant_id: safe(body.variantId),
         p_unit_count: Number(body.unitCount || 0),
+        p_name: safe(body.name),
         p_phone: safe(body.phone),
         p_note: safe(body.note),
       });
       if (error) return json(400, { error: error.message });
+      let confirmationEmailSent = false;
       if (data?.seller_user_id && serviceRoleKey) {
         const admin = createClient(url, serviceRoleKey);
-        const { data: listing } = await admin.from("consumer_listings").select("product_name").eq("id", data.listing_id).maybeSingle();
+        const { data: listing } = await admin
+          .from("consumer_listings")
+          .select("product_name, seller_name, pickup_location, pickup_start, pickup_end")
+          .eq("id", data.listing_id)
+          .maybeSingle();
         try {
           await fetch(`${url}/functions/v1/send-push-notification`, {
             method: "POST",
@@ -45,8 +53,32 @@ Deno.serve(async (request) => {
         } catch (pushError) {
           console.error("consumer-order-action:seller-push-failed", String(pushError));
         }
+        const resendApiKey = safe(Deno.env.get("RESEND_API_KEY"));
+        const recipientEmail = safe(data.consumer_email).toLowerCase();
+        if (resendApiKey && recipientEmail) {
+          const fromEmail = safe(Deno.env.get("FROM_EMAIL") || Deno.env.get("RESEND_FROM_EMAIL")) || "Suoraan Kalastajalta <ilmoitukset@mail.suoraankalastajalta.fi>";
+          const pickupStart = listing?.pickup_start ? new Date(listing.pickup_start).toLocaleString("fi-FI", { timeZone: "Europe/Helsinki", dateStyle: "short", timeStyle: "short" }) : "Sovitaan kalastajan kanssa";
+          const pickupEnd = listing?.pickup_end ? new Date(listing.pickup_end).toLocaleTimeString("fi-FI", { timeZone: "Europe/Helsinki", hour: "2-digit", minute: "2-digit" }) : "";
+          try {
+            const emailResponse = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from: fromEmail,
+                to: [recipientEmail],
+                subject: `Varausvahvistus: ${safe(listing?.product_name) || "kalaerä"}`,
+                html: `<h2>Varaus meni perille</h2><p>Hei ${escapeHtml(data.consumer_name)},</p><p>Varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.</p><p><strong>Tuote:</strong> ${escapeHtml(listing?.product_name || "Kalaerä")}<br><strong>Määrä:</strong> ${Number(data.unit_count || 0)} × ${escapeHtml(data.variant_label)}<br><strong>Yhteensä:</strong> ${Number(data.total_including_vat || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €<br><strong>Nouto:</strong> ${escapeHtml(listing?.pickup_location || "Sovitaan kalastajan kanssa")}<br><strong>Noudettavissa:</strong> ${escapeHtml(`${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}`)}<br><strong>Varaustunnus:</strong> ${escapeHtml(safe(data.id).slice(0, 8).toUpperCase())}</p><p>Maksu suoritetaan suoraan kalastajalle noudon yhteydessä.</p>`,
+                text: `Varaus meni perille\n\nHei ${safe(data.consumer_name)}, varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.\n\nTuote: ${safe(listing?.product_name) || "Kalaerä"}\nMäärä: ${Number(data.unit_count || 0)} × ${safe(data.variant_label)}\nYhteensä: ${Number(data.total_including_vat || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €\nNouto: ${safe(listing?.pickup_location) || "Sovitaan kalastajan kanssa"}\nNoudettavissa: ${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}\nVaraustunnus: ${safe(data.id).slice(0, 8).toUpperCase()}\n\nMaksu suoritetaan suoraan kalastajalle noudon yhteydessä.`,
+              }),
+            });
+            confirmationEmailSent = emailResponse.ok;
+            if (!emailResponse.ok) console.error("consumer-order-action:confirmation-email-failed", await emailResponse.text());
+          } catch (emailError) {
+            console.error("consumer-order-action:confirmation-email-failed", String(emailError));
+          }
+        }
       }
-      return json(200, { order: data });
+      return json(200, { order: data, confirmationEmailSent });
     }
 
     if (action === "subscribe") {

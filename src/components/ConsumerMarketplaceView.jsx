@@ -43,6 +43,7 @@ export default function ConsumerMarketplaceView({
   message,
   initialListingId = "",
   onOpenAuth,
+  onReturnToMainApp,
   onSignOut,
   onReserve,
   onSubscribe,
@@ -54,6 +55,7 @@ export default function ConsumerMarketplaceView({
   const [handledInitialListingId, setHandledInitialListingId] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState("");
   const [unitCount, setUnitCount] = useState(1);
+  const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -65,6 +67,11 @@ export default function ConsumerMarketplaceView({
   const visibleListings = useMemo(() => filterConsumerListings(listings, { search, species, municipality }), [listings, search, species, municipality]);
   const selectedVariant = selected?.variants?.find((variant) => variant.id === selectedVariantId) || selected?.variants?.[0] || null;
   const totals = selectedVariant ? calculateConsumerReservationEstimate({ variant: selectedVariant, unitCount, vatRate: selected.vatRate }) : null;
+
+  useEffect(() => {
+    const accountName = String(user?.user_metadata?.display_name || "").trim();
+    if (accountName) setCustomerName((current) => current || accountName);
+  }, [user]);
 
   const openListing = (listing, updateUrl = true) => {
     setSelected(listing);
@@ -93,7 +100,7 @@ export default function ConsumerMarketplaceView({
       onOpenAuth({ listingId: selected?.id });
       return;
     }
-    const ok = await onReserve({ listing: selected, variant: selectedVariant, unitCount, phone, note });
+    const ok = await onReserve({ listing: selected, variant: selectedVariant, unitCount, customerName, phone, note });
     if (ok) closeListing();
   };
 
@@ -172,6 +179,7 @@ export default function ConsumerMarketplaceView({
             <span><strong>Suoraan Kalastajalta</strong><span>Tuoretta lähikalaa ilman välikäsiä</span></span>
           </a>
           <div className="consumer-actions">
+            {onReturnToMainApp ? <button className="consumer-button consumer-primary" onClick={onReturnToMainApp}>Palaa kalastajanäkymään</button> : null}
             <button className="consumer-button" onClick={() => setAlertsOpen(true)}>Kalaeräilmoitukset</button>
             {user ? (
               <button className="consumer-button" onClick={onSignOut}>Kirjaudu ulos</button>
@@ -254,12 +262,13 @@ export default function ConsumerMarketplaceView({
               <a className="consumer-button" href={getConsumerAppDeepLink(selected.id)} style={{ textAlign: "center", textDecoration: "none" }}>Avaa Suoraan Kalastajalta -sovelluksessa</a>
               <div className="consumer-field"><label>{selectedVariant?.unitType === "whole_fish" ? "Kalan kokoluokka" : "Pakkauskoko"}</label><select className="consumer-input" value={selectedVariant?.id || ""} onChange={(event) => { setSelectedVariantId(event.target.value); setUnitCount(1); }}>{selected.variants.filter((variant) => variant.availableUnits > 0).map((variant) => <option key={variant.id} value={variant.id}>{variant.label} · {variant.unitType === "whole_fish" ? `${variant.minWeightKg}–${variant.maxWeightKg} kg/kpl · ${money(variant.pricePerKg)}/kg` : `${variant.packageSizeKg} kg · ${money(variant.unitPrice)}`}</option>)}</select></div>
               <div className="consumer-field"><label>{selectedVariant?.unitType === "whole_fish" ? "Kalojen määrä" : "Pakkausten määrä"}</label><select className="consumer-input" value={unitCount} onChange={(event) => setUnitCount(Number(event.target.value))}>{Array.from({ length: Math.min(selectedVariant?.availableUnits || 0, 10) }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count} {selectedVariant?.unitType === "whole_fish" ? "kpl" : "pakkausta"}</option>)}</select></div>
+              <div className="consumer-field"><label>Varaajan nimi</label><input className="consumer-input" autoComplete="name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Etunimi ja sukunimi" /></div>
               <div className="consumer-field"><label>Puhelinnumero noutoa varten</label><input className="consumer-input" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="040 123 4567" /></div>
               <div className="consumer-field"><label>Viesti kalastajalle (valinnainen)</label><textarea className="consumer-input" rows="3" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Esimerkiksi arvioitu noutoaika" /></div>
               {selectedVariant?.unitType === "whole_fish" ? <div className="consumer-summary"><span><strong>Arvioitu yhteispaino:</strong> noin {totals?.estimatedWeightKg.toLocaleString("fi-FI")} kg</span><span>Lopullinen paino ja hinta vahvistetaan punnituksen jälkeen.</span></div> : null}
               <div className="consumer-total"><span>{totals?.isEstimate ? "Arviohinta" : "Yhteensä"}</span><span>{money(totals?.grossTotal)}</span></div>
               <div className="consumer-small">Hinta sisältää arvonlisäveron. Maksu suoritetaan suoraan kalastajalle noudon yhteydessä. Varaus vähentää valitun pakkauskoon tai kalakokoluokan saldoa.</div>
-              <button className="consumer-button consumer-primary" disabled={busy || !phone.trim() || orderingClosed(selected)} onClick={submitReservation}>{orderingClosed(selected) ? "Tilausaika on päättynyt" : busy ? "Varataan…" : user ? "Vahvista varaus" : "Kirjaudu ja varaa"}</button>
+              <button className="consumer-button consumer-primary" disabled={busy || !customerName.trim() || !phone.trim() || orderingClosed(selected)} onClick={submitReservation}>{orderingClosed(selected) ? "Tilausaika on päättynyt" : busy ? "Varataan…" : user ? "Vahvista varaus" : "Kirjaudu ja varaa"}</button>
             </div>
           </div>
         </div>

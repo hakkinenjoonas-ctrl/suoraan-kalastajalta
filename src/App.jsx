@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { App as CapacitorApp } from "@capacitor/app";
+import { Browser } from "@capacitor/browser";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
@@ -9522,6 +9523,14 @@ export default function App() {
       setAuthInfo("Kuluttajailmoituksen julkinen linkki kopioitiin.");
     } catch {
       setAuthInfo(`Kuluttajailmoituksen julkinen linkki: ${link}`);
+    }
+  };
+  const openConsumerListingLink = async (listing) => {
+    const link = getConsumerListingUrl(listing?.id, getPublicAppBaseUrl());
+    try {
+      await Browser.open({ url: link });
+    } catch {
+      window.open(link, "_blank", "noopener,noreferrer");
     }
   };
   const isCatchAuction = form.saleMode === "auction";
@@ -20328,7 +20337,7 @@ export default function App() {
                               <div><strong>Suoraan kuluttajille</strong> · {getEntryConsumerListing(entry).status === "published" ? "Myynnissä" : getEntryConsumerListing(entry).status === "sold_out" ? "Loppuunmyyty" : getEntryConsumerListing(entry).status}</div>
                               <div style={{ ...styles.small, overflowWrap: "anywhere" }}>{getConsumerListingUrl(getEntryConsumerListing(entry).id, getPublicAppBaseUrl())}</div>
                               <div style={styles.row}>
-                                <a href={getConsumerListingUrl(getEntryConsumerListing(entry).id, getPublicAppBaseUrl())} target="_blank" rel="noreferrer" style={{ fontWeight: 800 }}>Avaa myynti-ilmoitus</a>
+                                <button type="button" style={{ ...styles.button, fontWeight: 800 }} onClick={() => openConsumerListingLink(getEntryConsumerListing(entry))}>Avaa myynti-ilmoitus</button>
                                 <button type="button" style={styles.button} onClick={() => copyConsumerListingLink(getEntryConsumerListing(entry))}>Kopioi linkki</button>
                               </div>
                             </div>
