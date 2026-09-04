@@ -112,31 +112,25 @@ export default function ConsumerMarketplaceView({
         button, input, select, textarea { font: inherit; }
         .consumer-marketplace { min-height: 100dvh; color: #17352c; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: radial-gradient(circle at top left, rgba(194, 224, 206, .72), transparent 34rem), #f4f8f5; }
         .consumer-shell { width: min(1120px, 100%); margin: 0 auto; padding: 18px clamp(14px, 4vw, 36px) 80px; }
-        .consumer-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 0 22px; }
-        .consumer-brand { display: flex; align-items: center; gap: 12px; color: #123d32; text-decoration: none; }
-        .consumer-brand img { width: 62px; height: 62px; object-fit: contain; }
-        .consumer-brand strong { display: block; font-size: clamp(18px, 3vw, 25px); letter-spacing: -.03em; }
-        .consumer-brand span { display: block; color: #527066; font-size: 13px; margin-top: 2px; }
         .consumer-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
         .consumer-button { border: 1px solid #bdd2c7; border-radius: 999px; background: rgba(255,255,255,.88); color: #17483a; min-height: 44px; padding: 10px 17px; font-weight: 750; cursor: pointer; }
         .consumer-button:hover { border-color: #3d8069; }
         .consumer-primary { border-color: #17694f; background: #17694f; color: #fff; box-shadow: 0 8px 24px rgba(23,105,79,.18); }
         .consumer-primary:disabled, .consumer-button:disabled { opacity: .58; cursor: wait; }
-        .consumer-hero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: 18px; align-items: stretch; margin-bottom: 18px; }
-        .consumer-hero-main, .consumer-hero-side { border: 1px solid #c9dbd2; border-radius: 26px; padding: clamp(22px, 5vw, 42px); overflow: hidden; }
-        .consumer-hero-main { background: linear-gradient(135deg, #123d32 0%, #1e765d 100%); color: white; position: relative; }
-        .consumer-hero-main:after { content: ""; position: absolute; width: 230px; height: 230px; border-radius: 50%; right: -75px; bottom: -90px; background: rgba(255,255,255,.09); }
+        .consumer-hero { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 128px; margin-bottom: 14px; padding: 22px clamp(22px, 4vw, 36px); border: 1px solid #1f7058; border-radius: 26px; color: #fff; background: linear-gradient(135deg, #123d32 0%, #1e765d 100%); box-shadow: 0 14px 36px rgba(18,61,50,.12); overflow: hidden; position: relative; }
+        .consumer-hero:after { content: ""; position: absolute; width: 190px; height: 190px; border-radius: 50%; right: 24%; bottom: -130px; background: rgba(255,255,255,.08); pointer-events: none; }
+        .consumer-hero-brand { display: flex; align-items: center; gap: 16px; min-width: 0; position: relative; z-index: 1; }
+        .consumer-hero-brand img { width: 72px; height: 72px; object-fit: contain; flex: 0 0 auto; }
+        .consumer-hero-brand h1 { margin: 0; font-size: clamp(27px, 4vw, 40px); line-height: 1; letter-spacing: -.045em; }
+        .consumer-hero-brand p { margin: 7px 0 0; color: rgba(255,255,255,.86); font-size: clamp(14px, 2vw, 17px); font-weight: 650; }
+        .consumer-hero .consumer-actions { position: relative; z-index: 1; }
+        .consumer-hero .consumer-button { border-color: rgba(255,255,255,.5); background: rgba(255,255,255,.96); }
+        .consumer-hero .consumer-primary { border-color: #fff; background: #fff; color: #145c46; box-shadow: 0 8px 24px rgba(0,0,0,.14); }
         .consumer-kicker { text-transform: uppercase; letter-spacing: .13em; font-size: 12px; font-weight: 850; opacity: .82; }
-        .consumer-hero h1 { margin: 12px 0; max-width: 690px; font-size: clamp(34px, 7vw, 64px); line-height: .98; letter-spacing: -.055em; }
-        .consumer-hero p { margin: 0; max-width: 650px; line-height: 1.55; font-size: clamp(16px, 2.4vw, 20px); opacity: .9; }
-        .consumer-hero-side { background: rgba(255,255,255,.86); display: flex; flex-direction: column; justify-content: space-between; gap: 24px; }
-        .consumer-hero-side strong { font-size: 22px; line-height: 1.15; }
-        .consumer-hero-side p { color: #567066; font-size: 15px; }
-        .consumer-demo { display: inline-flex; align-items: center; width: fit-content; border-radius: 999px; padding: 7px 11px; background: #fff2cc; color: #755915; font-weight: 800; font-size: 12px; }
-        .consumer-filters { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(170px, .42fr)); gap: 10px; padding: 14px; margin: 18px 0; border-radius: 20px; background: rgba(255,255,255,.84); border: 1px solid #d4e1da; }
+        .consumer-filters { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(170px, .42fr)); gap: 10px; padding: 12px; margin: 14px 0; border-radius: 20px; background: rgba(255,255,255,.84); border: 1px solid #d4e1da; }
         .consumer-input { width: 100%; min-height: 48px; border: 1px solid #c8d8d0; border-radius: 14px; padding: 11px 13px; background: white; color: #17352c; outline: none; }
         .consumer-input:focus { border-color: #28745b; box-shadow: 0 0 0 3px rgba(40,116,91,.12); }
-        .consumer-list-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin: 28px 0 12px; }
+        .consumer-list-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin: 20px 0 12px; }
         .consumer-list-heading h2 { margin: 0; font-size: clamp(25px, 4vw, 34px); letter-spacing: -.035em; }
         .consumer-list-heading span { color: #60796f; font-weight: 650; }
         .consumer-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
@@ -167,15 +161,15 @@ export default function ConsumerMarketplaceView({
         .consumer-field label { font-size: 13px; font-weight: 800; color: #45665a; }
         .consumer-total { display: flex; justify-content: space-between; gap: 12px; font-size: 21px; font-weight: 900; }
         .consumer-small { font-size: 12px; color: #6c8179; line-height: 1.45; }
-        @media (max-width: 850px) { .consumer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .consumer-hero { grid-template-columns: 1fr; } .consumer-hero-side { display: grid; grid-template-columns: 1fr auto; align-items: center; } }
-        @media (max-width: 620px) { .consumer-shell { padding-top: 8px; } .consumer-header { align-items: flex-start; } .consumer-brand img { width: 48px; height: 48px; } .consumer-brand span { display: none; } .consumer-actions .consumer-button:first-child { display: none; } .consumer-hero-main, .consumer-hero-side { border-radius: 20px; padding: 22px; } .consumer-hero-side { display: flex; } .consumer-filters { grid-template-columns: 1fr; } .consumer-grid { grid-template-columns: 1fr; } .consumer-card { flex-direction: row; } .consumer-card-image, .consumer-fish-placeholder { width: 34%; min-width: 118px; height: auto; min-height: 210px; } .consumer-fish-placeholder span { font-size: 42px; } .consumer-card-body { padding: 15px; } .consumer-price-row { align-items: center; } .consumer-order { grid-template-columns: 1fr; } }
+        @media (max-width: 850px) { .consumer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .consumer-hero { align-items: flex-start; flex-direction: column; gap: 18px; } .consumer-hero .consumer-actions { justify-content: flex-start; } }
+        @media (max-width: 620px) { .consumer-shell { padding-top: 8px; } .consumer-hero { min-height: 0; border-radius: 20px; padding: 18px; gap: 15px; } .consumer-hero-brand { gap: 12px; } .consumer-hero-brand img { width: 54px; height: 54px; } .consumer-hero-brand h1 { font-size: clamp(24px, 8vw, 32px); } .consumer-hero-brand p { margin-top: 5px; font-size: 13px; } .consumer-hero .consumer-actions { width: 100%; } .consumer-hero .consumer-button { min-height: 40px; padding: 8px 13px; } .consumer-filters { grid-template-columns: 1fr; } .consumer-grid { grid-template-columns: 1fr; } .consumer-card { flex-direction: row; } .consumer-card-image, .consumer-fish-placeholder { width: 34%; min-width: 118px; height: auto; min-height: 210px; } .consumer-fish-placeholder span { font-size: 42px; } .consumer-card-body { padding: 15px; } .consumer-price-row { align-items: center; } .consumer-order { grid-template-columns: 1fr; } }
       `}</style>
 
       <main className="consumer-shell">
-        <header className="consumer-header">
-          <a className="consumer-brand" href="/kuluttaja">
+        <section className="consumer-hero">
+          <a className="consumer-hero-brand" href="/kuluttaja" style={{ color: "inherit", textDecoration: "none" }}>
             <img src="/logo.png" alt="" />
-            <span><strong>Suoraan Kalastajalta</strong><span>Tuoretta lähikalaa ilman välikäsiä</span></span>
+            <div><h1>Suoraan Kalastajalta</h1><p>Tuoretta lähikalaa ilman välikäsiä</p></div>
           </a>
           <div className="consumer-actions">
             {onReturnToMainApp ? <button className="consumer-button consumer-primary" onClick={onReturnToMainApp}>Palaa kalastajanäkymään</button> : null}
@@ -185,21 +179,6 @@ export default function ConsumerMarketplaceView({
             ) : (
               <button className="consumer-button consumer-primary" onClick={() => onOpenAuth({})}>Kirjaudu</button>
             )}
-          </div>
-        </header>
-
-        <section className="consumer-hero">
-          <div className="consumer-hero-main">
-            <div className="consumer-kicker">Lähikalan markkinapaikka</div>
-            <h1>Tuore kala löytyy läheltä.</h1>
-            <p>Selaa kalastajien myynnissä olevia eriä ilman kirjautumista. Varaa sopiva pakkaus ja nouda se ilmoitetusta paikasta.</p>
-          </div>
-          <div className="consumer-hero-side">
-            <div>
-              <strong>Selaaminen toimii suoraan puhelimen selaimessa.</strong>
-              <p>Sovellusta ei tarvitse asentaa. Jos haluat ilmoitukset uusista kalaeristä puhelimeen, voit kirjautua ja ottaa ne käyttöön.</p>
-            </div>
-            <span className="consumer-demo">SUORAAN PAIKALLISELTA KALASTAJALTA</span>
           </div>
         </section>
 
