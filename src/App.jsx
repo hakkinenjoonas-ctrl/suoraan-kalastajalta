@@ -15089,7 +15089,7 @@ export default function App() {
         return;
       }
     }
-    if (form.listForSale && !String(form.packaging || "").trim()) {
+    if (form.listForSale && !isConsumerSale && !String(form.packaging || "").trim()) {
       setAuthError("Valitse, miten myytävä kalaerä on pakattu.");
       return;
     }
@@ -19682,7 +19682,7 @@ export default function App() {
                 ) : null}
                 {form.listForSale ? (
                   <>
-                <div style={{ ...styles.field, ...styles.fieldFull }}>
+                {form.saleMode !== "consumer" ? <div style={{ ...styles.field, ...styles.fieldFull }}>
                   <label>Pakkaustapa</label>
                   <select
                     style={styles.input}
@@ -19692,8 +19692,8 @@ export default function App() {
                     <option value="">Valitse, miten kalaerä on pakattu</option>
                     {FISH_PACKAGING_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
-                  <div style={styles.small}>{form.saleMode === "consumer" ? "Pakkaustapa näkyy kuluttajalle markkinapaikalla." : "Pakkaustapa näkyy yritysostajalle sekä kiinteähintaisessa tarjouksessa että huutokaupassa."}</div>
-                </div>
+                  <div style={styles.small}>Pakkaustapa näkyy yritysostajalle sekä kiinteähintaisessa tarjouksessa että huutokaupassa.</div>
+                </div> : null}
                 {form.saleMode === "consumer" ? (
                   <div style={{ ...styles.field, ...styles.fieldFull, ...styles.offerBox, ...styles.stack, background: "#ecfeff", borderColor: "#67e8f9" }}>
                     <div><strong>Suoraan kuluttajille</strong><div style={styles.small}>Tämä erä julkaistaan vain kuluttajamarkkinapaikalle. Yritysostajille ei lähetetä tarjousta eikä erää avata huutokauppaan.</div></div>
