@@ -15,25 +15,44 @@ Deno.serve(async (request) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     const authHeader = request.headers.get("Authorization") || "";
     const client = createClient(url, anonKey, { global: { headers: { Authorization: authHeader } } });
-    const { data: authData, error: authError } = await client.auth.getUser();
-    if (authError || !authData.user) return json(401, { error: "Kirjautuminen vaaditaan" });
     const body = await request.json().catch(() => ({}));
     const action = safe(body.action);
+    const { data: authData } = authHeader
+      ? await client.auth.getUser()
+      : { data: { user: null } };
+    const admin = serviceRoleKey ? createClient(url, serviceRoleKey) : null;
 
     if (action === "reserve") {
-      const { data, error } = await client.rpc("reserve_consumer_listing", {
+      const name = safe(body.name);
+      const email = safe(body.email).toLowerCase();
+      const phone = safe(body.phone);
+      if (name.length < 2) return json(400, { error: "Varaajan nimi vaaditaan" });
+      if (!/^\S+@\S+\.\S+$/.test(email)) return json(400, { error: "Voimassa oleva sähköpostiosoite vaaditaan" });
+      if (phone.length < 5) return json(400, { error: "Puhelinnumero vaaditaan" });
+
+      let isActiveConsumer = false;
+      if (authData.user && admin) {
+        const { data: profile } = await admin.from("profiles").select("role, is_active").eq("id", authData.user.id).maybeSingle();
+        isActiveConsumer = profile?.role === "consumer" && profile?.is_active === true;
+      }
+      if (!isActiveConsumer && !admin) return json(500, { error: "Varauspalvelun määritys puuttuu" });
+
+      const reservationClient = isActiveConsumer ? client : admin!;
+      const reservationFunction = isActiveConsumer ? "reserve_consumer_listing" : "reserve_consumer_listing_guest";
+      const reservationPayload = {
         p_listing_id: safe(body.listingId),
         p_variant_id: safe(body.variantId),
         p_unit_count: Number(body.unitCount || 0),
-        p_name: safe(body.name),
-        p_phone: safe(body.phone),
+        p_name: name,
+        p_phone: phone,
         p_note: safe(body.note),
-      });
+        ...(!isActiveConsumer ? { p_email: email } : {}),
+      };
+      const { data, error } = await reservationClient.rpc(reservationFunction, reservationPayload);
       if (error) return json(400, { error: error.message });
       let confirmationEmailSent = false;
       if (data?.seller_user_id && serviceRoleKey) {
-        const admin = createClient(url, serviceRoleKey);
-        const { data: listing } = await admin
+        const { data: listing } = await admin!
           .from("consumer_listings")
           .select("product_name, seller_name, pickup_location, pickup_start, pickup_end")
           .eq("id", data.listing_id)
@@ -80,6 +99,8 @@ Deno.serve(async (request) => {
       }
       return json(200, { order: data, confirmationEmailSent });
     }
+
+    if (!authData.user) return json(401, { error: "Kirjautuminen vaaditaan" });
 
     if (action === "subscribe") {
       const { data, error } = await client.from("consumer_alert_subscriptions").upsert({

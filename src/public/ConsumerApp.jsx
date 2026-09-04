@@ -165,26 +165,20 @@ export default function ConsumerApp({ initialListingId = "" }) {
     }
   };
 
-  const reserve = async ({ listing, variant, unitCount, customerName, phone, note }) => {
-    if (!session?.access_token) {
-      openAuth();
-      return false;
-    }
+  const reserve = async ({ listing, variant, unitCount, customerName, email, phone, note }) => {
     const normalizedCustomerName = String(customerName || "").trim();
+    const normalizedEmail = String(email || "").trim().toLowerCase();
     if (normalizedCustomerName.length < 2) {
       setError("Täytä varaajan nimi.");
       return false;
     }
-    setBusy(true);
-    setError("");
-    try {
-      await ensureConsumerAccount(session);
-    } catch (accountError) {
-      setError(String(accountError?.message || accountError));
-      setBusy(false);
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      setError("Täytä voimassa oleva sähköpostiosoite.");
       return false;
     }
-    const result = await invokeConsumerOrderAction(session.access_token, { action: "reserve", listingId: listing.id, variantId: variant.id, unitCount, name: normalizedCustomerName, phone, note });
+    setBusy(true);
+    setError("");
+    const result = await invokeConsumerOrderAction(session?.access_token || "", { action: "reserve", listingId: listing.id, variantId: variant.id, unitCount, name: normalizedCustomerName, email: normalizedEmail, phone, note });
     setBusy(false);
     if (result.error) {
       setError(result.error.message || "Varaus epäonnistui.");
@@ -201,11 +195,12 @@ export default function ConsumerApp({ initialListingId = "" }) {
       pickupLocation: listing.pickupLocation || listing.municipality,
       pickupStart: listing.pickupStart,
       pickupEnd: listing.pickupEnd,
-      email: session.user?.email || "",
+      email: savedOrder.consumer_email || normalizedEmail,
+      hasConsumerAccount: accountRole === "consumer",
       confirmationEmailSent: result.data?.confirmationEmailSent === true,
     });
-    setMessage("Varaus on vastaanotettu ja tallennettu Omiin varauksiin.");
-    await Promise.all([loadListings(), loadOrders(session)]);
+    setMessage(accountRole === "consumer" ? "Varaus on vastaanotettu ja tallennettu Omiin varauksiin." : "Varaus on vastaanotettu. Saat varausvahvistuksen sähköpostiisi.");
+    await Promise.all([loadListings(), session ? loadOrders(session) : Promise.resolve()]);
     return true;
   };
 
@@ -279,7 +274,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
               <span><strong>Noudettavissa:</strong> {pickupWindow(reservationConfirmation.pickupStart, reservationConfirmation.pickupEnd)}</span>
               {reservationConfirmation.id ? <span><strong>Varaustunnus:</strong> {reservationConfirmation.id.slice(0, 8).toUpperCase()}</span> : null}
             </div>
-            <div className="consumer-notice consumer-success">{reservationConfirmation.confirmationEmailSent ? `Vahvistus lähetettiin myös sähköpostiin ${reservationConfirmation.email}.` : "Varaus näkyy nyt Omat varaukset -kohdassa."}</div>
+            <div className="consumer-notice consumer-success">{reservationConfirmation.confirmationEmailSent ? `Vahvistus lähetettiin sähköpostiin ${reservationConfirmation.email}.` : reservationConfirmation.hasConsumerAccount ? "Varaus näkyy nyt Omat varaukset -kohdassa." : "Tallenna varaustunnus. Kalastaja on saanut varauksesi tiedot."}</div>
             {!Capacitor.isNativePlatform() ? (
               <>
                 <p className="consumer-description">Voit käyttää samaa tiliä sovelluksessa ja saada puhelimeen ilmoituksia uusista kalaeristä.</p>
@@ -288,7 +283,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
                 {!CONFIGURED_APP_STORE_URL ? <div className="consumer-small">Suora App Store -latauslinkki korvaa hakulinkin automaattisesti, kun App Storen sovellustunnus lisätään julkaisuasetuksiin.</div> : null}
               </>
             ) : null}
-            <button type="button" className="consumer-button" onClick={() => setReservationConfirmation(null)}>Näytä omat varaukset</button>
+            <button type="button" className="consumer-button" onClick={() => setReservationConfirmation(null)}>{reservationConfirmation.hasConsumerAccount ? "Näytä omat varaukset" : "Sulje"}</button>
           </div>
         </div>
       ) : null}
