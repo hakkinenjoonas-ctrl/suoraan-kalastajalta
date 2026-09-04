@@ -17787,6 +17787,25 @@ export default function App() {
     setPendingEntriesScrollTarget("sales");
     handleVisibleTabChange("entries");
   };
+  const handleOpenConsumerSale = () => {
+    setAuthError("");
+    setAuthInfo("");
+    setForm((previous) => ({
+      ...previous,
+      saleMode: "consumer",
+      listForSale: true,
+      offerToShops: false,
+      offerToRestaurants: false,
+      offerToWholesalers: false,
+      selectedBuyerIds: [],
+      deliveryPossible: false,
+      deliveryMethod: "Nouto",
+      deliveryArea: savedPickupAddress,
+      deliveryDestinations: [],
+      consumerPickupLocation: previous.consumerPickupLocation || savedPickupAddress,
+    }));
+    handleVisibleTabChange("add");
+  };
   const handleOpenCatchAuction = () => {
     if (!auctionsAvailable) {
       setAuthError("Huutokauppa ei ole juuri nyt käytettävissä.");
@@ -18395,12 +18414,37 @@ export default function App() {
                   onClick={handleOpenCatchSales}
                 >
                   <span style={{ display: "flex", width: "100%", flexDirection: "column", alignItems: "flex-start", gap: 5 }}>
-                    <strong style={{ fontSize: 19 }}>{profile.role === "processor" ? "Myy jaloste-erä" : "Myy saalis"}</strong>
+                    <strong style={{ fontSize: 19 }}>{profile.role === "processor" ? "Myy jaloste-erä" : "Myy saalis yritysostajille"}</strong>
                     <span style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>
-                      {profile.role === "processor" ? "Kirjaa erä ja tarjoa sitä ostajille." : "Valitse kirjattu erä ja tarjoa sitä kiinteällä hinnalla."}
+                      {profile.role === "processor" ? "Kirjaa erä ja tarjoa sitä ostajille." : "Valitse kirjattu erä ja tarjoa sitä yritysostajille kiinteällä hinnalla."}
                     </span>
                   </span>
                 </button>
+                {["member", "owner"].includes(profile.role) ? (
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.button,
+                      minHeight: 92,
+                      padding: 16,
+                      alignItems: "flex-start",
+                      justifyContent: "flex-start",
+                      textAlign: "left",
+                      borderColor: "#0891b2",
+                      background: "linear-gradient(135deg, #0891b2, #0e7490)",
+                      color: "#ffffff",
+                      boxShadow: "0 10px 22px rgba(8, 145, 178, 0.22)",
+                    }}
+                    onClick={handleOpenConsumerSale}
+                  >
+                    <span style={{ display: "flex", width: "100%", flexDirection: "column", alignItems: "flex-start", gap: 5 }}>
+                      <strong style={{ fontSize: 19 }}>Myy suoraan kuluttajalle</strong>
+                      <span style={{ fontSize: 13, fontWeight: 700, opacity: 0.9 }}>
+                        Kirjaa uusi saalis ja julkaise se vain kuluttajamarkkinapaikalle.
+                      </span>
+                    </span>
+                  </button>
+                ) : null}
                 {["member", "owner"].includes(profile.role) ? (
                   <button
                     type="button"
