@@ -77,7 +77,7 @@ export default function AuthView({ authMode, setAuthMode, authForm, setAuthForm,
           </div>
           <p style={{ ...styles.subtitle, ...(isMobile ? { marginTop: 4, fontSize: 15 } : {}) }}>
             {authMode === "signup"
-              ? "Luo tunnus kalastajalle tai ostajalle."
+              ? "Luo tunnus kalastajalle, yritysostajalle tai kuluttajalle."
               : authMode === "recovery"
               ? "Aseta uusi salasana turvallisesti."
               : "Kirjaudu sisään jatkaaksesi sovellukseen."}
@@ -128,7 +128,7 @@ export default function AuthView({ authMode, setAuthMode, authForm, setAuthForm,
                 <label>Rooli</label>
                 <select style={styles.input} value={authForm.requestedRole} onChange={(e) => setAuthForm((prev) => ({ ...prev, requestedRole: e.target.value }))}>
                   <option value="member">Kalastaja</option>
-                  <option value="buyer">Ostaja</option>
+                  <option value="buyer">Yritysostaja</option>
                   <option value="consumer">Kuluttaja</option>
                 </select>
               </div>
@@ -174,7 +174,7 @@ export default function AuthView({ authMode, setAuthMode, authForm, setAuthForm,
             </button>
           )}
 
-          {authMode === "signup" ? <div style={styles.muted}>Kuluttaja, ostaja ja kalastaja pääsevät appiin heti rekisteröitymisen jälkeen. Kuluttajapuoli toimii erillään yritysostajien B2B-myynnistä.</div> : null}
+          {authMode === "signup" ? <div style={styles.muted}>Kuluttaja, yritysostaja ja kalastaja pääsevät appiin heti rekisteröitymisen jälkeen. Kuluttajapuoli toimii erillään yritysostajien B2B-myynnistä.</div> : null}
 
         </form>
       </div>
