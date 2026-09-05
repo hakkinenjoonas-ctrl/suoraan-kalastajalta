@@ -132,8 +132,8 @@ export default function ConsumerMarketplaceView({
         .consumer-primary:disabled, .consumer-button:disabled { opacity: .58; cursor: wait; }
         .consumer-hero { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 128px; margin-bottom: 14px; padding: 22px clamp(22px, 4vw, 36px); border: 1px solid #1f7058; border-radius: 26px; color: #fff; background: linear-gradient(135deg, #123d32 0%, #1e765d 100%); box-shadow: 0 14px 36px rgba(18,61,50,.12); overflow: hidden; position: relative; }
         .consumer-hero:after { content: ""; position: absolute; width: 190px; height: 190px; border-radius: 50%; right: 24%; bottom: -130px; background: rgba(255,255,255,.08); pointer-events: none; }
-        .consumer-hero-brand { display: flex; align-items: center; gap: 16px; min-width: 0; position: relative; z-index: 1; }
-        .consumer-hero-brand img { width: 72px; height: 72px; object-fit: contain; flex: 0 0 auto; }
+        .consumer-hero-brand { display: flex; align-items: center; gap: clamp(20px, 3vw, 38px); min-width: 0; position: relative; z-index: 1; }
+        .consumer-hero-brand img { width: clamp(112px, 13vw, 148px); height: clamp(112px, 13vw, 148px); object-fit: contain; flex: 0 0 auto; filter: drop-shadow(0 9px 18px rgba(0,0,0,.18)); }
         .consumer-hero-brand h1 { margin: 0; font-size: clamp(27px, 4vw, 40px); line-height: 1; letter-spacing: -.045em; }
         .consumer-hero-brand p { margin: 7px 0 0; color: rgba(255,255,255,.86); font-size: clamp(14px, 2vw, 17px); font-weight: 650; }
         .consumer-hero .consumer-actions { position: relative; z-index: 1; }
@@ -175,14 +175,14 @@ export default function ConsumerMarketplaceView({
         .consumer-total { display: flex; justify-content: space-between; gap: 12px; font-size: 21px; font-weight: 900; }
         .consumer-small { font-size: 12px; color: #6c8179; line-height: 1.45; }
         @media (max-width: 850px) { .consumer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .consumer-hero { align-items: flex-start; flex-direction: column; gap: 18px; } .consumer-hero .consumer-actions { justify-content: flex-start; } }
-        @media (max-width: 620px) { .consumer-shell { padding-top: 8px; } .consumer-hero { min-height: 0; border-radius: 20px; padding: 18px; gap: 15px; } .consumer-hero-brand { gap: 12px; } .consumer-hero-brand img { width: 54px; height: 54px; } .consumer-hero-brand h1 { font-size: clamp(24px, 8vw, 32px); } .consumer-hero-brand p { margin-top: 5px; font-size: 13px; } .consumer-hero .consumer-actions { width: 100%; } .consumer-hero .consumer-button { min-height: 40px; padding: 8px 13px; } .consumer-filters { grid-template-columns: 1fr; } .consumer-grid { grid-template-columns: 1fr; } .consumer-card { flex-direction: row; } .consumer-card-image, .consumer-fish-placeholder { width: 34%; min-width: 118px; height: auto; min-height: 210px; } .consumer-fish-placeholder span { font-size: 42px; } .consumer-card-body { padding: 15px; } .consumer-price-row { align-items: center; } .consumer-order { grid-template-columns: 1fr; } }
+        @media (max-width: 620px) { .consumer-shell { padding-top: 8px; } .consumer-hero { min-height: 0; border-radius: 20px; padding: 18px; gap: 15px; } .consumer-hero-brand { width: 100%; justify-content: space-between; gap: 14px; } .consumer-hero-brand img { width: clamp(88px, 28vw, 116px); height: clamp(88px, 28vw, 116px); } .consumer-hero-brand h1 { font-size: clamp(24px, 8vw, 32px); } .consumer-hero-brand p { margin-top: 5px; font-size: 13px; } .consumer-hero .consumer-actions { width: 100%; } .consumer-hero .consumer-button { min-height: 40px; padding: 8px 13px; } .consumer-filters { grid-template-columns: 1fr; } .consumer-grid { grid-template-columns: 1fr; } .consumer-card { flex-direction: row; } .consumer-card-image, .consumer-fish-placeholder { width: 34%; min-width: 118px; height: auto; min-height: 210px; } .consumer-fish-placeholder span { font-size: 42px; } .consumer-card-body { padding: 15px; } .consumer-price-row { align-items: center; } .consumer-order { grid-template-columns: 1fr; } }
       `}</style>
 
       <main className="consumer-shell">
         <section className="consumer-hero">
           <a className="consumer-hero-brand" href="/kuluttaja" style={{ color: "inherit", textDecoration: "none" }}>
-            <img src="/logo.png" alt="" />
             <div><h1>Suoraan Kalastajalta</h1><p>Tuoretta lähikalaa ilman välikäsiä</p></div>
+            <img src="/logo.png" alt="Suoraan Kalastajalta" />
           </a>
           <div className="consumer-actions">
             {onReturnToMainApp ? <button className="consumer-button consumer-primary" onClick={onReturnToMainApp}>Palaa kalastajanäkymään</button> : null}
