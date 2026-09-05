@@ -35,6 +35,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState("signin");
+  const [authPurpose, setAuthPurpose] = useState("account");
   const [authForm, setAuthForm] = useState({ email: "", password: "", name: "", acceptedTerms: false });
   const [authError, setAuthError] = useState("");
   const [reservationConfirmation, setReservationConfirmation] = useState(null);
@@ -120,8 +121,18 @@ export default function ConsumerApp({ initialListingId = "" }) {
     return () => { cancelled = true; };
   }, [session?.user?.id]);
 
-  const openAuth = () => {
+  const openAuth = (options = {}) => {
     setAuthError("");
+    setAuthPurpose(options.purpose === "post_reservation" ? "post_reservation" : "account");
+    if (options.mode === "signup" || options.mode === "signin") setAuthMode(options.mode);
+    if (options.email || options.name) {
+      setAuthForm((current) => ({
+        ...current,
+        email: String(options.email || current.email || ""),
+        name: String(options.name || current.name || ""),
+        password: "",
+      }));
+    }
     setAuthOpen(true);
   };
 
@@ -137,7 +148,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
         await ensureConsumerAccount(data.session);
         setSession(data.session || null);
         setAuthOpen(false);
-        setMessage("Kirjautuminen onnistui. Voit nyt vahvistaa varauksen.");
+        setMessage("Kirjautuminen onnistui.");
       } else {
         if (!authForm.name.trim() || !authForm.acceptedTerms) {
           throw new Error("Täytä nimi ja hyväksy käyttöehdot.");
@@ -152,7 +163,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
           await ensureConsumerAccount(data.session);
           setSession(data.session);
           setAuthOpen(false);
-          setMessage("Tunnus luotiin. Voit nyt vahvistaa varauksen.");
+          setMessage("Kuluttajatunnus luotiin. Voit nyt tallentaa kalaeräilmoituksia ja nähdä tulevat varauksesi sovelluksessa.");
         } else {
           setAuthMode("signin");
           setMessage("Tunnus luotiin. Vahvista sähköpostiosoite ja kirjaudu sen jälkeen.");
@@ -247,7 +258,8 @@ export default function ConsumerApp({ initialListingId = "" }) {
       {authOpen ? (
         <div className="consumer-overlay" role="dialog" aria-modal="true" aria-label="Kuluttajan kirjautuminen">
           <form className="consumer-dialog consumer-form" onSubmit={submitAuth}>
-            <div className="consumer-dialog-head"><div><div className="consumer-kicker">Varausta varten</div><h2>{authMode === "signin" ? "Kirjaudu" : "Luo kuluttajatunnus"}</h2></div><button type="button" className="consumer-close" onClick={() => setAuthOpen(false)}>×</button></div>
+            <div className="consumer-dialog-head"><div><div className="consumer-kicker">{authPurpose === "post_reservation" ? "Vapaaehtoinen – varaus on jo tehty" : "Kuluttajatili"}</div><h2>{authMode === "signin" ? "Kirjaudu" : "Luo kuluttajatunnus"}</h2></div><button type="button" className="consumer-close" onClick={() => setAuthOpen(false)}>×</button></div>
+            {authPurpose === "post_reservation" ? <div className="consumer-notice consumer-success">Varauksesi on jo tallennettu. Tilin avulla voit tilata ilmoituksia uusista kalaeristä ja käyttää sovellusta tulevilla ostokerroilla.</div> : null}
             <div className="consumer-field"><label>Sähköposti</label><input className="consumer-input" type="email" required value={authForm.email} onChange={(event) => setAuthForm((current) => ({ ...current, email: event.target.value }))} /></div>
             {authMode === "signup" ? <div className="consumer-field"><label>Nimi</label><input className="consumer-input" required value={authForm.name} onChange={(event) => setAuthForm((current) => ({ ...current, name: event.target.value }))} /></div> : null}
             <div className="consumer-field"><label>Salasana</label><input className="consumer-input" type="password" minLength="8" required value={authForm.password} onChange={(event) => setAuthForm((current) => ({ ...current, password: event.target.value }))} /></div>
@@ -275,6 +287,24 @@ export default function ConsumerApp({ initialListingId = "" }) {
               {reservationConfirmation.id ? <span><strong>Varaustunnus:</strong> {reservationConfirmation.id.slice(0, 8).toUpperCase()}</span> : null}
             </div>
             <div className="consumer-notice consumer-success">{reservationConfirmation.confirmationEmailSent ? `Vahvistus lähetettiin sähköpostiin ${reservationConfirmation.email}.` : reservationConfirmation.hasConsumerAccount ? "Varaus näkyy nyt Omat varaukset -kohdassa." : "Tallenna varaustunnus. Kalastaja on saanut varauksesi tiedot."}</div>
+            {!reservationConfirmation.hasConsumerAccount ? (
+              <button
+                type="button"
+                className="consumer-button consumer-primary"
+                onClick={() => {
+                  const confirmation = reservationConfirmation;
+                  setReservationConfirmation(null);
+                  openAuth({
+                    purpose: "post_reservation",
+                    mode: "signup",
+                    email: confirmation.email,
+                    name: confirmation.customerName,
+                  });
+                }}
+              >
+                Luo kuluttajatili (vapaaehtoinen)
+              </button>
+            ) : null}
             {!Capacitor.isNativePlatform() ? (
               <>
                 <p className="consumer-description">Voit käyttää samaa tiliä sovelluksessa ja saada puhelimeen ilmoituksia uusista kalaeristä.</p>
