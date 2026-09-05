@@ -7,7 +7,16 @@ import { DEFAULT_PUBLIC_APP_URL } from "../lib/supabase.js";
 
 const money = (value) => `${Number(value || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const statusLabel = { reserved: "Uusi varaus", confirmed: "Vahvistettu", ready: "Valmis noudettavaksi", collected: "Noudettu", cancelled: "Peruttu", expired: "Vanhentunut" };
+const listingStatusLabel = { published: "Myynnissä", paused: "Keskeytetty", sold_out: "Loppuunmyyty", archived: "Arkistoitu", draft: "Luonnos" };
 const pickupTime = (start, end) => start ? `${new Date(start).toLocaleString("fi-FI", { dateStyle: "short", timeStyle: "short" })}${end ? `–${new Date(end).toLocaleTimeString("fi-FI", { hour: "2-digit", minute: "2-digit" })}` : ""}` : "Noutoaika puuttuu";
+const localDateTimeValue = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+};
+const decimalValue = (value) => String(value ?? "").replace(".", ",");
+const numericValue = (value) => String(value ?? "").trim().replace(",", ".");
 
 export default function ConsumerSellerPanel({ profile }) {
   const [orders, setOrders] = useState([]);
@@ -16,7 +25,9 @@ export default function ConsumerSellerPanel({ profile }) {
   const [unavailable, setUnavailable] = useState(false);
   const [busyId, setBusyId] = useState("");
   const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
   const [finalWeights, setFinalWeights] = useState({});
+  const [editingListing, setEditingListing] = useState(null);
 
   const load = useCallback(async () => {
     if (!profile?.id) return;
@@ -29,7 +40,7 @@ export default function ConsumerSellerPanel({ profile }) {
         .order("created_at", { ascending: false }),
       supabase
         .from("consumer_listings")
-        .select("id, product_name, species, status, pickup_location, pickup_start, pickup_end, order_deadline, created_at, variants:consumer_listing_variants(sale_unit_type, package_size_kg, min_weight_kg, max_weight_kg, available_units)")
+        .select("id, product_name, description, species, status, pickup_location, pickup_start, pickup_end, order_deadline, created_at, variants:consumer_listing_variants(id, sale_unit_type, label, package_size_kg, unit_price_including_vat, min_weight_kg, max_weight_kg, price_per_kg_including_vat, available_units, initial_units, sort_order)")
         .eq("seller_user_id", profile.id)
         .order("created_at", { ascending: false }),
     ]);
@@ -44,18 +55,114 @@ export default function ConsumerSellerPanel({ profile }) {
   const updateStatus = async (order, status) => {
     setBusyId(order.id);
     setMessage("");
+    setErrorMessage("");
     const { data: sessionData } = await supabase.auth.getSession();
     const finalWeightKg = status === "collected" && order.sale_unit_type === "whole_fish"
       ? String(finalWeights[order.id] || "").replace(",", ".")
       : null;
     if (status === "collected" && order.sale_unit_type === "whole_fish" && !(Number(finalWeightKg) > 0)) {
-      setMessage("Täytä punnittu lopullinen paino ennen kuin merkitset tilauksen noudetuksi.");
+      setErrorMessage("Täytä punnittu lopullinen paino ennen kuin merkitset tilauksen noudetuksi.");
       setBusyId("");
       return;
     }
     const result = await invokeConsumerOrderAction(sessionData?.session?.access_token, { action: "seller_update_order", orderId: order.id, status, finalWeightKg });
-    if (result.error) setMessage(result.error.message || "Tilauksen päivitys epäonnistui.");
+    if (result.error) setErrorMessage(result.error.message || "Tilauksen päivitys epäonnistui.");
     else { setMessage("Kuluttajatilauksen tila päivitettiin."); await load(); }
+    setBusyId("");
+  };
+
+  const startEditingListing = (listing) => {
+    setMessage("");
+    setErrorMessage("");
+    setEditingListing({
+      id: listing.id,
+      productName: listing.product_name || listing.species || "",
+      description: listing.description || "",
+      pickupLocation: listing.pickup_location || "",
+      pickupStart: localDateTimeValue(listing.pickup_start),
+      pickupEnd: localDateTimeValue(listing.pickup_end),
+      orderDeadline: localDateTimeValue(listing.order_deadline),
+      variants: (listing.variants || [])
+        .slice()
+        .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
+        .map((variant) => ({
+          ...variant,
+          label: variant.label || "",
+          package_size_kg: decimalValue(variant.package_size_kg),
+          unit_price_including_vat: decimalValue(variant.unit_price_including_vat),
+          min_weight_kg: decimalValue(variant.min_weight_kg),
+          max_weight_kg: decimalValue(variant.max_weight_kg),
+          price_per_kg_including_vat: decimalValue(variant.price_per_kg_including_vat),
+          available_units: String(variant.available_units ?? 0),
+        })),
+    });
+  };
+
+  const updateEditingVariant = (variantId, field, value) => {
+    setEditingListing((current) => current ? ({
+      ...current,
+      variants: current.variants.map((variant) => variant.id === variantId ? { ...variant, [field]: value } : variant),
+    }) : current);
+  };
+
+  const saveListing = async (event) => {
+    event.preventDefault();
+    if (!editingListing) return;
+    setBusyId(editingListing.id);
+    setMessage("");
+    setErrorMessage("");
+    const pickupStart = new Date(editingListing.pickupStart);
+    const pickupEnd = new Date(editingListing.pickupEnd);
+    const orderDeadline = new Date(editingListing.orderDeadline);
+    if ([pickupStart, pickupEnd, orderDeadline].some((date) => Number.isNaN(date.getTime()))) {
+      setErrorMessage("Tarkista noutoajat ja tilausten määräaika.");
+      setBusyId("");
+      return;
+    }
+    const variants = editingListing.variants.map((variant) => ({
+      id: variant.id,
+      sale_unit_type: variant.sale_unit_type,
+      label: String(variant.label || "").trim(),
+      package_size_kg: variant.sale_unit_type === "package" ? numericValue(variant.package_size_kg) : null,
+      unit_price_including_vat: variant.sale_unit_type === "package" ? numericValue(variant.unit_price_including_vat) : null,
+      min_weight_kg: variant.sale_unit_type === "whole_fish" ? numericValue(variant.min_weight_kg) : null,
+      max_weight_kg: variant.sale_unit_type === "whole_fish" ? numericValue(variant.max_weight_kg) : null,
+      price_per_kg_including_vat: variant.sale_unit_type === "whole_fish" ? numericValue(variant.price_per_kg_including_vat) : null,
+      available_units: Number(variant.available_units),
+    }));
+    const { error } = await supabase.rpc("update_consumer_listing", {
+      p_listing_id: editingListing.id,
+      p_product_name: editingListing.productName,
+      p_description: editingListing.description,
+      p_pickup_location: editingListing.pickupLocation,
+      p_pickup_start: pickupStart.toISOString(),
+      p_pickup_end: pickupEnd.toISOString(),
+      p_order_deadline: orderDeadline.toISOString(),
+      p_variants: variants,
+    });
+    if (error) {
+      setErrorMessage(error.message || "Kuluttajaerän muokkaus epäonnistui.");
+    } else {
+      setEditingListing(null);
+      setMessage("Kuluttajaerän tiedot päivitettiin.");
+      await load();
+    }
+    setBusyId("");
+  };
+
+  const setListingSaleStatus = async (listing, nextStatus) => {
+    setBusyId(listing.id);
+    setMessage("");
+    setErrorMessage("");
+    const { error } = await supabase.rpc("set_consumer_listing_status", {
+      p_listing_id: listing.id,
+      p_status: nextStatus,
+    });
+    if (error) setErrorMessage(error.message || "Kuluttajaerän myyntitilan muuttaminen epäonnistui.");
+    else {
+      setMessage(nextStatus === "paused" ? "Kuluttajaerän myynti keskeytettiin." : "Kuluttajaerä palautettiin myyntiin.");
+      await load();
+    }
     setBusyId("");
   };
 
@@ -88,20 +195,69 @@ export default function ConsumerSellerPanel({ profile }) {
             const maxKilos = wholeFish.reduce((sum, variant) => sum + Number(variant.max_weight_kg || 0) * Number(variant.available_units || 0), 0);
             return (
               <div key={listing.id} style={{ border: "1px solid #bbdec8", borderRadius: 14, padding: 12, background: "white", display: "grid", gap: 7 }}>
-                <div><strong>{listing.product_name || listing.species}</strong> · {listing.status === "published" ? "Myynnissä" : listing.status === "sold_out" ? "Loppuunmyyty" : listing.status}</div>
+                <div><strong>{listing.product_name || listing.species}</strong> · {listingStatusLabel[listing.status] || listing.status}</div>
                 <div style={{ color: "#526b60", fontSize: 13 }}>{wholeFish.length > 0 ? `Arvioitu saldo ${minKilos.toLocaleString("fi-FI")}–${maxKilos.toLocaleString("fi-FI")} kg` : `Saldo ${packageKilos.toLocaleString("fi-FI")} kg`}</div>
                 <div style={{ color: "#526b60", fontSize: 13 }}>Nouto {pickupTime(listing.pickup_start, listing.pickup_end)} · {listing.pickup_location}</div>
                 <div style={{ color: "#526b60", fontSize: 13 }}>Tilaukset viimeistään {listing.order_deadline ? new Date(listing.order_deadline).toLocaleString("fi-FI", { dateStyle: "short", timeStyle: "short" }) : "–"}</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button type="button" onClick={() => openExternal(link)}>Avaa julkinen linkki</button>
                   <button type="button" onClick={async () => { await navigator.clipboard.writeText(link); setMessage("Kalaerän julkinen linkki kopioitiin."); }}>Kopioi linkki</button>
+                  <button type="button" disabled={busyId === listing.id} onClick={() => startEditingListing(listing)}>Muokkaa erää</button>
+                  {listing.status === "published" ? <button type="button" disabled={busyId === listing.id} onClick={() => setListingSaleStatus(listing, "paused")}>Keskeytä myynti</button> : null}
+                  {listing.status === "paused" ? <button type="button" disabled={busyId === listing.id} onClick={() => setListingSaleStatus(listing, "published")}>Jatka myyntiä</button> : null}
                 </div>
               </div>
             );
           })}
         </div>
       ) : null}
+      {editingListing ? (
+        <div role="dialog" aria-modal="true" aria-label="Muokkaa kuluttajaerää" style={{ position: "fixed", inset: 0, zIndex: 4000, display: "grid", placeItems: "center", padding: 14, background: "rgba(15, 35, 27, 0.66)" }} onMouseDown={(event) => { if (event.target === event.currentTarget && busyId !== editingListing.id) setEditingListing(null); }}>
+          <form onSubmit={saveListing} style={{ width: "min(680px, 100%)", maxHeight: "calc(100dvh - 28px)", overflowY: "auto", borderRadius: 20, padding: 20, background: "white", display: "grid", gap: 14, boxShadow: "0 24px 80px rgba(0,0,0,.28)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <strong style={{ fontSize: 22 }}>Muokkaa kuluttajaerää</strong>
+              <button type="button" disabled={busyId === editingListing.id} onClick={() => setEditingListing(null)} aria-label="Sulje">×</button>
+            </div>
+            <label style={{ display: "grid", gap: 5 }}><span>Tuotteen nimi</span><input required value={editingListing.productName} onChange={(event) => setEditingListing((current) => ({ ...current, productName: event.target.value }))} /></label>
+            <label style={{ display: "grid", gap: 5 }}><span>Kuvaus kuluttajalle</span><textarea rows="3" value={editingListing.description} onChange={(event) => setEditingListing((current) => ({ ...current, description: event.target.value }))} /></label>
+            <label style={{ display: "grid", gap: 5 }}><span>Noutopaikka</span><input required value={editingListing.pickupLocation} onChange={(event) => setEditingListing((current) => ({ ...current, pickupLocation: event.target.value }))} /></label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+              <label style={{ display: "grid", gap: 5 }}><span>Noudettavissa alkaen</span><input required type="datetime-local" value={editingListing.pickupStart} onChange={(event) => setEditingListing((current) => ({ ...current, pickupStart: event.target.value }))} /></label>
+              <label style={{ display: "grid", gap: 5 }}><span>Noudettavissa asti</span><input required type="datetime-local" value={editingListing.pickupEnd} onChange={(event) => setEditingListing((current) => ({ ...current, pickupEnd: event.target.value }))} /></label>
+              <label style={{ display: "grid", gap: 5 }}><span>Tilaukset viimeistään</span><input required type="datetime-local" value={editingListing.orderDeadline} onChange={(event) => setEditingListing((current) => ({ ...current, orderDeadline: event.target.value }))} /></label>
+            </div>
+            <strong>Myyntivaihtoehdot</strong>
+            {editingListing.variants.map((variant) => (
+              <div key={variant.id} style={{ border: "1px solid #bbdec8", borderRadius: 14, padding: 12, display: "grid", gap: 10 }}>
+                <label style={{ display: "grid", gap: 5 }}><span>{variant.sale_unit_type === "whole_fish" ? "Kokoluokan nimi" : "Pakkauksen nimi"}</span><input required value={variant.label} onChange={(event) => updateEditingVariant(variant.id, "label", event.target.value)} /></label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 10 }}>
+                  {variant.sale_unit_type === "package" ? (
+                    <>
+                      <label style={{ display: "grid", gap: 5 }}><span>Pakkauksen koko kg</span><input required inputMode="decimal" value={variant.package_size_kg} onChange={(event) => updateEditingVariant(variant.id, "package_size_kg", event.target.value)} /></label>
+                      <label style={{ display: "grid", gap: 5 }}><span>Hinta / pakkaus (€)</span><input required inputMode="decimal" value={variant.unit_price_including_vat} onChange={(event) => updateEditingVariant(variant.id, "unit_price_including_vat", event.target.value)} /></label>
+                    </>
+                  ) : (
+                    <>
+                      <label style={{ display: "grid", gap: 5 }}><span>Pienin paino kg</span><input required inputMode="decimal" value={variant.min_weight_kg} onChange={(event) => updateEditingVariant(variant.id, "min_weight_kg", event.target.value)} /></label>
+                      <label style={{ display: "grid", gap: 5 }}><span>Suurin paino kg</span><input required inputMode="decimal" value={variant.max_weight_kg} onChange={(event) => updateEditingVariant(variant.id, "max_weight_kg", event.target.value)} /></label>
+                      <label style={{ display: "grid", gap: 5 }}><span>Kilohinta (€ / kg)</span><input required inputMode="decimal" value={variant.price_per_kg_including_vat} onChange={(event) => updateEditingVariant(variant.id, "price_per_kg_including_vat", event.target.value)} /></label>
+                    </>
+                  )}
+                  <label style={{ display: "grid", gap: 5 }}><span>Jäljellä (kpl)</span><input required type="number" min="0" step="1" value={variant.available_units} onChange={(event) => updateEditingVariant(variant.id, "available_units", event.target.value)} /></label>
+                </div>
+              </div>
+            ))}
+            <div style={{ color: "#526b60", fontSize: 13 }}>Aiemmat varaukset säilyvät ennallaan. Jäljellä oleva määrä ei sisällä jo varattuja tuotteita.</div>
+            {errorMessage ? <div style={{ color: "#b91c1c" }}>{errorMessage}</div> : null}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" disabled={busyId === editingListing.id} onClick={() => setEditingListing(null)}>Peruuta</button>
+              <button type="submit" disabled={busyId === editingListing.id}>{busyId === editingListing.id ? "Tallennetaan…" : "Tallenna muutokset"}</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       {message ? <div style={{ color: "#166534" }}>{message}</div> : null}
+      {!editingListing && errorMessage ? <div style={{ color: "#b91c1c" }}>{errorMessage}</div> : null}
       {loading ? <div>Haetaan kuluttajatilauksia…</div> : orders.length === 0 ? <div style={{ color: "#47705c" }}>Ei vielä kuluttajatilauksia.</div> : orders.map((order) => (
         <div key={order.id} style={{ border: "1px solid #bbdec8", borderRadius: 15, padding: 14, background: "white", display: "grid", gap: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><strong>{order.product_name || order.species || "Kalaerä"}</strong><span>{statusLabel[order.status] || order.status}</span></div>
