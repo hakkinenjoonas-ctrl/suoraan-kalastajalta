@@ -218,6 +218,7 @@ import ThermalLabel4x6Portrait, { THERMAL_LABEL_4X6_SIZE_MM } from "./components
 import helpGuideMarkdown from "../KAYTTOOHJE.md?raw";
 
 const AUCTION_IMAGE_BUCKET = "auction-images";
+const CONSUMER_LISTING_IMAGE_BUCKET = "consumer-listing-images";
 
 function getPublicAppBaseUrl() {
   const configuredUrl = typeof import.meta !== "undefined" ? import.meta.env?.VITE_PUBLIC_APP_URL : "";
@@ -8153,10 +8154,16 @@ export default function App() {
   });
   const [auctionImageFile, setAuctionImageFile] = useState(null);
   const [auctionImagePreviewUrl, setAuctionImagePreviewUrl] = useState("");
+  const [consumerImageFile, setConsumerImageFile] = useState(null);
+  const [consumerImagePreviewUrl, setConsumerImagePreviewUrl] = useState("");
 
   useEffect(() => () => {
     if (auctionImagePreviewUrl) URL.revokeObjectURL(auctionImagePreviewUrl);
   }, [auctionImagePreviewUrl]);
+
+  useEffect(() => () => {
+    if (consumerImagePreviewUrl) URL.revokeObjectURL(consumerImagePreviewUrl);
+  }, [consumerImagePreviewUrl]);
 
   const handleAuctionImageSelection = async (event) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -8173,6 +8180,23 @@ export default function App() {
       setAuctionImagePreviewUrl(URL.createObjectURL(preparedFile));
     } catch (imageError) {
       setAuthError(String(imageError?.message || imageError || "Huutokauppakuvan käsittely epäonnistui."));
+    }
+  };
+  const handleConsumerImageSelection = async (event) => {
+    const selectedFile = event.target.files?.[0] || null;
+    event.target.value = "";
+    if (!selectedFile) return;
+    if (!ALLOWED_AUCTION_IMAGE_TYPES.includes(selectedFile.type)) {
+      setAuthError("Valitse JPG-, PNG- tai WebP-kuva.");
+      return;
+    }
+    try {
+      setAuthError("");
+      const preparedFile = await prepareAuctionImage(selectedFile);
+      setConsumerImageFile(preparedFile);
+      setConsumerImagePreviewUrl(URL.createObjectURL(preparedFile));
+    } catch (imageError) {
+      setAuthError(String(imageError?.message || imageError || "Kuluttajamyynnin kuvan käsittely epäonnistui."));
     }
   };
   const [savedCustomLakeAreas, setSavedCustomLakeAreas] = useState(() => initialCatchDefaults.customLakeAreas || []);
@@ -15562,6 +15586,8 @@ export default function App() {
     }
 
     const savedCatchScrollTarget = String(rowsWithBatchIds?.[0]?.batch_id || "");
+    let pendingConsumerImagePath = "";
+    let consumerImageAttached = false;
 
     try {
       if (isCatchAuction) {
@@ -15606,6 +15632,18 @@ export default function App() {
         if (insertedCatchEntries.length !== 1) {
           throw new Error("Tallennetun saaliin tunnistetta ei saatu kuluttajalistausta varten.");
         }
+        if (consumerImageFile) {
+          const extension = consumerImageFile.type === "image/png" ? "png" : consumerImageFile.type === "image/webp" ? "webp" : "jpg";
+          pendingConsumerImagePath = `${profile.id}/${crypto.randomUUID()}.${extension}`;
+          const { error: consumerImageUploadError } = await supabase.storage
+            .from(CONSUMER_LISTING_IMAGE_BUCKET)
+            .upload(pendingConsumerImagePath, consumerImageFile, {
+              cacheControl: "3600",
+              contentType: consumerImageFile.type,
+              upsert: false,
+            });
+          if (consumerImageUploadError) throw new Error(`Kuluttajamyynnin kuvan tallennus epäonnistui: ${consumerImageUploadError.message}`);
+        }
         const consumerRow = rowsWithBatchIds[0];
         const { data: publishedConsumerListingId, error: consumerListingError } = await supabase.rpc("publish_consumer_listing", {
           p_catch_entry_id: insertedCatchEntries[0].id,
@@ -15624,6 +15662,22 @@ export default function App() {
           p_variants: consumerVariants,
         });
         if (consumerListingError) throw consumerListingError;
+        if (pendingConsumerImagePath) {
+          const consumerImageUrl = supabase.storage
+            .from(CONSUMER_LISTING_IMAGE_BUCKET)
+            .getPublicUrl(pendingConsumerImagePath).data.publicUrl;
+          const { data: attachedConsumerListing, error: consumerImageAttachError } = await supabase
+            .from("consumer_listings")
+            .update({ image_url: consumerImageUrl })
+            .eq("id", publishedConsumerListingId)
+            .eq("seller_user_id", profile.id)
+            .select("id")
+            .maybeSingle();
+          if (consumerImageAttachError || !attachedConsumerListing) {
+            throw new Error(`Kuluttajaerä julkaistiin, mutta kuvaa ei voitu liittää: ${consumerImageAttachError?.message || "listauksen päivitys ei onnistunut"}`);
+          }
+          consumerImageAttached = true;
+        }
         const consumerListingUrl = getConsumerListingUrl(publishedConsumerListingId, getPublicAppBaseUrl());
         const consumerNotificationResult = await invokeEdgeFunctionAuthenticated("notify-consumer-listing", {
           listingId: publishedConsumerListingId,
@@ -15670,6 +15724,13 @@ export default function App() {
       }
       }
     } catch (saveFollowupError) {
+      if (pendingConsumerImagePath && !consumerImageAttached) {
+        try {
+          await supabase.storage.from(CONSUMER_LISTING_IMAGE_BUCKET).remove([pendingConsumerImagePath]);
+        } catch {
+          // Cleanup failure must not hide the original publishing error.
+        }
+      }
       console.error(isCatchAuction ? "Huutokaupan avaaminen epäonnistui:" : isConsumerSale ? "Kuluttajalistauksen avaaminen epäonnistui:" : "Sähköpostin lähetys epäonnistui:", saveFollowupError);
       setAuthError(isCatchAuction
         ? `Saalis tallennettiin, mutta huutokaupan avaaminen epäonnistui: ${String(saveFollowupError?.message || saveFollowupError)}`
@@ -15768,6 +15829,8 @@ export default function App() {
     setSpeciesRows([createSpeciesRow()]);
     setAuctionImageFile(null);
     setAuctionImagePreviewUrl("");
+    setConsumerImageFile(null);
+    setConsumerImagePreviewUrl("");
     setPendingEntriesScrollTarget(isConsumerSale ? "" : savedCatchScrollTarget);
     setPendingOffersScrollTop(isConsumerSale);
     setRefreshTick((prev) => prev + 1);
@@ -19905,6 +19968,23 @@ export default function App() {
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
                       <div style={{ ...styles.field, gridColumn: "1 / -1" }}><label>Tuotteen nimi</label><input style={styles.input} value={form.consumerProductName} onChange={(event) => setForm((prev) => ({ ...prev, consumerProductName: event.target.value, consumerProductNameAutoFilled: false }))} placeholder={formatSpeciesForSale(getSpeciesRowLabel(speciesRows[0])) || "Esim. Tuore kokonainen kuha"} /><div style={styles.small}>Nimi täytetään automaattisesti kalalajista, mutta voit muokata sitä kuluttajalle kuvaavammaksi.</div></div>
+                      <div style={{ ...styles.field, gridColumn: "1 / -1", border: "1px solid #99f6e4", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.75)" }}>
+                        <label>Tuotteen tai saaliin kuva (valinnainen)</label>
+                        <div style={styles.small}>Kuva näkyy kuluttajamarkkinapaikalla. JPG-, PNG- ja WebP-kuvat pienennetään tarvittaessa automaattisesti.</div>
+                        <div style={{ ...styles.row, alignItems: "center", flexWrap: "wrap", marginTop: 9 }}>
+                          <label style={{ ...styles.button, display: "inline-flex", alignItems: "center", cursor: "pointer" }}>
+                            {consumerImageFile ? "Vaihda kuva" : "Valitse kuva"}
+                            <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handleConsumerImageSelection} />
+                          </label>
+                          <label style={{ ...styles.button, display: "inline-flex", alignItems: "center", cursor: "pointer", background: "#ecfdf5", borderColor: "#86efac", color: "#166534" }}>
+                            Ota kuva
+                            <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleConsumerImageSelection} />
+                          </label>
+                          {consumerImageFile ? <span style={{ ...styles.small, overflowWrap: "anywhere" }}>{consumerImageFile.name}</span> : null}
+                          {consumerImageFile ? <button type="button" style={styles.button} onClick={() => { setConsumerImageFile(null); setConsumerImagePreviewUrl(""); }}>Poista kuva</button> : null}
+                        </div>
+                        {consumerImagePreviewUrl ? <img src={consumerImagePreviewUrl} alt="Kuluttajamyynnin kuvan esikatselu" style={{ display: "block", width: "100%", maxWidth: 520, maxHeight: 320, marginTop: 10, objectFit: "cover", borderRadius: 12, border: "1px solid #99f6e4" }} /> : null}
+                      </div>
                       {(form.consumerVariants || []).map((variant, variantIndex) => (
                         <div key={variant.id} style={{ ...styles.field, gridColumn: "1 / -1", border: "1px solid #99f6e4", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.75)" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}>
