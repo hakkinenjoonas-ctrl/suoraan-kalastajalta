@@ -73,6 +73,7 @@ import {
   transportModeLabels,
 } from "./lib/constants.js";
 import { applyGrossPriceInput, createSpeciesRow, safeId, today } from "./lib/helpers.js";
+import { findLatestSpeciesNetMeshSize } from "./lib/speciesGearDefaults.js";
 import {
   getMissingBuyerPurchaseFields,
   getMissingSellerSaleFields,
@@ -11490,33 +11491,53 @@ export default function App() {
   }, [entries, saleEntries, processedEntries, processedSaleEntries]);
 
   const addSpeciesRow = () => setSpeciesRows((prev) => [...prev, createSpeciesRow()]);
-  const updateSpeciesRow = (id, field, value) => setSpeciesRows((prev) => prev.map((row) => {
-    if (row.id !== id) return row;
-    if (field === "species") {
-      const nextLabel = value === "Muu" ? row.customSpecies : value;
-      const crayfish = isCrayfishSpecies(nextLabel);
-      return {
-        ...row,
-        species: value,
-        kilos: crayfish ? "" : row.kilos,
-        customSpecies: value === "Muu" ? row.customSpecies : "",
-      };
+  const updateSpeciesRow = (id, field, value) => {
+    const currentRow = speciesRows.find((row) => row.id === id);
+    const isPrimarySpeciesRow = speciesRows[0]?.id === id;
+    const nextSpeciesLabel = field === "species"
+      ? (value === "Muu" ? currentRow?.customSpecies : value)
+      : field === "customSpecies" && currentRow?.species === "Muu"
+        ? value
+        : "";
+
+    if (isPrimarySpeciesRow && nextSpeciesLabel && normalizeCatchGearValue(form.gear) === "Verkko") {
+      const rememberedMeshSize = findLatestSpeciesNetMeshSize(entries, nextSpeciesLabel, profile?.id);
+      setForm((prev) => ({
+        ...prev,
+        inlandGearPresetId: "",
+        netMeshSize: rememberedMeshSize,
+      }));
+      setSavedNetMeshSizeOptions(rememberedMeshSize ? [rememberedMeshSize] : []);
     }
-    if (field === "price_per_kg") {
-      return {
-        ...row,
-        price_per_kg: value,
-        price_per_kg_gross_input: "",
-      };
-    }
-    if (field === "price_per_kg_gross") {
-      return applyGrossPriceInput(row, value, {
-        parseLocaleNumber,
-        calculateNetPrice,
-      });
-    }
-    return { ...row, [field]: value };
-  }));
+
+    setSpeciesRows((prev) => prev.map((row) => {
+      if (row.id !== id) return row;
+      if (field === "species") {
+        const nextLabel = value === "Muu" ? row.customSpecies : value;
+        const crayfish = isCrayfishSpecies(nextLabel);
+        return {
+          ...row,
+          species: value,
+          kilos: crayfish ? "" : row.kilos,
+          customSpecies: value === "Muu" ? row.customSpecies : "",
+        };
+      }
+      if (field === "price_per_kg") {
+        return {
+          ...row,
+          price_per_kg: value,
+          price_per_kg_gross_input: "",
+        };
+      }
+      if (field === "price_per_kg_gross") {
+        return applyGrossPriceInput(row, value, {
+          parseLocaleNumber,
+          calculateNetPrice,
+        });
+      }
+      return { ...row, [field]: value };
+    }));
+  };
   const removeSpeciesRow = (id) => setSpeciesRows((prev) => (prev.length === 1 ? [createSpeciesRow()] : prev.filter((row) => row.id !== id)));
   const duplicateSpeciesRow = (id) => setSpeciesRows((prev) => {
     const row = prev.find((item) => item.id === id);
@@ -15695,7 +15716,7 @@ export default function App() {
       incidentalBycatchDetails: "",
       lostGearDetails: "",
       netHeight: prev.netHeight || "",
-      netMeshSize: prev.netMeshSize || "",
+      netMeshSize: "",
       fykeHeight: prev.fykeHeight || "",
       notes: "",
       packaging: "",
@@ -19451,6 +19472,9 @@ export default function App() {
                   const normalizedNextGear = normalizeCatchGearValue(nextGear);
                   const nextInlandGear = getInlandGearMeta(nextGear);
                   const nextGearDefaults = getStoredGearProfile({ gearProfiles: savedGearProfiles }, nextGear);
+                  const rememberedSpeciesMeshSize = normalizedNextGear === "Verkko"
+                    ? findLatestSpeciesNetMeshSize(entries, getSpeciesRowLabel(speciesRows[0]), profile?.id)
+                    : "";
                   setForm((prev) => ({
                     ...prev,
                     gear: nextGear,
@@ -19461,7 +19485,9 @@ export default function App() {
                     fishingDurationDays: nextGearDefaults.fishingDurationDays || "",
                     fishingSecondaryValue: "",
                     netHeight: selectedPreset?.netHeight || (nextInlandGear?.technicalFields.includes("height") || normalizedNextGear === "Verkko" ? nextGearDefaults.netHeight || "" : ""),
-                    netMeshSize: selectedPreset?.netMeshSize || (nextInlandGear?.technicalFields.includes("mesh") || normalizedNextGear === "Verkko" ? nextGearDefaults.netMeshSize || "" : ""),
+                    netMeshSize: selectedPreset?.netMeshSize || (normalizedNextGear === "Verkko"
+                      ? rememberedSpeciesMeshSize
+                      : nextInlandGear?.technicalFields.includes("mesh") ? nextGearDefaults.netMeshSize || "" : ""),
                     gearLength: selectedPreset?.gearLength || "",
                     gearWidth: selectedPreset?.gearWidth || "",
                     otherGearName: selectedPreset?.otherGearName || "",
