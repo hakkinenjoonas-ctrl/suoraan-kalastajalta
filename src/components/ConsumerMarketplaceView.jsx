@@ -2,8 +2,21 @@ import React, { useEffect, useMemo, useState } from "react";
 import { calculateConsumerReservationEstimate, filterConsumerListings, getConsumerAppDeepLink, getConsumerListingPath } from "../lib/consumerMarketplace.js";
 
 const money = (value) => `${Number(value || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+const quantity = (value) => Number(value || 0).toLocaleString("fi-FI", { maximumFractionDigits: 2 });
 const dateTime = (value) => value ? new Date(value).toLocaleString("fi-FI", { dateStyle: "short", timeStyle: "short" }) : "Sovitaan myyjän kanssa";
 const time = (value) => value ? new Date(value).toLocaleTimeString("fi-FI", { hour: "2-digit", minute: "2-digit" }) : "";
+
+function variantOptionLabel(variant) {
+  const label = String(variant?.label || "").trim();
+  const labelNumbers = [...label.matchAll(/\d+(?:[.,]\d+)?/g)].map((match) => Number(match[0].replace(",", ".")));
+  const includesNumber = (value) => labelNumbers.some((number) => Math.abs(number - Number(value)) < 0.001);
+  if (variant?.unitType === "whole_fish") {
+    const detail = `${quantity(variant.minWeightKg)}–${quantity(variant.maxWeightKg)} kg/kpl · ${money(variant.pricePerKg)}/kg`;
+    return label && !(includesNumber(variant.minWeightKg) && includesNumber(variant.maxWeightKg)) ? `${label} · ${detail}` : detail;
+  }
+  const detail = `${quantity(variant?.packageSizeKg)} kg · ${money(variant?.unitPrice)}`;
+  return label && !includesNumber(variant?.packageSizeKg) ? `${label} · ${detail}` : detail;
+}
 
 function pickupWindow(start, end) {
   if (!start) return "Sovitaan myyjän kanssa";
@@ -238,7 +251,7 @@ export default function ConsumerMarketplaceView({
             <div className="consumer-summary"><span><strong>Kalastaja:</strong> {selected.sellerName}</span><span><strong>Nouto:</strong> {selected.pickupLocation || selected.municipality}</span><span><strong>Noudettavissa:</strong> {pickupWindow(selected.pickupStart, selected.pickupEnd)}</span><span><strong>Tilaa viimeistään:</strong> {dateTime(selected.orderDeadline)}</span><span><strong>Erätunnus:</strong> {selected.batchId}</span></div>
             <div className="consumer-form">
               <a className="consumer-button" href={getConsumerAppDeepLink(selected.id)} style={{ textAlign: "center", textDecoration: "none" }}>Avaa Suoraan Kalastajalta -sovelluksessa</a>
-              <div className="consumer-field"><label>{selectedVariant?.unitType === "whole_fish" ? "Kalan kokoluokka" : "Pakkauskoko"}</label><select className="consumer-input" value={selectedVariant?.id || ""} onChange={(event) => { setSelectedVariantId(event.target.value); setUnitCount(1); }}>{selected.variants.filter((variant) => variant.availableUnits > 0).map((variant) => <option key={variant.id} value={variant.id}>{variant.label} · {variant.unitType === "whole_fish" ? `${variant.minWeightKg}–${variant.maxWeightKg} kg/kpl · ${money(variant.pricePerKg)}/kg` : `${variant.packageSizeKg} kg · ${money(variant.unitPrice)}`}</option>)}</select></div>
+              <div className="consumer-field"><label>{selectedVariant?.unitType === "whole_fish" ? "Kalan kokoluokka" : "Pakkauskoko"}</label><select className="consumer-input" value={selectedVariant?.id || ""} onChange={(event) => { setSelectedVariantId(event.target.value); setUnitCount(1); }}>{selected.variants.filter((variant) => variant.availableUnits > 0).map((variant) => <option key={variant.id} value={variant.id}>{variantOptionLabel(variant)}</option>)}</select></div>
               <div className="consumer-field"><label>{selectedVariant?.unitType === "whole_fish" ? "Kalojen määrä" : "Pakkausten määrä"}</label><select className="consumer-input" value={unitCount} onChange={(event) => setUnitCount(Number(event.target.value))}>{Array.from({ length: Math.min(selectedVariant?.availableUnits || 0, 10) }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count} {selectedVariant?.unitType === "whole_fish" ? "kpl" : "pakkausta"}</option>)}</select></div>
               <div className="consumer-field"><label>Varaajan nimi</label><input className="consumer-input" autoComplete="name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Etunimi ja sukunimi" /></div>
               <div className="consumer-field"><label>Sähköposti varausvahvistusta varten</label><input className="consumer-input" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="nimi@esimerkki.fi" /></div>
