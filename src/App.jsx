@@ -8027,6 +8027,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [auctionsAvailable, setAuctionsAvailable] = useState(false);
   const [pendingEntriesScrollTarget, setPendingEntriesScrollTarget] = useState("");
+  const [pendingOffersScrollTop, setPendingOffersScrollTop] = useState(false);
   const [pendingAuctionTarget, setPendingAuctionTarget] = useState(null);
   const [auctionCreateRequestKey, setAuctionCreateRequestKey] = useState(0);
   const [pendingOfferTarget, setPendingOfferTarget] = useState(null);
@@ -8316,6 +8317,17 @@ export default function App() {
       if (timeoutId) window.clearTimeout(timeoutId);
     };
   }, [activeTab, pendingEntriesScrollTarget, entries, search, entryScope]);
+
+  useEffect(() => {
+    if (activeTab !== "offers" || !pendingOffersScrollTop || typeof window === "undefined") return undefined;
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+      setPendingOffersScrollTop(false);
+    });
+
+    return () => window.cancelAnimationFrame(animationFrameId);
+  }, [activeTab, pendingOffersScrollTop]);
 
   useEffect(() => {
     const offerId = String(pendingOfferTarget?.offerId || "").trim();
@@ -15736,6 +15748,7 @@ export default function App() {
     setAuctionImageFile(null);
     setAuctionImagePreviewUrl("");
     setPendingEntriesScrollTarget(isConsumerSale ? "" : savedCatchScrollTarget);
+    setPendingOffersScrollTop(isConsumerSale);
     setRefreshTick((prev) => prev + 1);
     setActiveTab(isCatchAuction ? "auctions" : isConsumerSale ? "offers" : "entries");
   };
