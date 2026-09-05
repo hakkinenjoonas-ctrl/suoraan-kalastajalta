@@ -867,16 +867,25 @@ function createCatchSaleDraft(entry = {}) {
   };
 }
 
-function createConsumerSaleVariant(unitType = "package") {
+function formatConsumerPriceInput(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "";
+  return number.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function createConsumerSaleVariant(unitType = "package", grossPricePerKg = null) {
+  const suggestedGrossPrice = Number(grossPricePerKg);
+  const hasSuggestedPrice = Number.isFinite(suggestedGrossPrice) && suggestedGrossPrice > 0;
   return {
     id: safeId(),
     unitType,
     label: "",
     packageSizeKg: unitType === "package" ? "1" : "",
-    unitPrice: "",
+    unitPrice: unitType === "package" && hasSuggestedPrice ? formatConsumerPriceInput(suggestedGrossPrice) : "",
     minWeightKg: unitType === "whole_fish" ? "0,8" : "",
     maxWeightKg: unitType === "whole_fish" ? "1,2" : "",
-    pricePerKg: "",
+    pricePerKg: unitType === "whole_fish" && hasSuggestedPrice ? formatConsumerPriceInput(suggestedGrossPrice) : "",
+    priceAutoFilled: hasSuggestedPrice,
     availableUnits: "1",
   };
 }
@@ -8108,6 +8117,7 @@ export default function App() {
       saleMode: "none",
       listForSale: false,
       consumerProductName: "",
+      consumerProductNameAutoFilled: false,
       consumerDescription: "",
       consumerPickupLocation: "",
       consumerPickupDate: today(),
@@ -9535,6 +9545,50 @@ export default function App() {
   };
   const isCatchAuction = form.saleMode === "auction";
   const isConsumerSale = form.saleMode === "consumer";
+  const primaryConsumerProductName = formatSpeciesForSale(getSpeciesRowLabel(speciesRows[0]));
+  const primaryConsumerNetPrice = parseLocaleNumber(speciesRows[0]?.price_per_kg);
+  const primaryConsumerGrossPrice = primaryConsumerNetPrice == null ? null : calculateGrossPrice(primaryConsumerNetPrice);
+  useEffect(() => {
+    if (!isConsumerSale) return;
+    setForm((previous) => {
+      let changed = false;
+      let nextProductName = previous.consumerProductName;
+      let nextProductNameAutoFilled = Boolean(previous.consumerProductNameAutoFilled);
+
+      if (primaryConsumerProductName && (!String(previous.consumerProductName || "").trim() || previous.consumerProductNameAutoFilled)) {
+        if (previous.consumerProductName !== primaryConsumerProductName || !previous.consumerProductNameAutoFilled) changed = true;
+        nextProductName = primaryConsumerProductName;
+        nextProductNameAutoFilled = true;
+      } else if (!primaryConsumerProductName && previous.consumerProductNameAutoFilled) {
+        changed = true;
+        nextProductName = "";
+        nextProductNameAutoFilled = false;
+      }
+
+      const hasSourcePrice = Number(primaryConsumerGrossPrice) > 0;
+      const nextVariants = (previous.consumerVariants || []).map((variant) => {
+        const priceField = variant.unitType === "whole_fish" ? "pricePerKg" : "unitPrice";
+        const currentPrice = String(variant[priceField] || "");
+        if (currentPrice && !variant.priceAutoFilled) return variant;
+
+        const packageSizeKg = variant.unitType === "package" ? parseLocaleNumber(variant.packageSizeKg) : 1;
+        const suggestedPrice = hasSourcePrice && Number(packageSizeKg) > 0
+          ? formatConsumerPriceInput(Number(primaryConsumerGrossPrice) * Number(packageSizeKg))
+          : "";
+        if (currentPrice === suggestedPrice && variant.priceAutoFilled === hasSourcePrice) return variant;
+        changed = true;
+        return { ...variant, [priceField]: suggestedPrice, priceAutoFilled: hasSourcePrice };
+      });
+
+      if (!changed) return previous;
+      return {
+        ...previous,
+        consumerProductName: nextProductName,
+        consumerProductNameAutoFilled: nextProductNameAutoFilled,
+        consumerVariants: nextVariants,
+      };
+    });
+  }, [isConsumerSale, primaryConsumerGrossPrice, primaryConsumerProductName, form.consumerVariants]);
   const currentCalendarYear = Number(today().slice(0, 4));
   const currentInlandGearMeta = getInlandGearMeta(form.inlandGearCode || form.gear);
   const currentInlandTechnicalFields = getInlandGearTechnicalFields(form.inlandGearCode || form.gear);
@@ -15638,6 +15692,7 @@ export default function App() {
       saleMode: "none",
       listForSale: false,
       consumerProductName: "",
+      consumerProductNameAutoFilled: false,
       consumerDescription: "",
       consumerPickupLocation: "",
       consumerPickupDate: today(),
@@ -19810,7 +19865,7 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
-                      <div style={{ ...styles.field, gridColumn: "1 / -1" }}><label>Tuotteen nimi</label><input style={styles.input} value={form.consumerProductName} onChange={(event) => setForm((prev) => ({ ...prev, consumerProductName: event.target.value }))} placeholder={formatSpeciesForSale(getSpeciesRowLabel(speciesRows[0])) || "Esim. Tuore kokonainen kuha"} /></div>
+                      <div style={{ ...styles.field, gridColumn: "1 / -1" }}><label>Tuotteen nimi</label><input style={styles.input} value={form.consumerProductName} onChange={(event) => setForm((prev) => ({ ...prev, consumerProductName: event.target.value, consumerProductNameAutoFilled: false }))} placeholder={formatSpeciesForSale(getSpeciesRowLabel(speciesRows[0])) || "Esim. Tuore kokonainen kuha"} /><div style={styles.small}>Nimi täytetään automaattisesti kalalajista, mutta voit muokata sitä kuluttajalle kuvaavammaksi.</div></div>
                       {(form.consumerVariants || []).map((variant, variantIndex) => (
                         <div key={variant.id} style={{ ...styles.field, gridColumn: "1 / -1", border: "1px solid #99f6e4", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.75)" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}>
@@ -19825,13 +19880,13 @@ export default function App() {
                             {form.consumerSaleUnitType === "package" ? (
                               <>
                                 <div style={styles.field}><label>Pakkauksen koko kg</label><input style={styles.input} inputMode="decimal" value={variant.packageSizeKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, packageSizeKg: event.target.value } : item) }))} placeholder="1,0" /></div>
-                                <div style={styles.field}><label>Hinta / pakkaus sis. ALV (€)</label><input style={styles.input} inputMode="decimal" value={variant.unitPrice} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, unitPrice: event.target.value } : item) }))} placeholder="12,90" /></div>
+                                <div style={styles.field}><label>Hinta / pakkaus sis. ALV (€)</label><input style={styles.input} inputMode="decimal" value={variant.unitPrice} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, unitPrice: event.target.value, priceAutoFilled: false } : item) }))} placeholder="12,90" /></div>
                               </>
                             ) : (
                               <>
                                 <div style={styles.field}><label>Pienin paino kg / kala</label><input style={styles.input} inputMode="decimal" value={variant.minWeightKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, minWeightKg: event.target.value } : item) }))} placeholder="0,8" /></div>
                                 <div style={styles.field}><label>Suurin paino kg / kala</label><input style={styles.input} inputMode="decimal" value={variant.maxWeightKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, maxWeightKg: event.target.value } : item) }))} placeholder="1,2" /></div>
-                                <div style={styles.field}><label>Kilohinta sis. ALV (€ / kg)</label><input style={styles.input} inputMode="decimal" value={variant.pricePerKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, pricePerKg: event.target.value } : item) }))} placeholder="16,90" /></div>
+                                <div style={styles.field}><label>Kilohinta sis. ALV (€ / kg)</label><input style={styles.input} inputMode="decimal" value={variant.pricePerKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, pricePerKg: event.target.value, priceAutoFilled: false } : item) }))} placeholder="16,90" /></div>
                               </>
                             )}
                             <div style={styles.field}><label>{form.consumerSaleUnitType === "whole_fish" ? "Kaloja myyntiin (kpl)" : "Pakkauksia myyntiin (kpl)"}</label><input style={styles.input} type="number" min="1" step="1" value={variant.availableUnits} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, availableUnits: event.target.value } : item) }))} /></div>
