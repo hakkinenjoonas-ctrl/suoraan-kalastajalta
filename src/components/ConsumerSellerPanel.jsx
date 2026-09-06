@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Browser } from "@capacitor/browser";
 import { supabase } from "../lib/supabase.js";
 import { invokeConsumerOrderAction } from "../services/edgeFunctions.js";
-import { getConsumerListingUrl } from "../lib/consumerMarketplace.js";
+import { getConsumerListingUrl, isConsumerListingPickupEnded } from "../lib/consumerMarketplace.js";
 import { DEFAULT_PUBLIC_APP_URL } from "../lib/supabase.js";
 
 const money = (value) => `${Number(value || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
@@ -28,6 +28,7 @@ export default function ConsumerSellerPanel({ profile }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [finalWeights, setFinalWeights] = useState({});
   const [editingListing, setEditingListing] = useState(null);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     if (!profile?.id) return;
@@ -51,6 +52,11 @@ export default function ConsumerSellerPanel({ profile }) {
   }, [profile?.id]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const updateStatus = async (order, status) => {
     setBusyId(order.id);
@@ -206,6 +212,37 @@ export default function ConsumerSellerPanel({ profile }) {
     );
   };
 
+  const renderListingCard = (listing, { ended = false } = {}) => {
+    const link = getConsumerListingUrl(listing.id, DEFAULT_PUBLIC_APP_URL);
+    const packageKilos = (listing.variants || []).filter((variant) => variant.sale_unit_type === "package").reduce((sum, variant) => sum + Number(variant.package_size_kg || 0) * Number(variant.available_units || 0), 0);
+    const wholeFish = (listing.variants || []).filter((variant) => variant.sale_unit_type === "whole_fish");
+    const minKilos = wholeFish.reduce((sum, variant) => sum + Number(variant.min_weight_kg || 0) * Number(variant.available_units || 0), 0);
+    const maxKilos = wholeFish.reduce((sum, variant) => sum + Number(variant.max_weight_kg || 0) * Number(variant.available_units || 0), 0);
+    const listingOrders = orders.filter((order) => order.listing_id === listing.id);
+    return (
+      <div key={listing.id} style={{ border: ended ? "1px solid #cbd5e1" : "1px solid #9fd5b2", borderRadius: 16, padding: 13, background: ended ? "#f8fafc" : "white", display: "grid", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span><strong>{listing.product_name || listing.species}</strong> · {listingStatusLabel[listing.status] || listing.status}</span>
+          {ended ? <span style={{ borderRadius: 999, padding: "4px 8px", background: "#e2e8f0", color: "#475569", fontSize: 12, fontWeight: 800 }}>Noutoaika päättynyt</span> : null}
+        </div>
+        <div style={{ color: "#526b60", fontSize: 13 }}>{wholeFish.length > 0 ? `Arvioitu saldo ${minKilos.toLocaleString("fi-FI")}–${maxKilos.toLocaleString("fi-FI")} kg` : `Saldo ${packageKilos.toLocaleString("fi-FI")} kg`}</div>
+        <div style={{ color: "#526b60", fontSize: 13 }}>Nouto {pickupTime(listing.pickup_start, listing.pickup_end)} · {listing.pickup_location}</div>
+        <div style={{ color: "#526b60", fontSize: 13 }}>Tilaukset viimeistään {listing.order_deadline ? new Date(listing.order_deadline).toLocaleString("fi-FI", { dateStyle: "short", timeStyle: "short" }) : "–"}</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" onClick={() => openExternal(link)}>Avaa julkinen linkki</button>
+          <button type="button" onClick={async () => { await navigator.clipboard.writeText(link); setMessage("Kalaerän julkinen linkki kopioitiin."); }}>Kopioi linkki</button>
+          <button type="button" disabled={busyId === listing.id} onClick={() => startEditingListing(listing)}>Muokkaa erää</button>
+          {listing.status === "published" ? <button type="button" disabled={busyId === listing.id} onClick={() => setListingSaleStatus(listing, "paused")}>Keskeytä myynti</button> : null}
+          {listing.status === "paused" ? <button type="button" disabled={busyId === listing.id} onClick={() => setListingSaleStatus(listing, "published")}>Jatka myyntiä</button> : null}
+        </div>
+        <div style={{ borderTop: ended ? "2px solid #e2e8f0" : "2px solid #dcf2e4", marginTop: 5, paddingTop: 12, display: "grid", gap: 9 }}>
+          <strong style={{ fontSize: 17 }}>Tämän erän tilaukset ({listingOrders.length})</strong>
+          {listingOrders.length > 0 ? listingOrders.map(renderOrderCard) : <div style={{ color: "#647a70", fontSize: 13 }}>Ei tilauksia tähän kuluttajaerään.</div>}
+        </div>
+      </div>
+    );
+  };
+
   const openExternal = async (url) => {
     try {
       await Browser.open({ url });
@@ -218,6 +255,9 @@ export default function ConsumerSellerPanel({ profile }) {
     return <div style={{ border: "1px dashed #94a3b8", borderRadius: 18, padding: 16, color: "#64748b", background: "#f8fafc" }}><strong>Kuluttajamyynti</strong><div style={{ marginTop: 5 }}>Kuluttajatilauksia ei voitu hakea. Nykyinen B2B-myynti toimii normaalisti.</div></div>;
   }
 
+  const activeListings = listings.filter((listing) => !isConsumerListingPickupEnded(listing, currentTime));
+  const endedListings = listings.filter((listing) => isConsumerListingPickupEnded(listing, currentTime));
+
   return (
     <div style={{ border: "1px solid #86efac", borderRadius: 20, padding: 18, background: "#f0fdf4", display: "grid", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
@@ -227,34 +267,18 @@ export default function ConsumerSellerPanel({ profile }) {
       {loading ? <div>Haetaan kuluttajaeriä ja tilauksia…</div> : null}
       {listings.length > 0 ? (
         <div style={{ display: "grid", gap: 9 }}>
-          <strong>Omat kuluttajaerät</strong>
-          {listings.map((listing) => {
-            const link = getConsumerListingUrl(listing.id, DEFAULT_PUBLIC_APP_URL);
-            const packageKilos = (listing.variants || []).filter((variant) => variant.sale_unit_type === "package").reduce((sum, variant) => sum + Number(variant.package_size_kg || 0) * Number(variant.available_units || 0), 0);
-            const wholeFish = (listing.variants || []).filter((variant) => variant.sale_unit_type === "whole_fish");
-            const minKilos = wholeFish.reduce((sum, variant) => sum + Number(variant.min_weight_kg || 0) * Number(variant.available_units || 0), 0);
-            const maxKilos = wholeFish.reduce((sum, variant) => sum + Number(variant.max_weight_kg || 0) * Number(variant.available_units || 0), 0);
-            const listingOrders = orders.filter((order) => order.listing_id === listing.id);
-            return (
-              <div key={listing.id} style={{ border: "1px solid #9fd5b2", borderRadius: 16, padding: 13, background: "white", display: "grid", gap: 8 }}>
-                <div><strong>{listing.product_name || listing.species}</strong> · {listingStatusLabel[listing.status] || listing.status}</div>
-                <div style={{ color: "#526b60", fontSize: 13 }}>{wholeFish.length > 0 ? `Arvioitu saldo ${minKilos.toLocaleString("fi-FI")}–${maxKilos.toLocaleString("fi-FI")} kg` : `Saldo ${packageKilos.toLocaleString("fi-FI")} kg`}</div>
-                <div style={{ color: "#526b60", fontSize: 13 }}>Nouto {pickupTime(listing.pickup_start, listing.pickup_end)} · {listing.pickup_location}</div>
-                <div style={{ color: "#526b60", fontSize: 13 }}>Tilaukset viimeistään {listing.order_deadline ? new Date(listing.order_deadline).toLocaleString("fi-FI", { dateStyle: "short", timeStyle: "short" }) : "–"}</div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button type="button" onClick={() => openExternal(link)}>Avaa julkinen linkki</button>
-                  <button type="button" onClick={async () => { await navigator.clipboard.writeText(link); setMessage("Kalaerän julkinen linkki kopioitiin."); }}>Kopioi linkki</button>
-                  <button type="button" disabled={busyId === listing.id} onClick={() => startEditingListing(listing)}>Muokkaa erää</button>
-                  {listing.status === "published" ? <button type="button" disabled={busyId === listing.id} onClick={() => setListingSaleStatus(listing, "paused")}>Keskeytä myynti</button> : null}
-                  {listing.status === "paused" ? <button type="button" disabled={busyId === listing.id} onClick={() => setListingSaleStatus(listing, "published")}>Jatka myyntiä</button> : null}
-                </div>
-                <div style={{ borderTop: "2px solid #dcf2e4", marginTop: 5, paddingTop: 12, display: "grid", gap: 9 }}>
-                  <strong style={{ fontSize: 17 }}>Tämän erän tilaukset ({listingOrders.length})</strong>
-                  {listingOrders.length > 0 ? listingOrders.map(renderOrderCard) : <div style={{ color: "#647a70", fontSize: 13 }}>Ei vielä tilauksia tähän kuluttajaerään.</div>}
-                </div>
+          <strong>Aktiiviset ja tulevat kuluttajaerät ({activeListings.length})</strong>
+          {activeListings.length > 0
+            ? activeListings.map((listing) => renderListingCard(listing))
+            : <div style={{ color: "#647a70", fontSize: 13 }}>Ei aktiivisia tai tulevia kuluttajaeriä.</div>}
+          {endedListings.length > 0 ? (
+            <details style={{ marginTop: 5, border: "1px solid #cbd5e1", borderRadius: 14, padding: "11px 13px", background: "rgba(248, 250, 252, 0.9)" }}>
+              <summary style={{ cursor: "pointer", color: "#334155", fontWeight: 800, userSelect: "none" }}>Päättyneet erät ({endedListings.length})</summary>
+              <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
+                {endedListings.map((listing) => renderListingCard(listing, { ended: true }))}
               </div>
-            );
-          })}
+            </details>
+          ) : null}
         </div>
       ) : null}
       {!loading && listings.length === 0 ? <div style={{ color: "#47705c" }}>Ei vielä kuluttajaeriä.</div> : null}

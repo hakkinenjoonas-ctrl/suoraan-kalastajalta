@@ -6,6 +6,7 @@ import {
   getConsumerListingPath,
   getRequestedConsumerListingId,
   isConsumerDemoRequested,
+  isConsumerListingPickupEnded,
   isConsumerMarketplaceRequested,
   normalizeConsumerListing,
 } from "./consumerMarketplace.js";
@@ -50,6 +51,14 @@ describe("consumer marketplace", () => {
       pickupEnd: "2026-09-12T10:00:00.000Z",
       orderDeadline: "2026-09-12T07:00:00.000Z",
     });
+  });
+
+  it("separates listings whose pickup window has ended", () => {
+    const now = new Date("2026-09-06T12:00:00.000Z");
+    expect(isConsumerListingPickupEnded({ pickup_end: "2026-09-06T11:59:59.000Z" }, now)).toBe(true);
+    expect(isConsumerListingPickupEnded({ pickupEnd: "2026-09-06T12:00:00.000Z" }, now)).toBe(true);
+    expect(isConsumerListingPickupEnded({ pickup_end: "2026-09-06T12:00:01.000Z" }, now)).toBe(false);
+    expect(isConsumerListingPickupEnded({ pickup_end: "" }, now)).toBe(false);
   });
 
   it("estimates whole-fish reservations by size class and pieces", () => {

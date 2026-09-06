@@ -28,6 +28,12 @@ export function getConsumerAppDeepLink(listingId) {
   return id ? `fi.suoraankalastajalta.app:///kuluttaja/era/${encodeURIComponent(id)}` : "fi.suoraankalastajalta.app:///kuluttaja";
 }
 
+export function isConsumerListingPickupEnded(listing, now = Date.now()) {
+  const pickupEnd = new Date(listing?.pickup_end || listing?.pickupEnd || "").getTime();
+  const comparisonTime = now instanceof Date ? now.getTime() : Number(now);
+  return Number.isFinite(pickupEnd) && Number.isFinite(comparisonTime) && pickupEnd <= comparisonTime;
+}
+
 export function isConsumerMarketplaceRequested(locationLike = typeof window !== "undefined" ? window.location : null) {
   if (!locationLike) return false;
   if (String(locationLike.pathname || "").startsWith(CONSUMER_MARKET_PATH)) return true;
