@@ -1,8 +1,19 @@
-import { COMMISSION_RATE } from "./constants.js";
 import { FISH_VAT_RATE } from "./pricing.js";
 
 export const CONSUMER_MARKET_QUERY_VALUE = "consumer";
 export const CONSUMER_MARKET_PATH = "/kuluttaja";
+export const CONSUMER_COMMISSION_RATE = 0.08;
+export const CONSUMER_PAYMENT_METHOD_OPTIONS = ["MobilePay", "Korttimaksu", "Käteinen", "Tilisiirto", "Lasku"];
+
+export function normalizeConsumerPaymentMethods(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+export function formatConsumerPaymentMethods(values) {
+  const methods = normalizeConsumerPaymentMethods(values);
+  return methods.length > 0 ? methods.join(", ") : "Sovitaan kalastajan kanssa";
+}
 
 export function getRequestedConsumerListingId(locationLike = typeof window !== "undefined" ? window.location : null) {
   if (!locationLike) return "";
@@ -47,7 +58,7 @@ export function isConsumerDemoRequested(locationLike = typeof window !== "undefi
   return params.get("demo") === "1";
 }
 
-export function calculateConsumerOrderTotals({ packagePrice, packageCount, vatRate = FISH_VAT_RATE, commissionRate = COMMISSION_RATE }) {
+export function calculateConsumerOrderTotals({ packagePrice, packageCount, vatRate = FISH_VAT_RATE, commissionRate = CONSUMER_COMMISSION_RATE }) {
   const grossTotal = Number(packagePrice || 0) * Number(packageCount || 0);
   const netTotal = vatRate >= 0 ? grossTotal / (1 + vatRate) : grossTotal;
   const vatAmount = grossTotal - netTotal;
@@ -91,6 +102,7 @@ export function normalizeConsumerListing(row = {}) {
     pickupStart: String(row.pickup_start || row.pickupStart || ""),
     pickupEnd: String(row.pickup_end || row.pickupEnd || ""),
     orderDeadline: String(row.order_deadline || row.orderDeadline || ""),
+    paymentMethods: normalizeConsumerPaymentMethods(row.payment_methods || row.paymentMethods),
     status: String(row.status || "published"),
     variants,
     availableUnits: variants.reduce((sum, variant) => sum + variant.availableUnits, 0),
@@ -114,7 +126,7 @@ export function normalizeConsumerVariant(row = {}, index = 0) {
   };
 }
 
-export function calculateConsumerReservationEstimate({ variant, unitCount, vatRate = FISH_VAT_RATE, commissionRate = COMMISSION_RATE }) {
+export function calculateConsumerReservationEstimate({ variant, unitCount, vatRate = FISH_VAT_RATE, commissionRate = CONSUMER_COMMISSION_RATE }) {
   const count = Math.max(0, Number(unitCount || 0));
   const estimatedUnitWeight = variant?.unitType === "whole_fish"
     ? (Number(variant.minWeightKg || 0) + Number(variant.maxWeightKg || 0)) / 2
@@ -127,10 +139,36 @@ export function calculateConsumerReservationEstimate({ variant, unitCount, vatRa
   return { ...totals, estimatedWeightKg: Number(estimatedWeightKg.toFixed(3)), isEstimate: variant?.unitType === "whole_fish" };
 }
 
+export function calculateConsumerReservationBasket({ variants = [], quantities = {}, vatRate = FISH_VAT_RATE, commissionRate = CONSUMER_COMMISSION_RATE }) {
+  const lines = variants.flatMap((variant) => {
+    const numericCount = Number(quantities?.[variant.id] || 0);
+    const requestedCount = Number.isFinite(numericCount) ? Math.floor(numericCount) : 0;
+    const unitCount = Math.max(0, Math.min(requestedCount, Number(variant.availableUnits || 0)));
+    if (unitCount < 1) return [];
+    return [{
+      variant,
+      unitCount,
+      ...calculateConsumerReservationEstimate({ variant, unitCount, vatRate, commissionRate }),
+    }];
+  });
+  const sum = (field) => Number(lines.reduce((total, line) => total + Number(line[field] || 0), 0).toFixed(field === "estimatedWeightKg" ? 3 : 2));
+  return {
+    lines,
+    estimatedWeightKg: sum("estimatedWeightKg"),
+    grossTotal: sum("grossTotal"),
+    netTradeValue: sum("netTradeValue"),
+    vatAmount: sum("vatAmount"),
+    commissionAmount: sum("commissionAmount"),
+    isEstimate: lines.some((line) => line.isEstimate),
+  };
+}
+
 export function filterConsumerListings(listings, { search = "", species = "", municipality = "" } = {}) {
   const query = String(search || "").trim().toLocaleLowerCase("fi-FI");
   return (listings || []).filter((listing) => {
     if (listing.status !== "published" || Number(listing.availableUnits || listing.availablePackages || 0) <= 0) return false;
+    const deadline = Date.parse(listing.orderDeadline || "");
+    if (Number.isFinite(deadline) && deadline <= Date.now()) return false;
     if (species && listing.species !== species) return false;
     if (municipality && listing.municipality !== municipality) return false;
     if (!query) return true;

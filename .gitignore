@@ -7,6 +7,7 @@ tmp/
 plugins/**/.swiftpm/xcode/xcuserdata/
 supabase/.temp/
 android/.gradle/
+android/.gradle-backup-*/
 android/.idea/
 android/build/
 android/app/build/

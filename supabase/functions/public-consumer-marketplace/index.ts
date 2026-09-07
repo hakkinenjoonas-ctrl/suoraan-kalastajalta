@@ -10,8 +10,9 @@ Deno.serve(async (request) => {
     const client = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
     const { data, error } = await client
       .from("consumer_listings")
-      .select("id, batch_id, species, product_name, description, seller_name, municipality, pickup_location, catch_date, vat_rate, image_url, cold_storage, pickup_start, pickup_end, order_deadline, status, created_at, variants:consumer_listing_variants(id, sale_unit_type, label, package_size_kg, unit_price_including_vat, min_weight_kg, max_weight_kg, price_per_kg_including_vat, available_units, sort_order)")
+      .select("id, batch_id, species, product_name, description, seller_name, municipality, pickup_location, catch_date, vat_rate, image_url, cold_storage, pickup_start, pickup_end, order_deadline, payment_methods, status, created_at, variants:consumer_listing_variants(id, sale_unit_type, label, package_size_kg, unit_price_including_vat, min_weight_kg, max_weight_kg, price_per_kg_including_vat, available_units, sort_order)")
       .eq("status", "published")
+      .gt("order_deadline", new Date().toISOString())
       .order("created_at", { ascending: false });
     if (error) throw error;
     const listings = (data || []).map((listing) => ({

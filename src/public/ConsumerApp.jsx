@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import ConsumerMarketplaceView from "../components/ConsumerMarketplaceView.jsx";
 import {
+  formatConsumerPaymentMethods,
   getRequestedConsumerListingId,
   normalizeConsumerListing,
 } from "../lib/consumerMarketplace.js";
@@ -60,7 +61,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
     }
     const { data, error: ordersError } = await supabase
       .from("consumer_orders")
-      .select("id, listing_id, variant_id, status, sale_unit_type, variant_label, unit_count, package_count, estimated_weight_kg, total_including_vat, created_at, consumer_listings(product_name, species, pickup_location)")
+      .select("id, reservation_group_id, listing_id, variant_id, status, sale_unit_type, variant_label, unit_count, package_count, estimated_weight_kg, total_including_vat, created_at, consumer_listings(*)")
       .order("created_at", { ascending: false });
     if (!ordersError) {
       setOrders((data || []).map((order) => ({ ...order, ...(order.consumer_listings || {}) })));
@@ -176,7 +177,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
     }
   };
 
-  const reserve = async ({ listing, variant, unitCount, customerName, email, phone, note }) => {
+  const reserve = async ({ listing, lines, customerName, email, phone, note }) => {
     const normalizedCustomerName = String(customerName || "").trim();
     const normalizedEmail = String(email || "").trim().toLowerCase();
     if (normalizedCustomerName.length < 2) {
@@ -187,25 +188,44 @@ export default function ConsumerApp({ initialListingId = "" }) {
       setError("Täytä voimassa oleva sähköpostiosoite.");
       return false;
     }
+    if (!Array.isArray(lines) || lines.length < 1) {
+      setError("Valitse vähintään yksi pakkauskoko ja määrä.");
+      return false;
+    }
     setBusy(true);
     setError("");
-    const result = await invokeConsumerOrderAction(session?.access_token || "", { action: "reserve", listingId: listing.id, variantId: variant.id, unitCount, name: normalizedCustomerName, email: normalizedEmail, phone, note });
+    const result = await invokeConsumerOrderAction(session?.access_token || "", {
+      action: "reserve_multiple",
+      listingId: listing.id,
+      items: lines.map((line) => ({ variantId: line.variant.id, unitCount: line.unitCount })),
+      name: normalizedCustomerName,
+      email: normalizedEmail,
+      phone,
+      note,
+    });
     setBusy(false);
     if (result.error) {
       setError(result.error.message || "Varaus epäonnistui.");
       return false;
     }
-    const savedOrder = result.data?.order || {};
+    const savedOrders = Array.isArray(result.data?.orders) ? result.data.orders : [];
+    const savedOrder = savedOrders[0] || result.data?.order || {};
     setReservationConfirmation({
-      id: savedOrder.id || "",
+      id: result.data?.reservationGroupId || savedOrder.reservation_group_id || savedOrder.id || "",
       customerName: normalizedCustomerName,
       productName: listing.productName,
-      variantLabel: variant.label,
-      unitCount,
-      totalIncludingVat: savedOrder.total_including_vat,
+      lines: lines.map((line) => ({
+        variantLabel: line.variant.label,
+        unitCount: line.unitCount,
+        totalIncludingVat: savedOrders.find((order) => order.variant_id === line.variant.id)?.total_including_vat ?? line.grossTotal,
+      })),
+      totalIncludingVat: savedOrders.length > 0
+        ? savedOrders.reduce((sum, order) => sum + Number(order.total_including_vat || 0), 0)
+        : lines.reduce((sum, line) => sum + Number(line.grossTotal || 0), 0),
       pickupLocation: listing.pickupLocation || listing.municipality,
       pickupStart: listing.pickupStart,
       pickupEnd: listing.pickupEnd,
+      paymentMethods: listing.paymentMethods,
       email: savedOrder.consumer_email || normalizedEmail,
       hasConsumerAccount: accountRole === "consumer",
       confirmationEmailSent: result.data?.confirmationEmailSent === true,
@@ -280,10 +300,12 @@ export default function ConsumerApp({ initialListingId = "" }) {
             <p className="consumer-description"><strong>{reservationConfirmation.customerName}</strong>, varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.</p>
             <div className="consumer-summary">
               <span><strong>Tuote:</strong> {reservationConfirmation.productName}</span>
-              <span><strong>Määrä:</strong> {reservationConfirmation.unitCount} × {reservationConfirmation.variantLabel}</span>
+              <span><strong>Määrät:</strong></span>
+              {reservationConfirmation.lines.map((line, index) => <span key={`${line.variantLabel}-${index}`}>{line.unitCount} × {line.variantLabel} · {money(line.totalIncludingVat)}</span>)}
               <span><strong>Yhteensä:</strong> {money(reservationConfirmation.totalIncludingVat)}</span>
               <span><strong>Nouto:</strong> {reservationConfirmation.pickupLocation}</span>
               <span><strong>Noudettavissa:</strong> {pickupWindow(reservationConfirmation.pickupStart, reservationConfirmation.pickupEnd)}</span>
+              <span><strong>Maksutavat:</strong> {formatConsumerPaymentMethods(reservationConfirmation.paymentMethods)}</span>
               {reservationConfirmation.id ? <span><strong>Varaustunnus:</strong> {reservationConfirmation.id.slice(0, 8).toUpperCase()}</span> : null}
             </div>
             <div className="consumer-notice consumer-success">{reservationConfirmation.confirmationEmailSent ? `Vahvistus lähetettiin sähköpostiin ${reservationConfirmation.email}.` : reservationConfirmation.hasConsumerAccount ? "Varaus näkyy nyt Omat varaukset -kohdassa." : "Tallenna varaustunnus. Kalastaja on saanut varauksesi tiedot."}</div>

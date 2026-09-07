@@ -209,7 +209,8 @@ import AuthView from "./components/AuthView.jsx";
 import PublicApp from "./public/PublicApp.jsx";
 import ConsumerApp from "./public/ConsumerApp.jsx";
 import ConsumerSellerPanel from "./components/ConsumerSellerPanel.jsx";
-import { getConsumerListingUrl, getRequestedConsumerListingId } from "./lib/consumerMarketplace.js";
+import ConsumerAdminBillingPanel from "./components/ConsumerAdminBillingPanel.jsx";
+import { CONSUMER_PAYMENT_METHOD_OPTIONS, getConsumerListingUrl, getRequestedConsumerListingId } from "./lib/consumerMarketplace.js";
 import { AUCTION_DURATION_OPTIONS, normalizeAuctionMoney } from "./lib/auctionLogic.js";
 import ProcessedLabel4x3, { PROCESSED_LABEL_4X3_SIZE_MM } from "./components/ProcessedLabel4x3.jsx";
 import ProcessedLabel4x6, { PROCESSED_LABEL_4X6_SIZE_MM } from "./components/ProcessedLabel4x6.jsx";
@@ -6508,6 +6509,7 @@ function BillingView({ buyerOffers, buyerStatusLabel, shouldRevealBuyerIdentity,
           </div>
         ))
       )}
+      <ConsumerAdminBillingPanel billingFilter={billingFilter} onExportSpreadsheet={exportSpreadsheet} />
     </div>
   );
 }
@@ -8155,6 +8157,7 @@ export default function App() {
       consumerPickupStartTime: "12:00",
       consumerPickupEndTime: "13:00",
       consumerOrderDeadlineHours: "2",
+      consumerPaymentMethods: [],
       consumerSaleUnitType: "package",
       consumerVariants: [createConsumerSaleVariant("package")],
       auctionDurationMinutes: 180,
@@ -15311,8 +15314,15 @@ export default function App() {
     const consumerPickupStart = new Date(`${form.consumerPickupDate || ""}T${form.consumerPickupStartTime || ""}:00`);
     const consumerPickupEnd = new Date(`${form.consumerPickupDate || ""}T${form.consumerPickupEndTime || ""}:00`);
     const consumerOrderDeadlineHours = Number(form.consumerOrderDeadlineHours);
+    const consumerPaymentMethods = Array.isArray(form.consumerPaymentMethods)
+      ? form.consumerPaymentMethods.map((method) => String(method || "").trim()).filter(Boolean)
+      : [];
     if (isConsumerSale && consumerVariants.length < 1) {
       setAuthError("Lisää kuluttajamyyntiin vähintään yksi myyntiyksikkö.");
+      return;
+    }
+    if (isConsumerSale && consumerPaymentMethods.length < 1) {
+      setAuthError("Valitse kuluttajaerälle vähintään yksi maksutapa.");
       return;
     }
     if (isConsumerSale && consumerVariants.some((variant) => !variant.label)) {
@@ -15704,6 +15714,7 @@ export default function App() {
           p_pickup_end: consumerPickupEnd.toISOString(),
           p_order_deadline: consumerOrderDeadline.toISOString(),
           p_variants: consumerVariants,
+          p_payment_methods: consumerPaymentMethods,
         });
         if (consumerListingError) throw consumerListingError;
         if (pendingConsumerImagePath) {
@@ -15837,6 +15848,7 @@ export default function App() {
       consumerPickupStartTime: "12:00",
       consumerPickupEndTime: "13:00",
       consumerOrderDeadlineHours: "2",
+      consumerPaymentMethods: [],
       consumerSaleUnitType: "package",
       consumerVariants: [createConsumerSaleVariant("package")],
       auctionDurationMinutes: 180,
@@ -20062,10 +20074,34 @@ export default function App() {
                       <div style={styles.field}><label>Noudettavissa alkaen</label><input style={styles.input} type="time" value={form.consumerPickupStartTime} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupStartTime: event.target.value }))} /></div>
                       <div style={styles.field}><label>Noudettavissa asti</label><input style={styles.input} type="time" value={form.consumerPickupEndTime} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupEndTime: event.target.value }))} /></div>
                       <div style={styles.field}><label>Tilaukset viimeistään (tuntia ennen noutoa)</label><input style={styles.input} type="number" min="0" step="0.5" value={form.consumerOrderDeadlineHours} onChange={(event) => setForm((prev) => ({ ...prev, consumerOrderDeadlineHours: event.target.value }))} placeholder="2" /><div style={styles.small}>Esimerkiksi 2 sulkee tilaamisen kaksi tuntia ennen noutoajan alkua.</div></div>
+                      <div style={{ ...styles.field, gridColumn: "1 / -1" }}>
+                        <label>Maksutavat (valitse vähintään yksi)</label>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          {CONSUMER_PAYMENT_METHOD_OPTIONS.map((method) => {
+                            const selected = (form.consumerPaymentMethods || []).includes(method);
+                            return (
+                              <label key={method} style={{ ...styles.button, cursor: "pointer", background: selected ? "#dbeafe" : "#fff", borderColor: selected ? "#2563eb" : "#cbd5e1", color: selected ? "#1e3a8a" : "#334155" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  onChange={() => setForm((prev) => ({
+                                    ...prev,
+                                    consumerPaymentMethods: selected
+                                      ? (prev.consumerPaymentMethods || []).filter((item) => item !== method)
+                                      : [...(prev.consumerPaymentMethods || []), method],
+                                  }))}
+                                />
+                                {method}
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div style={styles.small}>Valitut maksutavat näytetään kuluttajalle ennen varausta ja varausvahvistuksessa.</div>
+                      </div>
                       <div style={{ ...styles.field, gridColumn: "1 / -1" }}><label>Kuluttajalle näkyvä kuvaus</label><textarea style={styles.textarea} value={form.consumerDescription} onChange={(event) => setForm((prev) => ({ ...prev, consumerDescription: event.target.value }))} placeholder="Kerro käsittelystä, tuoreudesta ja noudosta." /></div>
                     </div>
-                    <div style={styles.small}>{form.consumerSaleUnitType === "whole_fish" ? "Kuluttaja varaa kappalemäärän. Sovellus näyttää paino- ja hinta-arvion, ja lopullinen hinta lasketaan punnitusta painosta noudon yhteydessä." : "Kuluttaja voi valita pakkauskoon ja useita pakkauksia, esimerkiksi 1 kg + 1 kg + 0,5 kg erillisinä varauksina."}</div>
-                    <div style={styles.noticeInfo}>Kuluttaja maksaa suoraan kalastajalle noudon yhteydessä. Palvelu kirjaa toteutuneesta kaupasta 3 % komission verottomasta myyntiarvosta.</div>
+                    <div style={styles.small}>{form.consumerSaleUnitType === "whole_fish" ? "Kuluttaja varaa kappalemäärän. Sovellus näyttää paino- ja hinta-arvion, ja lopullinen hinta lasketaan punnitusta painosta noudon yhteydessä." : "Kuluttaja voi yhdistää samaan varaukseen useita pakkauskokoja, esimerkiksi 4 × 1 kg + 1 × 0,5 kg."}</div>
+                    <div style={styles.noticeInfo}>Kuluttaja maksaa suoraan kalastajalle valitulla maksutavalla. Palvelu kirjaa jokaisesta tehdystä tilauksesta 8 % komission verottomasta myyntiarvosta myös silloin, jos tilausta ei myöhemmin noudeta tai se perutaan.</div>
                   </div>
                 ) : null}
                 {form.saleMode === "auction" ? (

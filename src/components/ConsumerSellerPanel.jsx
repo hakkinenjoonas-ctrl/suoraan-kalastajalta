@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Browser } from "@capacitor/browser";
+import { Capacitor } from "@capacitor/core";
+import { Directory, Filesystem } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { supabase } from "../lib/supabase.js";
 import { invokeConsumerOrderAction } from "../services/edgeFunctions.js";
-import { getConsumerListingUrl, isConsumerListingPickupEnded } from "../lib/consumerMarketplace.js";
+import { CONSUMER_PAYMENT_METHOD_OPTIONS, formatConsumerPaymentMethods, getConsumerListingUrl, isConsumerListingPickupEnded, normalizeConsumerPaymentMethods } from "../lib/consumerMarketplace.js";
+import { buildConsumerCustomerCardsPdf, groupConsumerOrdersForCustomerCards } from "../lib/consumerCustomerCards.js";
 import { DEFAULT_PUBLIC_APP_URL } from "../lib/supabase.js";
 
 const money = (value) => `${Number(value || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
@@ -17,6 +21,13 @@ const localDateTimeValue = (value) => {
 };
 const decimalValue = (value) => String(value ?? "").replace(".", ",");
 const numericValue = (value) => String(value ?? "").trim().replace(",", ".");
+
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+  reader.onerror = () => reject(reader.error || new Error("PDF-tiedoston lukeminen epäonnistui."));
+  reader.readAsDataURL(blob);
+});
 
 export default function ConsumerSellerPanel({ profile }) {
   const [orders, setOrders] = useState([]);
@@ -36,12 +47,12 @@ export default function ConsumerSellerPanel({ profile }) {
     const [ordersResult, listingsResult] = await Promise.all([
       supabase
         .from("consumer_orders")
-        .select("id, listing_id, status, consumer_name, consumer_email, consumer_phone, consumer_note, sale_unit_type, variant_label, unit_count, package_count, estimated_weight_kg, final_weight_kg, total_including_vat, commission_amount, commission_status, created_at, consumer_listings(product_name, species, pickup_location, batch_id)")
+        .select("id, reservation_group_id, listing_id, status, consumer_name, consumer_email, consumer_phone, consumer_note, sale_unit_type, variant_label, unit_count, package_count, estimated_weight_kg, final_weight_kg, total_including_vat, commission_amount, commission_status, created_at, consumer_listings(product_name, species, pickup_location, batch_id)")
         .eq("seller_user_id", profile.id)
         .order("created_at", { ascending: false }),
       supabase
         .from("consumer_listings")
-        .select("id, product_name, description, species, status, pickup_location, pickup_start, pickup_end, order_deadline, created_at, variants:consumer_listing_variants(id, sale_unit_type, label, package_size_kg, unit_price_including_vat, min_weight_kg, max_weight_kg, price_per_kg_including_vat, available_units, initial_units, sort_order)")
+        .select("*, variants:consumer_listing_variants(id, sale_unit_type, label, package_size_kg, unit_price_including_vat, min_weight_kg, max_weight_kg, price_per_kg_including_vat, available_units, initial_units, sort_order)")
         .eq("seller_user_id", profile.id)
         .order("created_at", { ascending: false }),
     ]);
@@ -77,6 +88,35 @@ export default function ConsumerSellerPanel({ profile }) {
     setBusyId("");
   };
 
+  const printCustomerCards = async (reservations, listing) => {
+    const printKey = `print-${listing?.id || reservations?.[0]?.id || "customer-cards"}`;
+    setBusyId(printKey);
+    setMessage("");
+    setErrorMessage("");
+    try {
+      const doc = buildConsumerCustomerCardsPdf(reservations);
+      const safeBatchId = String(listing?.batch_id || "kalaera").replace(/[^a-zA-Z0-9åäöÅÄÖ_-]+/g, "-");
+      const fileName = `asiakaskortit-${safeBatchId}-${Date.now()}.pdf`;
+      if (Capacitor.isNativePlatform()) {
+        const base64Data = await blobToBase64(doc.output("blob"));
+        const { uri } = await Filesystem.writeFile({ path: fileName, data: base64Data, directory: Directory.Cache, recursive: true });
+        await Share.share({ title: "Tulosta asiakaskortit", text: `${reservations.length} asiakaskorttia`, url: uri, dialogTitle: "Tulosta tai jaa PDF" });
+      } else {
+        if (typeof doc.autoPrint === "function") doc.autoPrint();
+        const pdfUrl = doc.output("bloburl");
+        const opened = window.open(pdfUrl, "_blank", "noopener,noreferrer");
+        if (!opened) throw new Error("Salli ponnahdusikkunat asiakaskortin avaamista varten.");
+      }
+      setMessage(`${reservations.length === 1 ? "Asiakaskortti" : `${reservations.length} asiakaskorttia`} muodostettiin tulostettavaksi.`);
+    } catch (error) {
+      if (!String(error?.message || error || "").toLowerCase().includes("cancel")) {
+        setErrorMessage(String(error?.message || error || "Asiakaskorttien muodostaminen epäonnistui."));
+      }
+    } finally {
+      setBusyId("");
+    }
+  };
+
   const startEditingListing = (listing) => {
     setMessage("");
     setErrorMessage("");
@@ -88,6 +128,7 @@ export default function ConsumerSellerPanel({ profile }) {
       pickupStart: localDateTimeValue(listing.pickup_start),
       pickupEnd: localDateTimeValue(listing.pickup_end),
       orderDeadline: localDateTimeValue(listing.order_deadline),
+      paymentMethods: normalizeConsumerPaymentMethods(listing.payment_methods),
       variants: (listing.variants || [])
         .slice()
         .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
@@ -136,6 +177,11 @@ export default function ConsumerSellerPanel({ profile }) {
       price_per_kg_including_vat: variant.sale_unit_type === "whole_fish" ? numericValue(variant.price_per_kg_including_vat) : null,
       available_units: Number(variant.available_units),
     }));
+    if (editingListing.paymentMethods.length < 1) {
+      setErrorMessage("Valitse kuluttajaerälle vähintään yksi maksutapa.");
+      setBusyId("");
+      return;
+    }
     const { error } = await supabase.rpc("update_consumer_listing", {
       p_listing_id: editingListing.id,
       p_product_name: editingListing.productName,
@@ -145,6 +191,7 @@ export default function ConsumerSellerPanel({ profile }) {
       p_pickup_end: pickupEnd.toISOString(),
       p_order_deadline: orderDeadline.toISOString(),
       p_variants: variants,
+      p_payment_methods: editingListing.paymentMethods,
     });
     if (error) {
       setErrorMessage(error.message || "Kuluttajaerän muokkaus epäonnistui.");
@@ -172,9 +219,12 @@ export default function ConsumerSellerPanel({ profile }) {
     setBusyId("");
   };
 
-  const renderOrderCard = (order) => {
+  const renderOrderCard = (order, listingOrders) => {
     const unitCount = Number(order.unit_count || order.package_count || 0);
     const unitLabel = order.variant_label || (order.sale_unit_type === "whole_fish" ? "kokonainen kala" : "pakkaus");
+    const reservationOrders = listingOrders.filter((candidate) => (candidate.reservation_group_id || candidate.id) === (order.reservation_group_id || order.id));
+    const isFirstReservationLine = reservationOrders[0]?.id === order.id;
+    const reservation = groupConsumerOrdersForCustomerCards(reservationOrders)[0];
     return (
       <div key={order.id} style={{ border: "1px solid #86cfa5", borderRadius: 14, padding: 14, background: "#fbfffc", display: "grid", gap: 11 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
@@ -202,7 +252,9 @@ export default function ConsumerSellerPanel({ profile }) {
         {order.sale_unit_type === "whole_fish" && order.final_weight_kg ? <div style={{ color: "#526b60" }}>Lopullinen paino {Number(order.final_weight_kg).toLocaleString("fi-FI")} kg</div> : null}
         {order.consumer_note ? <div style={{ borderLeft: "3px solid #86efac", paddingLeft: 10, color: "#526b60" }}><strong>Viesti:</strong> {order.consumer_note}</div> : null}
         <div style={{ color: "#526b60", fontSize: 13 }}>Palvelukomissio: {money(order.commission_amount)} · {order.commission_status === "unbilled" ? "laskuttamatta" : order.commission_status}</div>
+        {order.reservation_group_id ? <div style={{ color: "#526b60", fontSize: 12 }}>Varaustunnus {String(order.reservation_group_id).slice(0, 8).toUpperCase()}</div> : null}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {isFirstReservationLine && reservation ? <button disabled={busyId.startsWith("print-")} onClick={() => printCustomerCards([reservation], order)}>Tulosta asiakaskortti MUNBYN 4×3</button> : null}
           {order.status === "reserved" ? <button disabled={busyId === order.id} onClick={() => updateStatus(order, "confirmed")}>Vahvista varaus</button> : null}
           {["confirmed", "reserved"].includes(order.status) ? <button disabled={busyId === order.id} onClick={() => updateStatus(order, "ready")}>Merkitse noutovalmiiksi</button> : null}
           {order.status === "ready" ? <button disabled={busyId === order.id} onClick={() => updateStatus(order, "collected")}>Merkitse noudetuksi</button> : null}
@@ -219,6 +271,8 @@ export default function ConsumerSellerPanel({ profile }) {
     const minKilos = wholeFish.reduce((sum, variant) => sum + Number(variant.min_weight_kg || 0) * Number(variant.available_units || 0), 0);
     const maxKilos = wholeFish.reduce((sum, variant) => sum + Number(variant.max_weight_kg || 0) * Number(variant.available_units || 0), 0);
     const listingOrders = orders.filter((order) => order.listing_id === listing.id);
+    const printableOrders = listingOrders.filter((order) => !["cancelled", "expired"].includes(order.status));
+    const customerCards = groupConsumerOrdersForCustomerCards(printableOrders);
     return (
       <div key={listing.id} style={{ border: ended ? "1px solid #cbd5e1" : "1px solid #9fd5b2", borderRadius: 16, padding: 13, background: ended ? "#f8fafc" : "white", display: "grid", gap: 8 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -228,16 +282,18 @@ export default function ConsumerSellerPanel({ profile }) {
         <div style={{ color: "#526b60", fontSize: 13 }}>{wholeFish.length > 0 ? `Arvioitu saldo ${minKilos.toLocaleString("fi-FI")}–${maxKilos.toLocaleString("fi-FI")} kg` : `Saldo ${packageKilos.toLocaleString("fi-FI")} kg`}</div>
         <div style={{ color: "#526b60", fontSize: 13 }}>Nouto {pickupTime(listing.pickup_start, listing.pickup_end)} · {listing.pickup_location}</div>
         <div style={{ color: "#526b60", fontSize: 13 }}>Tilaukset viimeistään {listing.order_deadline ? new Date(listing.order_deadline).toLocaleString("fi-FI", { dateStyle: "short", timeStyle: "short" }) : "–"}</div>
+        <div style={{ color: "#315b4a", fontSize: 13 }}><strong>Maksutavat:</strong> {formatConsumerPaymentMethods(listing.payment_methods)}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" onClick={() => openExternal(link)}>Avaa julkinen linkki</button>
           <button type="button" onClick={async () => { await navigator.clipboard.writeText(link); setMessage("Kalaerän julkinen linkki kopioitiin."); }}>Kopioi linkki</button>
           <button type="button" disabled={busyId === listing.id} onClick={() => startEditingListing(listing)}>Muokkaa erää</button>
+          {customerCards.length > 0 ? <button type="button" disabled={busyId.startsWith("print-")} onClick={() => printCustomerCards(customerCards, listing)}>Tulosta kaikki MUNBYN 4×3 ({customerCards.length})</button> : null}
           {listing.status === "published" ? <button type="button" disabled={busyId === listing.id} onClick={() => setListingSaleStatus(listing, "paused")}>Keskeytä myynti</button> : null}
           {listing.status === "paused" ? <button type="button" disabled={busyId === listing.id} onClick={() => setListingSaleStatus(listing, "published")}>Jatka myyntiä</button> : null}
         </div>
         <div style={{ borderTop: ended ? "2px solid #e2e8f0" : "2px solid #dcf2e4", marginTop: 5, paddingTop: 12, display: "grid", gap: 9 }}>
           <strong style={{ fontSize: 17 }}>Tämän erän tilaukset ({listingOrders.length})</strong>
-          {listingOrders.length > 0 ? listingOrders.map(renderOrderCard) : <div style={{ color: "#647a70", fontSize: 13 }}>Ei tilauksia tähän kuluttajaerään.</div>}
+          {listingOrders.length > 0 ? listingOrders.map((order) => renderOrderCard(order, listingOrders)) : <div style={{ color: "#647a70", fontSize: 13 }}>Ei tilauksia tähän kuluttajaerään.</div>}
         </div>
       </div>
     );
@@ -296,6 +352,28 @@ export default function ConsumerSellerPanel({ profile }) {
               <label style={{ display: "grid", gap: 5 }}><span>Noudettavissa alkaen</span><input required type="datetime-local" value={editingListing.pickupStart} onChange={(event) => setEditingListing((current) => ({ ...current, pickupStart: event.target.value }))} /></label>
               <label style={{ display: "grid", gap: 5 }}><span>Noudettavissa asti</span><input required type="datetime-local" value={editingListing.pickupEnd} onChange={(event) => setEditingListing((current) => ({ ...current, pickupEnd: event.target.value }))} /></label>
               <label style={{ display: "grid", gap: 5 }}><span>Tilaukset viimeistään</span><input required type="datetime-local" value={editingListing.orderDeadline} onChange={(event) => setEditingListing((current) => ({ ...current, orderDeadline: event.target.value }))} /></label>
+            </div>
+            <div style={{ display: "grid", gap: 7 }}>
+              <strong>Maksutavat</strong>
+              <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+                {CONSUMER_PAYMENT_METHOD_OPTIONS.map((method) => {
+                  const selected = editingListing.paymentMethods.includes(method);
+                  return (
+                    <label key={method} style={{ border: selected ? "1px solid #2563eb" : "1px solid #cbd5e1", borderRadius: 12, padding: "9px 11px", background: selected ? "#dbeafe" : "#fff", color: selected ? "#1e3a8a" : "#334155", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => setEditingListing((current) => ({
+                          ...current,
+                          paymentMethods: selected
+                            ? current.paymentMethods.filter((item) => item !== method)
+                            : [...current.paymentMethods, method],
+                        }))}
+                      />{" "}{method}
+                    </label>
+                  );
+                })}
+              </div>
             </div>
             <strong>Myyntivaihtoehdot</strong>
             {editingListing.variants.map((variant) => (

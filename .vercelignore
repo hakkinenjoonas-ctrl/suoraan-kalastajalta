@@ -4,6 +4,7 @@
 .openai
 .vercel
 android
+supabase
 dist
 node_modules
 coverage

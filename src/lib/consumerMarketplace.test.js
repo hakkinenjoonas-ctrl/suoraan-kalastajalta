@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatConsumerPaymentMethods,
   calculateConsumerOrderTotals,
+  calculateConsumerReservationBasket,
   calculateConsumerReservationEstimate,
   filterConsumerListings,
   getConsumerListingPath,
@@ -9,6 +11,7 @@ import {
   isConsumerListingPickupEnded,
   isConsumerMarketplaceRequested,
   normalizeConsumerListing,
+  normalizeConsumerPaymentMethods,
 } from "./consumerMarketplace.js";
 
 describe("consumer marketplace", () => {
@@ -26,7 +29,7 @@ describe("consumer marketplace", () => {
       grossTotal: 22.7,
       netTotal: 20,
       vatAmount: 2.7,
-      commissionAmount: 0.6,
+      commissionAmount: 1.6,
     });
   });
 
@@ -39,6 +42,16 @@ describe("consumer marketplace", () => {
     expect(filterConsumerListings(listings, { species: "Ahven" })).toEqual([]);
   });
 
+  it("hides listings after their ordering deadline", () => {
+    const listings = [normalizeConsumerListing({
+      id: "expired-listing",
+      species: "Muikku",
+      available_packages: 2,
+      order_deadline: "2020-01-01T00:00:00.000Z",
+    })];
+    expect(filterConsumerListings(listings)).toEqual([]);
+  });
+
   it("preserves the pickup window and ordering deadline for the public listing", () => {
     expect(normalizeConsumerListing({
       id: "listing-1",
@@ -46,11 +59,19 @@ describe("consumer marketplace", () => {
       pickup_start: "2026-09-12T09:00:00.000Z",
       pickup_end: "2026-09-12T10:00:00.000Z",
       order_deadline: "2026-09-12T07:00:00.000Z",
+      payment_methods: ["MobilePay", "Käteinen"],
     })).toMatchObject({
       pickupStart: "2026-09-12T09:00:00.000Z",
       pickupEnd: "2026-09-12T10:00:00.000Z",
       orderDeadline: "2026-09-12T07:00:00.000Z",
+      paymentMethods: ["MobilePay", "Käteinen"],
     });
+  });
+
+  it("normalizes and formats consumer payment methods", () => {
+    expect(normalizeConsumerPaymentMethods([" MobilePay ", "Käteinen", "MobilePay", ""])).toEqual(["MobilePay", "Käteinen"]);
+    expect(formatConsumerPaymentMethods(["MobilePay", "Käteinen"])).toBe("MobilePay, Käteinen");
+    expect(formatConsumerPaymentMethods([])).toBe("Sovitaan kalastajan kanssa");
   });
 
   it("separates listings whose pickup window has ended", () => {
@@ -73,5 +94,22 @@ describe("consumer marketplace", () => {
       variant: { unitType: "package", packageSizeKg: 0.5, unitPrice: 6.9 },
       unitCount: 5,
     })).toMatchObject({ grossTotal: 34.5, estimatedWeightKg: 2.5, isEstimate: false });
+  });
+
+  it("combines several package sizes into one reservation", () => {
+    expect(calculateConsumerReservationBasket({
+      variants: [
+        { id: "one-kilo", unitType: "package", packageSizeKg: 1, unitPrice: 12, availableUnits: 10 },
+        { id: "half-kilo", unitType: "package", packageSizeKg: 0.5, unitPrice: 6.5, availableUnits: 10 },
+      ],
+      quantities: { "one-kilo": 4, "half-kilo": 1 },
+    })).toMatchObject({
+      estimatedWeightKg: 4.5,
+      grossTotal: 54.5,
+      lines: [
+        { unitCount: 4, variant: { id: "one-kilo" } },
+        { unitCount: 1, variant: { id: "half-kilo" } },
+      ],
+    });
   });
 });

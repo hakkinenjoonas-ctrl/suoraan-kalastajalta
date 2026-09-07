@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { calculateConsumerReservationEstimate, filterConsumerListings, getConsumerAppDeepLink, getConsumerListingPath } from "../lib/consumerMarketplace.js";
+import { calculateConsumerReservationBasket, filterConsumerListings, formatConsumerPaymentMethods, getConsumerAppDeepLink, getConsumerListingPath } from "../lib/consumerMarketplace.js";
 
 const money = (value) => `${Number(value || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const quantity = (value) => Number(value || 0).toLocaleString("fi-FI", { maximumFractionDigits: 2 });
@@ -66,8 +66,7 @@ export default function ConsumerMarketplaceView({
   const [municipality, setMunicipality] = useState("");
   const [selected, setSelected] = useState(null);
   const [handledInitialListingId, setHandledInitialListingId] = useState("");
-  const [selectedVariantId, setSelectedVariantId] = useState("");
-  const [unitCount, setUnitCount] = useState(1);
+  const [variantQuantities, setVariantQuantities] = useState({});
   const [customerName, setCustomerName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -79,8 +78,16 @@ export default function ConsumerMarketplaceView({
   const speciesOptions = useMemo(() => Array.from(new Set(listings.map((item) => item.species).filter(Boolean))).sort(), [listings]);
   const municipalityOptions = useMemo(() => Array.from(new Set(listings.map((item) => item.municipality).filter(Boolean))).sort(), [listings]);
   const visibleListings = useMemo(() => filterConsumerListings(listings, { search, species, municipality }), [listings, search, species, municipality]);
-  const selectedVariant = selected?.variants?.find((variant) => variant.id === selectedVariantId) || selected?.variants?.[0] || null;
-  const totals = selectedVariant ? calculateConsumerReservationEstimate({ variant: selectedVariant, unitCount, vatRate: selected.vatRate }) : null;
+  const groupedOrders = useMemo(() => {
+    const groups = new Map();
+    orders.forEach((order) => {
+      const key = order.reservation_group_id || order.id;
+      if (!groups.has(key)) groups.set(key, { id: key, orders: [], first: order });
+      groups.get(key).orders.push(order);
+    });
+    return Array.from(groups.values());
+  }, [orders]);
+  const totals = selected ? calculateConsumerReservationBasket({ variants: selected.variants, quantities: variantQuantities, vatRate: selected.vatRate }) : null;
 
   useEffect(() => {
     const accountName = String(user?.user_metadata?.display_name || "").trim();
@@ -91,8 +98,7 @@ export default function ConsumerMarketplaceView({
 
   const openListing = (listing, updateUrl = true) => {
     setSelected(listing);
-    setSelectedVariantId(listing.variants?.[0]?.id || "");
-    setUnitCount(1);
+    setVariantQuantities({});
     setNote("");
     if (updateUrl && typeof window !== "undefined") {
       window.history.pushState({}, "", getConsumerListingPath(listing.id));
@@ -112,7 +118,7 @@ export default function ConsumerMarketplaceView({
   }, [handledInitialListingId, initialListingId, listings, selected?.id]);
 
   const submitReservation = async () => {
-    const ok = await onReserve({ listing: selected, variant: selectedVariant, unitCount, customerName, email, phone, note });
+    const ok = await onReserve({ listing: selected, lines: totals?.lines || [], customerName, email, phone, note });
     if (ok) closeListing();
   };
 
@@ -170,6 +176,10 @@ export default function ConsumerMarketplaceView({
         .consumer-close { width: 42px; height: 42px; border-radius: 16px; border: 1px solid rgba(147,197,253,.72); background: #eff6ff; color: #1e3a8a; cursor: pointer; }
         .consumer-summary { display: grid; gap: 7px; margin: 18px 0; padding: 15px; border: 1px solid rgba(191,219,254,.76); border-radius: 18px; background: linear-gradient(140deg, rgba(248,250,252,.98), rgba(239,246,255,.98)); }
         .consumer-form { display: grid; gap: 13px; }
+        .consumer-variant-list { display: grid; gap: 10px; }
+        .consumer-variant-row { display: grid; grid-template-columns: minmax(0, 1fr) 112px; align-items: center; gap: 12px; padding: 12px; border: 1px solid rgba(191,219,254,.76); border-radius: 16px; background: #fff; }
+        .consumer-variant-row strong { display: block; color: #1e3a8a; }
+        .consumer-variant-row .consumer-input { text-align: center; }
         .consumer-field { display: grid; gap: 6px; }
         .consumer-field label { font-size: 13px; font-weight: 800; color: #334155; }
         .consumer-total { display: flex; justify-content: space-between; gap: 12px; font-size: 21px; font-weight: 900; }
@@ -233,11 +243,11 @@ export default function ConsumerMarketplaceView({
 
         {user ? (
           <section className="consumer-orders">
-            <div className="consumer-list-heading"><h2>Omat varaukset</h2><span>{orders.length}</span></div>
-            {orders.length === 0 ? <div className="consumer-empty">Sinulla ei ole vielä varauksia.</div> : orders.map((order) => (
-              <div className="consumer-order" key={order.id}>
-                <div><strong>{order.product_name || order.species || "Kalaerä"}</strong><div className="consumer-small">{order.unit_count || order.package_count} × {order.variant_label || (order.sale_unit_type === "whole_fish" ? "kokonainen kala" : "pakkaus")} · {order.pickup_location || "Noutopaikka vahvistetaan"}</div></div>
-                <div><strong>{money(order.total_including_vat)}</strong><div className="consumer-small">{order.status === "reserved" ? "Varattu" : order.status}</div></div>
+            <div className="consumer-list-heading"><h2>Omat varaukset</h2><span>{groupedOrders.length}</span></div>
+            {groupedOrders.length === 0 ? <div className="consumer-empty">Sinulla ei ole vielä varauksia.</div> : groupedOrders.map((group) => (
+              <div className="consumer-order" key={group.id}>
+                <div><strong>{group.first.product_name || group.first.species || "Kalaerä"}</strong>{group.orders.map((order) => <div className="consumer-small" key={order.id}>{order.unit_count || order.package_count} × {order.variant_label || (order.sale_unit_type === "whole_fish" ? "kokonainen kala" : "pakkaus")}</div>)}<div className="consumer-small">{group.first.pickup_location || "Noutopaikka vahvistetaan"}</div><div className="consumer-small">Maksutavat: {formatConsumerPaymentMethods(group.first.payment_methods)}</div></div>
+                <div><strong>{money(group.orders.reduce((sum, order) => sum + Number(order.total_including_vat || 0), 0))}</strong><div className="consumer-small">{group.orders.every((order) => order.status === "reserved") ? "Varattu" : "Tila päivitetty"}</div><div className="consumer-small">{String(group.id).slice(0, 8).toUpperCase()}</div></div>
               </div>
             ))}
           </section>
@@ -248,19 +258,42 @@ export default function ConsumerMarketplaceView({
         <div className="consumer-overlay" role="dialog" aria-modal="true" aria-label="Varaa kalaerä" onMouseDown={(event) => { if (event.target === event.currentTarget) closeListing(); }}>
           <div className="consumer-dialog">
             <div className="consumer-dialog-head"><div><div className="consumer-kicker">Varaa noudettavaksi</div><h2>{selected.productName}</h2></div><button className="consumer-close" onClick={closeListing} aria-label="Sulje">×</button></div>
-            <div className="consumer-summary"><span><strong>Kalastaja:</strong> {selected.sellerName}</span><span><strong>Nouto:</strong> {selected.pickupLocation || selected.municipality}</span><span><strong>Noudettavissa:</strong> {pickupWindow(selected.pickupStart, selected.pickupEnd)}</span><span><strong>Tilaa viimeistään:</strong> {dateTime(selected.orderDeadline)}</span><span><strong>Erätunnus:</strong> {selected.batchId}</span></div>
+            <div className="consumer-summary"><span><strong>Kalastaja:</strong> {selected.sellerName}</span><span><strong>Nouto:</strong> {selected.pickupLocation || selected.municipality}</span><span><strong>Noudettavissa:</strong> {pickupWindow(selected.pickupStart, selected.pickupEnd)}</span><span><strong>Tilaa viimeistään:</strong> {dateTime(selected.orderDeadline)}</span><span><strong>Maksutavat:</strong> {formatConsumerPaymentMethods(selected.paymentMethods)}</span><span><strong>Erätunnus:</strong> {selected.batchId}</span></div>
             <div className="consumer-form">
               <a className="consumer-button" href={getConsumerAppDeepLink(selected.id)} style={{ textAlign: "center", textDecoration: "none" }}>Avaa Suoraan Kalastajalta -sovelluksessa</a>
-              <div className="consumer-field"><label>{selectedVariant?.unitType === "whole_fish" ? "Kalan kokoluokka" : "Pakkauskoko"}</label><select className="consumer-input" value={selectedVariant?.id || ""} onChange={(event) => { setSelectedVariantId(event.target.value); setUnitCount(1); }}>{selected.variants.filter((variant) => variant.availableUnits > 0).map((variant) => <option key={variant.id} value={variant.id}>{variantOptionLabel(variant)}</option>)}</select></div>
-              <div className="consumer-field"><label>{selectedVariant?.unitType === "whole_fish" ? "Kalojen määrä" : "Pakkausten määrä"}</label><select className="consumer-input" value={unitCount} onChange={(event) => setUnitCount(Number(event.target.value))}>{Array.from({ length: Math.min(selectedVariant?.availableUnits || 0, 10) }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count} {selectedVariant?.unitType === "whole_fish" ? "kpl" : "pakkausta"}</option>)}</select></div>
+              <div className="consumer-field">
+                <label>Valitse haluamasi määrät</label>
+                <div className="consumer-variant-list">
+                  {selected.variants.filter((variant) => variant.availableUnits > 0).map((variant) => (
+                    <div className="consumer-variant-row" key={variant.id}>
+                      <div><strong>{variantOptionLabel(variant)}</strong><span className="consumer-small">Saatavilla {variant.availableUnits} {variant.unitType === "whole_fish" ? "kpl" : "pakkausta"}</span></div>
+                      <input
+                        className="consumer-input"
+                        type="number"
+                        inputMode="numeric"
+                        min="0"
+                        max={variant.availableUnits}
+                        step="1"
+                        value={variantQuantities[variant.id] ?? 0}
+                        aria-label={`${variantOptionLabel(variant)}, määrä`}
+                        onChange={(event) => {
+                          const value = Math.max(0, Math.min(Math.floor(Number(event.target.value || 0)), variant.availableUnits));
+                          setVariantQuantities((current) => ({ ...current, [variant.id]: value }));
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="consumer-field"><label>Varaajan nimi</label><input className="consumer-input" autoComplete="name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Etunimi ja sukunimi" /></div>
               <div className="consumer-field"><label>Sähköposti varausvahvistusta varten</label><input className="consumer-input" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="nimi@esimerkki.fi" /></div>
               <div className="consumer-field"><label>Puhelinnumero noutoa varten</label><input className="consumer-input" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="040 123 4567" /></div>
               <div className="consumer-field"><label>Viesti kalastajalle (valinnainen)</label><textarea className="consumer-input" rows="3" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Esimerkiksi arvioitu noutoaika" /></div>
-              {selectedVariant?.unitType === "whole_fish" ? <div className="consumer-summary"><span><strong>Arvioitu yhteispaino:</strong> noin {totals?.estimatedWeightKg.toLocaleString("fi-FI")} kg</span><span>Lopullinen paino ja hinta vahvistetaan punnituksen jälkeen.</span></div> : null}
+              {totals?.lines.length ? <div className="consumer-summary">{totals.lines.map((line) => <span key={line.variant.id}><strong>{line.unitCount} ×</strong> {variantOptionLabel(line.variant)} · {money(line.grossTotal)}</span>)}<span><strong>Yhteispaino:</strong> {totals.isEstimate ? "noin " : ""}{quantity(totals.estimatedWeightKg)} kg</span>{totals.isEstimate ? <span>Lopullinen paino ja hinta vahvistetaan punnituksen jälkeen.</span> : null}</div> : <div className="consumer-small">Syötä määrä vähintään yhdelle pakkauskoolle tai kalakokoluokalle.</div>}
               <div className="consumer-total"><span>{totals?.isEstimate ? "Arviohinta" : "Yhteensä"}</span><span>{money(totals?.grossTotal)}</span></div>
-              <div className="consumer-small">Hinta sisältää arvonlisäveron. Maksu suoritetaan suoraan kalastajalle noudon yhteydessä. Varaus vähentää valitun pakkauskoon tai kalakokoluokan saldoa. Varaaminen ei vaadi kirjautumista.</div>
-              <button className="consumer-button consumer-primary" disabled={busy || !customerName.trim() || !email.trim() || !phone.trim() || orderingClosed(selected)} onClick={submitReservation}>{orderingClosed(selected) ? "Tilausaika on päättynyt" : busy ? "Varataan…" : "Vahvista varaus"}</button>
+              <div className="consumer-notice"><strong>Maksutavat:</strong> {formatConsumerPaymentMethods(selected.paymentMethods)}. Maksu suoritetaan suoraan kalastajalle.</div>
+              <div className="consumer-small">Hinta sisältää arvonlisäveron. Varaus vähentää kaikkien valittujen pakkauskokojen tai kalakokoluokkien saldoa. Varaaminen ei vaadi kirjautumista.</div>
+              <button className="consumer-button consumer-primary" disabled={busy || !totals?.lines.length || !customerName.trim() || !email.trim() || !phone.trim() || orderingClosed(selected)} onClick={submitReservation}>{orderingClosed(selected) ? "Tilausaika on päättynyt" : busy ? "Varataan…" : "Vahvista varaus"}</button>
             </div>
           </div>
         </div>

@@ -22,7 +22,7 @@ Deno.serve(async (request) => {
       : { data: { user: null } };
     const admin = serviceRoleKey ? createClient(url, serviceRoleKey) : null;
 
-    if (action === "reserve") {
+    if (action === "reserve" || action === "reserve_multiple") {
       const name = safe(body.name);
       const email = safe(body.email).toLowerCase();
       const phone = safe(body.phone);
@@ -35,26 +35,34 @@ Deno.serve(async (request) => {
         const { data: profile } = await admin.from("profiles").select("role, is_active").eq("id", authData.user.id).maybeSingle();
         isActiveConsumer = profile?.role === "consumer" && profile?.is_active === true;
       }
-      if (!isActiveConsumer && !admin) return json(500, { error: "Varauspalvelun määritys puuttuu" });
+      if (!admin) return json(500, { error: "Varauspalvelun määritys puuttuu" });
 
-      const reservationClient = isActiveConsumer ? client : admin!;
-      const reservationFunction = isActiveConsumer ? "reserve_consumer_listing" : "reserve_consumer_listing_guest";
-      const reservationPayload = {
+      const requestedItems = action === "reserve_multiple"
+        ? (Array.isArray(body.items) ? body.items : []).map((item: Record<string, unknown>) => ({ variantId: safe(item?.variantId), unitCount: Number(item?.unitCount || 0) }))
+        : [{ variantId: safe(body.variantId), unitCount: Number(body.unitCount || 0) }];
+      if (requestedItems.length < 1 || requestedItems.some((item) => !item.variantId || !Number.isInteger(item.unitCount) || item.unitCount < 1)) {
+        return json(400, { error: "Valitse vähintään yksi pakkauskoko ja määrä" });
+      }
+      const { data: reservationResult, error } = await admin.rpc("reserve_consumer_listing_multiple", {
         p_listing_id: safe(body.listingId),
-        p_variant_id: safe(body.variantId),
-        p_unit_count: Number(body.unitCount || 0),
+        p_items: requestedItems,
+        p_consumer_user_id: isActiveConsumer ? authData.user?.id : null,
         p_name: name,
+        p_email: email,
         p_phone: phone,
         p_note: safe(body.note),
-        ...(!isActiveConsumer ? { p_email: email } : {}),
-      };
-      const { data, error } = await reservationClient.rpc(reservationFunction, reservationPayload);
+      });
       if (error) return json(400, { error: error.message });
+      const orders = Array.isArray(reservationResult?.orders) ? reservationResult.orders : [];
+      const data = orders[0] || null;
+      if (!data) return json(500, { error: "Varauksen tallennus epäonnistui" });
+      const itemSummary = orders.map((order: Record<string, unknown>) => `${Number(order.unit_count || 0)} × ${safe(order.variant_label)}`).join(", ");
+      const grossTotal = orders.reduce((sum: number, order: Record<string, unknown>) => sum + Number(order.total_including_vat || 0), 0);
       let confirmationEmailSent = false;
       if (data?.seller_user_id && serviceRoleKey) {
         const { data: listing } = await admin!
           .from("consumer_listings")
-          .select("product_name, seller_name, pickup_location, pickup_start, pickup_end")
+          .select("product_name, seller_name, pickup_location, pickup_start, pickup_end, payment_methods")
           .eq("id", data.listing_id)
           .maybeSingle();
         try {
@@ -64,9 +72,9 @@ Deno.serve(async (request) => {
             body: JSON.stringify({
               targetUserId: data.seller_user_id,
               title: "Uusi kuluttajavaraus",
-              body: `${Number(data.unit_count || 0)} × ${safe(data.variant_label)} · ${safe(listing?.product_name) || "Kalaerä"}`,
+              body: `${itemSummary} · ${safe(listing?.product_name) || "Kalaerä"}`,
               eventType: "consumer_order_reserved",
-              data: { route: "dashboard", consumerOrderId: data.id, consumerListingId: data.listing_id },
+              data: { route: "dashboard", consumerOrderId: data.id, consumerListingId: data.listing_id, reservationGroupId: reservationResult?.reservationGroupId },
             }),
           });
         } catch (pushError) {
@@ -78,6 +86,10 @@ Deno.serve(async (request) => {
           const fromEmail = safe(Deno.env.get("FROM_EMAIL") || Deno.env.get("RESEND_FROM_EMAIL")) || "Suoraan Kalastajalta <ilmoitukset@mail.suoraankalastajalta.fi>";
           const pickupStart = listing?.pickup_start ? new Date(listing.pickup_start).toLocaleString("fi-FI", { timeZone: "Europe/Helsinki", dateStyle: "short", timeStyle: "short" }) : "Sovitaan kalastajan kanssa";
           const pickupEnd = listing?.pickup_end ? new Date(listing.pickup_end).toLocaleTimeString("fi-FI", { timeZone: "Europe/Helsinki", hour: "2-digit", minute: "2-digit" }) : "";
+          const paymentMethods = Array.isArray(listing?.payment_methods)
+            ? listing.payment_methods.map((method: unknown) => safe(method)).filter(Boolean).join(", ")
+            : "";
+          const paymentMethodText = paymentMethods || "Sovitaan kalastajan kanssa";
           try {
             const emailResponse = await fetch("https://api.resend.com/emails", {
               method: "POST",
@@ -86,8 +98,8 @@ Deno.serve(async (request) => {
                 from: fromEmail,
                 to: [recipientEmail],
                 subject: `Varausvahvistus: ${safe(listing?.product_name) || "kalaerä"}`,
-                html: `<h2>Varaus meni perille</h2><p>Hei ${escapeHtml(data.consumer_name)},</p><p>Varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.</p><p><strong>Tuote:</strong> ${escapeHtml(listing?.product_name || "Kalaerä")}<br><strong>Määrä:</strong> ${Number(data.unit_count || 0)} × ${escapeHtml(data.variant_label)}<br><strong>Yhteensä:</strong> ${Number(data.total_including_vat || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €<br><strong>Nouto:</strong> ${escapeHtml(listing?.pickup_location || "Sovitaan kalastajan kanssa")}<br><strong>Noudettavissa:</strong> ${escapeHtml(`${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}`)}<br><strong>Varaustunnus:</strong> ${escapeHtml(safe(data.id).slice(0, 8).toUpperCase())}</p><p>Maksu suoritetaan suoraan kalastajalle noudon yhteydessä.</p>`,
-                text: `Varaus meni perille\n\nHei ${safe(data.consumer_name)}, varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.\n\nTuote: ${safe(listing?.product_name) || "Kalaerä"}\nMäärä: ${Number(data.unit_count || 0)} × ${safe(data.variant_label)}\nYhteensä: ${Number(data.total_including_vat || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €\nNouto: ${safe(listing?.pickup_location) || "Sovitaan kalastajan kanssa"}\nNoudettavissa: ${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}\nVaraustunnus: ${safe(data.id).slice(0, 8).toUpperCase()}\n\nMaksu suoritetaan suoraan kalastajalle noudon yhteydessä.`,
+                html: `<h2>Varaus meni perille</h2><p>Hei ${escapeHtml(data.consumer_name)},</p><p>Varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.</p><p><strong>Tuote:</strong> ${escapeHtml(listing?.product_name || "Kalaerä")}<br><strong>Määrät:</strong> ${escapeHtml(itemSummary)}<br><strong>Yhteensä:</strong> ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €<br><strong>Nouto:</strong> ${escapeHtml(listing?.pickup_location || "Sovitaan kalastajan kanssa")}<br><strong>Noudettavissa:</strong> ${escapeHtml(`${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}`)}<br><strong>Maksutavat:</strong> ${escapeHtml(paymentMethodText)}<br><strong>Varaustunnus:</strong> ${escapeHtml(safe(reservationResult?.reservationGroupId).slice(0, 8).toUpperCase())}</p><p>Maksu suoritetaan suoraan kalastajalle valitulla maksutavalla.</p>`,
+                text: `Varaus meni perille\n\nHei ${safe(data.consumer_name)}, varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.\n\nTuote: ${safe(listing?.product_name) || "Kalaerä"}\nMäärät: ${itemSummary}\nYhteensä: ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €\nNouto: ${safe(listing?.pickup_location) || "Sovitaan kalastajan kanssa"}\nNoudettavissa: ${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}\nMaksutavat: ${paymentMethodText}\nVaraustunnus: ${safe(reservationResult?.reservationGroupId).slice(0, 8).toUpperCase()}\n\nMaksu suoritetaan suoraan kalastajalle valitulla maksutavalla.`,
               }),
             });
             confirmationEmailSent = emailResponse.ok;
@@ -97,7 +109,7 @@ Deno.serve(async (request) => {
           }
         }
       }
-      return json(200, { order: data, confirmationEmailSent });
+      return json(200, { order: data, orders, reservationGroupId: reservationResult?.reservationGroupId, confirmationEmailSent });
     }
 
     if (!authData.user) return json(401, { error: "Kirjautuminen vaaditaan" });
