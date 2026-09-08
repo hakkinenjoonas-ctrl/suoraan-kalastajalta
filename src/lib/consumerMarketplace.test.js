@@ -12,9 +12,16 @@ import {
   isConsumerMarketplaceRequested,
   normalizeConsumerListing,
   normalizeConsumerPaymentMethods,
+  normalizeConsumerQuantityInput,
 } from "./consumerMarketplace.js";
 
 describe("consumer marketplace", () => {
+  it("allows replacing the empty quantity with one key press", () => {
+    expect(normalizeConsumerQuantityInput("", 10)).toBe("");
+    expect(normalizeConsumerQuantityInput("1", 10)).toBe(1);
+    expect(normalizeConsumerQuantityInput("12", 10)).toBe(10);
+  });
+
   it("detects the isolated B2C route", () => {
     expect(isConsumerMarketplaceRequested({ search: "?market=consumer" })).toBe(true);
     expect(isConsumerMarketplaceRequested({ search: "?batch=ABC" })).toBe(false);

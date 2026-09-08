@@ -139,6 +139,13 @@ export function calculateConsumerReservationEstimate({ variant, unitCount, vatRa
   return { ...totals, estimatedWeightKg: Number(estimatedWeightKg.toFixed(3)), isEstimate: variant?.unitType === "whole_fish" };
 }
 
+export function normalizeConsumerQuantityInput(value, availableUnits) {
+  if (value === "") return "";
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue)) return "";
+  return Math.max(0, Math.min(Math.floor(parsedValue), Math.max(0, Number(availableUnits || 0))));
+}
+
 export function calculateConsumerReservationBasket({ variants = [], quantities = {}, vatRate = FISH_VAT_RATE, commissionRate = CONSUMER_COMMISSION_RATE }) {
   const lines = variants.flatMap((variant) => {
     const numericCount = Number(quantities?.[variant.id] || 0);

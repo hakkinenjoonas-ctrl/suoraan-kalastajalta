@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { calculateConsumerReservationBasket, filterConsumerListings, formatConsumerPaymentMethods, getConsumerAppDeepLink, getConsumerListingPath } from "../lib/consumerMarketplace.js";
+import { calculateConsumerReservationBasket, filterConsumerListings, formatConsumerPaymentMethods, getConsumerAppDeepLink, getConsumerListingPath, normalizeConsumerQuantityInput } from "../lib/consumerMarketplace.js";
 
 const money = (value) => `${Number(value || 0).toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const quantity = (value) => Number(value || 0).toLocaleString("fi-FI", { maximumFractionDigits: 2 });
@@ -274,10 +274,11 @@ export default function ConsumerMarketplaceView({
                         min="0"
                         max={variant.availableUnits}
                         step="1"
-                        value={variantQuantities[variant.id] ?? 0}
+                        value={variantQuantities[variant.id] ?? ""}
+                        placeholder="0"
                         aria-label={`${variantOptionLabel(variant)}, määrä`}
                         onChange={(event) => {
-                          const value = Math.max(0, Math.min(Math.floor(Number(event.target.value || 0)), variant.availableUnits));
+                          const value = normalizeConsumerQuantityInput(event.target.value, variant.availableUnits);
                           setVariantQuantities((current) => ({ ...current, [variant.id]: value }));
                         }}
                       />
