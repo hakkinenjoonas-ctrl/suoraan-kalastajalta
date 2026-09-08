@@ -84,7 +84,16 @@ export default function ConsumerSellerPanel({ profile }) {
     }
     const result = await invokeConsumerOrderAction(sessionData?.session?.access_token, { action: "seller_update_order", orderId: order.id, status, finalWeightKg });
     if (result.error) setErrorMessage(result.error.message || "Tilauksen päivitys epäonnistui.");
-    else { setMessage("Kuluttajatilauksen tila päivitettiin."); await load(); }
+    else {
+      if (status === "cancelled" && result.data?.notificationWarning) {
+        setErrorMessage(result.data.notificationWarning);
+      } else if (status === "cancelled") {
+        setMessage("Tilaus peruttiin ja asiakkaalle lähetettiin sähköposti.");
+      } else {
+        setMessage("Kuluttajatilauksen tila päivitettiin.");
+      }
+      await load();
+    }
     setBusyId("");
   };
 

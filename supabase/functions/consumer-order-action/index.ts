@@ -137,7 +137,81 @@ Deno.serve(async (request) => {
         p_final_weight_kg: finalWeightKg,
       });
       if (error) return json(400, { error: error.message });
-      return json(200, { order: data });
+
+      let cancellationEmailSent = false;
+      let cancellationPushSent = false;
+      let notificationWarning = "";
+      if (status === "cancelled") {
+        const order = data as Record<string, unknown> | null;
+        const recipientEmail = safe(order?.consumer_email).toLowerCase();
+        const resendApiKey = safe(Deno.env.get("RESEND_API_KEY"));
+        const fromEmail = safe(Deno.env.get("FROM_EMAIL") || Deno.env.get("RESEND_FROM_EMAIL")) || "Suoraan Kalastajalta <ilmoitukset@mail.suoraankalastajalta.fi>";
+        const { data: listing } = admin && order?.listing_id
+          ? await admin
+            .from("consumer_listings")
+            .select("product_name, seller_name, pickup_location, pickup_start, pickup_end")
+            .eq("id", order.listing_id)
+            .maybeSingle()
+          : { data: null };
+        const productName = safe(listing?.product_name) || "Kalaerä";
+        const sellerName = safe(listing?.seller_name) || "Kalastaja";
+        const unitCount = Number(order?.unit_count || order?.package_count || 0);
+        const itemSummary = `${unitCount} × ${safe(order?.variant_label) || (order?.sale_unit_type === "whole_fish" ? "kokonainen kala" : "pakkaus")}`;
+        const grossTotal = Number(order?.total_including_vat || 0);
+        const pickupStart = listing?.pickup_start
+          ? new Date(listing.pickup_start).toLocaleString("fi-FI", { timeZone: "Europe/Helsinki", dateStyle: "short", timeStyle: "short" })
+          : "Sovittu noutoaika";
+        const pickupEnd = listing?.pickup_end
+          ? new Date(listing.pickup_end).toLocaleTimeString("fi-FI", { timeZone: "Europe/Helsinki", hour: "2-digit", minute: "2-digit" })
+          : "";
+        const reservationCode = safe(order?.reservation_group_id || order?.id).slice(0, 8).toUpperCase();
+
+        if (order?.consumer_user_id && serviceRoleKey) {
+          try {
+            const pushResponse = await fetch(`${url}/functions/v1/send-push-notification`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` },
+              body: JSON.stringify({
+                targetUserId: order.consumer_user_id,
+                title: "Varauksesi on peruttu",
+                body: `${productName} · ${itemSummary}`,
+                eventType: "consumer_order_cancelled",
+                data: { route: "consumer_marketplace", consumerOrderId: order.id, consumerListingId: order.listing_id, reservationGroupId: order.reservation_group_id },
+              }),
+            });
+            cancellationPushSent = pushResponse.ok;
+            if (!pushResponse.ok) console.error("consumer-order-action:cancellation-push-failed", await pushResponse.text());
+          } catch (pushError) {
+            console.error("consumer-order-action:cancellation-push-failed", String(pushError));
+          }
+        }
+
+        if (resendApiKey && recipientEmail) {
+          try {
+            const emailResponse = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from: fromEmail,
+                to: [recipientEmail],
+                subject: `Varaus on peruttu: ${productName}`,
+                html: `<h2>Varauksesi on peruttu</h2><p>Hei ${escapeHtml(order?.consumer_name)},</p><p>${escapeHtml(sellerName)} on valitettavasti perunut seuraavan varauksesi.</p><p><strong>Tuote:</strong> ${escapeHtml(productName)}<br><strong>Määrä:</strong> ${escapeHtml(itemSummary)}<br><strong>Tilauksen arvo:</strong> ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €<br><strong>Noutopaikka:</strong> ${escapeHtml(listing?.pickup_location || "Sovittu noutopaikka")}<br><strong>Alkuperäinen noutoaika:</strong> ${escapeHtml(`${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}`)}<br><strong>Varaustunnus:</strong> ${escapeHtml(reservationCode)}</p><p>Perutusta varauksesta ei tarvitse maksaa. Lisätietoja saat tarvittaessa kalastajalta.</p>`,
+                text: `Varauksesi on peruttu\n\nHei ${safe(order?.consumer_name)},\n\n${sellerName} on valitettavasti perunut seuraavan varauksesi.\n\nTuote: ${productName}\nMäärä: ${itemSummary}\nTilauksen arvo: ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €\nNoutopaikka: ${safe(listing?.pickup_location) || "Sovittu noutopaikka"}\nAlkuperäinen noutoaika: ${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}\nVaraustunnus: ${reservationCode}\n\nPerutusta varauksesta ei tarvitse maksaa. Lisätietoja saat tarvittaessa kalastajalta.`,
+              }),
+            });
+            cancellationEmailSent = emailResponse.ok;
+            if (!emailResponse.ok) console.error("consumer-order-action:cancellation-email-failed", await emailResponse.text());
+          } catch (emailError) {
+            console.error("consumer-order-action:cancellation-email-failed", String(emailError));
+          }
+        }
+
+        if (!cancellationEmailSent) {
+          notificationWarning = "Tilaus peruttiin, mutta asiakkaalle ei voitu lähettää sähköpostia. Ota asiakkaaseen yhteyttä puhelimitse.";
+        }
+      }
+
+      return json(200, { order: data, cancellationEmailSent, cancellationPushSent, notificationWarning });
     }
 
     return json(400, { error: "Tuntematon toiminto" });
