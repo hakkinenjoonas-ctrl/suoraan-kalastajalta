@@ -58,6 +58,11 @@ Deno.serve(async (request) => {
       if (!data) return json(500, { error: "Varauksen tallennus epäonnistui" });
       const itemSummary = orders.map((order: Record<string, unknown>) => `${Number(order.unit_count || 0)} × ${safe(order.variant_label)}`).join(", ");
       const grossTotal = orders.reduce((sum: number, order: Record<string, unknown>) => sum + Number(order.total_including_vat || 0), 0);
+      const hasWholeFish = orders.some((order: Record<string, unknown>) => order.sale_unit_type === "whole_fish");
+      const totalLabel = hasWholeFish ? "Arvioitu yhteensä" : "Yhteensä";
+      const finalPriceNotice = hasWholeFish
+        ? "Kokonaisina kaloina varattujen tuotteiden lopullinen hinta määräytyy noudettaessa punnitun todellisen painon ja ilmoitetun kilohinnan perusteella."
+        : "";
       let confirmationEmailSent = false;
       if (data?.seller_user_id && serviceRoleKey) {
         const { data: listing } = await admin!
@@ -98,8 +103,8 @@ Deno.serve(async (request) => {
                 from: fromEmail,
                 to: [recipientEmail],
                 subject: `Varausvahvistus: ${safe(listing?.product_name) || "kalaerä"}`,
-                html: `<h2>Varaus meni perille</h2><p>Hei ${escapeHtml(data.consumer_name)},</p><p>Varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.</p><p><strong>Tuote:</strong> ${escapeHtml(listing?.product_name || "Kalaerä")}<br><strong>Määrät:</strong> ${escapeHtml(itemSummary)}<br><strong>Yhteensä:</strong> ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €<br><strong>Nouto:</strong> ${escapeHtml(listing?.pickup_location || "Sovitaan kalastajan kanssa")}<br><strong>Noudettavissa:</strong> ${escapeHtml(`${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}`)}<br><strong>Maksutavat:</strong> ${escapeHtml(paymentMethodText)}<br><strong>Varaustunnus:</strong> ${escapeHtml(safe(reservationResult?.reservationGroupId).slice(0, 8).toUpperCase())}</p><p>Maksu suoritetaan suoraan kalastajalle valitulla maksutavalla.</p>`,
-                text: `Varaus meni perille\n\nHei ${safe(data.consumer_name)}, varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.\n\nTuote: ${safe(listing?.product_name) || "Kalaerä"}\nMäärät: ${itemSummary}\nYhteensä: ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €\nNouto: ${safe(listing?.pickup_location) || "Sovitaan kalastajan kanssa"}\nNoudettavissa: ${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}\nMaksutavat: ${paymentMethodText}\nVaraustunnus: ${safe(reservationResult?.reservationGroupId).slice(0, 8).toUpperCase()}\n\nMaksu suoritetaan suoraan kalastajalle valitulla maksutavalla.`,
+                html: `<h2>Varaus meni perille</h2><p>Hei ${escapeHtml(data.consumer_name)},</p><p>Varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.</p><p><strong>Tuote:</strong> ${escapeHtml(listing?.product_name || "Kalaerä")}<br><strong>Määrät:</strong> ${escapeHtml(itemSummary)}<br><strong>${totalLabel}:</strong> ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €<br><strong>Nouto:</strong> ${escapeHtml(listing?.pickup_location || "Sovitaan kalastajan kanssa")}<br><strong>Noudettavissa:</strong> ${escapeHtml(`${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}`)}<br><strong>Maksutavat:</strong> ${escapeHtml(paymentMethodText)}<br><strong>Varaustunnus:</strong> ${escapeHtml(safe(reservationResult?.reservationGroupId).slice(0, 8).toUpperCase())}</p>${finalPriceNotice ? `<p><strong>Huomaa:</strong> ${escapeHtml(finalPriceNotice)}</p>` : ""}<p>Maksu suoritetaan suoraan kalastajalle valitulla maksutavalla.</p>`,
+                text: `Varaus meni perille\n\nHei ${safe(data.consumer_name)}, varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.\n\nTuote: ${safe(listing?.product_name) || "Kalaerä"}\nMäärät: ${itemSummary}\n${totalLabel}: ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €\nNouto: ${safe(listing?.pickup_location) || "Sovitaan kalastajan kanssa"}\nNoudettavissa: ${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}\nMaksutavat: ${paymentMethodText}\nVaraustunnus: ${safe(reservationResult?.reservationGroupId).slice(0, 8).toUpperCase()}${finalPriceNotice ? `\n\nHuomaa: ${finalPriceNotice}` : ""}\n\nMaksu suoritetaan suoraan kalastajalle valitulla maksutavalla.`,
               }),
             });
             confirmationEmailSent = emailResponse.ok;
