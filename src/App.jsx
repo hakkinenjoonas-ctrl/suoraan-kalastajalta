@@ -210,6 +210,7 @@ import PublicApp from "./public/PublicApp.jsx";
 import ConsumerApp from "./public/ConsumerApp.jsx";
 import ConsumerSellerPanel from "./components/ConsumerSellerPanel.jsx";
 import ConsumerAdminBillingPanel from "./components/ConsumerAdminBillingPanel.jsx";
+import SavedCatchConsumerSaleDialog from "./components/SavedCatchConsumerSaleDialog.jsx";
 import { CONSUMER_PAYMENT_METHOD_OPTIONS, getConsumerListingUrl, getRequestedConsumerListingId } from "./lib/consumerMarketplace.js";
 import { AUCTION_DURATION_OPTIONS, normalizeAuctionMoney } from "./lib/auctionLogic.js";
 import ProcessedLabel4x3, { PROCESSED_LABEL_4X3_SIZE_MM } from "./components/ProcessedLabel4x3.jsx";
@@ -8436,6 +8437,7 @@ export default function App() {
   const [catchSaleEntry, setCatchSaleEntry] = useState(null);
   const [catchSaleDraft, setCatchSaleDraft] = useState(() => createCatchSaleDraft());
   const [catchSaleSaving, setCatchSaleSaving] = useState(false);
+  const [savedCatchConsumerSaleEntry, setSavedCatchConsumerSaleEntry] = useState(null);
   const [labelPrintCount, setLabelPrintCount] = useState(10);
   const [labelPrintPieceCount, setLabelPrintPieceCount] = useState("");
   const [labelPrintWeightKg, setLabelPrintWeightKg] = useState("");
@@ -14581,6 +14583,23 @@ export default function App() {
     setCatchSaleDraft(createCatchSaleDraft(entry));
   };
 
+  const openSavedCatchConsumerSaleDialog = (entry) => {
+    if (!entry || isEntryOfferedForSale(entry) || getEntryConsumerListing(entry)) return;
+    if (profile?.role === "member" && !hasFisherPremium) {
+      showFisherPremiumRequired("Kalaerän laittaminen kuluttajamyyntiin");
+      return;
+    }
+    const missingSellerSaleFields = getMissingSellerSaleFields(profile);
+    if (missingSellerSaleFields.length > 0) {
+      setAccountPanelOpen(true);
+      setAuthError(`Täytä omat tiedot ennen kuin voit asettaa kalaerän myyntiin. Puuttuu: ${missingSellerSaleFields.join(", ")}.`);
+      return;
+    }
+    setAuthError("");
+    setAuthInfo("");
+    setSavedCatchConsumerSaleEntry(entry);
+  };
+
   const closeCatchSaleDialog = () => {
     if (catchSaleSaving) return;
     setCatchSaleEntry(null);
@@ -18128,7 +18147,7 @@ export default function App() {
         <PersistentAppNavigation
           onHome={handleGoToHome}
           viewportWidth={viewportWidth}
-          hidden={Boolean(catchSaleEntry || labelPrintEntry)}
+          hidden={Boolean(catchSaleEntry || savedCatchConsumerSaleEntry || labelPrintEntry)}
         />
 
         {accountPanelOpen ? (
@@ -20578,7 +20597,7 @@ export default function App() {
               {salesSelectionMode ? (
                 <div id="catch-entry-sales" style={{ ...styles.noticeInfo, borderColor: "#86efac", background: "#f0fdf4", color: "#166534" }}>
                   <strong>Valitse myytävä saaliserä.</strong>{" "}
-                  Paina haluamasi, vielä myymättömän erän kohdalta “Laita erä myyntiin”. Jos saalista ei ole vielä kirjattu, siirry ensin Lisää saalis -näkymään.
+                  Valitse haluamasi, vielä myymätön erä ja paina “Myy yritysostajille” tai “Myy suoraan kuluttajalle”. Jos saalista ei ole vielä kirjattu, siirry ensin Lisää saalis -näkymään.
                 </div>
               ) : null}
               <div style={styles.rowBetween}><strong>{profile.role === "owner" && entryScope === "all" ? "Kaikkien saaliit" : "Omat saaliit"}</strong><input style={{ ...styles.input, maxWidth: 360 }} placeholder="Hae lajilla, paikalla, pyydyksellä..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
@@ -20647,19 +20666,34 @@ export default function App() {
                         </div>
                         <div style={styles.row}>
                           {!isEntryOfferedForSale(entry) && !getEntryConsumerListing(entry) && String(entry.ownerUserId || profile.id) === String(profile.id) ? (
-                            <button
-                              style={{
-                                ...styles.button,
-                                background: "linear-gradient(135deg, #059669, #16a34a)",
-                                borderColor: "#047857",
-                                color: "#ffffff",
-                                fontWeight: 800,
-                                boxShadow: "0 8px 18px rgba(5, 150, 105, 0.2)",
-                              }}
-                              onClick={() => openCatchSaleDialog(entry)}
-                            >
-                              Laita erä myyntiin
-                            </button>
+                            <>
+                              <button
+                                style={{
+                                  ...styles.button,
+                                  background: "linear-gradient(135deg, #2563eb, #0284c7)",
+                                  borderColor: "#1d4ed8",
+                                  color: "#ffffff",
+                                  fontWeight: 800,
+                                  boxShadow: "0 8px 18px rgba(37, 99, 235, 0.2)",
+                                }}
+                                onClick={() => openCatchSaleDialog(entry)}
+                              >
+                                Myy yritysostajille
+                              </button>
+                              <button
+                                style={{
+                                  ...styles.button,
+                                  background: "linear-gradient(135deg, #059669, #16a34a)",
+                                  borderColor: "#047857",
+                                  color: "#ffffff",
+                                  fontWeight: 800,
+                                  boxShadow: "0 8px 18px rgba(5, 150, 105, 0.2)",
+                                }}
+                                onClick={() => openSavedCatchConsumerSaleDialog(entry)}
+                              >
+                                Myy suoraan kuluttajalle
+                              </button>
+                            </>
                           ) : null}
                           {canPrintCatchLabels(entry) ? (
                             <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); setLabelPrintPieceCount(""); setLabelPrintWeightKg(""); setLabelPrintProductForm(getCatchLabelProductForm(entry.species)); setLabelPrintUseByDate(""); }}>
@@ -21046,6 +21080,24 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               )}
             </div>
           </div>
+        ) : null}
+
+        {savedCatchConsumerSaleEntry ? (
+          <SavedCatchConsumerSaleDialog
+            entry={savedCatchConsumerSaleEntry}
+            profile={profile}
+            accessToken={session?.access_token}
+            defaultPickupLocation={savedPickupAddress}
+            publicAppBaseUrl={getPublicAppBaseUrl()}
+            onClose={() => setSavedCatchConsumerSaleEntry(null)}
+            onPublished={({ listingUrl, notificationError, recipients, imageWarning }) => {
+              setSavedCatchConsumerSaleEntry(null);
+              setAuthInfo(`Saaliserä julkaistiin vain kuluttajamarkkinapaikalle. Yritysostajille ei lähetetty tarjousta.${imageWarning ? `\n${imageWarning}` : ""}\n${notificationError ? "Kuluttajailmoitusten lähetys epäonnistui, mutta erä on julkaistu ja linkki toimii." : `Ilmoitus lähetettiin ${recipients} erää seuranneelle kuluttajalle.`}\nJulkinen linkki: ${listingUrl}`);
+              setPendingOffersScrollTop(true);
+              setRefreshTick((current) => current + 1);
+              setActiveTab("offers");
+            }}
+          />
         ) : null}
 
         {catchSaleEntry ? (
