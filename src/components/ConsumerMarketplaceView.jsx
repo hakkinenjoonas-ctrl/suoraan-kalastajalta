@@ -71,6 +71,7 @@ export default function ConsumerMarketplaceView({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
+  const [reservationError, setReservationError] = useState("");
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [alertSpecies, setAlertSpecies] = useState("");
   const [alertMunicipality, setAlertMunicipality] = useState("");
@@ -100,6 +101,7 @@ export default function ConsumerMarketplaceView({
     setSelected(listing);
     setVariantQuantities({});
     setNote("");
+    setReservationError("");
     if (updateUrl && typeof window !== "undefined") {
       window.history.pushState({}, "", getConsumerListingPath(listing.id));
     }
@@ -118,6 +120,23 @@ export default function ConsumerMarketplaceView({
   }, [handledInitialListingId, initialListingId, listings, selected?.id]);
 
   const submitReservation = async () => {
+    if (!totals?.lines.length) {
+      setReservationError("Valitse vähintään yksi pakkauskoko ja määrä.");
+      return;
+    }
+    if (customerName.trim().length < 2) {
+      setReservationError("Täytä varaajan nimi.");
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+      setReservationError("Täytä voimassa oleva sähköpostiosoite.");
+      return;
+    }
+    if (phone.trim().length < 5) {
+      setReservationError("Täytä puhelinnumero noutoa varten.");
+      return;
+    }
+    setReservationError("");
     const ok = await onReserve({ listing: selected, lines: totals?.lines || [], customerName, email, phone, note });
     if (ok) closeListing();
   };
@@ -176,6 +195,9 @@ export default function ConsumerMarketplaceView({
         .consumer-close { width: 42px; height: 42px; border-radius: 16px; border: 1px solid rgba(147,197,253,.72); background: #eff6ff; color: #1e3a8a; cursor: pointer; }
         .consumer-summary { display: grid; gap: 7px; margin: 18px 0; padding: 15px; border: 1px solid rgba(191,219,254,.76); border-radius: 18px; background: linear-gradient(140deg, rgba(248,250,252,.98), rgba(239,246,255,.98)); }
         .consumer-form { display: grid; gap: 13px; }
+        .consumer-submit-bar { position: sticky; bottom: -1px; z-index: 3; display: grid; gap: 8px; margin: 0 -2px -2px; padding: 12px 2px max(2px, env(safe-area-inset-bottom)); border-top: 1px solid rgba(147,197,253,.5); background: linear-gradient(180deg, rgba(255,255,255,.88), #fff 24%); }
+        .consumer-submit-bar .consumer-button { width: 100%; }
+        .consumer-form-error { border: 1px solid #fecaca; border-radius: 13px; padding: 9px 11px; background: #fff1f2; color: #b91c1c; font-size: 13px; font-weight: 750; }
         .consumer-variant-list { display: grid; gap: 10px; }
         .consumer-variant-row { display: grid; grid-template-columns: minmax(0, 1fr) 112px; align-items: center; gap: 12px; padding: 12px; border: 1px solid rgba(191,219,254,.76); border-radius: 16px; background: #fff; }
         .consumer-variant-row strong { display: block; color: #1e3a8a; }
@@ -280,21 +302,25 @@ export default function ConsumerMarketplaceView({
                         onChange={(event) => {
                           const value = normalizeConsumerQuantityInput(event.target.value, variant.availableUnits);
                           setVariantQuantities((current) => ({ ...current, [variant.id]: value }));
+                          setReservationError("");
                         }}
                       />
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="consumer-field"><label>Varaajan nimi</label><input className="consumer-input" autoComplete="name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Etunimi ja sukunimi" /></div>
-              <div className="consumer-field"><label>Sähköposti varausvahvistusta varten</label><input className="consumer-input" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="nimi@esimerkki.fi" /></div>
-              <div className="consumer-field"><label>Puhelinnumero noutoa varten</label><input className="consumer-input" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="040 123 4567" /></div>
+              <div className="consumer-field"><label>Varaajan nimi</label><input className="consumer-input" autoComplete="name" value={customerName} onChange={(event) => { setCustomerName(event.target.value); setReservationError(""); }} placeholder="Etunimi ja sukunimi" /></div>
+              <div className="consumer-field"><label>Sähköposti varausvahvistusta varten</label><input className="consumer-input" type="email" autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setReservationError(""); }} placeholder="nimi@esimerkki.fi" /></div>
+              <div className="consumer-field"><label>Puhelinnumero noutoa varten</label><input className="consumer-input" type="tel" value={phone} onChange={(event) => { setPhone(event.target.value); setReservationError(""); }} placeholder="040 123 4567" /></div>
               <div className="consumer-field"><label>Viesti kalastajalle (valinnainen)</label><textarea className="consumer-input" rows="3" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Esimerkiksi arvioitu noutoaika" /></div>
               {totals?.lines.length ? <div className="consumer-summary">{totals.lines.map((line) => <span key={line.variant.id}><strong>{line.unitCount} ×</strong> {variantOptionLabel(line.variant)} · {money(line.grossTotal)}</span>)}<span><strong>Yhteispaino:</strong> {totals.isEstimate ? "noin " : ""}{quantity(totals.estimatedWeightKg)} kg</span>{totals.isEstimate ? <span>Lopullinen paino ja hinta vahvistetaan punnituksen jälkeen.</span> : null}</div> : <div className="consumer-small">Syötä määrä vähintään yhdelle pakkauskoolle tai kalakokoluokalle.</div>}
               <div className="consumer-total"><span>{totals?.isEstimate ? "Arviohinta" : "Yhteensä"}</span><span>{money(totals?.grossTotal)}</span></div>
               <div className="consumer-notice"><strong>Maksutavat:</strong> {formatConsumerPaymentMethods(selected.paymentMethods)}. Maksu suoritetaan suoraan kalastajalle.</div>
               <div className="consumer-small">Hinta sisältää arvonlisäveron. Varaus vähentää kaikkien valittujen pakkauskokojen tai kalakokoluokkien saldoa. Varaaminen ei vaadi kirjautumista.</div>
-              <button className="consumer-button consumer-primary" disabled={busy || !totals?.lines.length || !customerName.trim() || !email.trim() || !phone.trim() || orderingClosed(selected)} onClick={submitReservation}>{orderingClosed(selected) ? "Tilausaika on päättynyt" : busy ? "Varataan…" : "Vahvista varaus"}</button>
+              <div className="consumer-submit-bar">
+                {reservationError ? <div className="consumer-form-error" role="alert">{reservationError}</div> : null}
+                <button type="button" className="consumer-button consumer-primary" disabled={busy || orderingClosed(selected)} onClick={submitReservation}>{orderingClosed(selected) ? "Tilausaika on päättynyt" : busy ? "Varataan…" : "Vahvista varaus"}</button>
+              </div>
             </div>
           </div>
         </div>

@@ -188,6 +188,10 @@ export default function ConsumerApp({ initialListingId = "" }) {
       setError("Täytä voimassa oleva sähköpostiosoite.");
       return false;
     }
+    if (String(phone || "").trim().length < 5) {
+      setError("Täytä puhelinnumero noutoa varten.");
+      return false;
+    }
     if (!Array.isArray(lines) || lines.length < 1) {
       setError("Valitse vähintään yksi pakkauskoko ja määrä.");
       return false;
