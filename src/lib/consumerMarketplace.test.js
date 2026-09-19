@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatConsumerPaymentMethods,
+  formatConsumerListingSellerTitle,
   calculateConsumerOrderTotals,
   calculateConsumerReservationBasket,
   calculateConsumerReservationEstimate,
@@ -75,10 +76,41 @@ describe("consumer marketplace", () => {
     });
   });
 
+  it("preserves the trader details required before a consumer reservation", () => {
+    expect(normalizeConsumerListing({
+      seller_name: "Saimaan Kala Oy",
+      seller_business_id: "1234567-8",
+      seller_address: "Satamatie 1",
+      seller_postcode: "53100",
+      seller_city: "Lappeenranta",
+      seller_email: "myynti@example.fi",
+      seller_phone: "040 123 4567",
+    })).toMatchObject({
+      sellerName: "Saimaan Kala Oy",
+      sellerBusinessId: "1234567-8",
+      sellerAddress: "Satamatie 1",
+      sellerPostcode: "53100",
+      sellerCity: "Lappeenranta",
+      sellerEmail: "myynti@example.fi",
+      sellerPhone: "040 123 4567",
+      sellerIsTrader: true,
+    });
+  });
+
   it("normalizes and formats consumer payment methods", () => {
     expect(normalizeConsumerPaymentMethods([" MobilePay ", "Käteinen", "MobilePay", ""])).toEqual(["MobilePay", "Käteinen"]);
     expect(formatConsumerPaymentMethods(["MobilePay", "Käteinen"])).toBe("MobilePay, Käteinen");
     expect(formatConsumerPaymentMethods([])).toBe("Sovitaan kalastajan kanssa");
+  });
+
+  it("shows the fish species and allocated batch size in the seller listing title", () => {
+    expect(formatConsumerListingSellerTitle({
+      species: "Muikku",
+      product_name: "Tuore muikku",
+      allocated_kilos: 12.5,
+    })).toBe("Muikku · 12,5 kg");
+    expect(formatConsumerListingSellerTitle({ species: "Kuha" })).toBe("Kuha");
+    expect(formatConsumerListingSellerTitle({ species: "Täplärapu", allocated_pieces: 250 })).toBe("Täplärapu · 250 kpl");
   });
 
   it("separates listings whose pickup window has ended", () => {
@@ -101,6 +133,23 @@ describe("consumer marketplace", () => {
       variant: { unitType: "package", packageSizeKg: 0.5, unitPrice: 6.9 },
       unitCount: 5,
     })).toMatchObject({ grossTotal: 34.5, estimatedWeightKg: 2.5, isEstimate: false });
+  });
+
+  it("prices crayfish by piece without inventing a weight", () => {
+    expect(calculateConsumerReservationEstimate({
+      variant: { unitType: "piece", unitPrice: 2.5 },
+      unitCount: 20,
+    })).toMatchObject({ grossTotal: 50, estimatedWeightKg: 0, isEstimate: false });
+  });
+
+  it("combines several crayfish size classes in one reservation", () => {
+    expect(calculateConsumerReservationBasket({
+      variants: [
+        { id: "12-plus", unitType: "piece", unitPrice: 3.5, availableUnits: 80 },
+        { id: "11-plus", unitType: "piece", unitPrice: 2.5, availableUnits: 50 },
+      ],
+      quantities: { "12-plus": 20, "11-plus": 20 },
+    })).toMatchObject({ totalUnits: 40, estimatedWeightKg: 0, grossTotal: 120 });
   });
 
   it("combines several package sizes into one reservation", () => {

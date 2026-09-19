@@ -67,9 +67,16 @@ Deno.serve(async (request) => {
       if (data?.seller_user_id && serviceRoleKey) {
         const { data: listing } = await admin!
           .from("consumer_listings")
-          .select("product_name, seller_name, pickup_location, pickup_start, pickup_end, payment_methods")
+          .select("product_name, seller_name, seller_user_id, pickup_location, pickup_start, pickup_end, payment_methods")
           .eq("id", data.listing_id)
           .maybeSingle();
+        const { data: sellerProfile } = listing?.seller_user_id
+          ? await admin!
+            .from("profiles")
+            .select("company_name, business_id, address, postcode, city, contact_email, email, phone")
+            .eq("id", listing.seller_user_id)
+            .maybeSingle()
+          : { data: null };
         try {
           await fetch(`${url}/functions/v1/send-push-notification`, {
             method: "POST",
@@ -95,6 +102,11 @@ Deno.serve(async (request) => {
             ? listing.payment_methods.map((method: unknown) => safe(method)).filter(Boolean).join(", ")
             : "";
           const paymentMethodText = paymentMethods || "Sovitaan kalastajan kanssa";
+          const sellerName = safe(sellerProfile?.company_name) || safe(listing?.seller_name) || "Kalastaja";
+          const sellerAddress = [safe(sellerProfile?.address), [safe(sellerProfile?.postcode), safe(sellerProfile?.city)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+          const sellerEmail = safe(sellerProfile?.contact_email || sellerProfile?.email);
+          const sellerDetailsText = `${sellerName}${sellerProfile?.business_id ? ` (Y-tunnus ${safe(sellerProfile.business_id)})` : ""}${sellerAddress ? `, ${sellerAddress}` : ""}${sellerEmail ? `, ${sellerEmail}` : ""}${sellerProfile?.phone ? `, ${safe(sellerProfile.phone)}` : ""}`;
+          const termsUrl = "https://www.suoraankalastajalta.fi/tietosuojaseloste-ja-k%C3%A4ytt%C3%B6ehdot";
           try {
             const emailResponse = await fetch("https://api.resend.com/emails", {
               method: "POST",
@@ -103,8 +115,8 @@ Deno.serve(async (request) => {
                 from: fromEmail,
                 to: [recipientEmail],
                 subject: `Varausvahvistus: ${safe(listing?.product_name) || "kalaerä"}`,
-                html: `<h2>Varaus meni perille</h2><p>Hei ${escapeHtml(data.consumer_name)},</p><p>Varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.</p><p><strong>Tuote:</strong> ${escapeHtml(listing?.product_name || "Kalaerä")}<br><strong>Määrät:</strong> ${escapeHtml(itemSummary)}<br><strong>${totalLabel}:</strong> ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €<br><strong>Nouto:</strong> ${escapeHtml(listing?.pickup_location || "Sovitaan kalastajan kanssa")}<br><strong>Noudettavissa:</strong> ${escapeHtml(`${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}`)}<br><strong>Maksutavat:</strong> ${escapeHtml(paymentMethodText)}<br><strong>Varaustunnus:</strong> ${escapeHtml(safe(reservationResult?.reservationGroupId).slice(0, 8).toUpperCase())}</p>${finalPriceNotice ? `<p><strong>Huomaa:</strong> ${escapeHtml(finalPriceNotice)}</p>` : ""}<p>Maksu suoritetaan suoraan kalastajalle valitulla maksutavalla.</p>`,
-                text: `Varaus meni perille\n\nHei ${safe(data.consumer_name)}, varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.\n\nTuote: ${safe(listing?.product_name) || "Kalaerä"}\nMäärät: ${itemSummary}\n${totalLabel}: ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €\nNouto: ${safe(listing?.pickup_location) || "Sovitaan kalastajan kanssa"}\nNoudettavissa: ${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}\nMaksutavat: ${paymentMethodText}\nVaraustunnus: ${safe(reservationResult?.reservationGroupId).slice(0, 8).toUpperCase()}${finalPriceNotice ? `\n\nHuomaa: ${finalPriceNotice}` : ""}\n\nMaksu suoritetaan suoraan kalastajalle valitulla maksutavalla.`,
+                html: `<h2>Varaus meni perille</h2><p>Hei ${escapeHtml(data.consumer_name)},</p><p>Varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.</p><p><strong>Myyjä:</strong> ${escapeHtml(sellerDetailsText)}<br><strong>Tuote:</strong> ${escapeHtml(listing?.product_name || "Kalaerä")}<br><strong>Määrät:</strong> ${escapeHtml(itemSummary)}<br><strong>${totalLabel}:</strong> ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €<br><strong>Nouto:</strong> ${escapeHtml(listing?.pickup_location || "Sovitaan kalastajan kanssa")}<br><strong>Noudettavissa:</strong> ${escapeHtml(`${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}`)}<br><strong>Maksutavat:</strong> ${escapeHtml(paymentMethodText)}<br><strong>Varaustunnus:</strong> ${escapeHtml(safe(reservationResult?.reservationGroupId).slice(0, 8).toUpperCase())}</p>${finalPriceNotice ? `<p><strong>Huomaa:</strong> ${escapeHtml(finalPriceNotice)}</p>` : ""}<p>Maksu suoritetaan suoraan kalastajalle.</p><p>Tuore kala on nopeasti pilaantuva elintarvike, jolla ei ole lakisääteistä 14 päivän peruuttamisoikeutta. Katso peruutus-, reklamaatio- ja muut sopimusehdot: <a href="${termsUrl}">${termsUrl}</a>.</p>`,
+                text: `Varaus meni perille\n\nHei ${safe(data.consumer_name)}, varauksesi on tallennettu ja kalastaja on saanut siitä tiedon.\n\nMyyjä: ${sellerDetailsText}\nTuote: ${safe(listing?.product_name) || "Kalaerä"}\nMäärät: ${itemSummary}\n${totalLabel}: ${grossTotal.toLocaleString("fi-FI", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €\nNouto: ${safe(listing?.pickup_location) || "Sovitaan kalastajan kanssa"}\nNoudettavissa: ${pickupStart}${pickupEnd ? `–${pickupEnd}` : ""}\nMaksutavat: ${paymentMethodText}\nVaraustunnus: ${safe(reservationResult?.reservationGroupId).slice(0, 8).toUpperCase()}${finalPriceNotice ? `\n\nHuomaa: ${finalPriceNotice}` : ""}\n\nMaksu suoritetaan suoraan kalastajalle.\n\nTuore kala on nopeasti pilaantuva elintarvike, jolla ei ole lakisääteistä 14 päivän peruuttamisoikeutta. Peruutus-, reklamaatio- ja muut ehdot: ${termsUrl}`,
               }),
             });
             confirmationEmailSent = emailResponse.ok;
@@ -125,10 +137,23 @@ Deno.serve(async (request) => {
         species: safe(body.species),
         municipality: safe(body.municipality),
         is_active: true,
+        consent_text_version: "2026-09-09",
+        consented_at: new Date().toISOString(),
+        withdrawn_at: null,
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id,species,municipality" }).select("*").single();
       if (error) return json(400, { error: error.message });
       return json(200, { subscription: data });
+    }
+
+    if (action === "unsubscribe_all") {
+      const { error } = await client
+        .from("consumer_alert_subscriptions")
+        .update({ is_active: false, withdrawn_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("user_id", authData.user.id)
+        .eq("is_active", true);
+      if (error) return json(400, { error: error.message });
+      return json(200, { ok: true });
     }
 
     if (action === "seller_update_order") {
@@ -161,7 +186,7 @@ Deno.serve(async (request) => {
         const productName = safe(listing?.product_name) || "Kalaerä";
         const sellerName = safe(listing?.seller_name) || "Kalastaja";
         const unitCount = Number(order?.unit_count || order?.package_count || 0);
-        const itemSummary = `${unitCount} × ${safe(order?.variant_label) || (order?.sale_unit_type === "whole_fish" ? "kokonainen kala" : "pakkaus")}`;
+        const itemSummary = `${unitCount} × ${safe(order?.variant_label) || (order?.sale_unit_type === "piece" ? "rapu" : order?.sale_unit_type === "whole_fish" ? "kokonainen kala" : "pakkaus")}`;
         const grossTotal = Number(order?.total_including_vat || 0);
         const pickupStart = listing?.pickup_start
           ? new Date(listing.pickup_start).toLocaleString("fi-FI", { timeZone: "Europe/Helsinki", dateStyle: "short", timeStyle: "short" })

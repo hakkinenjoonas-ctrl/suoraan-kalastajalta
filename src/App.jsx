@@ -128,6 +128,7 @@ import {
 import {
   formatSpeciesForLabelTitle,
   formatSpeciesForSale,
+  getCrayfishSizeLabel,
   getSpeciesMetadata,
   getSpeciesPriceUnit,
   getSpeciesRowLabel,
@@ -283,7 +284,7 @@ function shouldFallbackBuyerOfferMutation(error) {
 
 const PUSH_TOKEN_STORAGE_KEY = "sk:last_push_token";
 const LEGAL_TERMS_URL = "https://www.suoraankalastajalta.fi/tietosuojaseloste-ja-k%C3%A4ytt%C3%B6ehdot";
-const LEGAL_TERMS_VERSION = "2026-07-22";
+const LEGAL_TERMS_VERSION = "2026-09-09";
 
 async function runWithConcurrency(items, concurrency, worker) {
   const normalizedConcurrency = Math.max(1, Number(concurrency || 1));
@@ -868,6 +869,8 @@ function createCatchSaleDraft(entry = {}) {
     deliveryCost: entry?.deliveryCost == null ? "" : String(entry.deliveryCost),
     earliestDeliveryDate: entry?.earliestDeliveryDate || today(),
     coldTransport: Boolean(entry?.coldTransport),
+    saleKilos: entry?.businessSaleKilos > 0 ? String(entry.businessSaleKilos) : String(entry?.kilos || ""),
+    availableKilos: Number(entry?.kilos || 0),
   };
 }
 
@@ -889,7 +892,7 @@ function createConsumerSaleVariant(unitType = "package", grossPricePerKg = null)
     minWeightKg: unitType === "whole_fish" ? "0,8" : "",
     maxWeightKg: unitType === "whole_fish" ? "1,2" : "",
     pricePerKg: unitType === "whole_fish" && hasSuggestedPrice ? formatConsumerPriceInput(suggestedGrossPrice) : "",
-    priceAutoFilled: hasSuggestedPrice,
+    priceAutoFilled: unitType !== "piece" && hasSuggestedPrice,
     availableUnits: "1",
   };
 }
@@ -940,6 +943,9 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
   const baseSpecies = String(speciesMetadata?.name_fi || originalSpecies.split(",")[0] || originalSpecies).trim();
   const species = selectedProductForm ? `${baseSpecies}, ${selectedProductForm.toLocaleLowerCase("fi-FI")}` : baseSpecies;
   const isCrayfish = isCrayfishSpecies(entry?.species);
+  const crayfishSize = isCrayfish
+    ? String(options?.crayfishSize ?? getCrayfishSizeLabel(entry?.species)).trim()
+    : "";
   const pieceCount = isCrayfish && options?.pieceCount != null
     ? String(options.pieceCount).trim()
     : "";
@@ -993,9 +999,10 @@ function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options 
     productionMethodText: buildCatchProductionMethodText(waterType, catchArea),
     harvestSourceText: getCatchHarvestSourceText(waterType),
     productStateText: getCatchProductStateText(),
-    storageText: isCrayfish ? "+4–+8 °C, kosteana ja ilmavasti." : "0–2 °C",
+    storageText: isCrayfish ? "8 °C tai viileämpi" : "0–2 °C",
     weightText,
     isCrayfish,
+    crayfishSize,
     pieceCount,
     weightKg,
     supplier,
@@ -1868,21 +1875,28 @@ function createInitialProcessedForm() {
 
 const CATCH_LABEL_FORMAT_APLI_1278 = "apli_1278";
 const CATCH_LABEL_FORMAT_MUNBYN_4X3 = "munbyn_4x3";
+const CATCH_LABEL_FORMAT_MUNBYN_4X3_DIRECT_PDF = "munbyn_4x3_direct_pdf";
 const CATCH_LABEL_FORMAT_MUNBYN_4X6 = "munbyn_4x6";
 const PROCESSED_LABEL_FORMAT_4X3 = "processed_4x3";
 const PROCESSED_LABEL_FORMAT_4X6 = "processed_4x6";
 
 function isThermalCatchLabelFormat(printFormat) {
-  return printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6 || printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3;
+  return printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X6
+    || printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3
+    || printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3_DIRECT_PDF;
+}
+
+function isDirectPdfCatchLabelFormat(printFormat) {
+  return printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3_DIRECT_PDF;
 }
 
 function getThermalLabelSizeMm(printFormat) {
-  if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3) return THERMAL_LABEL_4X3_SIZE_MM;
+  if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3 || isDirectPdfCatchLabelFormat(printFormat)) return THERMAL_LABEL_4X3_SIZE_MM;
   return THERMAL_LABEL_4X6_SIZE_MM;
 }
 
 function renderThermalLabelByFormat(printFormat, label) {
-  if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3) {
+  if (printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3 || isDirectPdfCatchLabelFormat(printFormat)) {
     return <ThermalLabel4x3 label={label} />;
   }
   return <ThermalLabel4x6Portrait label={label} />;
@@ -1893,6 +1907,11 @@ const CATCH_LABEL_FORMATS = [
     value: CATCH_LABEL_FORMAT_MUNBYN_4X3,
     label: "MUNBYN 4x3",
     description: "101.6 × 76.2 mm · 1 etiketti / sivu",
+  },
+  {
+    value: CATCH_LABEL_FORMAT_MUNBYN_4X3_DIRECT_PDF,
+    label: "MUNBYN 4x3 · suora PDF (testi)",
+    description: "101.6 × 76.2 mm · ilman HTML-kuvarenderöintiä",
   },
   {
     value: CATCH_LABEL_FORMAT_MUNBYN_4X6,
@@ -1954,6 +1973,7 @@ function buildCatchLabelPrintHtml(entry, profileLike, labelCount, printFormat = 
           ${label.catchArea ? `<div class="line">Pyyntialue: ${label.catchArea}</div>` : ""}
           ${label.harvestSourceText ? `<div class="line">${label.harvestSourceText}</div>` : ""}
           ${label.gearType ? `<div class="line">Pyyntimenetelmä: ${label.gearType}</div>` : ""}
+          ${label.crayfishSize ? `<div class="line">Ravun koko: ${label.crayfishSize}</div>` : ""}
           ${label.productStateText ? `<div class="line">${label.productStateText}</div>` : ""}
           ${label.catchDate ? `<div class="line catch-date">Pyyntipäivä: ${label.catchDate}</div>` : ""}
           ${label.useByDate ? `<div class="line catch-date">Viimeinen käyttöpäivä: ${label.useByDate}</div>` : ""}
@@ -2048,24 +2068,24 @@ function blobToDataUrl(blob) {
   });
 }
 
-function drawFacilityOvalMark(doc, establishmentNumber, x, y, width, height) {
+function drawFacilityOvalMark(doc, establishmentNumber, x, y, width, height, matchThermalSvg = false) {
   const value = String(establishmentNumber || "").trim();
   if (!value) return;
 
   const cx = x + width / 2;
   const cy = y + height / 2;
   doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(17, 24, 39);
-  doc.setLineWidth(0.3);
-  doc.ellipse(cx, cy, width / 2, height / 2, "FD");
+  doc.setDrawColor(matchThermalSvg ? 0 : 17, matchThermalSvg ? 0 : 24, matchThermalSvg ? 0 : 39);
+  doc.setLineWidth(matchThermalSvg ? 0.23 : 0.3);
+  doc.ellipse(cx, cy, matchThermalSvg ? width * 0.45 : width / 2, matchThermalSvg ? height * 0.4 : height / 2, "FD");
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(5);
-  doc.text("FI", cx, y + 2.8, { align: "center" });
+  doc.setFontSize(matchThermalSvg ? 4.65 : 5);
+  doc.text("FI", cx, matchThermalSvg ? y + (height * 28 / 90) : y + 2.8, { align: "center" });
   doc.setFontSize(6);
-  doc.text(value, cx, y + (height / 2) + 0.2, { align: "center" });
-  doc.setFontSize(5);
-  doc.text("EC", cx, y + height - 1.6, { align: "center" });
+  doc.text(value, cx, matchThermalSvg ? y + (height * 50 / 90) : y + (height / 2) + 0.2, { align: "center" });
+  doc.setFontSize(matchThermalSvg ? 4.65 : 5);
+  doc.text("EC", cx, matchThermalSvg ? y + (height * 72 / 90) : y + height - 1.6, { align: "center" });
 }
 
 function FacilityOvalPreview({ value, width = 72, minHeight = 42, fontSize = 10 }) {
@@ -2366,6 +2386,27 @@ async function fetchImageDataUrl(url) {
   return blobToDataUrl(blob);
 }
 
+const imageDataUrlPromiseCache = new Map();
+
+function fetchImageDataUrlCached(url) {
+  const normalizedUrl = String(url || "").trim();
+  if (!normalizedUrl) return Promise.resolve("");
+  const cached = imageDataUrlPromiseCache.get(normalizedUrl);
+  if (cached) return cached;
+
+  if (imageDataUrlPromiseCache.size >= 32) {
+    const oldestKey = imageDataUrlPromiseCache.keys().next().value;
+    if (oldestKey) imageDataUrlPromiseCache.delete(oldestKey);
+  }
+
+  const request = fetchImageDataUrl(normalizedUrl).catch((error) => {
+    imageDataUrlPromiseCache.delete(normalizedUrl);
+    throw error;
+  });
+  imageDataUrlPromiseCache.set(normalizedUrl, request);
+  return request;
+}
+
 function loadImageDimensions(dataUrl) {
   return new Promise((resolve) => {
     if (typeof window === "undefined" || !dataUrl) {
@@ -2444,8 +2485,13 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl, printForma
   };
   const host = document.createElement("div");
   host.style.position = "fixed";
-  host.style.left = "-10000px";
+  // Keep the render target inside the viewport coordinate space. Some Android
+  // WebViews cull descendants of elements positioned far off screen, which can
+  // leave the middle of a thermal label blank in the generated PDF.
+  host.style.left = "0";
   host.style.top = "0";
+  host.style.zIndex = "-2147483647";
+  host.style.pointerEvents = "none";
   host.style.width = `${thermalSize.width}mm`;
   host.style.height = `${thermalSize.height}mm`;
   host.style.margin = "0";
@@ -2464,6 +2510,9 @@ async function renderMunbynLabelCanvas(label, qrDataUrl, logoDataUrl, printForma
         image.onerror = resolve;
       });
     }));
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     fitLabelSingleLineFields(host);
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -2581,14 +2630,231 @@ async function buildProcessedLabelPdf(entry, profileLike, printFormat) {
   return doc;
 }
 
+function drawDirectThermalCatchLabel(doc, label, qrDataUrl, logoDataUrl, logoDimensions, labelSize) {
+  const pageWidth = Number(labelSize.width);
+  const pageHeight = Number(labelSize.height);
+  const padding = 3.6;
+  const left = padding;
+  const right = pageWidth - padding;
+  const columnGap = 2.4;
+  const rightColumnWidth = label.eviraFacilityId ? 36 : 30;
+  const textWidth = pageWidth - (padding * 2) - columnGap - rightColumnWidth;
+  const rightColumnX = left + textWidth + columnGap;
+  const qrFrameSize = 29;
+  const qrSize = 25;
+  const qrFrameX = rightColumnX + ((rightColumnWidth - qrFrameSize) / 2);
+  const qrFrameY = pageHeight - padding - qrFrameSize;
+  const qrX = qrFrameX + ((qrFrameSize - qrSize) / 2);
+  const qrY = qrFrameY + ((qrFrameSize - qrSize) / 2);
+  const headerTextWidth = textWidth;
+
+  doc.setTextColor(15, 23, 42);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.25);
+
+  doc.setFont("helvetica", "bold");
+  const speciesText = String(label.species || "-");
+  let speciesFontSize = 20;
+  doc.setFontSize(speciesFontSize);
+  while (speciesFontSize > 10 && doc.getTextWidth(speciesText) > headerTextWidth) {
+    speciesFontSize -= 0.5;
+    doc.setFontSize(speciesFontSize);
+  }
+  doc.text(speciesText, left, 9.5);
+
+  if (label.scientificName) {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8.2);
+    const scientificLines = doc.splitTextToSize(label.scientificName, headerTextWidth).slice(0, 2);
+    doc.text(scientificLines, left, 13.8);
+  }
+
+  const facilityWidth = label.eviraFacilityId ? 18.75 : 0;
+  const facilityHeight = 11.25;
+  if (label.eviraFacilityId) {
+    drawFacilityOvalMark(doc, label.eviraFacilityId, rightColumnX, 3.6, facilityWidth, facilityHeight, true);
+  }
+
+  if (logoDataUrl) {
+    const logoAspectRatio = Number(logoDimensions?.width || 1) / Number(logoDimensions?.height || 1);
+    const logoMaxWidth = label.eviraFacilityId ? 13 : 22;
+    const logoMaxHeight = label.eviraFacilityId ? 11 : 14;
+    const logoWidth = logoAspectRatio >= 1
+      ? logoMaxWidth
+      : Math.min(logoMaxWidth, logoMaxHeight * logoAspectRatio);
+    const logoHeight = logoAspectRatio >= 1
+      ? Math.min(logoMaxHeight, logoMaxWidth / logoAspectRatio)
+      : logoMaxHeight;
+    const brandColumnX = label.eviraFacilityId ? rightColumnX + 19.55 : rightColumnX;
+    const brandColumnWidth = label.eviraFacilityId ? rightColumnWidth - 19.55 : rightColumnWidth;
+    const logoX = brandColumnX + ((brandColumnWidth - logoWidth) / 2);
+    const logoY = 3.6;
+    doc.addImage(logoDataUrl, "PNG", logoX, logoY, logoWidth, logoHeight, undefined, "FAST");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(label.eviraFacilityId ? 6.5 : 9);
+    const brandLineHeight = label.eviraFacilityId ? 2.25 : 3;
+    doc.text("Suoraan", brandColumnX + (brandColumnWidth / 2), logoY + logoHeight + brandLineHeight, { align: "center" });
+    doc.text("Kalastajalta", brandColumnX + (brandColumnWidth / 2), logoY + logoHeight + (brandLineHeight * 2), { align: "center" });
+  }
+
+  const batchTop = 15.5;
+  const batchHeight = 8.2;
+  doc.setFillColor(239, 246, 255);
+  doc.setDrawColor(147, 197, 253);
+  doc.setLineWidth(0.4);
+  doc.roundedRect(left, batchTop, textWidth, batchHeight, 2, 2, "FD");
+  const batchText = `Erätunnus: ${label.batchId || "-"}`;
+  doc.setFont("helvetica", "bold");
+  let batchFontSize = Math.min(10.8, (10.8 * 24) / Math.max(batchText.length, 1));
+  doc.setFontSize(batchFontSize);
+  while (batchFontSize > 5.4 && doc.getTextWidth(batchText) > textWidth - 3) {
+    batchFontSize -= 0.2;
+    doc.setFontSize(batchFontSize);
+  }
+  doc.text(batchText, left + 2.2, batchTop + 5.3);
+
+  const detailSource = [
+    label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
+    label.harvestSourceText || "",
+    label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
+    label.crayfishSize ? `Ravun koko: ${label.crayfishSize}` : "",
+    label.productStateText || "",
+    label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
+    label.useByDate ? `Viimeinen käyttöpäivä: ${label.useByDate}` : "",
+    label.commercialFishingId ? `Kaupallisen kalastajan tunnus: ${label.commercialFishingId}` : "",
+    `Säilytys: ${label.storageText || "-"}`,
+  ].filter(Boolean);
+  const emphasizedPrefixes = ["Pyyntipäivä:", "Viimeinen käyttöpäivä:"];
+  const detailTop = batchTop + batchHeight + 3.3;
+  const detailBottom = 61;
+  let detailFontSize = 7.5;
+  let detailLineHeight = 3.2;
+  let wrappedDetails = [];
+  const wrapDetails = () => detailSource.map((text) => ({
+    text,
+    emphasized: emphasizedPrefixes.some((prefix) => text.startsWith(prefix)),
+    lines: doc.splitTextToSize(text, textWidth),
+  }));
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(detailFontSize);
+  wrappedDetails = wrapDetails();
+  const getDetailHeight = () => wrappedDetails.reduce((height, detail) => height + (detail.lines.length * detailLineHeight), 0);
+  while (getDetailHeight() > detailBottom - detailTop && detailFontSize > 4.4) {
+    detailFontSize -= 0.25;
+    detailLineHeight = Math.max(2.1, detailLineHeight - 0.1);
+    doc.setFontSize(detailFontSize);
+    wrappedDetails = wrapDetails();
+  }
+  let currentY = detailTop;
+  wrappedDetails.forEach((detail) => {
+    doc.setFont("helvetica", detail.emphasized ? "bold" : "normal");
+    doc.setFontSize(detail.emphasized ? detailFontSize + 0.35 : detailFontSize);
+    doc.text(detail.lines, left, currentY);
+    currentY += detail.lines.length * detailLineHeight;
+  });
+
+  const supplierLines = [
+    `Toimittaja: ${label.supplier || "-"}`,
+    label.supplierAddress || "",
+    label.supplierContact || "",
+  ].filter(Boolean).flatMap((line) => doc.splitTextToSize(line, textWidth));
+  const supplierLineHeight = 2.55;
+  const supplierTop = pageHeight - padding - ((supplierLines.length - 1) * supplierLineHeight) - 0.4;
+  const supplierBorderY = supplierTop - 3;
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.35);
+  doc.line(left, supplierBorderY, left + textWidth, supplierBorderY);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  supplierLines.forEach((line, index) => {
+    const lineY = supplierTop + (index * supplierLineHeight);
+    if (lineY <= pageHeight - padding + 0.2) doc.text(line, left, lineY);
+  });
+
+  const quantityLabel = label.isCrayfish ? "Kpl" : "Paino";
+  const quantityUnit = label.isCrayfish ? "kpl" : "kg";
+  const printedQuantity = label.isCrayfish ? label.pieceCount : label.weightKg;
+  const quantityHeight = 9;
+  const quantityY = qrFrameY - 0.7 - quantityHeight;
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.4);
+  doc.roundedRect(qrFrameX, quantityY, qrFrameSize, quantityHeight, 1.8, 1.8, "S");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  const quantityLabelText = `${quantityLabel}:`;
+  const quantityLabelWidth = doc.getTextWidth(quantityLabelText);
+  if (printedQuantity) {
+    const quantityText = String(printedQuantity);
+    let quantityFontSize = quantityText.length <= 3 ? 26 : quantityText.length <= 5 ? 22 : 17;
+    const quantityUnitFontSize = 9;
+    const innerWidth = qrFrameSize - 2.4;
+    const labelGap = 1.2;
+    const unitGap = 0.6;
+    doc.setFontSize(quantityUnitFontSize);
+    const quantityUnitWidth = doc.getTextWidth(quantityUnit);
+    doc.setFontSize(quantityFontSize);
+    let quantityTextWidth = doc.getTextWidth(quantityText);
+    let rowWidth = quantityLabelWidth + labelGap + quantityTextWidth + unitGap + quantityUnitWidth;
+    while (quantityFontSize > 14 && rowWidth > innerWidth) {
+      quantityFontSize -= 0.5;
+      doc.setFontSize(quantityFontSize);
+      quantityTextWidth = doc.getTextWidth(quantityText);
+      rowWidth = quantityLabelWidth + labelGap + quantityTextWidth + unitGap + quantityUnitWidth;
+    }
+    let rowX = qrFrameX + ((qrFrameSize - rowWidth) / 2);
+    const baselineY = quantityY + 6.7;
+    doc.setFontSize(8);
+    doc.text(quantityLabelText, rowX, baselineY);
+    rowX += quantityLabelWidth + labelGap;
+    doc.setFontSize(quantityFontSize);
+    doc.text(quantityText, rowX, baselineY);
+    rowX += quantityTextWidth + unitGap;
+    doc.setFontSize(quantityUnitFontSize);
+    doc.text(quantityUnit, rowX, baselineY);
+  } else {
+    const baselineY = quantityY + 6.2;
+    doc.setFontSize(8);
+    doc.text(quantityLabelText, qrFrameX + 1.2, baselineY);
+    doc.setLineWidth(0.45);
+    doc.line(qrFrameX + quantityLabelWidth + 2.4, baselineY - 0.2, qrFrameX + qrFrameSize - 7, baselineY - 0.2);
+    doc.setFontSize(10);
+    doc.text(quantityUnit, qrFrameX + qrFrameSize - 1.2, baselineY, { align: "right" });
+  }
+
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.4);
+  doc.roundedRect(qrFrameX, qrFrameY, qrFrameSize, qrFrameSize, 1.8, 1.8, "S");
+  if (qrDataUrl) {
+    doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize, undefined, "FAST");
+  }
+}
+
 async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = CATCH_LABEL_FORMAT_APLI_1278, options = {}) {
   const count = Math.max(1, Number(labelCount || 1));
   const labels = Array.from({ length: count }, (_, index) => buildCatchLabelData(entry, profileLike, index + 1, count, options));
   const [qrDataUrls, logoDataUrl] = await Promise.all([
-    Promise.all(labels.map((label) => fetchImageDataUrl(getCatchLabelQrImageUrl(label)))),
-    fetchImageDataUrl(getAppLogoUrl()).catch(() => ""),
+    Promise.all(labels.map((label) => fetchImageDataUrlCached(getCatchLabelQrImageUrl(label)))),
+    fetchImageDataUrlCached(getAppLogoUrl()).catch(() => ""),
   ]);
   const logoDimensions = await loadImageDimensions(logoDataUrl);
+
+  if (isDirectPdfCatchLabelFormat(printFormat)) {
+    const thermalSize = getThermalLabelSizeMm(printFormat);
+    const orientation = thermalSize.width > thermalSize.height ? "landscape" : "portrait";
+    const doc = new jsPDF({
+      orientation,
+      unit: "mm",
+      format: [thermalSize.width, thermalSize.height],
+      compress: true,
+    });
+
+    labels.forEach((label, index) => {
+      if (index > 0) doc.addPage([thermalSize.width, thermalSize.height], orientation);
+      drawDirectThermalCatchLabel(doc, label, qrDataUrls[index], logoDataUrl, logoDimensions, thermalSize);
+    });
+
+    return doc;
+  }
 
   if (isThermalCatchLabelFormat(printFormat)) {
     const thermalSize = getThermalLabelSizeMm(printFormat);
@@ -2659,6 +2925,7 @@ async function buildCatchLabelPdf(entry, profileLike, labelCount, printFormat = 
       label.catchArea ? `Pyyntialue: ${label.catchArea}` : "",
       label.harvestSourceText || "",
       label.gearType ? `Pyyntimenetelmä: ${label.gearType}` : "",
+      label.crayfishSize ? `Ravun koko: ${label.crayfishSize}` : "",
       label.productStateText || "",
       label.catchDate ? `Pyyntipäivä: ${label.catchDate}` : "",
       label.useByDate ? `Viimeinen käyttöpäivä: ${label.useByDate}` : "",
@@ -4553,18 +4820,18 @@ function FirstUseGuideCard({ profile, guideState, onDismissNow, onHideForever, v
   );
 }
 
-function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, pieceCount, setPieceCount, weightKg, setWeightKg, productForm, setProductForm, useByDate, setUseByDate, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint, viewportWidth }) {
+function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, crayfishSize, setCrayfishSize, pieceCount, setPieceCount, weightKg, setWeightKg, productForm, setProductForm, useByDate, setUseByDate, printFormat, setPrintFormat, waterType, setWaterType, onClose, onGeneratePdf, onPrint, viewportWidth }) {
   if (!entry) return null;
 
   const previewLabel = {
-    ...buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount, weightKg, productForm, useByDate }),
-    qrImageUrl: getCatchLabelQrImageUrl(buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, pieceCount, weightKg, productForm, useByDate })),
+    ...buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, crayfishSize, pieceCount, weightKg, productForm, useByDate }),
+    qrImageUrl: getCatchLabelQrImageUrl(buildCatchLabelData(entry, profile, 1, Math.max(1, Number(labelCount || 1)), { waterType, crayfishSize, pieceCount, weightKg, productForm, useByDate })),
     logoUrl: getAppLogoUrl(),
   };
   const isMobile = viewportWidth < 768;
   const isIosMobileApp = isMobile && isNativeIosApp();
   const isThermalFormat = isThermalCatchLabelFormat(printFormat);
-  const thermalPreviewBaseWidth = printFormat === CATCH_LABEL_FORMAT_MUNBYN_4X3 ? 420 : 386;
+  const thermalPreviewBaseWidth = getThermalLabelSizeMm(printFormat).width > getThermalLabelSizeMm(printFormat).height ? 420 : 386;
   const previewBaseWidth = isThermalFormat ? thermalPreviewBaseWidth : 420;
   const previewBaseHeight = isThermalFormat
     ? (previewBaseWidth * getThermalLabelSizeMm(printFormat).height) / getThermalLabelSizeMm(printFormat).width
@@ -4578,11 +4845,17 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
     labelCount: Math.max(1, Number(labelCount || 1)),
     printFormat,
     waterType,
+    crayfishSize: isCrayfishSpecies(entry.species) ? String(crayfishSize || "").trim() : "",
     pieceCount: isCrayfishSpecies(entry.species) ? String(pieceCount || "").trim() : "",
     weightKg: !isCrayfishSpecies(entry.species) ? String(weightKg || "").trim() : "",
     productForm: isCrayfishSpecies(entry.species) ? "" : String(productForm || "").trim(),
     useByDate: String(useByDate || "").trim(),
-  }), [entry, labelCount, pieceCount, printFormat, productForm, useByDate, waterType, weightKg]);
+  }), [crayfishSize, entry, labelCount, pieceCount, printFormat, productForm, useByDate, waterType, weightKg]);
+
+  useEffect(() => {
+    void fetchImageDataUrlCached(getCatchLabelQrImageUrl(previewLabel)).catch(() => {});
+    void fetchImageDataUrlCached(getAppLogoUrl()).catch(() => {});
+  }, [previewLabel.batchId]);
 
   return (
     <div style={{
@@ -4666,19 +4939,32 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
               />
             </div>
             {isCrayfishSpecies(entry.species) ? (
-              <div style={styles.field}>
-                <label>Etikettiin tuleva kpl-määrä (valinnainen)</label>
-                <input
-                  style={styles.input}
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder="Jätä tyhjäksi käsin täyttämistä varten"
-                  value={pieceCount}
-                  onChange={(e) => setPieceCount(e.target.value.replace(/\D/g, ""))}
-                />
-                <div style={styles.small}>Jos jätät kentän tyhjäksi, etikettiin tulostuu kpl-kohta ja viiva käsin kirjoittamista varten.</div>
-              </div>
+              <>
+                <div style={styles.field}>
+                  <label>Ravun koko</label>
+                  <input
+                    style={styles.input}
+                    type="text"
+                    placeholder="Esim. 10+ cm tai 10–12 cm"
+                    value={crayfishSize}
+                    onChange={(e) => setCrayfishSize(e.target.value)}
+                  />
+                  <div style={styles.small}>Saalistietoon valittu kokoluokka tulee tähän automaattisesti ja sitä voi tarvittaessa muuttaa.</div>
+                </div>
+                <div style={styles.field}>
+                  <label>Etikettiin tuleva kpl-määrä (valinnainen)</label>
+                  <input
+                    style={styles.input}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="Jätä tyhjäksi käsin täyttämistä varten"
+                    value={pieceCount}
+                    onChange={(e) => setPieceCount(e.target.value.replace(/\D/g, ""))}
+                  />
+                  <div style={styles.small}>Jos jätät kentän tyhjäksi, etikettiin tulostuu kpl-kohta ja viiva käsin kirjoittamista varten.</div>
+                </div>
+              </>
             ) : (
               <div style={styles.field}>
                 <label>Etikettiin tuleva paino kg (valinnainen)</label>
@@ -4732,7 +5018,10 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
                 })}
               </div>
             </div>
-            <div style={styles.small}>{formatDetails.label} · {formatDetails.description}. “Luo PDF” avaa tulostusikkunan, jossa voit tallentaa PDF:n.</div>
+            <div style={styles.small}>
+              {formatDetails.label} · {formatDetails.description}. “Luo PDF” avaa tulostusikkunan, jossa voit tallentaa PDF:n.
+              {isDirectPdfCatchLabelFormat(printFormat) ? " Näytön esikatselu on suuntaa antava; varsinainen testiasettelu näkyy avattavassa PDF:ssä." : ""}
+            </div>
             <div style={{ ...styles.row, flexWrap: "wrap" }}>
               <button type="button" style={{ ...styles.button, ...styles.primaryButton }} onClick={() => onGeneratePdf(emitPrintSelection())}>Luo PDF</button>
               <button type="button" style={styles.button} onClick={() => onPrint(emitPrintSelection())}>Tulosta</button>
@@ -4777,6 +5066,7 @@ function CatchLabelPrintModal({ entry, profile, labelCount, setLabelCount, piece
                         {previewLabel.catchArea ? <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.12 }}>Pyyntialue: {previewLabel.catchArea}</div> : null}
                         {previewLabel.harvestSourceText ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>{previewLabel.harvestSourceText}</div> : null}
                         {previewLabel.gearType ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Pyyntimenetelmä: {previewLabel.gearType}</div> : null}
+                        {previewLabel.crayfishSize ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>Ravun koko: {previewLabel.crayfishSize}</div> : null}
                         {previewLabel.productStateText ? <div style={{ fontSize: 12, lineHeight: 1.12 }}>{previewLabel.productStateText}</div> : null}
                         {previewLabel.catchDate ? <div style={{ fontSize: 14, lineHeight: 1.16, fontWeight: 700 }}>Pyyntipäivä: {previewLabel.catchDate}</div> : null}
                         {previewLabel.useByDate ? <div style={{ fontSize: 14, lineHeight: 1.16, fontWeight: 700 }}>Viimeinen käyttöpäivä: {previewLabel.useByDate}</div> : null}
@@ -8153,7 +8443,9 @@ export default function App() {
       consumerProductName: "",
       consumerProductNameAutoFilled: false,
       consumerDescription: "",
+      consumerPickupMunicipality: "",
       consumerPickupLocation: "",
+      consumerPickupLocationEdited: false,
       consumerPickupDate: today(),
       consumerPickupStartTime: "12:00",
       consumerPickupEndTime: "13:00",
@@ -8434,11 +8726,13 @@ export default function App() {
   const [publicBatchError, setPublicBatchError] = useState("");
   const [slowBoot, setSlowBoot] = useState(false);
   const [labelPrintEntry, setLabelPrintEntry] = useState(null);
+  const [labelPrintPreparing, setLabelPrintPreparing] = useState(false);
   const [catchSaleEntry, setCatchSaleEntry] = useState(null);
   const [catchSaleDraft, setCatchSaleDraft] = useState(() => createCatchSaleDraft());
   const [catchSaleSaving, setCatchSaleSaving] = useState(false);
   const [savedCatchConsumerSaleEntry, setSavedCatchConsumerSaleEntry] = useState(null);
   const [labelPrintCount, setLabelPrintCount] = useState(10);
+  const [labelPrintCrayfishSize, setLabelPrintCrayfishSize] = useState("");
   const [labelPrintPieceCount, setLabelPrintPieceCount] = useState("");
   const [labelPrintWeightKg, setLabelPrintWeightKg] = useState("");
   const [labelPrintProductForm, setLabelPrintProductForm] = useState("");
@@ -9595,10 +9889,10 @@ export default function App() {
     if (matches.length === 0) return null;
     return matches.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
   };
-  const getEntryConsumerListing = (entry) => (consumerListings || []).find((listing) => (
+  const getEntryConsumerListings = (entry) => (consumerListings || []).filter((listing) => (
     String(listing.catch_entry_id || "") === String(entry?.id || "")
     || (!listing.catch_entry_id && listing.batch_id && String(listing.batch_id) === String(entry?.batchId || ""))
-  )) || null;
+  ));
   const copyConsumerListingLink = async (listing) => {
     const link = getConsumerListingUrl(listing?.id, getPublicAppBaseUrl());
     try {
@@ -9641,6 +9935,7 @@ export default function App() {
 
       const hasSourcePrice = Number(primaryConsumerGrossPrice) > 0;
       const nextVariants = (previous.consumerVariants || []).map((variant) => {
+        if (variant.unitType === "piece") return variant;
         const priceField = variant.unitType === "whole_fish" ? "pricePerKg" : "unitPrice";
         const currentPrice = String(variant[priceField] || "");
         if (currentPrice && !variant.priceAutoFilled) return variant;
@@ -10462,7 +10757,7 @@ export default function App() {
         const consumerListingsPromise = profile.role === "member"
           ? supabase
               .from("consumer_listings")
-              .select("id, catch_entry_id, batch_id, status")
+              .select("id, catch_entry_id, batch_id, status, allocated_kilos, allocated_pieces, pickup_end, created_at")
               .eq("seller_user_id", profile.id)
               .order("created_at", { ascending: false })
           : Promise.resolve({ data: [], error: null });
@@ -10605,6 +10900,7 @@ export default function App() {
             deliveryCost: entry.delivery_cost == null ? "" : Number(entry.delivery_cost),
             earliestDeliveryDate: entry.earliest_delivery_date || "",
             coldTransport: Boolean(entry.cold_transport),
+            businessSaleKilos: Number(entry.business_sale_kilos || 0),
             ownerName: entry.owner_name,
             commercialFishingId: entry.commercial_fishing_id || "",
             commercialFishingVesselId: entry.commercial_fishing_vessel_id || "",
@@ -11357,7 +11653,7 @@ export default function App() {
         if (crayfish) {
           existingGroup.forSalePieces += quantity;
         } else {
-          existingGroup.forSaleKilos += quantity;
+          existingGroup.forSaleKilos += Number(entry.businessSaleKilos || quantity);
         }
       }
 
@@ -14539,7 +14835,10 @@ export default function App() {
       earliest_delivery_date: null,
       cold_transport: false,
     };
-    if (!isProcessedEntry) updatePayload.offer_restricted = false;
+    if (!isProcessedEntry) {
+      updatePayload.offer_restricted = false;
+      updatePayload.business_sale_kilos = 0;
+    }
 
     const { error: entryUpdateError } = await supabase
       .from(tableName)
@@ -14571,20 +14870,30 @@ export default function App() {
     setRefreshTick((prev) => prev + 1);
   };
 
-  const openCatchSaleDialog = (entry) => {
-    if (!entry || isEntryOfferedForSale(entry) || getEntryConsumerListing(entry)) return;
+  const openCatchSaleDialog = async (entry) => {
+    if (!entry || isEntryOfferedForSale(entry)) return;
     if (profile?.role === "member" && !hasFisherPremium) {
       showFisherPremiumRequired("Kalaerän laittaminen myyntiin");
       return;
     }
     setAuthError("");
     setAuthInfo("");
+    const { data: remainingKilos, error: remainingError } = await supabase.rpc("get_catch_remaining_kilos", { p_catch_entry_id: entry.id });
+    if (remainingError) {
+      setAuthError(remainingError.message || "Saaliserän jäljellä olevaa määrää ei voitu tarkistaa.");
+      return;
+    }
+    const availableKilos = Number(remainingKilos || 0);
+    if (!(availableKilos > 0)) {
+      setAuthError("Saaliserästä ei ole enää vapaata määrää myyntiin.");
+      return;
+    }
     setCatchSaleEntry(entry);
-    setCatchSaleDraft(createCatchSaleDraft(entry));
+    setCatchSaleDraft({ ...createCatchSaleDraft(entry), saleKilos: String(availableKilos), availableKilos });
   };
 
   const openSavedCatchConsumerSaleDialog = (entry) => {
-    if (!entry || isEntryOfferedForSale(entry) || getEntryConsumerListing(entry)) return;
+    if (!entry) return;
     if (profile?.role === "member" && !hasFisherPremium) {
       showFisherPremiumRequired("Kalaerän laittaminen kuluttajamyyntiin");
       return;
@@ -14608,6 +14917,11 @@ export default function App() {
 
   const handlePutSavedCatchOnSale = async () => {
     if (!catchSaleEntry || catchSaleSaving) return;
+    const saleKilos = parseLocaleNumber(catchSaleDraft.saleKilos);
+    if (saleKilos == null || saleKilos <= 0 || saleKilos > Number(catchSaleDraft.availableKilos || 0) + 0.001) {
+      setAuthError(`Täytä yritysmyyntiin määrä väliltä 0,001–${Number(catchSaleDraft.availableKilos || 0).toLocaleString("fi-FI")} kg.`);
+      return;
+    }
     const pricePerKg = parseLocaleNumber(catchSaleDraft.pricePerKg);
     if (pricePerKg == null || pricePerKg <= 0) {
       setAuthError("Täytä kalaerälle myyntihinta.");
@@ -14660,6 +14974,7 @@ export default function App() {
       delivery_cost: parseLocaleNumber(catchSaleDraft.deliveryCost),
       earliest_delivery_date: catchSaleDraft.earliestDeliveryDate || null,
       cold_transport: Boolean(catchSaleDraft.coldTransport),
+      business_sale_kilos: saleKilos,
     };
     const offerFormState = {
       date: catchSaleEntry.date,
@@ -14690,7 +15005,7 @@ export default function App() {
     };
     const offerRows = [{
       species: catchSaleEntry.species,
-      kilos: Number(catchSaleEntry.kilos || 0),
+      kilos: saleKilos,
       count: Number(catchSaleEntry.count || 0),
       price_per_kg: pricePerKg,
       batch_id: catchSaleEntry.batchId || "",
@@ -15317,19 +15632,22 @@ export default function App() {
       setAuthError("Valitse, miten myytävä kalaerä on pakattu.");
       return;
     }
-    const consumerSaleUnitType = form.consumerSaleUnitType === "whole_fish" ? "whole_fish" : "package";
+    const consumerSaleUnitType = form.consumerSaleUnitType === "whole_fish"
+      ? "whole_fish"
+      : form.consumerSaleUnitType === "piece" ? "piece" : "package";
     const consumerVariants = (Array.isArray(form.consumerVariants) ? form.consumerVariants : []).map((variant) => ({
       id: String(variant.id || safeId()),
       sale_unit_type: consumerSaleUnitType,
       label: String(variant.label || "").trim(),
       package_size_kg: consumerSaleUnitType === "package" ? parseLocaleNumber(variant.packageSizeKg) : null,
-      unit_price_including_vat: consumerSaleUnitType === "package" ? parseLocaleNumber(variant.unitPrice) : null,
+      unit_price_including_vat: consumerSaleUnitType === "package" || consumerSaleUnitType === "piece" ? parseLocaleNumber(variant.unitPrice) : null,
       min_weight_kg: consumerSaleUnitType === "whole_fish" ? parseLocaleNumber(variant.minWeightKg) : null,
       max_weight_kg: consumerSaleUnitType === "whole_fish" ? parseLocaleNumber(variant.maxWeightKg) : null,
       price_per_kg_including_vat: consumerSaleUnitType === "whole_fish" ? parseLocaleNumber(variant.pricePerKg) : null,
       available_units: Math.floor(Number(variant.availableUnits || 0)),
     }));
-    const consumerPickupLocation = String(form.consumerPickupLocation || derivedDeliveryArea || savedPickupAddress || "").trim();
+    const consumerPickupLocation = String(form.consumerPickupLocation || "").trim();
+    const consumerPickupMunicipality = String(form.consumerPickupMunicipality || "").trim();
     const consumerPickupStart = new Date(`${form.consumerPickupDate || ""}T${form.consumerPickupStartTime || ""}:00`);
     const consumerPickupEnd = new Date(`${form.consumerPickupDate || ""}T${form.consumerPickupEndTime || ""}:00`);
     const consumerOrderDeadlineHours = Number(form.consumerOrderDeadlineHours);
@@ -15345,7 +15663,7 @@ export default function App() {
       return;
     }
     if (isConsumerSale && consumerVariants.some((variant) => !variant.label)) {
-      setAuthError(consumerSaleUnitType === "whole_fish" ? "Nimeä jokainen kalan kokoluokka." : "Nimeä jokainen pakkauskoko.");
+      setAuthError(consumerSaleUnitType === "piece" ? "Nimeä jokainen rapukokoluokka." : consumerSaleUnitType === "whole_fish" ? "Nimeä jokainen kalan kokoluokka." : "Nimeä jokainen pakkauskoko.");
       return;
     }
     if (isConsumerSale && consumerSaleUnitType === "package" && consumerVariants.some((variant) => (
@@ -15363,6 +15681,17 @@ export default function App() {
       || variant.available_units < 1
     ))) {
       setAuthError("Täytä jokaiselle kokoluokalle pienin ja suurin paino, kilohinta sekä kalojen määrä.");
+      return;
+    }
+    if (isConsumerSale && consumerSaleUnitType === "piece" && consumerVariants.some((variant) => (
+      !variant.unit_price_including_vat || variant.unit_price_including_vat <= 0
+      || variant.available_units < 1
+    ))) {
+      setAuthError("Täytä jokaiselle rapukokoluokalle kappalehinta ja myyntiin tuleva rapumäärä.");
+      return;
+    }
+    if (isConsumerSale && !consumerPickupMunicipality) {
+      setAuthError("Valitse kuluttajamyynnin noutopaikan paikkakunta.");
       return;
     }
     if (isConsumerSale && !consumerPickupLocation) {
@@ -15391,15 +15720,21 @@ export default function App() {
       return;
     }
     const consumerCatchKilos = Number(validRows[0]?.kilos || 0);
+    const consumerCatchPieces = Number(validRows[0]?.count || 0);
     const consumerAllocatedMinimumKilos = consumerVariants.reduce((sum, variant) => sum + (
       consumerSaleUnitType === "package"
         ? Number(variant.package_size_kg || 0) * variant.available_units
-        : Number(variant.min_weight_kg || 0) * variant.available_units
+        : consumerSaleUnitType === "whole_fish" ? Number(variant.min_weight_kg || 0) * variant.available_units : 0
     ), 0);
     if (isConsumerSale && consumerAllocatedMinimumKilos > consumerCatchKilos + 0.001) {
       setAuthError(consumerSaleUnitType === "whole_fish"
         ? "Kokoluokkien kalamäärien vähimmäispaino ylittää saaliin kokonaispainon. Pienennä kalojen määrää tai painoluokkia."
         : "Pakkausten yhteenlaskettu paino ylittää saaliin kokonaispainon. Pienennä pakkausmääriä.");
+      return;
+    }
+    const consumerAllocatedPieces = consumerVariants.reduce((sum, variant) => sum + Number(variant.available_units || 0), 0);
+    if (isConsumerSale && consumerSaleUnitType === "piece" && consumerAllocatedPieces > consumerCatchPieces) {
+      setAuthError("Rapukokoluokkien yhteenlaskettu kappalemäärä ylittää saaliin rapumäärän. Pienennä myyntimääriä.");
       return;
     }
     if (form.saleMode === "fixed" && form.listForSale && form.offerAudience === "selected" && form.selectedBuyerIds.length === 0) {
@@ -15509,6 +15844,7 @@ export default function App() {
       offer_to_restaurants: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale && form.offerAudience !== "selected" ? form.offerToRestaurants : false,
       offer_to_wholesalers: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale && form.offerAudience !== "selected" ? form.offerToWholesalers : false,
       offer_restricted: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale && form.offerAudience === "selected",
+      business_sale_kilos: !fisherPremiumRequired && form.saleMode === "fixed" && form.listForSale ? Number(row.kilos || 0) : 0,
       date: form.date,
       area: form.area,
       municipality: form.municipality,
@@ -15725,7 +16061,7 @@ export default function App() {
           p_product_name: String(form.consumerProductName || formatSpeciesForSale(getSpeciesRowLabel(consumerRow))).trim(),
           p_description: String(form.consumerDescription || "").trim(),
           p_seller_name: profile.company_name || profile.display_name || "Paikallinen kalastaja",
-          p_municipality: form.municipality || profile.city || "",
+          p_municipality: consumerPickupMunicipality,
           p_pickup_location: consumerPickupLocation,
           p_catch_date: form.date || null,
           p_cold_storage: Boolean(form.coldTransport),
@@ -15862,7 +16198,9 @@ export default function App() {
       consumerProductName: "",
       consumerProductNameAutoFilled: false,
       consumerDescription: "",
+      consumerPickupMunicipality: "",
       consumerPickupLocation: "",
+      consumerPickupLocationEdited: false,
       consumerPickupDate: today(),
       consumerPickupStartTime: "12:00",
       consumerPickupEndTime: "13:00",
@@ -16146,7 +16484,8 @@ export default function App() {
       return;
     }
 
-    if (mode === "pdf" || (mode === "print" && (isNativeCapacitorApp() || isIosSafariWeb()))) {
+    if (mode === "pdf" || isDirectPdfCatchLabelFormat(resolvedPrintFormat) || (mode === "print" && (isNativeCapacitorApp() || isIosSafariWeb()))) {
+      setLabelPrintPreparing(true);
       void (async () => {
         try {
           const doc = await buildProcessedLabelPdf(entry, profile, printFormat);
@@ -16254,6 +16593,9 @@ export default function App() {
     const resolvedPieceCount = isCrayfishSpecies(targetEntry?.species)
       ? String(overrides?.pieceCount ?? labelPrintPieceCount ?? "").trim()
       : "";
+    const resolvedCrayfishSize = isCrayfishSpecies(targetEntry?.species)
+      ? String(overrides?.crayfishSize ?? labelPrintCrayfishSize ?? getCrayfishSizeLabel(targetEntry?.species)).trim()
+      : "";
     const resolvedWeightKg = !isCrayfishSpecies(targetEntry?.species)
       ? String(overrides?.weightKg ?? labelPrintWeightKg ?? "").trim()
       : "";
@@ -16263,6 +16605,7 @@ export default function App() {
     const resolvedUseByDate = String(overrides?.useByDate ?? labelPrintUseByDate ?? "").trim();
     const labelOptions = {
       waterType: resolvedWaterType,
+      crayfishSize: resolvedCrayfishSize,
       pieceCount: resolvedPieceCount,
       weightKg: resolvedWeightKg,
       productForm: resolvedProductForm,
@@ -16308,6 +16651,8 @@ export default function App() {
           }
           console.error("Etiketti-PDF:n luonti epäonnistui:", error);
           setAuthError(`Etiketti-PDF:n luonti epäonnistui: ${String(error?.message || error)}`);
+        } finally {
+          setLabelPrintPreparing(false);
         }
       })();
       return;
@@ -18029,7 +18374,10 @@ export default function App() {
       deliveryMethod: "Nouto",
       deliveryArea: savedPickupAddress,
       deliveryDestinations: [],
-      consumerPickupLocation: previous.consumerPickupLocation || savedPickupAddress,
+      consumerPickupMunicipality: previous.consumerPickupMunicipality || profile.city || "",
+      consumerPickupLocation: previous.consumerPickupLocationEdited
+        ? previous.consumerPickupLocation
+        : (previous.consumerPickupLocation || savedPickupAddress),
     }));
     handleVisibleTabChange("add");
   };
@@ -19980,7 +20328,17 @@ export default function App() {
                             saleMode: option.value,
                             listForSale: option.value !== "none",
                             ...(option.value === "fixed" ? {} : { offerToShops: false, offerToRestaurants: false, offerToWholesalers: false }),
-                            ...(option.value === "consumer" ? { deliveryPossible: false, deliveryMethod: "Nouto", deliveryArea: savedPickupAddress, deliveryDestinations: [] } : {}),
+                            ...(option.value === "consumer" ? {
+                              deliveryPossible: false,
+                              deliveryMethod: "Nouto",
+                              deliveryArea: savedPickupAddress,
+                              deliveryDestinations: [],
+                              consumerPickupMunicipality: prev.consumerPickupMunicipality || profile.city || "",
+                              consumerPickupLocation: prev.consumerPickupLocationEdited ? prev.consumerPickupLocation : (prev.consumerPickupLocation || savedPickupAddress),
+                              ...(isCrayfishSpecies(getSpeciesRowLabel(speciesRows[0]))
+                                ? { consumerSaleUnitType: "piece", consumerVariants: [createConsumerSaleVariant("piece")] }
+                                : {}),
+                            } : {}),
                             ...(option.value !== "none" ? {} : { deliveryPossible: false }),
                           }))}
                         >
@@ -20026,7 +20384,10 @@ export default function App() {
                         {[
                           { value: "package", title: "Valmiit pakkaukset", detail: "Esimerkiksi 0,5 kg, 1 kg ja 2 kg pakkaukset." },
                           { value: "whole_fish", title: "Kokonaiset kalat", detail: "Kuluttaja varaa kalat kappaleittain valitsemastaan kokoluokasta." },
-                        ].map((option) => {
+                          ...(isCrayfishSpecies(getSpeciesRowLabel(speciesRows[0]))
+                            ? [{ value: "piece", title: "Ravut kappaleittain", detail: "Esimerkiksi 12+ cm, 11+ cm ja 10+ cm omilla kappalehinnoilla ja saldoilla." }]
+                            : []),
+                        ].filter((option) => option.value === "piece" || !isCrayfishSpecies(getSpeciesRowLabel(speciesRows[0]))).map((option) => {
                           const selected = form.consumerSaleUnitType === option.value;
                           return (
                             <button
@@ -20063,19 +20424,21 @@ export default function App() {
                       {(form.consumerVariants || []).map((variant, variantIndex) => (
                         <div key={variant.id} style={{ ...styles.field, gridColumn: "1 / -1", border: "1px solid #99f6e4", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.75)" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                            <strong>{form.consumerSaleUnitType === "whole_fish" ? `Kokoluokka ${variantIndex + 1}` : `Pakkauskoko ${variantIndex + 1}`}</strong>
+                            <strong>{form.consumerSaleUnitType === "piece" ? `Rapukokoluokka ${variantIndex + 1}` : form.consumerSaleUnitType === "whole_fish" ? `Kokoluokka ${variantIndex + 1}` : `Pakkauskoko ${variantIndex + 1}`}</strong>
                             {(form.consumerVariants || []).length > 1 ? <button type="button" onClick={() => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.filter((item) => item.id !== variant.id) }))}>Poista</button> : null}
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
                             <div style={styles.field}>
-                              <label>{form.consumerSaleUnitType === "whole_fish" ? "Kokoluokan nimi" : "Pakkauksen nimi"}</label>
-                              <input style={styles.input} value={variant.label} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, label: event.target.value } : item) }))} placeholder={form.consumerSaleUnitType === "whole_fish" ? "Esim. Kuha 1,2–1,8 kg" : "Esim. 1 kg pakkaus"} />
+                              <label>{form.consumerSaleUnitType === "piece" ? "Rapujen kokoluokka" : form.consumerSaleUnitType === "whole_fish" ? "Kokoluokan nimi" : "Pakkauksen nimi"}</label>
+                              <input style={styles.input} value={variant.label} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, label: event.target.value } : item) }))} placeholder={form.consumerSaleUnitType === "piece" ? "Esim. 12+ cm" : form.consumerSaleUnitType === "whole_fish" ? "Esim. Kuha 1,2–1,8 kg" : "Esim. 1 kg pakkaus"} />
                             </div>
                             {form.consumerSaleUnitType === "package" ? (
                               <>
                                 <div style={styles.field}><label>Pakkauksen koko kg</label><input style={styles.input} inputMode="decimal" value={variant.packageSizeKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, packageSizeKg: event.target.value } : item) }))} placeholder="1,0" /></div>
                                 <div style={styles.field}><label>Hinta / pakkaus sis. ALV (€)</label><input style={styles.input} inputMode="decimal" value={variant.unitPrice} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, unitPrice: event.target.value, priceAutoFilled: false } : item) }))} placeholder="12,90" /></div>
                               </>
+                            ) : form.consumerSaleUnitType === "piece" ? (
+                              <div style={styles.field}><label>Kappalehinta sis. ALV (€ / rapu)</label><input style={styles.input} inputMode="decimal" value={variant.unitPrice} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, unitPrice: event.target.value, priceAutoFilled: false } : item) }))} placeholder="3,50" /></div>
                             ) : (
                               <>
                                 <div style={styles.field}><label>Pienin paino kg / kala</label><input style={styles.input} inputMode="decimal" value={variant.minWeightKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, minWeightKg: event.target.value } : item) }))} placeholder="0,8" /></div>
@@ -20083,12 +20446,13 @@ export default function App() {
                                 <div style={styles.field}><label>Kilohinta sis. ALV (€ / kg)</label><input style={styles.input} inputMode="decimal" value={variant.pricePerKg} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, pricePerKg: event.target.value, priceAutoFilled: false } : item) }))} placeholder="16,90" /></div>
                               </>
                             )}
-                            <div style={styles.field}><label>{form.consumerSaleUnitType === "whole_fish" ? "Kaloja myyntiin (kpl)" : "Pakkauksia myyntiin (kpl)"}</label><input style={styles.input} type="number" min="1" step="1" value={variant.availableUnits} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, availableUnits: event.target.value } : item) }))} /></div>
+                            <div style={styles.field}><label>{form.consumerSaleUnitType === "piece" ? "Rapuja myyntiin (kpl)" : form.consumerSaleUnitType === "whole_fish" ? "Kaloja myyntiin (kpl)" : "Pakkauksia myyntiin (kpl)"}</label><input style={styles.input} type="number" min="1" step="1" value={variant.availableUnits} onChange={(event) => setForm((prev) => ({ ...prev, consumerVariants: prev.consumerVariants.map((item) => item.id === variant.id ? { ...item, availableUnits: event.target.value } : item) }))} /></div>
                           </div>
                         </div>
                       ))}
-                      <button type="button" style={{ ...styles.button, gridColumn: "1 / -1", justifySelf: "start" }} onClick={() => setForm((prev) => ({ ...prev, consumerVariants: [...(prev.consumerVariants || []), createConsumerSaleVariant(prev.consumerSaleUnitType)] }))}>+ Lisää {form.consumerSaleUnitType === "whole_fish" ? "kokoluokka" : "pakkauskoko"}</button>
-                      <div style={{ ...styles.field, gridColumn: "1 / -1" }}><label>Nouto-osoite tai tarkka noutopaikka</label><input style={styles.input} value={form.consumerPickupLocation || savedPickupAddress} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupLocation: event.target.value }))} placeholder="Esim. Puumalan satama, Satamatie 2" /></div>
+                      <button type="button" style={{ ...styles.button, gridColumn: "1 / -1", justifySelf: "start" }} onClick={() => setForm((prev) => ({ ...prev, consumerVariants: [...(prev.consumerVariants || []), createConsumerSaleVariant(prev.consumerSaleUnitType)] }))}>+ Lisää {form.consumerSaleUnitType === "piece" ? "rapukokoluokka" : form.consumerSaleUnitType === "whole_fish" ? "kokoluokka" : "pakkauskoko"}</button>
+                      <div style={styles.field}><label>Noutopaikan paikkakunta</label><MunicipalitySelect value={form.consumerPickupMunicipality || ""} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupMunicipality: event.target.value }))} /></div>
+                      <div style={{ ...styles.field, gridColumn: "1 / -1" }}><label>Nouto-osoite tai tarkka noutopaikka</label><input style={styles.input} value={form.consumerPickupLocation || ""} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupLocation: event.target.value, consumerPickupLocationEdited: true }))} placeholder="Esim. Puumalan satama, Satamatie 2" /></div>
                       <div style={styles.field}><label>Noutopäivä</label><input style={{ ...styles.input, ...styles.dateInput }} type="date" value={form.consumerPickupDate} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupDate: event.target.value }))} /></div>
                       <div style={styles.field}><label>Noudettavissa alkaen</label><input style={styles.input} type="time" value={form.consumerPickupStartTime} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupStartTime: event.target.value }))} /></div>
                       <div style={styles.field}><label>Noudettavissa asti</label><input style={styles.input} type="time" value={form.consumerPickupEndTime} onChange={(event) => setForm((prev) => ({ ...prev, consumerPickupEndTime: event.target.value }))} /></div>
@@ -20119,7 +20483,7 @@ export default function App() {
                       </div>
                       <div style={{ ...styles.field, gridColumn: "1 / -1" }}><label>Kuluttajalle näkyvä kuvaus</label><textarea style={styles.textarea} value={form.consumerDescription} onChange={(event) => setForm((prev) => ({ ...prev, consumerDescription: event.target.value }))} placeholder="Kerro käsittelystä, tuoreudesta ja noudosta." /></div>
                     </div>
-                    <div style={styles.small}>{form.consumerSaleUnitType === "whole_fish" ? "Kuluttaja varaa kappalemäärän. Sovellus näyttää paino- ja hinta-arvion, ja lopullinen hinta lasketaan punnitusta painosta noudon yhteydessä." : "Kuluttaja voi yhdistää samaan varaukseen useita pakkauskokoja, esimerkiksi 4 × 1 kg + 1 × 0,5 kg."}</div>
+                    <div style={styles.small}>{form.consumerSaleUnitType === "piece" ? "Kuluttaja voi varata samalla kertaa useita rapukokoluokkia. Jokaisen koon saldo vähenee varatulla kappalemäärällä." : form.consumerSaleUnitType === "whole_fish" ? "Kuluttaja varaa kappalemäärän. Sovellus näyttää paino- ja hinta-arvion, ja lopullinen hinta lasketaan punnitusta painosta noudon yhteydessä." : "Kuluttaja voi yhdistää samaan varaukseen useita pakkauskokoja, esimerkiksi 4 × 1 kg + 1 × 0,5 kg."}</div>
                     <div style={styles.noticeInfo}>Kuluttaja maksaa suoraan kalastajalle valitulla maksutavalla. Palvelu kirjaa jokaisesta tehdystä tilauksesta 8 % komission verottomasta myyntiarvosta myös silloin, jos tilausta ei myöhemmin noudeta tai se perutaan.</div>
                   </div>
                 ) : null}
@@ -20649,37 +21013,44 @@ export default function App() {
                           {entry.pricePerKg !== "" && entry.pricePerKg != null ? <div style={styles.muted}>{`Hinta sis. ALV ${formatVatPercent()} %:`} {formatEntryGrossPrice(entry.species, entry.pricePerKg)}</div> : null}
                           {entry.gearCount ? <div style={styles.muted}>Pyydysten määrä: {entry.gearCount}</div> : null}
                           {entry.fishingDurationDays ? <div style={styles.muted}>Pyyntiaika: {entry.fishingDurationDays}</div> : null}
-                          {getEntryConsumerListing(entry) ? (
-                            <div style={{ ...styles.noticeInfo, marginTop: 10, display: "grid", gap: 7 }}>
-                              <div><strong>Suoraan kuluttajille</strong> · {getEntryConsumerListing(entry).status === "published" ? "Myynnissä" : getEntryConsumerListing(entry).status === "sold_out" ? "Loppuunmyyty" : getEntryConsumerListing(entry).status}</div>
-                              <div style={{ ...styles.small, overflowWrap: "anywhere" }}>{getConsumerListingUrl(getEntryConsumerListing(entry).id, getPublicAppBaseUrl())}</div>
-                              <div style={styles.row}>
-                                <button type="button" style={{ ...styles.button, fontWeight: 800 }} onClick={() => openConsumerListingLink(getEntryConsumerListing(entry))}>Avaa myynti-ilmoitus</button>
-                                <button type="button" style={styles.button} onClick={() => copyConsumerListingLink(getEntryConsumerListing(entry))}>Kopioi linkki</button>
-                              </div>
+                          {getEntryConsumerListings(entry).length > 0 ? (
+                            <div style={{ ...styles.noticeInfo, marginTop: 10, display: "grid", gap: 10 }}>
+                              <div><strong>Suoraan kuluttajille</strong> · {getEntryConsumerListings(entry).length} {getEntryConsumerListings(entry).length === 1 ? "erä" : "erää"}</div>
+                              {getEntryConsumerListings(entry).map((listing, listingIndex) => (
+                                <div key={listing.id} style={{ display: "grid", gap: 6, paddingTop: listingIndex > 0 ? 9 : 0, borderTop: listingIndex > 0 ? "1px solid #99f6e4" : "none" }}>
+                                  <div style={styles.small}>{listing.status === "published" ? "Myynnissä" : listing.status === "sold_out" ? "Loppuunmyyty" : listing.status}{Number(listing.allocated_pieces || 0) > 0 ? ` · varattu listaukseen ${Number(listing.allocated_pieces).toLocaleString("fi-FI")} kpl` : Number(listing.allocated_kilos || 0) > 0 ? ` · varattu listaukseen ${Number(listing.allocated_kilos).toLocaleString("fi-FI", { maximumFractionDigits: 3 })} kg` : ""}</div>
+                                  <div style={{ ...styles.small, overflowWrap: "anywhere" }}>{getConsumerListingUrl(listing.id, getPublicAppBaseUrl())}</div>
+                                  <div style={styles.row}>
+                                    <button type="button" style={{ ...styles.button, fontWeight: 800 }} onClick={() => openConsumerListingLink(listing)}>Avaa myynti-ilmoitus</button>
+                                    <button type="button" style={styles.button} onClick={() => copyConsumerListingLink(listing)}>Kopioi linkki</button>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           ) : null}
                           {isEntryOfferedForSale(entry) ? (
-                            <div style={styles.muted}>Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
+                            <div style={styles.muted}>Yritysmyynnissä {Number(entry.businessSaleKilos || entry.kilos || 0).toLocaleString("fi-FI", { maximumFractionDigits: 3 })} kg · Toimitus: {entry.deliveryMethod || "-"} · {entry.deliveryArea || "-"} · Kulu {entry.deliveryCost !== "" && entry.deliveryCost != null ? `${entry.deliveryCost} €` : "-"} · Aikaisin {entry.earliestDeliveryDate || "-"} · Kylmäkuljetus {entry.coldTransport ? "kyllä" : "ei"}</div>
                           ) : null}
                           {entry.commercialFishingId ? <div style={styles.muted}>Kaupallisen kalastajan tunnus: {entry.commercialFishingId}</div> : null}
                         </div>
                         <div style={styles.row}>
-                          {!isEntryOfferedForSale(entry) && !getEntryConsumerListing(entry) && String(entry.ownerUserId || profile.id) === String(profile.id) ? (
+                          {String(entry.ownerUserId || profile.id) === String(profile.id) ? (
                             <>
-                              <button
-                                style={{
-                                  ...styles.button,
-                                  background: "linear-gradient(135deg, #2563eb, #0284c7)",
-                                  borderColor: "#1d4ed8",
-                                  color: "#ffffff",
-                                  fontWeight: 800,
-                                  boxShadow: "0 8px 18px rgba(37, 99, 235, 0.2)",
-                                }}
-                                onClick={() => openCatchSaleDialog(entry)}
-                              >
-                                Myy yritysostajille
-                              </button>
+                              {!isEntryOfferedForSale(entry) ? (
+                                <button
+                                  style={{
+                                    ...styles.button,
+                                    background: "linear-gradient(135deg, #2563eb, #0284c7)",
+                                    borderColor: "#1d4ed8",
+                                    color: "#ffffff",
+                                    fontWeight: 800,
+                                    boxShadow: "0 8px 18px rgba(37, 99, 235, 0.2)",
+                                  }}
+                                  onClick={() => openCatchSaleDialog(entry)}
+                                >
+                                  Myy yritysostajille
+                                </button>
+                              ) : null}
                               <button
                                 style={{
                                   ...styles.button,
@@ -20696,7 +21067,7 @@ export default function App() {
                             </>
                           ) : null}
                           {canPrintCatchLabels(entry) ? (
-                            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); setLabelPrintPieceCount(""); setLabelPrintWeightKg(""); setLabelPrintProductForm(getCatchLabelProductForm(entry.species)); setLabelPrintUseByDate(""); }}>
+                            <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => { setLabelPrintEntry(entry); setLabelPrintCount(isThermalCatchLabelFormat(labelPrintFormat) ? 1 : 10); setLabelPrintCrayfishSize(getCrayfishSizeLabel(entry.species)); setLabelPrintPieceCount(""); setLabelPrintWeightKg(""); setLabelPrintProductForm(getCatchLabelProductForm(entry.species)); setLabelPrintUseByDate(""); }}>
                               Tulosta etiketit
                             </button>
                           ) : profile.role === "member" && !hasFisherPremium ? (
@@ -20720,7 +21091,7 @@ export default function App() {
 
         {activeTab === "offers" ? (
           <div style={styles.stack}>
-          {profile.role === "member" ? <ConsumerSellerPanel profile={profile} /> : null}
+          {profile.role === "member" ? <ConsumerSellerPanel profile={profile} refreshToken={refreshTick} /> : null}
           <WholesaleOffersView
             profile={profile}
             saleEntries={profile.role === "processor" ? processedSaleEntries : saleEntries}
@@ -21088,6 +21459,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
             profile={profile}
             accessToken={session?.access_token}
             defaultPickupLocation={savedPickupAddress}
+            defaultPickupMunicipality={profile.city || ""}
             publicAppBaseUrl={getPublicAppBaseUrl()}
             onClose={() => setSavedCatchConsumerSaleEntry(null)}
             onPublished={({ listingUrl, notificationError, recipients, imageWarning }) => {
@@ -21137,6 +21509,18 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))", gap: 14, marginTop: 18 }}>
+                <div style={styles.field}>
+                  <label>Yritysmyyntiin tuleva määrä (kg)</label>
+                  <input
+                    style={styles.input}
+                    type="text"
+                    inputMode="decimal"
+                    value={catchSaleDraft.saleKilos}
+                    onChange={(event) => setCatchSaleDraft((current) => ({ ...current, saleKilos: event.target.value }))}
+                    placeholder={String(catchSaleDraft.availableKilos || "")}
+                  />
+                  <div style={styles.small}>Vapaana tästä saaliista {Number(catchSaleDraft.availableKilos || 0).toLocaleString("fi-FI")} kg.</div>
+                </div>
                 <div style={styles.field}>
                   <label>Pakkaustapa</label>
                   <select style={styles.input} value={catchSaleDraft.packaging} onChange={(event) => setCatchSaleDraft((current) => ({ ...current, packaging: event.target.value }))}>
@@ -21248,12 +21632,20 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
           </div>
         ) : null}
 
+        {labelPrintPreparing ? (
+          <div role="status" aria-live="polite" style={{ position: "fixed", inset: 0, zIndex: 4500, display: "grid", placeItems: "center", padding: 20, background: "rgba(15, 23, 42, 0.48)" }}>
+            <div style={{ ...styles.card, width: "min(360px, 100%)", padding: 22, textAlign: "center", fontWeight: 800 }}>Valmistellaan etikettiä ja avataan tulostusvalikko…</div>
+          </div>
+        ) : null}
+
         {labelPrintEntry ? (
           <CatchLabelPrintModal
             entry={labelPrintEntry}
             profile={profile}
             labelCount={labelPrintCount}
             setLabelCount={setLabelPrintCount}
+            crayfishSize={labelPrintCrayfishSize}
+            setCrayfishSize={setLabelPrintCrayfishSize}
             pieceCount={labelPrintPieceCount}
             setPieceCount={setLabelPrintPieceCount}
             weightKg={labelPrintWeightKg}

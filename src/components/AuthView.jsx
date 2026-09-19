@@ -48,6 +48,14 @@ export default function AuthView({ authMode, setAuthMode, authForm, setAuthForm,
   const headerBrandStyles = getHeaderBrandStyles(viewportWidth);
   const isMobile = viewportWidth < 560;
   const isIosMobileApp = isMobile && isNativeIosApp();
+  const requestedRole = authForm.requestedRole || "member";
+  const signupNameLabel = requestedRole === "buyer" ? "Yrityksen nimi" : "Nimi";
+  const signupNamePlaceholder = requestedRole === "buyer"
+    ? "Esim. Kala Yritys Oy"
+    : requestedRole === "consumer"
+      ? "Esim. Maija Meikäläinen"
+      : "Esim. Matti Kalastaja";
+  const signupEmailPlaceholder = requestedRole === "buyer" ? "esim. nimi@yritys.fi" : "esim. nimi@esimerkki.fi";
   const authCardStyle = isMobile
     ? { borderRadius: 20, boxShadow: "0 14px 34px rgba(30, 64, 175, 0.08)" }
     : null;
@@ -108,9 +116,20 @@ export default function AuthView({ authMode, setAuthMode, authForm, setAuthForm,
             </div>
           )}
 
+          {authMode === "signup" ? (
+            <div style={styles.field}>
+              <label>Rooli</label>
+              <select style={styles.input} value={authForm.requestedRole} onChange={(e) => setAuthForm((prev) => ({ ...prev, requestedRole: e.target.value }))}>
+                <option value="member">Kalastaja</option>
+                <option value="buyer">Yritysostaja</option>
+                <option value="consumer">Kuluttaja</option>
+              </select>
+            </div>
+          ) : null}
+
           <div style={styles.field}>
             <label>Sähköposti</label>
-            <input style={authInputStyle} type="email" value={authForm.email} onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="esim. nimi@yritys.fi" disabled={authMode === "recovery"} />
+            <input style={authInputStyle} type="email" value={authForm.email} onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))} placeholder={authMode === "signup" ? signupEmailPlaceholder : "esim. nimi@yritys.fi"} disabled={authMode === "recovery"} />
           </div>
 
           <div style={styles.field}>
@@ -121,16 +140,8 @@ export default function AuthView({ authMode, setAuthMode, authForm, setAuthForm,
           {authMode === "signup" ? (
             <>
               <div style={styles.field}>
-                <label>Nimi</label>
-                <input style={styles.input} value={authForm.displayName} onChange={(e) => setAuthForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder="Esim. Kala Yritys Oy" />
-              </div>
-              <div style={styles.field}>
-                <label>Rooli</label>
-                <select style={styles.input} value={authForm.requestedRole} onChange={(e) => setAuthForm((prev) => ({ ...prev, requestedRole: e.target.value }))}>
-                  <option value="member">Kalastaja</option>
-                  <option value="buyer">Yritysostaja</option>
-                  <option value="consumer">Kuluttaja</option>
-                </select>
+                <label>{signupNameLabel}</label>
+                <input style={styles.input} value={authForm.displayName} onChange={(e) => setAuthForm((prev) => ({ ...prev, displayName: e.target.value }))} placeholder={signupNamePlaceholder} />
               </div>
               <label style={{ display: "flex", alignItems: "flex-start", gap: 10, lineHeight: 1.4 }}>
                 <input
@@ -140,8 +151,8 @@ export default function AuthView({ authMode, setAuthMode, authForm, setAuthForm,
                   style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0 }}
                 />
                 <span>
-                  Olen lukenut ja hyväksyn palvelun{" "}
-                  <a href={LEGAL_TERMS_URL} target="_blank" rel="noreferrer">käyttöehdot ja tietosuojaselosteen</a>.
+                  Hyväksyn palvelun{" "}
+                  <a href={LEGAL_TERMS_URL} target="_blank" rel="noreferrer">käyttöehdot</a> ja olen tutustunut samalla sivulla olevaan tietosuojaselosteeseen.
                 </span>
               </label>
             </>
@@ -173,8 +184,6 @@ export default function AuthView({ authMode, setAuthMode, authForm, setAuthForm,
               {authSubmitting ? "Luodaan..." : "Luo tunnus"}
             </button>
           )}
-
-          {authMode === "signup" ? <div style={styles.muted}>Kuluttaja, yritysostaja ja kalastaja pääsevät appiin heti rekisteröitymisen jälkeen. Kuluttajapuoli toimii erillään yritysostajien B2B-myynnistä.</div> : null}
 
         </form>
       </div>

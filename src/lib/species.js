@@ -11,11 +11,17 @@ export function getSpeciesMetadata(label) {
   const normalized = String(label || "")
     .split(",")[0]
     .replace(/\b(filee|filet|avattu|perattu|päätön|nyljetty)\b/gi, "")
-    .replace(/\b\d+\+\s*cm\b/gi, "")
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:\+|[-–—]\s*\d+(?:[.,]\d+)?)?\s*cm\b/gi, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
   return fishSpeciesByName[normalized] || null;
+}
+
+export function getCrayfishSizeLabel(label) {
+  if (!isCrayfishSpecies(label)) return "";
+  const match = String(label || "").match(/\b\d+(?:[.,]\d+)?\s*(?:\+|[-–—]\s*\d+(?:[.,]\d+)?)?\s*cm\b/i);
+  return match ? match[0].replace(/\s+/g, " ").trim() : "";
 }
 
 export function isCrayfishSpecies(label) {

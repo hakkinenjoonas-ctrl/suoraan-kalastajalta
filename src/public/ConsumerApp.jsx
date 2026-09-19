@@ -7,7 +7,7 @@ import {
   normalizeConsumerListing,
 } from "../lib/consumerMarketplace.js";
 import { supabase } from "../lib/supabase.js";
-import { fetchPublicConsumerListings, invokeConsumerOrderAction } from "../services/edgeFunctions.js";
+import { fetchPublicConsumerListings, fetchPublicConsumerSoldListings, invokeConsumerOrderAction, invokeDeleteOwnAccount } from "../services/edgeFunctions.js";
 
 const TERMS_URL = "https://www.suoraankalastajalta.fi/tietosuojaseloste-ja-k%C3%A4ytt%C3%B6ehdot";
 const GOOGLE_PLAY_URL = String(import.meta.env?.VITE_GOOGLE_PLAY_URL || "https://play.google.com/store/apps/details?id=fi.suoraankalastajalta.app").trim();
@@ -28,8 +28,11 @@ export default function ConsumerApp({ initialListingId = "" }) {
   const requestedListingId = initialListingId || getRequestedConsumerListingId();
   const [session, setSession] = useState(null);
   const [accountRole, setAccountRole] = useState("");
+  const [consumerProfile, setConsumerProfile] = useState({ displayName: "", phone: "" });
   const [listings, setListings] = useState([]);
+  const [soldListings, setSoldListings] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [alertSubscriptions, setAlertSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -43,13 +46,19 @@ export default function ConsumerApp({ initialListingId = "" }) {
 
   const loadListings = useCallback(async () => {
     setLoading(true);
-    const result = await fetchPublicConsumerListings();
+    const [result, soldResult] = await Promise.all([
+      fetchPublicConsumerListings(),
+      fetchPublicConsumerSoldListings(),
+    ]);
     if (result.error) {
       setError("Kalaerien hakeminen epäonnistui. Yritä hetken kuluttua uudelleen.");
       setListings([]);
     } else {
       setListings((result.data?.listings || []).map(normalizeConsumerListing));
       setError("");
+    }
+    if (!soldResult.error) {
+      setSoldListings((soldResult.data?.listings || []).map(normalizeConsumerListing));
     }
     setLoading(false);
   }, []);
@@ -61,11 +70,43 @@ export default function ConsumerApp({ initialListingId = "" }) {
     }
     const { data, error: ordersError } = await supabase
       .from("consumer_orders")
-      .select("id, reservation_group_id, listing_id, variant_id, status, sale_unit_type, variant_label, unit_count, package_count, estimated_weight_kg, total_including_vat, created_at, consumer_listings(*)")
+      .select("id, reservation_group_id, listing_id, variant_id, status, sale_unit_type, variant_label, unit_count, package_count, estimated_weight_kg, total_including_vat, created_at, consumer_listings(product_name, species, pickup_location, municipality, pickup_start, pickup_end, payment_methods, seller_name)")
       .order("created_at", { ascending: false });
     if (!ordersError) {
       setOrders((data || []).map((order) => ({ ...order, ...(order.consumer_listings || {}) })));
     }
+  }, []);
+
+  const loadConsumerProfile = useCallback(async (activeSession) => {
+    if (!activeSession?.user?.id) {
+      setAccountRole("");
+      setConsumerProfile({ displayName: "", phone: "" });
+      return;
+    }
+    const { data } = await supabase
+      .from("profiles")
+      .select("role, display_name, phone")
+      .eq("id", activeSession.user.id)
+      .maybeSingle();
+    setAccountRole(String(data?.role || ""));
+    setConsumerProfile({
+      displayName: String(data?.display_name || activeSession.user.user_metadata?.display_name || ""),
+      phone: String(data?.phone || ""),
+    });
+  }, []);
+
+  const loadAlertSubscriptions = useCallback(async (activeSession) => {
+    if (!activeSession?.user?.id) {
+      setAlertSubscriptions([]);
+      return;
+    }
+    const { data, error: subscriptionsError } = await supabase
+      .from("consumer_alert_subscriptions")
+      .select("id, species, municipality, is_active, created_at, updated_at")
+      .eq("user_id", activeSession.user.id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true });
+    if (!subscriptionsError) setAlertSubscriptions(data || []);
   }, []);
 
   const ensureConsumerAccount = useCallback(async (activeSession) => {
@@ -97,30 +138,31 @@ export default function ConsumerApp({ initialListingId = "" }) {
     void supabase.auth.getSession().then(({ data }) => {
       setSession(data.session || null);
       void loadOrders(data.session || null);
+      void loadConsumerProfile(data.session || null);
+      void loadAlertSubscriptions(data.session || null);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession || null);
       void loadOrders(nextSession || null);
+      void loadConsumerProfile(nextSession || null);
+      void loadAlertSubscriptions(nextSession || null);
     });
     return () => listener.subscription.unsubscribe();
-  }, [loadListings, loadOrders]);
+  }, [loadAlertSubscriptions, loadConsumerProfile, loadListings, loadOrders]);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!session?.user?.id) {
-      setAccountRole("");
-      return () => { cancelled = true; };
-    }
-    void supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", session.user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled) setAccountRole(String(data?.role || ""));
-      });
-    return () => { cancelled = true; };
-  }, [session?.user?.id]);
+    const refreshVisibleMarketplace = () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        void loadListings();
+      }
+    };
+    window.addEventListener("focus", refreshVisibleMarketplace);
+    document.addEventListener("visibilitychange", refreshVisibleMarketplace);
+    return () => {
+      window.removeEventListener("focus", refreshVisibleMarketplace);
+      document.removeEventListener("visibilitychange", refreshVisibleMarketplace);
+    };
+  }, [loadListings]);
 
   const openAuth = (options = {}) => {
     setAuthError("");
@@ -147,6 +189,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
         const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password: authForm.password });
         if (signInError) throw signInError;
         await ensureConsumerAccount(data.session);
+        await loadConsumerProfile(data.session);
         setSession(data.session || null);
         setAuthOpen(false);
         setMessage("Kirjautuminen onnistui.");
@@ -157,11 +200,12 @@ export default function ConsumerApp({ initialListingId = "" }) {
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password: authForm.password,
-          options: { data: { display_name: authForm.name.trim(), requested_role: "consumer", legal_terms_version: "2026-07-22", legal_terms_accepted_at: new Date().toISOString() } },
+          options: { data: { display_name: authForm.name.trim(), requested_role: "consumer", legal_terms_version: "2026-09-09", legal_terms_accepted_at: new Date().toISOString() } },
         });
         if (signUpError) throw signUpError;
         if (data.session) {
           await ensureConsumerAccount(data.session);
+          await loadConsumerProfile(data.session);
           setSession(data.session);
           setAuthOpen(false);
           setMessage("Kuluttajatunnus luotiin. Voit nyt tallentaa kalaeräilmoituksia ja nähdä tulevat varauksesi sovelluksessa.");
@@ -175,6 +219,56 @@ export default function ConsumerApp({ initialListingId = "" }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const saveOwnDetails = async ({ displayName, phone }) => {
+    if (!session?.user?.id) return false;
+    const normalizedName = String(displayName || "").trim();
+    const normalizedPhone = String(phone || "").trim();
+    if (normalizedName.length < 2) {
+      setError("Täytä nimesi.");
+      return false;
+    }
+    setBusy(true);
+    setError("");
+    const { error: profileUpdateError } = await supabase
+      .from("profiles")
+      .update({ display_name: normalizedName, phone: normalizedPhone })
+      .eq("id", session.user.id);
+    if (profileUpdateError) {
+      setBusy(false);
+      setError(profileUpdateError.message || "Omien tietojen tallentaminen epäonnistui.");
+      return false;
+    }
+    const { error: authUpdateError } = await supabase.auth.updateUser({ data: { display_name: normalizedName } });
+    setBusy(false);
+    if (authUpdateError) {
+      setError(authUpdateError.message || "Nimen päivittäminen kirjautumistietoihin epäonnistui.");
+      return false;
+    }
+    setConsumerProfile({ displayName: normalizedName, phone: normalizedPhone });
+    setMessage("Omat tiedot tallennettiin.");
+    return true;
+  };
+
+  const deleteOwnAccount = async () => {
+    if (!session?.access_token || busy) return false;
+    if (!window.confirm("Haluatko varmasti poistaa kuluttajatilisi? Poisto on pysyvä.")) return false;
+    if (!window.confirm("Vahvista vielä käyttäjätilin pysyvä poistaminen.")) return false;
+    setBusy(true);
+    setError("");
+    const result = await invokeDeleteOwnAccount(session.access_token);
+    setBusy(false);
+    if (result.error) {
+      setError(result.error.message || "Käyttäjätilin poistaminen epäonnistui.");
+      return false;
+    }
+    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    setSession(null);
+    setAccountRole("");
+    setConsumerProfile({ displayName: "", phone: "" });
+    setMessage("Käyttäjätilisi on poistettu pysyvästi.");
+    return true;
   };
 
   const reserve = async ({ listing, lines, customerName, email, phone, note }) => {
@@ -193,7 +287,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
       return false;
     }
     if (!Array.isArray(lines) || lines.length < 1) {
-      setError("Valitse vähintään yksi pakkauskoko ja määrä.");
+      setError("Valitse vähintään yksi myyntivaihtoehto ja määrä.");
       return false;
     }
     setBusy(true);
@@ -258,7 +352,25 @@ export default function ConsumerApp({ initialListingId = "" }) {
       setError(result.error.message || "Ilmoituksen tallennus epäonnistui.");
       return false;
     }
+    await loadAlertSubscriptions(session);
     setMessage("Kalaeräilmoitus tallennettiin.");
+    return true;
+  };
+
+  const unsubscribe = async () => {
+    if (!session?.access_token) {
+      openAuth();
+      return false;
+    }
+    setBusy(true);
+    const result = await invokeConsumerOrderAction(session.access_token, { action: "unsubscribe_all" });
+    setBusy(false);
+    if (result.error) {
+      setError(result.error.message || "Ilmoitusten lopettaminen epäonnistui.");
+      return false;
+    }
+    setAlertSubscriptions([]);
+    setMessage("Kaikki kalaeräilmoitukset lopetettiin.");
     return true;
   };
 
@@ -266,18 +378,25 @@ export default function ConsumerApp({ initialListingId = "" }) {
     <>
       <ConsumerMarketplaceView
         listings={listings}
+        soldListings={soldListings}
         orders={orders}
         loading={loading}
         error={error}
         user={session?.user || null}
+        consumerProfile={consumerProfile}
+        alertSubscriptions={alertSubscriptions}
         initialListingId={requestedListingId}
         busy={busy}
         message={message}
         onOpenAuth={openAuth}
         onReturnToMainApp={Capacitor.isNativePlatform() && accountRole && accountRole !== "consumer" ? () => window.location.replace("/") : null}
         onSignOut={() => supabase.auth.signOut()}
+        onSaveOwnDetails={saveOwnDetails}
+        onDeleteOwnAccount={deleteOwnAccount}
+        onRefresh={loadListings}
         onReserve={reserve}
         onSubscribe={subscribe}
+        onUnsubscribe={unsubscribe}
       />
       {authOpen ? (
         <div className="consumer-overlay" role="dialog" aria-modal="true" aria-label="Kuluttajan kirjautuminen">
@@ -287,7 +406,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
             <div className="consumer-field"><label>Sähköposti</label><input className="consumer-input" type="email" required value={authForm.email} onChange={(event) => setAuthForm((current) => ({ ...current, email: event.target.value }))} /></div>
             {authMode === "signup" ? <div className="consumer-field"><label>Nimi</label><input className="consumer-input" required value={authForm.name} onChange={(event) => setAuthForm((current) => ({ ...current, name: event.target.value }))} /></div> : null}
             <div className="consumer-field"><label>Salasana</label><input className="consumer-input" type="password" minLength="8" required value={authForm.password} onChange={(event) => setAuthForm((current) => ({ ...current, password: event.target.value }))} /></div>
-            {authMode === "signup" ? <label className="consumer-small"><input type="checkbox" checked={authForm.acceptedTerms} onChange={(event) => setAuthForm((current) => ({ ...current, acceptedTerms: event.target.checked }))} /> Hyväksyn <a href={TERMS_URL} target="_blank" rel="noreferrer">käyttöehdot ja tietosuojaselosteen</a>.</label> : null}
+            {authMode === "signup" ? <label className="consumer-small"><input type="checkbox" checked={authForm.acceptedTerms} onChange={(event) => setAuthForm((current) => ({ ...current, acceptedTerms: event.target.checked }))} /> Hyväksyn <a href={TERMS_URL} target="_blank" rel="noreferrer">käyttöehdot</a> ja olen tutustunut samalla sivulla olevaan tietosuojaselosteeseen.</label> : null}
             {authError ? <div className="consumer-notice">{authError}</div> : null}
             <button className="consumer-button consumer-primary" disabled={busy}>{busy ? "Odota…" : authMode === "signin" ? "Kirjaudu" : "Luo tunnus"}</button>
             <button type="button" className="consumer-button" onClick={() => { setAuthError(""); setAuthMode((current) => current === "signin" ? "signup" : "signin"); }}>{authMode === "signin" ? "Ei tunnusta? Rekisteröidy" : "Onko sinulla jo tunnus? Kirjaudu"}</button>
@@ -334,7 +453,7 @@ export default function ConsumerApp({ initialListingId = "" }) {
             {!Capacitor.isNativePlatform() ? (
               <>
                 <p className="consumer-description">Voit käyttää samaa tiliä sovelluksessa ja saada puhelimeen ilmoituksia uusista kalaeristä.</p>
-                <a className="consumer-button consumer-primary" href={GOOGLE_PLAY_URL} target="_blank" rel="noreferrer" style={{ textAlign: "center", textDecoration: "none" }}>Lataa Google Playsta</a>
+                <button type="button" className="consumer-button consumer-primary" onClick={() => window.open(GOOGLE_PLAY_URL, "_blank", "noopener,noreferrer")}>Lataa Google Playsta</button>
                 <a className="consumer-button" href={CONFIGURED_APP_STORE_URL || APP_STORE_SEARCH_URL} target="_blank" rel="noreferrer" style={{ textAlign: "center", textDecoration: "none" }}>{CONFIGURED_APP_STORE_URL ? "Lataa App Storesta" : "Etsi App Storesta"}</a>
                 {!CONFIGURED_APP_STORE_URL ? <div className="consumer-small">Suora App Store -latauslinkki korvaa hakulinkin automaattisesti, kun App Storen sovellustunnus lisätään julkaisuasetuksiin.</div> : null}
               </>

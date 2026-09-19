@@ -60,6 +60,7 @@ Deno.serve(async (request) => {
 
     const publicBaseUrl = safe(Deno.env.get("PUBLIC_APP_URL")) || "https://suoraan-kalastajalta.vercel.app";
     const listingUrl = `${publicBaseUrl.replace(/\/$/, "")}/kuluttaja/era/${encodeURIComponent(listing.id)}`;
+    const notificationSettingsUrl = `${publicBaseUrl.replace(/\/$/, "")}/kuluttaja#kalaerailmoitukset`;
     const title = `${safe(listing.species) || "Tuore kala"}a myynnissä`;
     const pickupLabel = listing.pickup_start
       ? new Date(listing.pickup_start).toLocaleString("fi-FI", { timeZone: "Europe/Helsinki", dateStyle: "short", timeStyle: "short" })
@@ -107,8 +108,9 @@ Deno.serve(async (request) => {
               from: fromEmail,
               to: [email],
               subject: `${title} – ${safe(listing.municipality)}`,
-              text: `${message}\n\nKatso kalaerä ja varaa: ${listingUrl}`,
-              html: `<h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p><p><a href="${escapeHtml(listingUrl)}">Katso kalaerä ja varaa</a></p>`,
+              headers: { "List-Unsubscribe": `<mailto:info@suoraankalastajalta.fi?subject=${encodeURIComponent("Lopeta kalaeräilmoitukset")}>` },
+              text: `${message}\n\nKatso kalaerä ja varaa: ${listingUrl}\n\nTämä on tilaamasi kalaeräilmoitus. Muuta tai lopeta ilmoitukset: ${notificationSettingsUrl}. Voit pyytää lopettamista myös osoitteesta info@suoraankalastajalta.fi.`,
+              html: `<h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p><p><a href="${escapeHtml(listingUrl)}">Katso kalaerä ja varaa</a></p><hr><p><small>Tämä on tilaamasi kalaeräilmoitus. <a href="${escapeHtml(notificationSettingsUrl)}">Muuta tai lopeta ilmoitukset</a>. Voit pyytää lopettamista myös osoitteesta <a href="mailto:info@suoraankalastajalta.fi">info@suoraankalastajalta.fi</a>.</small></p>`,
             }),
           });
           emailDelivered = emailResponse.ok;

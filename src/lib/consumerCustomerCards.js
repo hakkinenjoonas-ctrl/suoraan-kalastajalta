@@ -17,7 +17,7 @@ export function groupConsumerOrdersForCustomerCards(orders = []) {
     const first = group.orders[0] || {};
     const lines = group.orders.map((order) => ({
       id: order.id,
-      label: order.variant_label || (order.sale_unit_type === "whole_fish" ? "kokonainen kala" : "pakkaus"),
+      label: order.variant_label || (order.sale_unit_type === "piece" ? "rapu" : order.sale_unit_type === "whole_fish" ? "kokonainen kala" : "pakkaus"),
       unitCount: Number(order.unit_count || order.package_count || 0),
       total: Number(order.total_including_vat || 0),
       priceIsFinal: order.sale_unit_type !== "whole_fish" || Number(order.final_weight_kg || 0) > 0,
@@ -46,7 +46,7 @@ function fitFontSize(doc, text, maximumWidth, startSize, minimumSize = 14) {
   doc.setFontSize(size);
 }
 
-export function buildConsumerCustomerCardsPdf(reservations = []) {
+export function buildConsumerCustomerCardsPdf(reservations = [], options = {}) {
   if (reservations.length < 1) throw new Error("Tulostettavia asiakaskortteja ei löytynyt.");
   const doc = new jsPDF({
     orientation: "landscape",
@@ -61,39 +61,55 @@ export function buildConsumerCustomerCardsPdf(reservations = []) {
     doc.setLineWidth(0.55);
     doc.roundedRect(2.4, 2.4, 96.8, 71.4, 2.2, 2.2);
 
-    doc.setTextColor(30, 58, 138);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.5);
-    doc.text("SUORAAN KALASTAJALTA", 6, 8.5);
-    doc.setTextColor(15, 23, 42);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.5);
-    if (reservation.batchId) doc.text(`Erä ${reservation.batchId}`, 95.5, 8.5, { align: "right" });
+    doc.setFillColor(15, 61, 94);
+    doc.roundedRect(2.4, 2.4, 96.8, 14.2, 2.2, 2.2, "F");
+    doc.setFillColor(14, 165, 164);
+    doc.rect(2.4, 15.7, 96.8, 0.9, "F");
+    if (options.logoDataUrl) {
+      doc.addImage(options.logoDataUrl, "PNG", -3.5, -2, 34, 22.67, undefined, "FAST");
+    } else {
+      doc.setFillColor(255, 255, 255);
+      doc.circle(12.8, 9.5, 5.4, "F");
+      doc.setTextColor(15, 61, 94);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.text("SK", 12.8, 11.1, { align: "center" });
+    }
 
-    doc.setTextColor(71, 85, 105);
+    doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-    doc.text("ASIAKAS", 6, 15);
+    fitFontSize(doc, "Suoraan Kalastajalta", 71.5, 17, 13);
+    doc.text("Suoraan Kalastajalta", 21.5, 10.2);
+    doc.setTextColor(165, 243, 252);
+    doc.setFontSize(5.7);
+    doc.text("TUORETTA KALAA ILMAN VÄLIKÄSIÄ", 21.7, 14.1);
+
+    doc.setFillColor(239, 246, 255);
+    doc.roundedRect(5, 18.6, 91.6, 14.1, 1.6, 1.6, "F");
     doc.setTextColor(15, 23, 42);
-    fitFontSize(doc, reservation.customerName, 89.5, 24, 13);
-    doc.text(String(reservation.customerName), 6, 23.5);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(8, 126, 164);
+    doc.text("ASIAKAS", 7, 22.7);
+    doc.setTextColor(15, 23, 42);
+    fitFontSize(doc, reservation.customerName, 86.5, 20.5, 12);
+    doc.text(String(reservation.customerName), 7, 29.7);
 
     doc.setDrawColor(203, 213, 225);
-    doc.line(6, 27.5, 95.5, 27.5);
-    doc.line(65, 31, 65, 65.5);
+    doc.line(65, 36, 65, 65.5);
     doc.setTextColor(71, 85, 105);
     doc.setFontSize(7);
-    doc.text("TUOTE JA MÄÄRÄ", 6, 33.5);
+    doc.text("TUOTE JA MÄÄRÄ", 6, 38.5);
     doc.setTextColor(15, 23, 42);
     doc.setFont("helvetica", "bold");
-    fitFontSize(doc, reservation.productName, 55, 15.5, 10);
-    doc.text(String(reservation.productName), 6, 40.5);
+    fitFontSize(doc, reservation.productName, 55, 14.5, 9.5);
+    doc.text(String(reservation.productName), 6, 45.4);
 
     doc.setFont("helvetica", "normal");
-    const lineFontSize = reservation.lines.length > 4 ? 7.2 : 9;
-    const lineStep = reservation.lines.length > 4 ? 4.4 : 5.3;
+    const lineFontSize = reservation.lines.length > 4 ? 6.8 : 8.2;
+    const lineStep = reservation.lines.length > 4 ? 3.7 : 4.7;
     doc.setFontSize(lineFontSize);
-    let lineY = 46.5;
+    let lineY = 51;
     reservation.lines.forEach((line) => {
       const lineText = `${line.unitCount} × ${line.label}`;
       const wrapped = doc.splitTextToSize(lineText, 55);
@@ -104,30 +120,32 @@ export function buildConsumerCustomerCardsPdf(reservations = []) {
     doc.setTextColor(71, 85, 105);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
-    doc.text("HINTA", 69, 34);
+    doc.text("HINTA", 69, 38.5);
     doc.setTextColor(15, 23, 42);
     if (reservation.priceIsFinal) {
-      fitFontSize(doc, money(reservation.total), 26.5, 19, 12);
-      doc.text(money(reservation.total), 69, 44);
+      fitFontSize(doc, money(reservation.total), 26.5, 18, 11.5);
+      doc.text(money(reservation.total), 69, 47.8);
     } else {
-      doc.setFontSize(14);
-      doc.text("__________ €", 69, 44);
+      doc.setFontSize(13);
+      doc.text("__________ €", 69, 47.8);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(6.5);
+      doc.setFontSize(6.2);
       doc.setTextColor(71, 85, 105);
-      doc.text("Täytetään punnituksen jälkeen", 69, 49);
-      doc.text(`Arvio ${money(reservation.total)}`, 69, 53.5);
+      doc.text("Täytetään punnituksen jälkeen", 69, 52.3);
+      doc.text(`Arvio ${money(reservation.total)}`, 69, 56.5);
     }
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(51, 65, 85);
-    if (reservation.customerPhone) doc.text(`Puhelin: ${reservation.customerPhone}`, 69, 60);
+    if (reservation.customerPhone) doc.text(`Puhelin: ${reservation.customerPhone}`, 69, 61.5);
     doc.setDrawColor(203, 213, 225);
     doc.line(6, 66, 95.5, 66);
     doc.setFontSize(6.5);
-    if (reservation.pickupLocation) doc.text(doc.splitTextToSize(`Nouto: ${reservation.pickupLocation}`, 69), 6, 70.5);
-    doc.text(`Varaus ${String(reservation.id).slice(0, 8).toUpperCase()}`, 95.5, 70.5, { align: "right" });
+    if (reservation.pickupLocation) doc.text(doc.splitTextToSize(`Nouto: ${reservation.pickupLocation}`, 57), 6, 70.5);
+    const footerId = `${reservation.batchId ? `Erä ${reservation.batchId} · ` : ""}Varaus ${String(reservation.id).slice(0, 8).toUpperCase()}`;
+    fitFontSize(doc, footerId, 34, 6.5, 5);
+    doc.text(footerId, 95.5, 70.5, { align: "right" });
   });
 
   return doc;

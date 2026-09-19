@@ -25,11 +25,13 @@ export function getPublicConsumerMarketplaceUrl() {
   return `${SUPABASE_URL}/functions/v1/public-consumer-marketplace`;
 }
 
-export async function fetchPublicConsumerListings() {
+export function getPublicConsumerSoldListingsUrl() {
+  return `${SUPABASE_URL}/functions/v1/public-consumer-sold-listings`;
+}
+
+async function fetchPublicJson(url) {
   try {
-    const response = await fetch(getPublicConsumerMarketplaceUrl(), {
-      headers: { apikey: SUPABASE_PUBLISHABLE_KEY },
-    });
+    const response = await fetch(url, { headers: { apikey: SUPABASE_PUBLISHABLE_KEY } });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       return { data: null, error: { message: data?.error || `HTTP ${response.status}`, status: response.status, context: data } };
@@ -38,6 +40,14 @@ export async function fetchPublicConsumerListings() {
   } catch (error) {
     return { data: null, error: { message: formatEdgeFunctionNetworkError(error), status: 0, context: error } };
   }
+}
+
+export async function fetchPublicConsumerListings() {
+  return fetchPublicJson(getPublicConsumerMarketplaceUrl());
+}
+
+export async function fetchPublicConsumerSoldListings() {
+  return fetchPublicJson(getPublicConsumerSoldListingsUrl());
 }
 
 export async function invokeEdgeFunctionAuthenticated(functionName, body, accessToken) {

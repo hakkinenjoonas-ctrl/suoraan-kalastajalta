@@ -11,6 +11,7 @@ describe("SavedCatchConsumerSaleDialog", () => {
         profile={{ id: "seller-1", display_name: "Testikalastaja" }}
         accessToken="test-token"
         defaultPickupLocation="Satamatie 1"
+        defaultPickupMunicipality="Taipalsaari"
         publicAppBaseUrl="https://example.test"
         onClose={() => {}}
         onPublished={() => {}}
@@ -20,6 +21,29 @@ describe("SavedCatchConsumerSaleDialog", () => {
     expect(html).toContain("Myy suoraan kuluttajalle");
     expect(html).toContain("saalis 100 kg");
     expect(html).toContain("Voit myydä koko saaliin tai vain osan siitä");
-    expect(html).toContain("Saaliista jää tämän listauksen ulkopuolelle vähintään 99 kg");
+    expect(html).toContain("Tarkistetaan saaliserän vapaata määrää");
+    expect(html).toContain("Tarkistetaan määrää");
+    expect(html).toContain("Noutopaikan paikkakunta");
+  });
+
+  it("defaults crayfish to piece-priced size classes", () => {
+    const html = renderToStaticMarkup(
+      <SavedCatchConsumerSaleDialog
+        entry={{ id: "catch-crayfish", batchId: "RAPU-100", species: "Täplärapu 12+ cm", kilos: 9, count: 80, date: "2026-09-17" }}
+        profile={{ id: "seller-1", display_name: "Testikalastaja" }}
+        accessToken="test-token"
+        defaultPickupLocation="Satamatie 1"
+        defaultPickupMunicipality="Taipalsaari"
+        publicAppBaseUrl="https://example.test"
+        onClose={() => {}}
+        onPublished={() => {}}
+      />,
+    );
+
+    expect(html).toContain("saalis 80 kpl");
+    expect(html).toContain("Ravut kappaleittain");
+    expect(html).toContain("12+ cm");
+    expect(html).toContain("Kappalehinta sis. ALV");
+    expect(html).toContain("Rapuja myyntiin (kpl)");
   });
 });

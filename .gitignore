@@ -11,7 +11,7 @@ android/.gradle-backup-*/
 android/.idea/
 android/build/
 android/app/build/
-/output/android/
+/output/
 *.keystore
 *.jks
 local.properties

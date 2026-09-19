@@ -126,22 +126,31 @@ const styles = {
     justifyContent: "center",
   },
   logo: {
-    width: "13mm",
+    width: "22mm",
     height: "auto",
-    maxWidth: "13mm",
-    maxHeight: "11mm",
+    maxWidth: "22mm",
+    maxHeight: "14mm",
     objectFit: "contain",
     display: "block",
-    transform: "scale(1.25)",
-    transformOrigin: "center",
+  },
+  logoWithFacility: {
+    width: "13mm",
+    maxWidth: "13mm",
+    maxHeight: "11mm",
   },
   brandText: {
+    marginTop: "0.6mm",
+    fontSize: "9pt",
+    lineHeight: 0.98,
+    fontWeight: 900,
+    textAlign: "center",
+    color: palette.text,
+  },
+  brandTextWithFacility: {
     marginTop: "0.3mm",
     fontSize: "6.5pt",
     lineHeight: 1.02,
     fontWeight: 800,
-    textAlign: "center",
-    color: palette.text,
   },
   qrFrame: {
     width: "29mm",
@@ -160,27 +169,34 @@ const styles = {
     gap: "0.7mm",
   },
   crayfishQuantity: {
-    width: "100%",
+    width: "29mm",
     minHeight: "9mm",
     display: "flex",
-    justifyContent: "flex-end",
+    justifyContent: "center",
     alignItems: "baseline",
-    gap: "1mm",
-    paddingRight: "0.8mm",
+    gap: "1.2mm",
+    padding: "1mm 1.2mm",
+    border: `0.4mm solid ${palette.border}`,
+    borderRadius: "1.8mm",
     boxSizing: "border-box",
     fontWeight: 900,
     lineHeight: 0.82,
     whiteSpace: "nowrap",
   },
+  quantityValue: {
+    display: "inline-flex",
+    alignItems: "baseline",
+    gap: "0.6mm",
+  },
   crayfishQuantityUnit: {
-    fontSize: "9pt",
+    fontSize: "10pt",
     lineHeight: 1,
     fontWeight: 900,
   },
   crayfishQuantityLabel: {
-    fontSize: "7pt",
+    fontSize: "8pt",
     lineHeight: 1,
-    fontWeight: 700,
+    fontWeight: 900,
   },
   quantityWriteLine: {
     flex: 1,
@@ -252,6 +268,7 @@ export default function ThermalLabel4x3({ label }) {
           <InfoLine label="Pyyntialue" value={label.catchArea} />
           <InfoLine value={label.harvestSourceText || label.productionMethodText} />
           <InfoLine label="Pyyntimenetelmä" value={label.gearType} />
+          <InfoLine label="Ravun koko" value={label.crayfishSize} />
           <InfoLine value={label.productStateText} />
           <InfoLine label="Pyyntipäivä" value={label.catchDate} emphasis />
           <InfoLine label="Viimeinen käyttöpäivä" value={label.useByDate} emphasis />
@@ -270,8 +287,8 @@ export default function ThermalLabel4x3({ label }) {
         <div style={label.eviraFacilityId ? { ...styles.brandRow, ...styles.brandRowWithFacility } : styles.brandRow}>
           {label.eviraFacilityId ? <div style={styles.ovalWrap}>{renderOvalMark(label.eviraFacilityId)}</div> : null}
           <div style={styles.brandBlock}>
-            {label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={styles.logo} /> : null}
-            <div style={styles.brandText}>
+            {label.logoUrl ? <img src={label.logoUrl} alt="Suoraan Kalastajalta" style={label.eviraFacilityId ? { ...styles.logo, ...styles.logoWithFacility } : styles.logo} /> : null}
+            <div style={label.eviraFacilityId ? { ...styles.brandText, ...styles.brandTextWithFacility } : styles.brandText}>
               <div>Suoraan</div>
               <div>Kalastajalta</div>
             </div>
@@ -282,11 +299,16 @@ export default function ThermalLabel4x3({ label }) {
           <div style={styles.crayfishQuantity}>
             <span style={styles.crayfishQuantityLabel}>{label.isCrayfish ? "Määrä:" : "Paino:"}</span>
             {hasPrintedQuantity ? (
-              <strong style={{ fontSize: quantityFontSize }}>{printedQuantity}</strong>
+              <span style={styles.quantityValue}>
+                <strong style={{ fontSize: quantityFontSize }}>{printedQuantity}</strong>
+                <span style={styles.crayfishQuantityUnit}>{label.isCrayfish ? "kpl" : "kg"}</span>
+              </span>
             ) : (
-              <span style={styles.quantityWriteLine} />
+              <>
+                <span style={styles.quantityWriteLine} />
+                <span style={styles.crayfishQuantityUnit}>{label.isCrayfish ? "kpl" : "kg"}</span>
+              </>
             )}
-            <span style={styles.crayfishQuantityUnit}>{label.isCrayfish ? "kpl" : "kg"}</span>
           </div>
           <div style={styles.qrFrame}>
             {label.qrImageUrl ? <img src={label.qrImageUrl} alt={`QR ${label.batchId || ""}`} style={styles.qrImage} /> : null}

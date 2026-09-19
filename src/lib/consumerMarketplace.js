@@ -15,6 +15,17 @@ export function formatConsumerPaymentMethods(values) {
   return methods.length > 0 ? methods.join(", ") : "Sovitaan kalastajan kanssa";
 }
 
+export function formatConsumerListingSellerTitle(listing = {}) {
+  const species = String(listing.species || listing.product_name || listing.productName || "Kalaerä").trim() || "Kalaerä";
+  const allocatedPieces = Number(listing.allocated_pieces ?? listing.allocatedPieces);
+  if (Number.isFinite(allocatedPieces) && allocatedPieces > 0) {
+    return `${species} · ${allocatedPieces.toLocaleString("fi-FI")} kpl`;
+  }
+  const allocatedKilos = Number(listing.allocated_kilos ?? listing.allocatedKilos);
+  if (!Number.isFinite(allocatedKilos) || allocatedKilos <= 0) return species;
+  return `${species} · ${allocatedKilos.toLocaleString("fi-FI", { maximumFractionDigits: 3 })} kg`;
+}
+
 export function getRequestedConsumerListingId(locationLike = typeof window !== "undefined" ? window.location : null) {
   if (!locationLike) return "";
   const pathname = String(locationLike.pathname || "");
@@ -90,6 +101,13 @@ export function normalizeConsumerListing(row = {}) {
     productName: String(row.product_name || row.productName || row.species || "Kalaerä"),
     description: String(row.description || ""),
     sellerName: String(row.seller_name || row.sellerName || "Paikallinen kalastaja"),
+    sellerBusinessId: String(row.seller_business_id || row.sellerBusinessId || ""),
+    sellerAddress: String(row.seller_address || row.sellerAddress || ""),
+    sellerPostcode: String(row.seller_postcode || row.sellerPostcode || ""),
+    sellerCity: String(row.seller_city || row.sellerCity || ""),
+    sellerEmail: String(row.seller_email || row.sellerEmail || ""),
+    sellerPhone: String(row.seller_phone || row.sellerPhone || ""),
+    sellerIsTrader: row.seller_is_trader !== false,
     municipality: String(row.municipality || ""),
     pickupLocation: String(row.pickup_location || row.pickupLocation || ""),
     catchDate: String(row.catch_date || row.catchDate || ""),
@@ -110,13 +128,14 @@ export function normalizeConsumerListing(row = {}) {
 }
 
 export function normalizeConsumerVariant(row = {}, index = 0) {
-  const unitType = row.sale_unit_type === "whole_fish" || row.unitType === "whole_fish" ? "whole_fish" : "package";
+  const rawUnitType = row.sale_unit_type || row.unitType;
+  const unitType = rawUnitType === "whole_fish" ? "whole_fish" : rawUnitType === "piece" ? "piece" : "package";
   const minWeightKg = Number(row.min_weight_kg ?? row.minWeightKg ?? 0);
   const maxWeightKg = Number(row.max_weight_kg ?? row.maxWeightKg ?? minWeightKg);
   return {
     id: String(row.id || `variant-${index + 1}`),
     unitType,
-    label: String(row.label || (unitType === "whole_fish" ? "Kokonainen kala" : "Pakkaus")),
+    label: String(row.label || (unitType === "whole_fish" ? "Kokonainen kala" : unitType === "piece" ? "Kappale" : "Pakkaus")),
     packageSizeKg: Number(row.package_size_kg ?? row.packageSizeKg ?? 0),
     unitPrice: Number(row.unit_price_including_vat ?? row.unitPrice ?? 0),
     minWeightKg,
@@ -130,7 +149,7 @@ export function calculateConsumerReservationEstimate({ variant, unitCount, vatRa
   const count = Math.max(0, Number(unitCount || 0));
   const estimatedUnitWeight = variant?.unitType === "whole_fish"
     ? (Number(variant.minWeightKg || 0) + Number(variant.maxWeightKg || 0)) / 2
-    : Number(variant?.packageSizeKg || 0);
+    : variant?.unitType === "piece" ? 0 : Number(variant?.packageSizeKg || 0);
   const estimatedWeightKg = estimatedUnitWeight * count;
   const grossTotal = variant?.unitType === "whole_fish"
     ? estimatedWeightKg * Number(variant.pricePerKg || 0)
@@ -161,6 +180,7 @@ export function calculateConsumerReservationBasket({ variants = [], quantities =
   const sum = (field) => Number(lines.reduce((total, line) => total + Number(line[field] || 0), 0).toFixed(field === "estimatedWeightKg" ? 3 : 2));
   return {
     lines,
+    totalUnits: lines.reduce((total, line) => total + line.unitCount, 0),
     estimatedWeightKg: sum("estimatedWeightKg"),
     grossTotal: sum("grossTotal"),
     netTradeValue: sum("netTradeValue"),
