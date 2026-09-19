@@ -25,6 +25,8 @@ const styles = {
     background: palette.background,
     color: palette.text,
     fontFamily: "\"Avenir Next\", \"Helvetica Neue\", Arial, sans-serif",
+    WebkitTextSizeAdjust: "none",
+    textSizeAdjust: "none",
     display: "grid",
     gridTemplateRows: "23mm 1fr 45mm",
     gap: "3mm",

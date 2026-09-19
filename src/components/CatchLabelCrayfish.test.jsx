@@ -30,5 +30,7 @@ describe("crayfish catch labels", () => {
     expect(html).toContain("8 °C tai viileämpi");
     expect(html).toContain("25");
     expect(html).toContain("kpl");
+    expect(html).toContain("-webkit-text-size-adjust:none");
+    expect(html).toContain("text-size-adjust:none");
   });
 });
