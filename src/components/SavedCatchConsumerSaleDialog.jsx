@@ -77,6 +77,12 @@ export default function SavedCatchConsumerSaleDialog({ entry, profile, accessTok
   const [availablePieces, setAvailablePieces] = useState(null);
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
   const isCrayfish = isCrayfishSpecies(entry?.species);
+  const hasBusinessOffer = Boolean(
+    entry?.offerToShops || entry?.offer_to_shops
+    || entry?.offerToRestaurants || entry?.offer_to_restaurants
+    || entry?.offerToWholesalers || entry?.offer_to_wholesalers
+    || entry?.offerRestricted || entry?.offer_restricted,
+  );
 
   useEffect(() => () => {
     if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
@@ -84,6 +90,13 @@ export default function SavedCatchConsumerSaleDialog({ entry, profile, accessTok
 
   useEffect(() => {
     let active = true;
+    if (hasBusinessOffer) {
+      setAvailableKilos(0);
+      setAvailablePieces(0);
+      setAvailabilityLoading(false);
+      setError("Kalaerä on jo yritysmyynnissä. Poista yritysmyynti ennen kuluttajamyynnin aloittamista.");
+      return () => { active = false; };
+    }
     setAvailabilityLoading(true);
     setError("");
     const functionName = isCrayfish ? "get_catch_remaining_pieces" : "get_catch_remaining_kilos";
@@ -100,7 +113,7 @@ export default function SavedCatchConsumerSaleDialog({ entry, profile, accessTok
       setAvailabilityLoading(false);
     });
     return () => { active = false; };
-  }, [entry.id, isCrayfish]);
+  }, [entry.id, hasBusinessOffer, isCrayfish]);
 
   const allocation = useMemo(() => calculateSavedCatchConsumerAllocation(draft.unitType, draft.variants), [draft.unitType, draft.variants]);
 
@@ -139,6 +152,7 @@ export default function SavedCatchConsumerSaleDialog({ entry, profile, accessTok
   const publish = async () => {
     if (saving || availabilityLoading) return;
     setError("");
+    if (hasBusinessOffer) return setError("Kalaerä on jo yritysmyynnissä. Poista yritysmyynti ennen kuluttajamyynnin aloittamista.");
     const productName = String(draft.productName || "").trim();
     const pickupLocation = String(draft.pickupLocation || "").trim();
     const pickupMunicipality = String(draft.pickupMunicipality || "").trim();
@@ -250,11 +264,15 @@ export default function SavedCatchConsumerSaleDialog({ entry, profile, accessTok
     <div style={{ position: "fixed", inset: 0, zIndex: 2700, padding: 16, background: "rgba(15, 23, 42, 0.55)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => { if (!saving) onClose(); }}>
       <div style={{ ...styles.card, ...styles.sectionCard, width: "min(880px, calc(100vw - 32px))", maxHeight: "calc(100dvh - 32px)", overflowY: "auto", boxSizing: "border-box", background: "#fff" }} onClick={(event) => event.stopPropagation()}>
         <div style={styles.rowBetween}>
-          <div><div style={{ fontSize: 22, fontWeight: 800 }}>Myy suoraan kuluttajalle</div><div style={styles.muted}>{formatSpeciesForSale(entry.species)} · saalis {isCrayfish ? `${catchPieces.toLocaleString("fi-FI")} kpl` : `${catchKilos.toLocaleString("fi-FI")} kg`} · {entry.batchId || "Erätunnus puuttuu"}</div><div style={styles.muted}>{availabilityLoading ? "Tarkistetaan vapaata määrää…" : isCrayfish ? `Vapaana muuhun myyntiin ${Number(availablePieces || 0).toLocaleString("fi-FI")} kpl` : `Vapaana muuhun myyntiin ${Number(availableKilos || 0).toLocaleString("fi-FI", { maximumFractionDigits: 3 })} kg`}</div></div>
+          <div><div style={{ fontSize: 22, fontWeight: 800 }}>Myy suoraan kuluttajalle</div><div style={styles.muted}>{formatSpeciesForSale(entry.species)} · saalis {isCrayfish ? `${catchPieces.toLocaleString("fi-FI")} kpl` : `${catchKilos.toLocaleString("fi-FI")} kg`} · {entry.batchId || "Erätunnus puuttuu"}</div><div style={styles.muted}>{hasBusinessOffer ? "Erä on jo yritysmyynnissä" : availabilityLoading ? "Tarkistetaan vapaata määrää…" : isCrayfish ? `Vapaana muuhun myyntiin ${Number(availablePieces || 0).toLocaleString("fi-FI")} kpl` : `Vapaana muuhun myyntiin ${Number(availableKilos || 0).toLocaleString("fi-FI", { maximumFractionDigits: 3 })} kg`}</div></div>
           <button style={styles.button} type="button" onClick={onClose} disabled={saving}>Sulje</button>
         </div>
 
-        <div style={{ ...styles.noticeInfo, marginTop: 14 }}><strong>Voit myydä koko saaliin tai vain osan siitä.</strong> {isCrayfish ? "Rapujen kokoluokat ja niiden kappalemäärät muodostavat erilliset saldot." : "Pakkauskoot ja niiden kappalemäärät määrittävät kuluttajamyyntiin tulevan kilomäärän."}</div>
+        {hasBusinessOffer ? (
+          <div style={{ ...styles.noticeError, marginTop: 14 }}><strong>Kuluttajamyynti estetty.</strong> Kalaerä on jo yritysmyynnissä. Poista yritysmyynti ennen kuluttajamyyntiä.</div>
+        ) : (
+          <div style={{ ...styles.noticeInfo, marginTop: 14 }}><strong>Voit myydä koko saaliin tai vain osan siitä.</strong> {isCrayfish ? "Rapujen kokoluokat ja niiden kappalemäärät muodostavat erilliset saldot." : "Pakkauskoot ja niiden kappalemäärät määrittävät kuluttajamyyntiin tulevan kilomäärän."}</div>
+        )}
 
         <div style={{ ...styles.stack, marginTop: 16 }}>
           <div style={styles.field}><label>Myyntiyksikkö</label><div style={{ ...styles.row, flexWrap: "wrap" }}>{isCrayfish ? <button type="button" style={{ ...styles.button, background: draft.unitType === "piece" ? "#0f766e" : "#fff", color: draft.unitType === "piece" ? "#fff" : "#134e4a" }} onClick={() => selectUnitType("piece")}>Ravut kappaleittain</button> : <><button type="button" style={{ ...styles.button, background: draft.unitType === "package" ? "#0f766e" : "#fff", color: draft.unitType === "package" ? "#fff" : "#134e4a" }} onClick={() => selectUnitType("package")}>Valmiit pakkaukset</button><button type="button" style={{ ...styles.button, background: draft.unitType === "whole_fish" ? "#0f766e" : "#fff", color: draft.unitType === "whole_fish" ? "#fff" : "#134e4a" }} onClick={() => selectUnitType("whole_fish")}>Kokonaiset kalat</button></>}</div></div>
@@ -286,7 +304,7 @@ export default function SavedCatchConsumerSaleDialog({ entry, profile, accessTok
           <div style={styles.field}><label>Kuluttajalle näkyvä kuvaus</label><textarea style={styles.textarea} value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Kerro käsittelystä, tuoreudesta ja noudosta." /></div>
           <div style={styles.noticeInfo}>Kuluttaja maksaa suoraan kalastajalle. Palvelu kirjaa jokaisesta tehdystä tilauksesta 8 % provision varaushetkellä.</div>
           {error ? <div style={styles.noticeError}>{error}</div> : null}
-          <div style={{ ...styles.row, flexWrap: "wrap" }}><button type="button" style={{ ...styles.button, background: "linear-gradient(135deg, #059669, #16a34a)", borderColor: "#047857", color: "#fff", fontWeight: 800 }} onClick={publish} disabled={saving || availabilityLoading || !(draft.unitType === "piece" ? availablePieces > 0 : availableKilos > 0)}>{saving ? "Julkaistaan…" : availabilityLoading ? "Tarkistetaan määrää…" : "Julkaise kuluttajamyyntiin"}</button><button type="button" style={styles.button} onClick={onClose} disabled={saving}>Peruuta</button></div>
+          <div style={{ ...styles.row, flexWrap: "wrap" }}><button type="button" style={{ ...styles.button, background: "linear-gradient(135deg, #059669, #16a34a)", borderColor: "#047857", color: "#fff", fontWeight: 800 }} onClick={publish} disabled={hasBusinessOffer || saving || availabilityLoading || !(draft.unitType === "piece" ? availablePieces > 0 : availableKilos > 0)}>{saving ? "Julkaistaan…" : hasBusinessOffer ? "Kuluttajamyynti estetty" : availabilityLoading ? "Tarkistetaan määrää…" : "Julkaise kuluttajamyyntiin"}</button><button type="button" style={styles.button} onClick={onClose} disabled={saving}>Peruuta</button></div>
         </div>
       </div>
     </div>

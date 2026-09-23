@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fishSpeciesCatalog, fishSpeciesVariants } from "./constants.js";
 import {
+  formatSpeciesForCatchLabel,
   formatSpeciesForLabelTitle,
   formatSpeciesForSale,
   getCrayfishSizeLabel,
@@ -35,6 +36,12 @@ describe("species helpers", () => {
     expect(formatSpeciesForLabelTitle("Kuha, filee")).toBe("Kuha");
     expect(formatSpeciesForLabelTitle("Täplärapu 10–12 cm")).toBe("Täplärapu");
     expect(getSpeciesMetadata("Jokirapu 12+ cm")?.scientific).toBe("Astacus astacus");
+  });
+
+  it("keeps the crayfish size class in the catch-label product name", () => {
+    expect(formatSpeciesForCatchLabel("Täplärapu 12+ cm")).toBe("Täplärapu 12+ cm");
+    expect(formatSpeciesForCatchLabel("Jokirapu 10–12 cm")).toBe("Jokirapu 10–12 cm");
+    expect(formatSpeciesForCatchLabel("Kuha, filee", "Perattu")).toBe("Kuha, perattu");
   });
 
   it("resolves metadata and scientific names for every supported species and variant", () => {

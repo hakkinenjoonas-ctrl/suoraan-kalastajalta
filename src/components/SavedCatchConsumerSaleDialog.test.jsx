@@ -26,6 +26,24 @@ describe("SavedCatchConsumerSaleDialog", () => {
     expect(html).toContain("Noutopaikan paikkakunta");
   });
 
+  it("blocks consumer publishing when the catch already has a business offer", () => {
+    const html = renderToStaticMarkup(
+      <SavedCatchConsumerSaleDialog
+        entry={{ id: "catch-business", batchId: "KAL-200", species: "Kuha", kilos: 20, date: "2026-09-18", offerToShops: true }}
+        profile={{ id: "seller-1", display_name: "Testikalastaja" }}
+        accessToken="token"
+        defaultPickupLocation="Satama"
+        defaultPickupMunicipality="Lappeenranta"
+        publicAppBaseUrl="https://example.test"
+        onClose={() => {}}
+        onPublished={() => {}}
+      />,
+    );
+
+    expect(html).toContain("Kuluttajamyynti estetty");
+    expect(html).toContain("disabled");
+  });
+
   it("defaults crayfish to piece-priced size classes", () => {
     const html = renderToStaticMarkup(
       <SavedCatchConsumerSaleDialog

@@ -126,6 +126,13 @@ import {
   leavePublicBatchView,
 } from "./lib/appLinks.js";
 import {
+  CONSUMER_SALES_TAB,
+  WHOLESALE_SALES_TAB,
+  getSalesTabLabel,
+  getSellerSalesTabs,
+} from "./lib/appNavigation.js";
+import {
+  formatSpeciesForCatchLabel,
   formatSpeciesForLabelTitle,
   formatSpeciesForSale,
   getCrayfishSizeLabel,
@@ -911,6 +918,7 @@ function getCatchLabelScientificName(speciesValue) {
 function getCatchLabelProductForm(speciesValue) {
   const normalized = normalizeSpeciesDisplayLabel(speciesValue);
   if (!normalized) return "";
+  if (isCrayfishSpecies(normalized)) return "";
 
   const metadata = getSpeciesMetadata(normalized);
   const baseSpecies = String(metadata?.name_fi || "").trim();
@@ -939,12 +947,11 @@ const CATCH_LABEL_PRODUCT_FORMS = [
 function buildCatchLabelData(entry, profileLike, boxNumber, totalBoxes, options = {}) {
   const originalSpecies = formatSpeciesForSale(entry?.species || "");
   const selectedProductForm = String(options?.productForm ?? getCatchLabelProductForm(entry?.species)).trim();
-  const speciesMetadata = getSpeciesMetadata(entry?.species);
-  const baseSpecies = String(speciesMetadata?.name_fi || originalSpecies.split(",")[0] || originalSpecies).trim();
-  const species = selectedProductForm ? `${baseSpecies}, ${selectedProductForm.toLocaleLowerCase("fi-FI")}` : baseSpecies;
   const isCrayfish = isCrayfishSpecies(entry?.species);
+  const species = formatSpeciesForCatchLabel(originalSpecies, selectedProductForm);
+  const storedCrayfishSize = getCrayfishSizeLabel(entry?.species);
   const crayfishSize = isCrayfish
-    ? String(options?.crayfishSize ?? getCrayfishSizeLabel(entry?.species)).trim()
+    ? String(options?.crayfishSize ?? "").trim() || storedCrayfishSize
     : "";
   const pieceCount = isCrayfish && options?.pieceCount != null
     ? String(options.pieceCount).trim()
@@ -3582,7 +3589,7 @@ function getRoleOnboardingGuideContent(role) {
         "Täytä ensin Omat tiedot: yrityksen yhteystiedot, laskutustiedot ja Laitosnumero.",
         "Kun olet ostanut YKP-raaka-aine-eriä, voit liittää ne jaloste-erälle kohdassa Lisää jaloste-erä.",
         "Lisää jaloste-erän tuotetiedot, jäljitettävyys ja toimitustiedot, ja lähetä tarjous ostajille tarvittaessa.",
-        "Seuraa ostajien vastauksia Tarjoukset-välilehdellä.",
+        "Seuraa ostajien vastauksia Tukkumyynti-välilehdellä.",
       ],
     };
   }
@@ -3606,6 +3613,7 @@ function getRoleOnboardingGuideContent(role) {
       "Täytä ensin Omat tiedot: yrityksen tiedot, kaupallisen kalastajan tunnus ja käytössä olevat kaupallisen kalastusaluksen tunnukset.",
       "Siirry Lisää saalis -välilehdelle, täytä saalistiedot ja tallenna erä saaliskirjanpitoon.",
       "Kalastajalisenssi avaa myyntiin tarjoamisen, jäljitettävyystunnuksen, etikettien tulostuksen ja virallisen saalisilmoituksen.",
+      "Kuluttajatilaukset ja niiden toiminnot löytyvät Kuluttajamyynti-välilehdeltä. Yritysostajille tarjotut erät löytyvät Tukkumyynti-välilehdeltä.",
       "Kun ostaja on merkinnyt toimituksen vastaanotetuksi, muodosta lasku Laskutus-välilehdellä.",
     ],
   };
@@ -8668,7 +8676,7 @@ export default function App() {
   }, [activeTab, pendingEntriesScrollTarget, entries, search, entryScope]);
 
   useEffect(() => {
-    if (activeTab !== "offers" || !pendingOffersScrollTop || typeof window === "undefined") return undefined;
+    if (![WHOLESALE_SALES_TAB, CONSUMER_SALES_TAB].includes(activeTab) || !pendingOffersScrollTop || typeof window === "undefined") return undefined;
 
     const animationFrameId = window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
@@ -8680,7 +8688,7 @@ export default function App() {
 
   useEffect(() => {
     const offerId = String(pendingOfferTarget?.offerId || "").trim();
-    if (activeTab !== "offers" || !offerId || buyerOffers.length === 0 || typeof document === "undefined") return undefined;
+    if (activeTab !== WHOLESALE_SALES_TAB || !offerId || buyerOffers.length === 0 || typeof document === "undefined") return undefined;
     const targetOffer = buyerOffers.find((offer) => String(offer.id || "") === offerId && !isAuctionTradeOffer(offer));
     if (!targetOffer) return undefined;
 
@@ -14894,6 +14902,11 @@ export default function App() {
 
   const openSavedCatchConsumerSaleDialog = (entry) => {
     if (!entry) return;
+    if (isEntryOfferedForSale(entry)) {
+      setAuthInfo("");
+      setAuthError("Kalaerä on jo yritysmyynnissä ja siitä on lähetetty tarjoukset yritysostajille. Poista erä ensin yritysmyynnistä ennen kuluttajamyyntiä.");
+      return;
+    }
     if (profile?.role === "member" && !hasFisherPremium) {
       showFisherPremiumRequired("Kalaerän laittaminen kuluttajamyyntiin");
       return;
@@ -16247,7 +16260,7 @@ export default function App() {
     setPendingEntriesScrollTarget(isConsumerSale ? "" : savedCatchScrollTarget);
     setPendingOffersScrollTop(isConsumerSale);
     setRefreshTick((prev) => prev + 1);
-    setActiveTab(isCatchAuction ? "auctions" : isConsumerSale ? "offers" : "entries");
+    setActiveTab(isCatchAuction ? "auctions" : isConsumerSale ? CONSUMER_SALES_TAB : "entries");
   };
 
   const handleSaveProcessed = async () => {
@@ -18263,7 +18276,7 @@ export default function App() {
     : styles.tab;
   const visibleTabIds = [
     "dashboard",
-    ...(profile.role !== "buyer" ? ["add", "offers", "entries"] : ["offers"]),
+    ...(profile.role !== "buyer" ? ["add", ...getSellerSalesTabs(profile.role), "entries"] : getSellerSalesTabs(profile.role)),
     ...(auctionsAvailable && ["member", "owner"].includes(profile.role) ? ["auctions"] : []),
     "reports",
     ...(profile.role === "member" ? ["billing"] : []),
@@ -18273,7 +18286,8 @@ export default function App() {
     dashboard: "Aloitus",
     add: profile.role === "processor" ? "Lisää jaloste-erä" : "Lisää saalis",
     entries: profile.role === "processor" ? "Jaloste-erät" : "Saaliit",
-    offers: "Tarjoukset",
+    [CONSUMER_SALES_TAB]: getSalesTabLabel(CONSUMER_SALES_TAB, profile.role),
+    [WHOLESALE_SALES_TAB]: getSalesTabLabel(WHOLESALE_SALES_TAB, profile.role),
     auctions: "Huutokaupat",
     reports: "Raportit",
     billing: "Laskutus",
@@ -19047,6 +19061,30 @@ export default function App() {
                     </span>
                   </button>
                 ) : null}
+              </div>
+            </div>
+            <div style={{ ...styles.card, ...styles.sectionCard, ...styles.stack }}>
+              <div>
+                <strong style={{ fontSize: 18 }}>Myynnin hallinta</strong>
+                <div style={styles.muted}>Avaa tilaukset, myynnissä olevat erät ja niihin liittyvät toiminnot.</div>
+              </div>
+              <div style={{ ...styles.row, alignItems: "stretch" }}>
+                {["member", "owner"].includes(profile.role) ? (
+                  <button
+                    type="button"
+                    style={{ ...styles.button, flex: "1 1 220px", minHeight: 58, borderColor: "#67e8f9", color: "#155e75", background: "#ecfeff" }}
+                    onClick={() => handleVisibleTabChange(CONSUMER_SALES_TAB)}
+                  >
+                    Avaa kuluttajamyynti
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  style={{ ...styles.button, flex: "1 1 220px", minHeight: 58, borderColor: "#86efac", color: "#166534", background: "#f0fdf4" }}
+                  onClick={() => handleVisibleTabChange(WHOLESALE_SALES_TAB)}
+                >
+                  Avaa tukkumyynti
+                </button>
               </div>
             </div>
             <div style={{ fontSize: 20, fontWeight: 900, color: "#0f172a", padding: "4px 2px 0" }}>
@@ -21051,19 +21089,30 @@ export default function App() {
                                   Myy yritysostajille
                                 </button>
                               ) : null}
-                              <button
-                                style={{
-                                  ...styles.button,
-                                  background: "linear-gradient(135deg, #059669, #16a34a)",
-                                  borderColor: "#047857",
-                                  color: "#ffffff",
-                                  fontWeight: 800,
-                                  boxShadow: "0 8px 18px rgba(5, 150, 105, 0.2)",
-                                }}
-                                onClick={() => openSavedCatchConsumerSaleDialog(entry)}
-                              >
-                                Myy suoraan kuluttajalle
-                              </button>
+                              {!isEntryOfferedForSale(entry) ? (
+                                <button
+                                  style={{
+                                    ...styles.button,
+                                    background: "linear-gradient(135deg, #059669, #16a34a)",
+                                    borderColor: "#047857",
+                                    color: "#ffffff",
+                                    fontWeight: 800,
+                                    boxShadow: "0 8px 18px rgba(5, 150, 105, 0.2)",
+                                  }}
+                                  onClick={() => openSavedCatchConsumerSaleDialog(entry)}
+                                >
+                                  Myy suoraan kuluttajalle
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  style={{ ...styles.button, opacity: 0.62, cursor: "not-allowed" }}
+                                  disabled
+                                  title="Erä on jo yritysmyynnissä"
+                                >
+                                  Kuluttajamyynti estetty
+                                </button>
+                              )}
                             </>
                           ) : null}
                           {canPrintCatchLabels(entry) ? (
@@ -21089,9 +21138,12 @@ export default function App() {
           )
         ) : null}
 
-        {activeTab === "offers" ? (
+        {activeTab === CONSUMER_SALES_TAB && ["member", "owner"].includes(profile.role) ? (
+          <ConsumerSellerPanel profile={profile} refreshToken={refreshTick} />
+        ) : null}
+
+        {activeTab === WHOLESALE_SALES_TAB ? (
           <div style={styles.stack}>
-          {profile.role === "member" ? <ConsumerSellerPanel profile={profile} refreshToken={refreshTick} /> : null}
           <WholesaleOffersView
             profile={profile}
             saleEntries={profile.role === "processor" ? processedSaleEntries : saleEntries}
@@ -21467,7 +21519,7 @@ Jokaiselle ostajalle lähetetään oma sähköposti, joten ostajat eivät näe t
               setAuthInfo(`Saaliserä julkaistiin vain kuluttajamarkkinapaikalle. Yritysostajille ei lähetetty tarjousta.${imageWarning ? `\n${imageWarning}` : ""}\n${notificationError ? "Kuluttajailmoitusten lähetys epäonnistui, mutta erä on julkaistu ja linkki toimii." : `Ilmoitus lähetettiin ${recipients} erää seuranneelle kuluttajalle.`}\nJulkinen linkki: ${listingUrl}`);
               setPendingOffersScrollTop(true);
               setRefreshTick((current) => current + 1);
-              setActiveTab("offers");
+              setActiveTab(CONSUMER_SALES_TAB);
             }}
           />
         ) : null}

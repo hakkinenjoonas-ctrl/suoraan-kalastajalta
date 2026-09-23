@@ -42,6 +42,12 @@ describe("notification routing", () => {
     expect(getNotificationRouteTarget({ eventType: "consumer_listing_published" }, "consumer")).toBe("consumer_marketplace");
   });
 
+  it("routes seller consumer-order notifications to consumer sales", () => {
+    expect(getNotificationRouteTarget({ route: "consumer_sales", eventType: "consumer_order_reserved" }, "member")).toBe("consumer_sales");
+    expect(getNotificationRouteTarget({ route: "consumer_sales" }, "owner")).toBe("consumer_sales");
+    expect(getNotificationRouteTarget({ route: "consumer_sales" }, "buyer")).toBe("dashboard");
+  });
+
   it("falls back to the dashboard for unknown notifications", () => {
     expect(getNotificationRouteTarget({ eventType: "general" }, "buyer")).toBe("dashboard");
   });

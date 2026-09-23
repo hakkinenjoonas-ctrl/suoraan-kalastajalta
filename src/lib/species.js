@@ -76,3 +76,19 @@ export function formatSpeciesForLabelTitle(label) {
   const metadata = getSpeciesMetadata(normalized);
   return metadata?.name_fi || normalized;
 }
+
+export function formatSpeciesForCatchLabel(label, productForm = "") {
+  const normalized = formatSpeciesForSale(label);
+  if (!normalized) return "Muu";
+
+  // The size class is part of the crayfish product name (for example
+  // "Täplärapu 12+ cm"), so it must not be reduced to the catalog species.
+  if (isCrayfishSpecies(normalized)) return normalized;
+
+  const metadata = getSpeciesMetadata(normalized);
+  const baseSpecies = String(metadata?.name_fi || normalized.split(",")[0] || normalized).trim();
+  const selectedProductForm = String(productForm || "").trim();
+  return selectedProductForm
+    ? `${baseSpecies}, ${selectedProductForm.toLocaleLowerCase("fi-FI")}`
+    : baseSpecies;
+}

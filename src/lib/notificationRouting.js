@@ -23,6 +23,7 @@ export function getNotificationRouteTarget(data, role = "") {
   const eventType = String(normalizedData?.eventType || normalizedData?.event_type || "").toLowerCase();
   const notificationText = `${String(normalizedData?.title || "")} ${String(normalizedData?.body || "")}`.toLocaleLowerCase("fi-FI");
   if (route === "consumer_marketplace" || (role === "consumer" && eventType === "consumer_listing_published")) return "consumer_marketplace";
+  if (route === "consumer_sales" && (role === "member" || role === "owner")) return "consumer_sales";
   if (route === "billing") return role === "buyer" ? "buyer_billing" : "billing";
   if (route === "auctions") return "auctions";
   if (route === "offers") return "offers";

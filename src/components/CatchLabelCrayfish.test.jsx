@@ -5,7 +5,7 @@ import ThermalLabel4x3 from "./ThermalLabel4x3.jsx";
 import ThermalLabel4x6Portrait from "./ThermalLabel4x6Portrait.jsx";
 
 const crayfishLabel = {
-  species: "Täplärapu",
+  species: "Täplärapu 10+ cm",
   scientificName: "Pacifastacus leniusculus",
   batchId: "RAPU-001",
   catchArea: "Suur-Saimaa",
@@ -23,7 +23,7 @@ describe("crayfish catch labels", () => {
   ])("prints crayfish size and crayfish-specific details on %s", (_name, Component) => {
     const html = renderToStaticMarkup(<Component label={crayfishLabel} />);
 
-    expect(html).toContain("Täplärapu");
+    expect(html).toContain("Täplärapu 10+ cm");
     expect(html).toContain("Pacifastacus leniusculus");
     expect(html).toContain("Ravun koko");
     expect(html).toContain("10+ cm");

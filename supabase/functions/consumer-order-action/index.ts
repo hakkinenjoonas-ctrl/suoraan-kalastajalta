@@ -73,7 +73,7 @@ Deno.serve(async (request) => {
         const { data: sellerProfile } = listing?.seller_user_id
           ? await admin!
             .from("profiles")
-            .select("company_name, business_id, address, postcode, city, contact_email, email, phone")
+            .select("company_name, business_id, contact_email, email, phone")
             .eq("id", listing.seller_user_id)
             .maybeSingle()
           : { data: null };
@@ -86,7 +86,7 @@ Deno.serve(async (request) => {
               title: "Uusi kuluttajavaraus",
               body: `${itemSummary} · ${safe(listing?.product_name) || "Kalaerä"}`,
               eventType: "consumer_order_reserved",
-              data: { route: "dashboard", consumerOrderId: data.id, consumerListingId: data.listing_id, reservationGroupId: reservationResult?.reservationGroupId },
+              data: { route: "consumer_sales", consumerOrderId: data.id, consumerListingId: data.listing_id, reservationGroupId: reservationResult?.reservationGroupId },
             }),
           });
         } catch (pushError) {
@@ -103,9 +103,8 @@ Deno.serve(async (request) => {
             : "";
           const paymentMethodText = paymentMethods || "Sovitaan kalastajan kanssa";
           const sellerName = safe(sellerProfile?.company_name) || safe(listing?.seller_name) || "Kalastaja";
-          const sellerAddress = [safe(sellerProfile?.address), [safe(sellerProfile?.postcode), safe(sellerProfile?.city)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
           const sellerEmail = safe(sellerProfile?.contact_email || sellerProfile?.email);
-          const sellerDetailsText = `${sellerName}${sellerProfile?.business_id ? ` (Y-tunnus ${safe(sellerProfile.business_id)})` : ""}${sellerAddress ? `, ${sellerAddress}` : ""}${sellerEmail ? `, ${sellerEmail}` : ""}${sellerProfile?.phone ? `, ${safe(sellerProfile.phone)}` : ""}`;
+          const sellerDetailsText = `${sellerName}${sellerProfile?.business_id ? ` (Y-tunnus ${safe(sellerProfile.business_id)})` : ""}${sellerEmail ? `, ${sellerEmail}` : ""}${sellerProfile?.phone ? `, ${safe(sellerProfile.phone)}` : ""}`;
           const termsUrl = "https://www.suoraankalastajalta.fi/tietosuojaseloste-ja-k%C3%A4ytt%C3%B6ehdot";
           try {
             const emailResponse = await fetch("https://api.resend.com/emails", {
